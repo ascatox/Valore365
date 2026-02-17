@@ -856,3 +856,77 @@ ode_modules, dist e .env dal versionamento.
 - File: WRITE_LOG.md
 - Motivo: tracciamento operazioni di scrittura
 - Dettagli: registrata integrazione Clerk come soluzione piu veloce per gestione accessi FE+BE.
+
+## 2026-02-17 13:09:38
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: refactor frontend con componentizzazione
+- Dettagli: App.tsx ridotto a orchestrazione stato/auth e wiring dei componenti UI.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/atoms/Panel.tsx
+- Motivo: introdurre componente atomico contenitore
+- Dettagli: aggiunto componente Panel riutilizzabile con titolo opzionale.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/atoms/Button.tsx
+- Motivo: introdurre componente atomico bottone
+- Dettagli: aggiunto componente Button con varianti primary/secondary/range.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/feedback/toast-types.ts
+- Motivo: centralizzazione tipi notifiche
+- Dettagli: definiti ToastKind e ToastItem condivisi tra App e UI toast.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/feedback/ToastStack.tsx
+- Motivo: estrazione rendering notifiche
+- Dettagli: spostata visualizzazione toast in componente dedicato.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/operations/OpsPanel.tsx
+- Motivo: separazione pannello azioni operative
+- Dettagli: estratti pulsanti refresh prezzi e backfill 1Y in componente dedicato.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/forms/QuickAddForm.tsx
+- Motivo: separazione flusso di inserimento rapido titoli
+- Dettagli: spostate logica form, autocomplete, validazioni e submit API dal componente App.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/charts/PortfolioLineChart.tsx
+- Motivo: separazione rendering e logica grafico
+- Dettagli: estratti range switch, calcolo modello SVG e tooltip hover del grafico andamento.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/dashboard/KpiGrid.tsx
+- Motivo: separazione card KPI
+- Dettagli: estratto rendering KPI valore totale, P/L e delta 1Y.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/dashboard/AllocationBars.tsx
+- Motivo: separazione sezione allocazione
+- Dettagli: estratto bar chart top posizioni con calcolo pesi percentuali.
+
+## 2026-02-17 13:09:38
+- Operazione: create
+- File: src/frontend/src/components/dashboard/PositionsTable.tsx
+- Motivo: separazione tabella posizioni
+- Dettagli: estratto rendering tabellare delle posizioni portfolio.
+
+
+## 2026-02-17 13:11:02
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate le modifiche di refactor FE con estrazione componenti atomici e sezioni dashboard fuori da App.tsx.
+
