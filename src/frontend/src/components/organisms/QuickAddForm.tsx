@@ -4,7 +4,7 @@ import { createAsset, createAssetProviderSymbol, createTransaction, searchAssets
 import type { AssetSearchItem, AssetType } from "../../types";
 import Button from "../atoms/Button";
 import Panel from "../atoms/Panel";
-import type { ToastKind } from "../feedback/toast-types";
+import type { ToastKind } from "../molecules/toast-types";
 
 type QuickAddFormProps = {
   portfolioId: number;
@@ -54,25 +54,25 @@ function QuickAddForm({ portfolioId, getAccessToken, onToast, onCompleted }: Qui
     const exchangeCodeValue = exchangeCode.trim().toUpperCase();
 
     if (!selectedExistingAsset && !/^[A-Z0-9.\-]{1,32}$/.test(symbolValue)) {
-      return "Symbol non valido (usa lettere/numeri, max 32).";
+      return "Invalid symbol (use letters/numbers, max 32).";
     }
     if (!/^[A-Z]{3}$/.test(quoteCurrencyValue)) {
-      return "Quote CCY non valida (formato ISO a 3 lettere).";
+      return "Invalid quote CCY (3-letter ISO format).";
     }
     if (isinValue && !/^[A-Z0-9]{12}$/.test(isinValue)) {
-      return "ISIN non valido (12 caratteri alfanumerici).";
+      return "Invalid ISIN (12 alphanumeric chars).";
     }
     if (exchangeCodeValue && !/^[A-Z0-9]{1,16}$/.test(exchangeCodeValue)) {
-      return "Exchange code non valido (max 16 alfanumerici).";
+      return "Invalid exchange code (max 16 alphanumeric).";
     }
     if (autoBuy) {
       const qty = Number(buyQuantity);
       const price = Number(buyPrice);
       if (!(qty > 0)) {
-        return "Qty Buy deve essere maggiore di zero.";
+        return "Buy Qty must be greater than zero.";
       }
       if (!(price >= 0)) {
-        return "Price Buy non valido.";
+        return "Invalid Buy Price.";
       }
     }
     return null;
@@ -148,7 +148,7 @@ function QuickAddForm({ portfolioId, getAccessToken, onToast, onCompleted }: Qui
         );
       }
 
-      onToast("success", `Titolo ${assetLabel} inserito con successo.`);
+      onToast("success", `Asset ${assetLabel} created successfully.`);
       setSymbol("");
       setName("");
       setExchangeCode("");
@@ -159,14 +159,14 @@ function QuickAddForm({ portfolioId, getAccessToken, onToast, onCompleted }: Qui
       setAssetSuggestions([]);
       await onCompleted();
     } catch (e) {
-      onToast("error", e instanceof Error ? e.message : "Errore inserimento titolo");
+      onToast("error", e instanceof Error ? e.message : "Error creating asset");
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Panel title="Aggiungi Titolo Rapido">
+    <Panel title="Quick Add Asset">
       <form className="quick-form" onSubmit={handleSubmit}>
         <label className="suggestion-host">
           Symbol*
@@ -202,11 +202,11 @@ function QuickAddForm({ portfolioId, getAccessToken, onToast, onCompleted }: Qui
           )}
         </label>
         <label>
-          Nome
+          Name
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Apple Inc." />
         </label>
         <label>
-          Tipo
+          Type
           <select value={assetType} onChange={(e) => setAssetType(e.target.value as AssetType)} disabled={!!selectedExistingAsset}>
             <option value="stock">stock</option>
             <option value="etf">etf</option>
@@ -239,24 +239,24 @@ function QuickAddForm({ portfolioId, getAccessToken, onToast, onCompleted }: Qui
 
         <label className="checkbox-row">
           <input type="checkbox" checked={autoBuy} onChange={(e) => setAutoBuy(e.target.checked)} />
-          Crea anche acquisto iniziale
+          Create initial buy as well
         </label>
         <label>
-          Qty Buy
+          Buy Qty
           <input value={buyQuantity} onChange={(e) => setBuyQuantity(e.target.value)} type="number" step="0.0001" min="0" />
         </label>
         <label>
-          Price Buy
+          Buy Price
           <input value={buyPrice} onChange={(e) => setBuyPrice(e.target.value)} type="number" step="0.0001" min="0" />
         </label>
 
         <Button type="submit" variant="primary" disabled={submitting}>
-          {submitting ? "Inserimento..." : selectedExistingAsset ? "Aggiungi Posizione" : "Aggiungi Titolo"}
+          {submitting ? "Submitting..." : selectedExistingAsset ? "Add Position" : "Create Asset"}
         </Button>
       </form>
       {selectedExistingAsset && (
         <p className="hint">
-          Usando titolo gia presente: {selectedExistingAsset.symbol} ({selectedExistingAsset.name})
+          Using existing asset: {selectedExistingAsset.symbol} ({selectedExistingAsset.name})
         </p>
       )}
     </Panel>

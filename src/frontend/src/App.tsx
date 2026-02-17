@@ -29,7 +29,7 @@ function App() {
   const getAccessToken = useCallback(async (): Promise<string> => {
     const token = await getToken();
     if (!token) {
-      throw new Error("Token Clerk non disponibile");
+      throw new Error("Clerk token not available");
     }
     return token;
   }, [getToken]);
@@ -47,7 +47,7 @@ function App() {
       setPositions(p);
       setTimeseries(t);
     } catch (e) {
-      pushToast("error", e instanceof Error ? e.message : "Errore caricamento dashboard");
+      pushToast("error", e instanceof Error ? e.message : "Error loading dashboard");
     } finally {
       setLoading(false);
     }
@@ -59,9 +59,9 @@ function App() {
 
   const currencyFormatter = useMemo(
     () =>
-      new Intl.NumberFormat("it-IT", {
+      new Intl.NumberFormat("en-US", {
         style: "currency",
-        currency: summary?.base_currency ?? "EUR",
+        currency: summary?.base_currency ?? "USD",
         maximumFractionDigits: 2,
       }),
     [summary?.base_currency]
@@ -69,7 +69,7 @@ function App() {
 
   const percentFormatter = useMemo(
     () =>
-      new Intl.NumberFormat("it-IT", {
+      new Intl.NumberFormat("en-US", {
         style: "percent",
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
@@ -91,13 +91,13 @@ function App() {
     try {
       const token = await getAccessToken();
       const result = await refreshPrices(defaultPortfolioId, token);
-      pushToast("info", `Refresh completato: ${result.refreshed_assets}/${result.requested_assets} aggiornati.`);
+      pushToast("info", `Refresh done: ${result.refreshed_assets}/${result.requested_assets} updated.`);
       if (result.failed_assets > 0) {
-        pushToast("error", `Refresh con errori su ${result.failed_assets} simboli.`);
+        pushToast("error", `Refresh failed for ${result.failed_assets} symbols.`);
       }
       await loadDashboard();
     } catch (e) {
-      pushToast("error", e instanceof Error ? e.message : "Errore refresh prezzi");
+      pushToast("error", e instanceof Error ? e.message : "Error refreshing prices");
     } finally {
       setRefreshingPrices(false);
     }
@@ -110,14 +110,14 @@ function App() {
       const result = await backfillDaily(defaultPortfolioId, 365, token);
       pushToast(
         "info",
-        `Backfill 1Y completato: asset ${result.assets_refreshed}/${result.assets_requested}, FX ${result.fx_pairs_refreshed}.`
+        `1Y backfill done: assets ${result.assets_refreshed}/${result.assets_requested}, FX ${result.fx_pairs_refreshed}.`
       );
       if (result.errors.length > 0) {
-        pushToast("error", `Backfill con ${result.errors.length} errori.`);
+        pushToast("error", `Backfill failed with ${result.errors.length} errors.`);
       }
       await loadDashboard();
     } catch (e) {
-      pushToast("error", e instanceof Error ? e.message : "Errore backfill 1Y");
+      pushToast("error", e instanceof Error ? e.message : "Error running 1Y backfill");
     } finally {
       setRunningBackfill(false);
     }
@@ -129,7 +129,7 @@ function App() {
         <main className="auth-shell">
           <section className="auth-card">
             <h1>Valore365</h1>
-            <p>Accedi per gestire portfolio, prezzi e storico.</p>
+            <p>Sign in to manage portfolios, prices and historical data.</p>
             <SignIn />
           </section>
         </main>
@@ -139,31 +139,35 @@ function App() {
           <header className="topbar">
             <h1>Valore365</h1>
             <div className="topbar-actions">
-              <span className="badge">Frontend V1 - React + Vite</span>
+              <span className="badge">Frontend V2 - React + Vite</span>
               <UserButton />
             </div>
           </header>
 
-          <OpsPanel
-            loading={loading}
-            refreshingPrices={refreshingPrices}
-            runningBackfill={runningBackfill}
-            onRefreshPrices={handleRefreshPricesNow}
-            onBackfillOneYear={handleBackfillOneYear}
-          />
+          <div className="grid-shell">
+            <div className="grid-main">
+              <QuickAddForm portfolioId={defaultPortfolioId} getAccessToken={getAccessToken} onToast={pushToast} onCompleted={loadDashboard} />
+              {loading && <p className="state">Loading portfolio data...</p>}
+              {!loading && summary && (
+                <>
+                  <KpiGrid summary={summary} deltaYear={deltaYear} currencyFormatter={currencyFormatter} percentFormatter={percentFormatter} />
+                  <PortfolioLineChart timeseries={timeseries} currencyFormatter={currencyFormatter} />
+                  <PositionsTable positions={positions} />
+                </>
+              )}
+            </div>
 
-          <QuickAddForm portfolioId={defaultPortfolioId} getAccessToken={getAccessToken} onToast={pushToast} onCompleted={loadDashboard} />
-
-          {loading && <p className="state">Caricamento dati portfolio...</p>}
-
-          {!loading && summary && (
-            <>
-              <KpiGrid summary={summary} deltaYear={deltaYear} currencyFormatter={currencyFormatter} percentFormatter={percentFormatter} />
-              <PortfolioLineChart timeseries={timeseries} currencyFormatter={currencyFormatter} />
-              <AllocationBars positions={positions} />
-              <PositionsTable positions={positions} />
-            </>
-          )}
+            <aside className="grid-aside">
+              <OpsPanel
+                loading={loading}
+                refreshingPrices={refreshingPrices}
+                runningBackfill={runningBackfill}
+                onRefreshPrices={handleRefreshPricesNow}
+                onBackfillOneYear={handleBackfillOneYear}
+              />
+              {!loading && <AllocationBars positions={positions} />}
+            </aside>
+          </div>
 
           <ToastStack toasts={toasts} />
         </main>
