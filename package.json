@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "@radix-ui/react-slot": "^1.2.4",
+    "lucide-react": "^0.574.0"
+  }
+}

@@ -58,12 +58,15 @@ class AssetProviderSymbolRead(AssetProviderSymbolCreate):
 class Position(BaseModel):
     asset_id: int
     symbol: str
+    name: str
     quantity: float
     avg_cost: float
     market_price: float
     market_value: float
     unrealized_pl: float
     unrealized_pl_pct: float
+    weight: float
+    first_trade_at: datetime | None = None
 
 
 class PortfolioSummary(BaseModel):
@@ -73,6 +76,8 @@ class PortfolioSummary(BaseModel):
     cost_basis: float
     unrealized_pl: float
     unrealized_pl_pct: float
+    day_change: float = 0.0
+    day_change_pct: float = 0.0
 
 
 class TimeSeriesPoint(BaseModel):

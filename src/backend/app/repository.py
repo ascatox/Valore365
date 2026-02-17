@@ -255,19 +255,30 @@ class PortfolioRepository:
                 cost_basis = qty * avg_cost
                 pl = market_value - cost_basis
                 pl_pct = (pl / cost_basis * 100.0) if cost_basis else 0.0
-                symbol = assets.get(aid, {}).get("symbol", f"ASSET-{aid}")
+                asset_details = assets.get(aid, {})
+                symbol = asset_details.get("symbol", f"ASSET-{aid}")
+                name = asset_details.get("name", "")
+
                 positions.append(
                     Position(
                         asset_id=aid,
                         symbol=symbol,
+                        name=name,
                         quantity=round(qty, 8),
                         avg_cost=round(avg_cost, 4),
                         market_price=round(market_price, 4),
                         market_value=round(market_value, 2),
                         unrealized_pl=round(pl, 2),
                         unrealized_pl_pct=round(pl_pct, 2),
+                        weight=0,  # Placeholder, will be calculated next
                     )
                 )
+
+            total_market_value = sum(p.market_value for p in positions)
+
+            if total_market_value > 0:
+                for p in positions:
+                    p.weight = round((p.market_value / total_market_value) * 100, 2)
 
             positions.sort(key=lambda p: p.market_value, reverse=True)
             return positions
@@ -769,14 +780,14 @@ class PortfolioRepository:
         rows = conn.execute(
             text(
                 """
-                select id, symbol
+                select id, symbol, name
                 from assets
                 where id = any(:asset_ids)
                 """
             ),
             {"asset_ids": asset_ids},
         ).mappings().all()
-        return {int(r["id"]): {"symbol": str(r["symbol"])} for r in rows}
+        return {int(r["id"]): {"symbol": str(r["symbol"]), "name": str(r["name"])} for r in rows}
 
     def _get_asset_meta(self, conn, asset_ids: list[int]) -> dict[int, AssetMeta]:
         rows = conn.execute(
