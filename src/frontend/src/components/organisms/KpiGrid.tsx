@@ -1,34 +1,24 @@
-import type { PortfolioSummary } from "../../types";
+import { usePrivacy } from '../../contexts/PrivacyContext';
 
-type KpiGridProps = {
-  summary: PortfolioSummary;
-  deltaYear: number;
-  currencyFormatter: Intl.NumberFormat;
-  percentFormatter: Intl.NumberFormat;
+const StatCard = ({ title, value, isPrivacyMode, isCurrency = true }) => {
+  const displayValue = isPrivacyMode && isCurrency ? '••••' : value;
+  return (
+    <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4">
+      <h3 className="text-slate-400 text-sm font-medium">{title}</h3>
+      <p className="text-white text-2xl font-semibold">{displayValue}</p>
+    </div>
+  );
 };
 
-function KpiGrid({ summary, deltaYear, currencyFormatter, percentFormatter }: KpiGridProps) {
-  const pnlToneClass = summary.unrealized_pl >= 0 ? "tone-positive" : "tone-negative";
-  const deltaToneClass = deltaYear >= 0 ? "tone-positive" : "tone-negative";
+export const KpiGrid = ({ summary }) => {
+  const { isPrivacyMode } = usePrivacy();
 
   return (
-    <section className="kpi-grid">
-      <article className="kpi-card">
-        <h2>Valore Totale</h2>
-        <p>{currencyFormatter.format(summary.market_value)}</p>
-      </article>
-      <article className="kpi-card">
-        <h2>P/L Non Realizzato</h2>
-        <p className={pnlToneClass}>
-          {currencyFormatter.format(summary.unrealized_pl)} ({percentFormatter.format(summary.unrealized_pl_pct / 100)})
-        </p>
-      </article>
-      <article className="kpi-card">
-        <h2>Delta 1Y</h2>
-        <p className={deltaToneClass}>{currencyFormatter.format(deltaYear)}</p>
-      </article>
-    </section>
+    <>
+        <StatCard title="Net Worth" value={`€${summary.net_worth.toFixed(2)}`} isPrivacyMode={isPrivacyMode} />
+        <StatCard title="P&L Totale" value={`€${summary.total_pnl.toFixed(2)}`} isPrivacyMode={isPrivacyMode} />
+        <StatCard title="Day Change" value={`${summary.day_change_percent.toFixed(2)}%`} isPrivacyMode={isPrivacyMode} isCurrency={false} />
+        <StatCard title="Costi Annuali TER" value={`${summary.annual_ter.toFixed(2)}%`} isPrivacyMode={isPrivacyMode} isCurrency={false} />
+    </>
   );
-}
-
-export default KpiGrid;
+};
