@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16
+    container_name: valore365-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: valore365
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  api-dev:
+    profiles: ["dev"]
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: valore365-api-dev
+    depends_on:
+      - db
+    environment:
+      APP_ENV: dev
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/valore365
+      FINANCE_PROVIDER: twelvedata
+      FINANCE_API_BASE_URL: https://api.twelvedata.com
+      FINANCE_API_KEY: ${FINANCE_API_KEY:-}
+      PRICE_SCHEDULER_ENABLED: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./src/backend/app:/app/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  api-prod:
+    profiles: ["prod"]
+    build:
+      context: ./src/backend
+      dockerfile: Dockerfile
+    container_name: valore365-api-prod
+    depends_on:
+      - db
+    environment:
+      APP_ENV: prod
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/valore365
+      FINANCE_PROVIDER: twelvedata
+      FINANCE_API_BASE_URL: https://api.twelvedata.com
+      FINANCE_API_KEY: ${FINANCE_API_KEY:-}
+      PRICE_SCHEDULER_ENABLED: "true"
+      PRICE_SCHEDULER_INTERVAL_SECONDS: "60"
+    ports:
+      - "8000:8000"
+
+volumes:
+  postgres_data:
