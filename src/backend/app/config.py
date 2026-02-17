@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -20,6 +21,14 @@ class Settings(BaseSettings):
     price_scheduler_enabled: bool = False
     price_scheduler_interval_seconds: int = 60
     price_scheduler_portfolio_id: int | None = None
+
+    clerk_auth_enabled: bool = False
+    clerk_jwks_url: str = ""
+    clerk_authorized_parties: str = ""
+
+    @property
+    def clerk_authorized_parties_list(self) -> list[str]:
+        return [value.strip() for value in self.clerk_authorized_parties.split(",") if value.strip()]
 
 
 @lru_cache(maxsize=1)

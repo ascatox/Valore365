@@ -1,10 +1,11 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Header, Query, Request
+from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from .auth import AuthContext, require_auth
 from .config import get_settings
 from .db import engine
 from .errors import AppError
@@ -66,7 +67,7 @@ def health() -> dict[str, str]:
 
 
 @app.post('/assets', response_model=AssetRead, responses={400: {'model': ErrorResponse}, 409: {'model': ErrorResponse}})
-def create_asset(payload: AssetCreate) -> AssetRead:
+def create_asset(payload: AssetCreate, _auth: AuthContext = Depends(require_auth)) -> AssetRead:
     try:
         return repo.create_asset(payload)
     except ValueError as exc:
@@ -77,7 +78,7 @@ def create_asset(payload: AssetCreate) -> AssetRead:
 
 
 @app.get('/assets/{asset_id}', response_model=AssetRead, responses={404: {'model': ErrorResponse}})
-def get_asset(asset_id: int) -> AssetRead:
+def get_asset(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetRead:
     try:
         return repo.get_asset(asset_id)
     except ValueError as exc:
@@ -85,7 +86,10 @@ def get_asset(asset_id: int) -> AssetRead:
 
 
 @app.post('/asset-provider-symbols', response_model=AssetProviderSymbolRead, responses={400: {'model': ErrorResponse}, 409: {'model': ErrorResponse}})
-def create_asset_provider_symbol(payload: AssetProviderSymbolCreate) -> AssetProviderSymbolRead:
+def create_asset_provider_symbol(
+    payload: AssetProviderSymbolCreate,
+    _auth: AuthContext = Depends(require_auth),
+) -> AssetProviderSymbolRead:
     try:
         return repo.create_asset_provider_symbol(payload)
     except ValueError as exc:
@@ -96,7 +100,7 @@ def create_asset_provider_symbol(payload: AssetProviderSymbolCreate) -> AssetPro
 
 
 @app.post('/transactions', response_model=TransactionRead, responses={400: {'model': ErrorResponse}})
-def create_transaction(payload: TransactionCreate) -> TransactionRead:
+def create_transaction(payload: TransactionCreate, _auth: AuthContext = Depends(require_auth)) -> TransactionRead:
     try:
         return repo.create_transaction(payload)
     except ValueError as exc:
@@ -104,7 +108,11 @@ def create_transaction(payload: TransactionCreate) -> TransactionRead:
 
 
 @app.post('/prices/refresh', response_model=PriceRefreshResponse, responses={400: {'model': ErrorResponse}})
-def refresh_prices(portfolio_id: int | None = None, idempotency_key: str | None = Header(default=None, alias='Idempotency-Key')) -> PriceRefreshResponse:
+def refresh_prices(
+    portfolio_id: int | None = None,
+    idempotency_key: str | None = Header(default=None, alias='Idempotency-Key'),
+    _auth: AuthContext = Depends(require_auth),
+) -> PriceRefreshResponse:
     endpoint = 'prices_refresh'
     if idempotency_key:
         cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint)
@@ -124,6 +132,7 @@ def backfill_daily_prices(
     portfolio_id: int,
     days: int = Query(default=365, ge=30, le=2000),
     idempotency_key: str | None = Header(default=None, alias='Idempotency-Key'),
+    _auth: AuthContext = Depends(require_auth),
 ) -> DailyBackfillResponse:
     endpoint = f'prices_backfill_daily:{portfolio_id}:{days}'
     if idempotency_key:
@@ -140,7 +149,7 @@ def backfill_daily_prices(
 
 
 @app.get('/portfolios/{portfolio_id}/positions', response_model=list[Position], responses={404: {'model': ErrorResponse}})
-def get_positions(portfolio_id: int) -> list[Position]:
+def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[Position]:
     try:
         return repo.get_positions(portfolio_id)
     except ValueError as exc:
@@ -148,7 +157,7 @@ def get_positions(portfolio_id: int) -> list[Position]:
 
 
 @app.get('/portfolios/{portfolio_id}/summary', response_model=PortfolioSummary, responses={404: {'model': ErrorResponse}})
-def get_summary(portfolio_id: int) -> PortfolioSummary:
+def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> PortfolioSummary:
     try:
         return repo.get_summary(portfolio_id)
     except ValueError as exc:
@@ -160,6 +169,7 @@ def get_timeseries(
     portfolio_id: int,
     range: str = Query(default='1y', pattern='^1y$'),
     interval: str = Query(default='1d', pattern='^1d$'),
+    _auth: AuthContext = Depends(require_auth),
 ) -> list[TimeSeriesPoint]:
     try:
         return repo.get_timeseries(portfolio_id, range_value=range, interval=interval)
@@ -171,7 +181,7 @@ def get_timeseries(
 
 
 @app.get('/portfolios/{portfolio_id}/allocation', response_model=list[AllocationItem], responses={404: {'model': ErrorResponse}})
-def get_allocation(portfolio_id: int) -> list[AllocationItem]:
+def get_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[AllocationItem]:
     try:
         return repo.get_allocation(portfolio_id)
     except ValueError as exc:
@@ -179,5 +189,5 @@ def get_allocation(portfolio_id: int) -> list[AllocationItem]:
 
 
 @app.get('/assets/search')
-def search_assets(q: str = Query(min_length=1)) -> dict[str, list[dict[str, str]]]:
+def search_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> dict[str, list[dict[str, str]]]:
     return {'items': repo.search_assets(q)}

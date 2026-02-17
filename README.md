@@ -23,6 +23,12 @@ Portfolio tracker personale con prezzi realtime e vista storica annuale.
 - Error model uniforme e idempotenza ingest
 - Scheduler automatico prezzi opzionale
 
+## Frontend stato attuale
+- Bootstrap React + Vite + TypeScript in `src/frontend`
+- Dashboard base con fetch da API backend (`summary`, `positions`, `timeseries`)
+- Stile responsive iniziale e configurazione via `.env`
+- Pronto per integrazione grafici (ECharts/Recharts) nei prossimi step
+
 ## Run rapido
 1. Configurare `.env` in `src/backend`
 2. Applicare schema/seed (o script `scripts/bootstrap_db.ps1`)

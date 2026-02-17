@@ -513,3 +513,346 @@
 - File: WRITE_LOG.md
 - Motivo: tracciamento operazioni di scrittura
 - Dettagli: registrata inizializzazione repository git locale.
+
+## 2026-02-17 11:41:10
+- Operazione: update
+- File: docs/TEST_PLAN.md
+- Motivo: tracciamento attivita pendenti
+- Dettagli: aggiunto TODO operativo per push commit locale c650a7 su GitHub quando l'accesso sara disponibile.
+
+## 2026-02-17 11:41:10
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrato aggiornamento TODO GitHub nel piano test.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/package.json
+- Motivo: bootstrap frontend React + Vite
+- Dettagli: definito progetto FE con script dev/build/preview e dipendenze React/TypeScript/Vite.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/.gitignore
+- Motivo: igiene repository frontend
+- Dettagli: esclusi 
+ode_modules, dist e .env dal versionamento.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/.env.example
+- Motivo: configurazione ambiente frontend
+- Dettagli: aggiunte variabili VITE_API_BASE_URL e VITE_DEFAULT_PORTFOLIO_ID.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/index.html
+- Motivo: entrypoint Vite
+- Dettagli: aggiunto template HTML base con mount #root.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/tsconfig.json
+- Motivo: configurazione TypeScript frontend
+- Dettagli: abilitata configurazione strict e target compatibile con Vite.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/vite.config.ts
+- Motivo: configurazione tooling frontend
+- Dettagli: configurato plugin React e server dev su porta 5173.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/src/types.ts
+- Motivo: tipizzazione contratti API frontend
+- Dettagli: aggiunti tipi PortfolioSummary, Position, TimeSeriesPoint.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/src/api.ts
+- Motivo: integrazione frontend-backend
+- Dettagli: implementate chiamate fetch per summary, positions e timeseries con gestione errori.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/src/main.tsx
+- Motivo: bootstrap app React
+- Dettagli: configurato mount React StrictMode e import stili globali.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/src/App.tsx
+- Motivo: dashboard iniziale frontend
+- Dettagli: implementata vista KPI, stato caricamento/errore, sezione andamento 1Y e tabella posizioni.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/src/styles.css
+- Motivo: identita visuale iniziale frontend
+- Dettagli: aggiunti layout responsive, cards KPI e stile dashboard base.
+
+## 2026-02-17 11:55:53
+- Operazione: create
+- File: src/frontend/README.md
+- Motivo: documentazione avvio frontend
+- Dettagli: aggiunti setup, variabili ambiente, stato attuale e prossimo step grafici.
+
+## 2026-02-17 11:55:53
+- Operazione: update
+- File: README.md
+- Motivo: allineamento documentazione root
+- Dettagli: aggiunta sezione "Frontend stato attuale" con sintesi bootstrap React+Vite.
+
+## 2026-02-17 11:55:53
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate tutte le scritture effettuate per avvio frontend React + Vite.
+
+## 2026-02-17 11:58:02
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: introduzione grafici dashboard frontend
+- Dettagli: aggiunti line chart SVG per andamento 1Y e bar chart allocazione top posizioni basati su 	imeseries e positions.
+
+## 2026-02-17 11:58:02
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: stile grafici frontend
+- Dettagli: aggiunte classi per rendering line chart (chart-wrap, line-path) e allocation bars (ar-list, ar-track, ar-fill).
+
+## 2026-02-17 11:58:02
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate modifiche per primo inserimento grafici nella dashboard frontend.
+
+## 2026-02-17 12:00:39
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: estensione grafico dashboard
+- Dettagli: aggiunti switch periodo (1M, 3M, YTD, 1Y), assi/etichette nel line chart SVG e tooltip hover con crosshair e valore punto.
+
+## 2026-02-17 12:00:39
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: stile interazioni grafico
+- Dettagli: aggiunte classi per range switch, griglia assi, label, tooltip hover e overlay cattura mouse.
+
+## 2026-02-17 12:00:39
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate modifiche per completare le 3 richieste grafico frontend (assi/tooltip/switch periodo).
+
+## 2026-02-17 12:01:49
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: miglioramento leggibilita KPI e chart
+- Dettagli: aggiunta formattazione valuta/percentuale locale (Intl.NumberFormat), colorazione dinamica profit/loss nei KPI e mini-legenda del grafico.
+
+## 2026-02-17 12:01:49
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: supporto visuale nuovi elementi dashboard
+- Dettagli: aggiunte classi 	one-positive/	one-negative e stili legenda grafico (chart-legend, legend-dot).
+
+## 2026-02-17 12:01:49
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate modifiche per formattazione valuta locale, colori dinamici KPI e mini-legenda grafico.
+
+## 2026-02-17 12:09:28
+- Operazione: update
+- File: src/frontend/src/types.ts
+- Motivo: supporto operazioni anagrafiche da frontend
+- Dettagli: aggiunti tipi request/response per creazione asset, mapping provider e transazioni.
+
+## 2026-02-17 12:09:28
+- Operazione: update
+- File: src/frontend/src/api.ts
+- Motivo: integrazione API write dal frontend
+- Dettagli: aggiunti helper postJson e funzioni createAsset, createAssetProviderSymbol, createTransaction.
+
+## 2026-02-17 12:09:28
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: inserimento rapido titoli da FE
+- Dettagli: aggiunto pannello "Aggiungi Titolo Rapido" con submit unico (asset + provider symbol + buy opzionale) e refresh dashboard post-inserimento.
+
+## 2026-02-17 12:09:28
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: stile form rapido frontend
+- Dettagli: aggiunte classi per layout form, input/select, bottone primario e stato successo/errore.
+
+## 2026-02-17 12:09:28
+- Operazione: update
+- File: src/frontend/README.md
+- Motivo: documentazione flusso rapido FE
+- Dettagli: aggiunta sezione su creazione titolo da frontend con chiamate API coinvolte.
+
+## 2026-02-17 12:09:28
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate modifiche per implementazione inserimento rapido titoli da frontend.
+
+## 2026-02-17 12:17:37
+- Operazione: update
+- File: src/frontend/src/types.ts
+- Motivo: supporto autocomplete e write API frontend
+- Dettagli: aggiunto tipo AssetSearchItem e tipi request per asset/provider/transazioni.
+
+## 2026-02-17 12:17:37
+- Operazione: update
+- File: src/frontend/src/api.ts
+- Motivo: estensione integrazione API frontend
+- Dettagli: aggiunti postJson, searchAssets, createAsset, createAssetProviderSymbol, createTransaction.
+
+## 2026-02-17 12:17:37
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: inserimento titoli FE piu veloce
+- Dettagli: aggiunti autocomplete symbol da /assets/search, selezione titolo esistente e validazioni client-side (symbol/currency/isin/exchange/buy).
+
+## 2026-02-17 12:17:37
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: UI autocomplete frontend
+- Dettagli: aggiunti stili lista suggerimenti (suggestions, suggestion-item) e supporto visuale campo ricerca.
+
+## 2026-02-17 12:17:37
+- Operazione: update
+- File: src/frontend/README.md
+- Motivo: documentazione UX rapido inserimento titoli
+- Dettagli: aggiunte note su autocomplete asset esistenti e validazione client-side.
+
+## 2026-02-17 12:17:37
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate modifiche del nuovo flusso rapido FE con autocomplete e validazioni.
+
+## 2026-02-17 12:22:59
+- Operazione: update
+- File: src/frontend/src/types.ts
+- Motivo: supporto nuovi flussi operativi dashboard
+- Dettagli: aggiunti tipi PriceRefreshResponse e DailyBackfillResponse.
+
+## 2026-02-17 12:22:59
+- Operazione: update
+- File: src/frontend/src/api.ts
+- Motivo: azioni FE su endpoint ingest
+- Dettagli: aggiunte funzioni efreshPrices e ackfillDaily oltre all'estensione API search/insert già presente.
+
+## 2026-02-17 12:22:59
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: completamento richieste operative FE in sequenza
+- Dettagli: aggiunti pulsanti Refresh prezzi ora e Backfill 1Y, introduzione toast notifications (success/error/info) con auto-dismiss e rimozione dei messaggi statici di esito form.
+
+## 2026-02-17 12:22:59
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: supporto UI operazioni e toast
+- Dettagli: aggiunti stili per pannello operazioni, bottoni secondari e stack toast responsive.
+
+## 2026-02-17 12:22:59
+- Operazione: update
+- File: src/frontend/README.md
+- Motivo: documentazione funzionalita FE aggiuntive
+- Dettagli: documentati pulsanti refresh/backfill e sistema notifiche toast.
+
+## 2026-02-17 12:22:59
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrate modifiche per implementazione dei 3 step richiesti in sequenza (refresh, backfill, toast).
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/backend/app/config.py
+- Motivo: configurazione auth esterna veloce
+- Dettagli: aggiunte variabili Clerk (clerk_auth_enabled, clerk_jwks_url, clerk_authorized_parties) e parser lista parti autorizzate.
+
+## 2026-02-17 12:38:25
+- Operazione: create
+- File: src/backend/app/auth.py
+- Motivo: protezione API backend con provider OAuth esterno
+- Dettagli: implementata validazione JWT Clerk via JWKS con cache, estrazione bearer token e dependency equire_auth.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/backend/app/main.py
+- Motivo: enforcement accessi backend
+- Dettagli: aggiunta dependency equire_auth su tutte le route applicative (tranne /health).
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/backend/requirements.txt
+- Motivo: dipendenze verifica token JWT
+- Dettagli: aggiunte dipendenze PyJWT e cryptography.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/backend/.env.example
+- Motivo: setup ambiente auth Clerk backend
+- Dettagli: aggiunte variabili CLERK_AUTH_ENABLED, CLERK_JWKS_URL, CLERK_AUTHORIZED_PARTIES.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/backend/README.md
+- Motivo: documentazione integrazione auth veloce
+- Dettagli: aggiunta sezione "Auth (Clerk - soluzione veloce)" con configurazione e comportamento route protette.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/package.json
+- Motivo: dipendenza login provider esterno
+- Dettagli: aggiunta dipendenza @clerk/clerk-react.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/.env.example
+- Motivo: configurazione frontend auth Clerk
+- Dettagli: aggiunta variabile VITE_CLERK_PUBLISHABLE_KEY.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/src/main.tsx
+- Motivo: bootstrap auth frontend
+- Dettagli: integrato ClerkProvider con validazione presenza publishable key.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/src/api.ts
+- Motivo: propagazione token auth verso backend
+- Dettagli: estesi helper API con header Authorization: Bearer <token> e supporto token su tutte le chiamate.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/src/App.tsx
+- Motivo: login/guard FE e chiamate protette
+- Dettagli: aggiunti SignedOut/SignIn, SignedIn, UserButton, recupero token Clerk (getToken) e uso token su fetch dashboard/operazioni.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/src/styles.css
+- Motivo: supporto UI login Clerk
+- Dettagli: aggiunti stili uth-shell, uth-card, 	opbar-actions per schermata accesso e barra utente.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: src/frontend/README.md
+- Motivo: documentazione setup login frontend
+- Dettagli: aggiunte note su VITE_CLERK_PUBLISHABLE_KEY e pagina login Clerk.
+
+## 2026-02-17 12:38:25
+- Operazione: update
+- File: WRITE_LOG.md
+- Motivo: tracciamento operazioni di scrittura
+- Dettagli: registrata integrazione Clerk come soluzione piu veloce per gestione accessi FE+BE.

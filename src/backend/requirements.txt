@@ -6,3 +6,5 @@ sqlalchemy==2.0.38
 psycopg[binary]==3.2.5
 httpx==0.28.1
 apscheduler==3.10.4
+PyJWT==2.10.1
+cryptography==44.0.2

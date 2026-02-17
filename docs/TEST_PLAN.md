@@ -79,3 +79,9 @@ Confermare correttezza funzionale, robustezza ingest, performance minima e stabi
 - Dati realtime/storico presenti e coerenti
 - Idempotenza e scheduler verificati
 - Nessun blocker critico aperto
+
+## TODO Operativo (GitHub)
+- Push della commit locale `bc650a7` su `origin/main` appena disponibile accesso GitHub completo.
+- Passi previsti:
+  1. `git push -u origin main`
+  2. verifica remoto allineato (`git status`, `git log --oneline -1`)

@@ -41,6 +41,9 @@ Header:
 - `FINANCE_API_KEY`
 - `PRICE_SCHEDULER_ENABLED`
 - `PRICE_SCHEDULER_INTERVAL_SECONDS`
+- `CLERK_AUTH_ENABLED`
+- `CLERK_JWKS_URL`
+- `CLERK_AUTHORIZED_PARTIES` (opzionale, lista CSV)
 
 Nota: `.env` e' ignorato da git.
 
@@ -48,6 +51,12 @@ Nota: `.env` e' ignorato da git.
 - Abilita con `PRICE_SCHEDULER_ENABLED=true`
 - Intervallo con `PRICE_SCHEDULER_INTERVAL_SECONDS`
 - Scope portfolio opzionale con `PRICE_SCHEDULER_PORTFOLIO_ID`
+
+## Auth (Clerk - soluzione veloce)
+- Abilita validazione token BE con `CLERK_AUTH_ENABLED=true`
+- Imposta `CLERK_JWKS_URL` con endpoint JWKS del tenant Clerk
+- Le route API (tranne `/health`) richiedono `Authorization: Bearer <token>`
+- In sviluppo rapido puoi lasciare `CLERK_AUTH_ENABLED=false`
 
 ## Run locale
 1. `python -m venv .venv`
