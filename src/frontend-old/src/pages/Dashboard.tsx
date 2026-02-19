@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { usePrivacy } from '../contexts/PrivacyContext';
 import PrivacyToggleButton from '../components/PrivacyToggleButton';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { Lectern } from 'lucide-react';
 
 const data = [
   { name: 'Page A', uv: 4000, pv: 2400, amt: 2400 },
@@ -16,10 +17,10 @@ const data = [
 ];
 
 const Dashboard: React.FC = () => {
-  const { isPrivacyActive } = usePrivacy();
+  const { context } = usePrivacy();
 
   const formatValue = (value: number | string) => {
-    if (isPrivacyActive) {
+    if (context) {
       return '*****';
     }
     return value;

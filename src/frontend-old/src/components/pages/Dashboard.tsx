@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
+import { cn } from "../../lib/utils";
 
 // --- DATA TYPES & MOCK DATA ---
 
@@ -229,7 +229,7 @@ const Dashboard = () => {
                                     backgroundColor: "hsl(var(--card))",
                                     borderColor: "hsl(var(--border))"
                                 }}
-                                formatter={(value: number) => [formatCurrency(value), "Valore"]}
+                                labelFormatter={(value: number) => [formatCurrency(value), "Valore"]}
                             />
                             <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="url(#colorValue)" />
                         </AreaChart>
