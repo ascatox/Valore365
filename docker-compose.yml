@@ -50,6 +50,14 @@ services:
       PRICE_SCHEDULER_INTERVAL_SECONDS: "60"
     ports:
       - "8000:8000"
+  
+  frontend:
+    build:
+      context: ./src/frontend/valore-frontend
+      dockerfile: Dockerfile
+    container_name: valore365-frontend
+    ports:
+      - "8080:80"
 
 volumes:
   postgres_data:

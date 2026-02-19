@@ -32,7 +32,7 @@ export function SettingsPage() {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const [allocations, setAllocations] = useState(initialAllocation);
 
-  const handleAllocationChange = (index: number, value: number | '') => {
+  const handleAllocationChange = (index: number, value: any) => {
     const newAllocations = [...allocations];
     newAllocations[index].weight = typeof value === 'number' ? value : 0;
     setAllocations(newAllocations);
