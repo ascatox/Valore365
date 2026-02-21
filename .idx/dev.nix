@@ -19,9 +19,14 @@
     pkgs.python311Packages.apscheduler
     pkgs.python311Packages.pyjwt
     pkgs.python311Packages.cryptography
+    pkgs.docker
+    pkgs.docker-compose
     # pkgs.nodejs_20
     # pkgs.nodePackages.nodemon
   ];
+
+  # Enable the Docker daemon
+  services.docker.enable = true;
 
   # Sets environment variables in the workspace
   env = {};
