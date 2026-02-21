@@ -10,47 +10,57 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
   api-dev:
-    profiles: ["dev"]
+    profiles:
+      - dev
     build:
-      context: ./src/backend
+      context: ./src/backend-nestjs
       dockerfile: Dockerfile
     container_name: valore365-api-dev
     depends_on:
       - db
     environment:
       APP_ENV: dev
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/valore365
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: valore365
       FINANCE_PROVIDER: twelvedata
       FINANCE_API_BASE_URL: https://api.twelvedata.com
       FINANCE_API_KEY: ${FINANCE_API_KEY:-}
       PRICE_SCHEDULER_ENABLED: "false"
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
     ports:
-      - "8000:8000"
+      - "8000:3000"
     volumes:
-      - ./src/backend/app:/app/app
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
-
+      - ./src/backend-nestjs:/usr/src/app
+      - /usr/src/app/node_modules
+    command: npm run start:dev
   api-prod:
-    profiles: ["prod"]
+    profiles:
+      - prod
     build:
-      context: ./src/backend
+      context: ./src/backend-nestjs
       dockerfile: Dockerfile
     container_name: valore365-api-prod
     depends_on:
       - db
     environment:
       APP_ENV: prod
-      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/valore365
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USERNAME: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: valore365
       FINANCE_PROVIDER: twelvedata
       FINANCE_API_BASE_URL: https://api.twelvedata.com
       FINANCE_API_KEY: ${FINANCE_API_KEY:-}
       PRICE_SCHEDULER_ENABLED: "true"
       PRICE_SCHEDULER_INTERVAL_SECONDS: "60"
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-}
     ports:
-      - "8000:8000"
-  
+      - "8000:3000"
   frontend:
     build:
       context: ./src/frontend/valore-frontend
@@ -58,6 +68,5 @@ services:
     container_name: valore365-frontend
     ports:
       - "8080:80"
-
 volumes:
-  postgres_data:
+  postgres_data: {}
