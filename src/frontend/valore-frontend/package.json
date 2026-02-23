@@ -13,6 +13,7 @@
     "@mantine/core": "^7.0.0",
     "@mantine/hooks": "^7.0.0",
     "@tabler/icons-react": "^3.36.1",
+    "lucide-react": "^0.400.0",
     "postcss-preset-mantine": "^1.18.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

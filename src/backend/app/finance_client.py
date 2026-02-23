@@ -8,6 +8,8 @@ import httpx
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
 logger = logging.getLogger(__name__)
+DEFAULT_TIMEZONE = "UTC"
+DEFAULT_ORDER = "asc"
 
 
 @dataclass
@@ -36,6 +38,14 @@ class ProviderFxRate:
     rate: float
 
 
+@dataclass
+class ProviderSymbol:
+    symbol: str
+    instrument_name: str | None
+    exchange: str | None
+    country: str | None
+
+
 class TwelveDataClient:
     def __init__(
         self,
@@ -50,6 +60,30 @@ class TwelveDataClient:
         self.timeout_seconds = timeout_seconds
         self.max_retries = max(0, int(max_retries))
         self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
+
+    def search_symbols(self, query: str) -> list[ProviderSymbol]:
+        payload = self._request_json(
+            '/symbol_search',
+            {'symbol': query, 'apikey': self.api_key},
+            symbol=query,
+        )
+        results = payload.get('data') if isinstance(payload, dict) else None
+        if not isinstance(results, list):
+            return []
+
+        symbols: list[ProviderSymbol] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            symbols.append(
+                ProviderSymbol(
+                    symbol=item.get('symbol'),
+                    instrument_name=item.get('instrument_name'),
+                    exchange=item.get('exchange'),
+                    country=item.get('country'),
+                )
+            )
+        return symbols
 
     def get_quote(self, symbol: str) -> ProviderQuote:
         payload = self._request_json('/quote', {'symbol': symbol, 'apikey': self.api_key}, symbol=symbol)
@@ -67,15 +101,31 @@ class TwelveDataClient:
             ts=ts,
         )
 
-    def get_daily_bars(self, symbol: str, outputsize: int = 365) -> list[ProviderDailyBar]:
+    def get_daily_bars(
+        self,
+        symbol: str,
+        outputsize: int = 365,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        timezone: str = DEFAULT_TIMEZONE,
+        order: str = DEFAULT_ORDER,
+    ) -> list[ProviderDailyBar]:
+        params: dict[str, object] = {
+            'symbol': symbol,
+            'interval': '1day',
+            'apikey': self.api_key,
+            'outputsize': max(1, min(outputsize, 5000)),
+            'timezone': timezone,
+            'order': order,
+        }
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
         payload = self._request_json(
             '/time_series',
-            {
-                'symbol': symbol,
-                'interval': '1day',
-                'outputsize': max(1, min(outputsize, 5000)),
-                'apikey': self.api_key,
-            },
+            params,
             symbol=symbol,
         )
         values = payload.get('values') if isinstance(payload, dict) else None
@@ -109,16 +159,33 @@ class TwelveDataClient:
         bars.sort(key=lambda x: x.day)
         return bars
 
-    def get_daily_fx_rates(self, from_currency: str, to_currency: str, outputsize: int = 365) -> list[ProviderFxRate]:
+    def get_daily_fx_rates(
+        self,
+        from_currency: str,
+        to_currency: str,
+        outputsize: int = 365,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        timezone: str = DEFAULT_TIMEZONE,
+        order: str = DEFAULT_ORDER,
+    ) -> list[ProviderFxRate]:
         pair = f"{from_currency}/{to_currency}"
+        params: dict[str, object] = {
+            'symbol': pair,
+            'interval': '1day',
+            'apikey': self.api_key,
+            'outputsize': max(1, min(outputsize, 5000)),
+            'timezone': timezone,
+            'order': order,
+        }
+        if start_date:
+            params['start_date'] = start_date
+        if end_date:
+            params['end_date'] = end_date
         payload = self._request_json(
             '/time_series',
-            {
-                'symbol': pair,
-                'interval': '1day',
-                'outputsize': max(1, min(outputsize, 5000)),
-                'apikey': self.api_key,
-            },
+            params,
             symbol=pair,
         )
         values = payload.get('values') if isinstance(payload, dict) else None

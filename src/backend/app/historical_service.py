@@ -14,7 +14,7 @@ class HistoricalIngestionService:
         self.settings = settings
         self.repository = repository
 
-    def backfill_daily(self, *, portfolio_id: int, days: int = 365) -> DailyBackfillResponse:
+    def backfill_daily(self, *, portfolio_id: int, days: int = 365, asset_scope: str = 'target') -> DailyBackfillResponse:
         provider = self.settings.finance_provider.strip().lower()
         if provider != 'twelvedata':
             raise ValueError(f"Provider non supportato: {provider}")
@@ -31,7 +31,11 @@ class HistoricalIngestionService:
             retry_backoff_seconds=self.settings.finance_retry_backoff_seconds,
         )
 
-        pricing_assets = self.repository.get_assets_for_price_refresh(provider=provider, portfolio_id=portfolio_id)
+        pricing_assets = self.repository.get_assets_for_price_refresh(
+            provider=provider,
+            portfolio_id=portfolio_id,
+            asset_scope=asset_scope,
+        )
         base_currency = self.repository.get_portfolio_base_currency(portfolio_id)
 
         asset_items: list[DailyBackfillItem] = []
@@ -42,7 +46,12 @@ class HistoricalIngestionService:
 
         for asset in pricing_assets:
             try:
-                bars = client.get_daily_bars(asset.provider_symbol, outputsize=outputsize)
+                bars = client.get_daily_bars(
+                    asset.provider_symbol,
+                    outputsize=outputsize,
+                    start_date=start_date.isoformat(),
+                    end_date=end_date.isoformat(),
+                )
                 rows = [
                     {
                         "price_date": bar.day,
@@ -78,7 +87,13 @@ class HistoricalIngestionService:
         })
         for from_ccy in needed_fx:
             try:
-                rates = client.get_daily_fx_rates(from_ccy, base_currency, outputsize=outputsize)
+                rates = client.get_daily_fx_rates(
+                    from_ccy,
+                    base_currency,
+                    outputsize=outputsize,
+                    start_date=start_date.isoformat(),
+                    end_date=end_date.isoformat(),
+                )
                 rows = [
                     {
                         "price_date": fx.day,
@@ -106,8 +121,9 @@ class HistoricalIngestionService:
                 logger.error('Daily FX backfill failure pair=%s/%s error=%s', from_ccy, base_currency, exc)
 
         logger.info(
-            'Daily backfill completed portfolio=%s assets=%s fx_pairs=%s errors=%s',
+            'Daily backfill completed portfolio=%s asset_scope=%s assets=%s fx_pairs=%s errors=%s',
             portfolio_id,
+            asset_scope,
             len(asset_items),
             len(fx_items),
             len(errors),

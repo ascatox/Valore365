@@ -11,15 +11,18 @@ import {
   Title,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { Sun, Moon, RefreshCw, LayoutDashboard, Briefcase, Settings } from 'lucide-react';
+import { IconSun, IconMoon, IconRefresh, IconLayoutDashboard, IconBriefcase, IconSettings } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
-import { PortfolioPage } from './pages/Portfolio.page';
-import { DashboardPage } from './pages/Dashboard.page';
-import { SettingsPage } from './pages/Settings.page';
+import { PortfolioPage } from './pages/Portfolio.page.tsx';
+import { DashboardPage } from './pages/Dashboard.page.tsx';
+import { SettingsPage } from './pages/Settings.page.tsx';
 
 function App() {
   const [opened, { toggle }] = useDisclosure();
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const handleGlobalRefresh = () => {
+    window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
+  };
 
   return (
     <BrowserRouter>
@@ -37,9 +40,9 @@ function App() {
             <Group>
               <Switch label="Privacy Mode" offLabel="OFF" onLabel="ON" />
               <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Toggle color scheme">
-                {colorScheme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
               </ActionIcon>
-              <Button leftSection={<RefreshCw size={16} />} variant="default">
+              <Button leftSection={<IconRefresh size={16} />} variant="default" onClick={handleGlobalRefresh}>
                 Aggiorna
               </Button>
             </Group>
@@ -51,19 +54,19 @@ function App() {
               component={Link}
               to="/"
               label="Dashboard"
-              leftSection={<LayoutDashboard size={16} />}
+              leftSection={<IconLayoutDashboard size={16} />}
           />
           <NavLink
               component={Link}
               to="/portfolio"
               label="Portfolio"
-              leftSection={<Briefcase size={16} />}
+              leftSection={<IconBriefcase size={16} />}
           />
           <NavLink
               component={Link}
               to="/settings"
               label="Settings"
-              leftSection={<Settings size={16} />}
+              leftSection={<IconSettings size={16} />}
           />
         </AppShell.Navbar>
 

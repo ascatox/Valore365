@@ -3,18 +3,24 @@
 API FastAPI collegata a PostgreSQL.
 
 ## Endpoint disponibili
-- `GET /health`
-- `POST /assets`
-- `GET /assets/{id}`
-- `POST /asset-provider-symbols`
-- `GET /assets/search?q=...`
-- `POST /transactions`
-- `POST /prices/refresh`
-- `POST /prices/backfill-daily`
-- `GET /portfolios/{id}/positions`
-- `GET /portfolios/{id}/summary`
-- `GET /portfolios/{id}/timeseries?range=1y&interval=1d`
-- `GET /portfolios/{id}/allocation`
+- `GET /api/health`
+- `POST /api/portfolios`
+- `GET /api/admin/portfolios`
+- `POST /api/assets`
+- `GET /api/assets/{id}`
+- `POST /api/asset-provider-symbols`
+- `GET /api/assets/search?q=...`
+- `POST /api/transactions`
+- `POST /api/prices/refresh`
+- `POST /api/prices/backfill-daily`
+- `GET /api/portfolios/{id}/positions`
+- `GET /api/portfolios/{id}/summary`
+- `GET /api/portfolios/{id}/timeseries?range=1y&interval=1d`
+- `GET /api/portfolios/{id}/allocation`
+
+## Swagger
+- `GET /api/swagger`
+- OpenAPI JSON: `GET /api/openapi.json`
 
 ## Error Model
 Le API restituiscono errori uniformi:

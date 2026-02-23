@@ -1,0 +1,68 @@
+name: Backend REST E2E Smoke
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "src/backend/**"
+      - "database/**"
+      - "docker-compose.yml"
+      - "scripts/e2e/**"
+      - ".github/workflows/backend-rest-e2e-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "src/backend/**"
+      - "database/**"
+      - "docker-compose.yml"
+      - "scripts/e2e/**"
+      - ".github/workflows/backend-rest-e2e-smoke.yml"
+
+jobs:
+  rest-e2e-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start DB and API
+        run: docker compose --profile dev up -d db api-dev
+
+      - name: Wait for API health
+        shell: bash
+        run: |
+          set -euo pipefail
+          for i in {1..60}; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/health || true)"
+            if [[ "${code}" == "200" ]]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy in time"
+          docker compose --profile dev logs api-dev db || true
+          exit 1
+
+      - name: Bootstrap database (schema + seed + migration)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat database/schema.sql | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
+          cat database/seed.sql | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
+          cat database/migrations/20260217_01_operational_updates.sql | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
+
+      - name: Run REST E2E smoke suite
+        env:
+          BASE_URL: http://127.0.0.1:8000
+        run: bash scripts/e2e/rest_be_smoke.sh
+
+      - name: Docker logs on failure
+        if: failure()
+        run: docker compose --profile dev logs api-dev db
+
+      - name: Teardown
+        if: always()
+        run: docker compose --profile dev down -v

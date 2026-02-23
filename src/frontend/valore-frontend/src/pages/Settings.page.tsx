@@ -17,7 +17,7 @@ import {
   Center,
   Box,
 } from '@mantine/core';
-import { Settings, Target, Receipt, Shield, Sun, Moon, Monitor } from 'lucide-react';
+import { IconSettings, IconTarget, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop } from '@tabler/icons-react';
 
 // Mock data for target allocation
 const initialAllocation = [
@@ -41,72 +41,75 @@ export function SettingsPage() {
   const totalAllocation = allocations.reduce((sum, item) => sum + item.weight, 0);
 
   return (
-    <Tabs orientation="vertical" defaultValue="general" variant="pills" radius="md">
-      <Tabs.List>
-        <Tabs.Tab value="general" leftSection={<Settings size={18} />}>Generale</Tabs.Tab>
-        <Tabs.Tab value="allocation" leftSection={<Target size={18} />}>Target Allocation</Tabs.Tab>
-        <Tabs.Tab value="tax" leftSection={<Receipt size={18} />}>Fiscalità</Tabs.Tab>
-        <Tabs.Tab value="security" leftSection={<Shield size={18} />}>Sicurezza</Tabs.Tab>
-      </Tabs.List>
+    <Stack gap={0}>
+      <Title order={2} fw={700} mb="md">Impostazioni</Title>
 
-      <Tabs.Panel value="general">
-        <Paper withBorder p="lg" radius="md" ml="md">
-          <Stack gap="lg">
-            <Title order={3}>Impostazioni Generali</Title>
-            <Select
-              label="Valuta Principale"
-              defaultValue="EUR"
-              data={[
-                { value: 'EUR', label: '€ Euro' },
-                { value: 'USD', label: '$ Dollaro Americano' },
-              ]}
-              style={{ maxWidth: 300 }}
-            />
-            <Switch
-              label="Avvia in Privacy Mode"
-              description="Se attivo, i valori monetari saranno offuscati all'avvio."
-            />
-            <Stack gap="xs">
-              <Text fw={500} size="sm">Aspetto dell'Applicazione</Text>
-              <SegmentedControl
-                value={colorScheme}
-                onChange={(value) => setColorScheme(value as 'light' | 'dark' | 'auto')}
+      <Tabs orientation="vertical" defaultValue="general" variant="pills" radius="md">
+        <Tabs.List>
+          <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
+          <Tabs.Tab value="allocation" leftSection={<IconTarget size={18} />}>Target Allocation</Tabs.Tab>
+          <Tabs.Tab value="tax" leftSection={<IconReceipt size={18} />}>Fiscalità</Tabs.Tab>
+          <Tabs.Tab value="security" leftSection={<IconShield size={18} />}>Sicurezza</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="general">
+          <Paper withBorder p="lg" radius="md" ml="md">
+            <Stack gap="lg">
+              <Title order={3}>Impostazioni Generali</Title>
+              <Select
+                label="Valuta Principale"
+                defaultValue="EUR"
                 data={[
-                  {
-                    value: 'light',
-                    label: (
-                      <Center>
-                        <Sun size={16} />
-                        <Box ml="xs">Light</Box>
-                      </Center>
-                    ),
-                  },
-                  {
-                    value: 'dark',
-                    label: (
-                      <Center>
-                        <Moon size={16} />
-                        <Box ml="xs">Dark</Box>
-                      </Center>
-                    ),
-                  },
-                  {
-                    value: 'auto',
-                    label: (
-                      <Center>
-                        <Monitor size={16} />
-                        <Box ml="xs">Auto</Box>
-                      </Center>
-                    ),
-                  },
+                  { value: 'EUR', label: '€ Euro' },
+                  { value: 'USD', label: '$ Dollaro Americano' },
                 ]}
+                style={{ maxWidth: 300 }}
               />
+              <Switch
+                label="Avvia in Privacy Mode"
+                description="Se attivo, i valori monetari saranno offuscati all'avvio."
+              />
+              <Stack gap="xs">
+                <Text fw={500} size="sm">Aspetto dell'Applicazione</Text>
+                <SegmentedControl
+                  value={colorScheme}
+                  onChange={(value) => setColorScheme(value as 'light' | 'dark' | 'auto')}
+                  data={[
+                    {
+                      value: 'light',
+                      label: (
+                        <Center>
+                          <IconSun size={16} />
+                          <Box ml="xs">Light</Box>
+                        </Center>
+                      ),
+                    },
+                    {
+                      value: 'dark',
+                      label: (
+                        <Center>
+                          <IconMoon size={16} />
+                          <Box ml="xs">Dark</Box>
+                        </Center>
+                      ),
+                    },
+                    {
+                      value: 'auto',
+                      label: (
+                        <Center>
+                          <IconDeviceDesktop size={16} />
+                          <Box ml="xs">Auto</Box>
+                        </Center>
+                      ),
+                    },
+                  ]}
+                />
+              </Stack>
             </Stack>
-          </Stack>
-        </Paper>
-      </Tabs.Panel>
+          </Paper>
+        </Tabs.Panel>
 
-      <Tabs.Panel value="allocation">
+        <Tabs.Panel value="allocation">
         <Paper withBorder p="lg" radius="md" ml="md">
             <Stack>
                 <Title order={3}>Definizione Target Allocation</Title>
@@ -132,9 +135,9 @@ export function SettingsPage() {
                 </Group>
             </Stack>
         </Paper>
-      </Tabs.Panel>
+        </Tabs.Panel>
 
-      <Tabs.Panel value="tax">
+        <Tabs.Panel value="tax">
         <Paper withBorder p="lg" radius="md" ml="md">
           <Stack>
             <Title order={3}>Impostazioni Fiscali</Title>
@@ -153,9 +156,9 @@ export function SettingsPage() {
             />
           </Stack>
         </Paper>
-      </Tabs.Panel>
+        </Tabs.Panel>
 
-      <Tabs.Panel value="security">
+        <Tabs.Panel value="security">
         <Paper withBorder p="lg" radius="md" ml="md">
             <Stack>
                 <Title order={3}>Sicurezza e Dati</Title>
@@ -173,7 +176,8 @@ export function SettingsPage() {
                 </Paper>
             </Stack>
         </Paper>
-      </Tabs.Panel>
-    </Tabs>
+        </Tabs.Panel>
+      </Tabs>
+    </Stack>
   );
 }

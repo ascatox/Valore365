@@ -13,6 +13,23 @@ class ErrorResponse(BaseModel):
     error: ApiError
 
 
+class PortfolioCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    base_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')
+    timezone: str = Field(min_length=1, max_length=128)
+
+
+class PortfolioUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    base_currency: str | None = Field(default=None, min_length=3, max_length=3, pattern='^[A-Z]{3}$')
+    timezone: str | None = Field(default=None, min_length=1, max_length=128)
+
+
+class PortfolioRead(PortfolioCreate):
+    id: int
+    created_at: datetime
+
+
 class TransactionCreate(BaseModel):
     portfolio_id: int = Field(ge=1)
     asset_id: int = Field(ge=1)
@@ -55,6 +72,38 @@ class AssetProviderSymbolRead(AssetProviderSymbolCreate):
     pass
 
 
+class AssetDiscoverItem(BaseModel):
+    key: str
+    source: Literal['db', 'provider']
+    asset_id: int | None = None
+    symbol: str
+    name: str | None = None
+    exchange: str | None = None
+    provider: str | None = None
+    provider_symbol: str | None = None
+
+
+class AssetDiscoverResponse(BaseModel):
+    items: list[AssetDiscoverItem]
+
+
+class AssetEnsureRequest(BaseModel):
+    source: Literal['db', 'provider']
+    asset_id: int | None = Field(default=None, ge=1)
+    symbol: str = Field(min_length=1, max_length=64)
+    name: str | None = Field(default=None, max_length=255)
+    exchange: str | None = Field(default=None, max_length=255)
+    provider: str = Field(default='twelvedata', min_length=1, max_length=64)
+    provider_symbol: str | None = Field(default=None, max_length=64)
+    portfolio_id: int | None = Field(default=None, ge=1)
+
+
+class AssetEnsureResponse(BaseModel):
+    asset_id: int
+    symbol: str
+    created: bool
+
+
 class Position(BaseModel):
     asset_id: int
     symbol: str
@@ -90,6 +139,71 @@ class AllocationItem(BaseModel):
     symbol: str
     market_value: float
     weight_pct: float
+
+
+class PortfolioTargetAllocationUpsert(BaseModel):
+    asset_id: int = Field(ge=1)
+    weight_pct: float = Field(ge=0, le=100)
+
+
+class PortfolioTargetAllocationItem(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    weight_pct: float
+
+
+class PortfolioTargetPerformancePoint(BaseModel):
+    date: str
+    weighted_index: float
+
+
+class PortfolioTargetPerformer(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    return_pct: float
+    as_of: datetime | None = None
+
+
+class PortfolioTargetPerformanceResponse(BaseModel):
+    portfolio_id: int
+    points: list[PortfolioTargetPerformancePoint]
+    last_updated_at: datetime | None = None
+    best: PortfolioTargetPerformer | None = None
+    worst: PortfolioTargetPerformer | None = None
+
+
+class PortfolioTargetAssetPerformancePoint(BaseModel):
+    date: str
+    index_value: float
+
+
+class PortfolioTargetAssetPerformanceSeries(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    weight_pct: float
+    return_pct: float
+    as_of: datetime | None = None
+    points: list[PortfolioTargetAssetPerformancePoint]
+
+
+class PortfolioTargetAssetPerformanceResponse(BaseModel):
+    portfolio_id: int
+    points_count: int
+    assets: list[PortfolioTargetAssetPerformanceSeries]
+
+
+class PortfolioTargetIntradayPoint(BaseModel):
+    ts: str
+    weighted_index: float
+
+
+class PortfolioTargetIntradayResponse(BaseModel):
+    portfolio_id: int
+    date: str
+    points: list[PortfolioTargetIntradayPoint]
 
 
 class PriceRefreshItem(BaseModel):

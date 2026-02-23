@@ -16,7 +16,7 @@ class PriceIngestionService:
         self.settings = settings
         self.repository = repository
 
-    def refresh_prices(self, portfolio_id: int | None = None) -> PriceRefreshResponse:
+    def refresh_prices(self, portfolio_id: int | None = None, asset_scope: str = 'target') -> PriceRefreshResponse:
         provider = self.settings.finance_provider.strip().lower()
         if provider != 'twelvedata':
             raise ValueError(f"Provider non supportato: {provider}")
@@ -29,12 +29,17 @@ class PriceIngestionService:
             retry_backoff_seconds=self.settings.finance_retry_backoff_seconds,
         )
 
-        pricing_assets = self.repository.get_assets_for_price_refresh(provider=provider, portfolio_id=portfolio_id)
+        pricing_assets = self.repository.get_assets_for_price_refresh(
+            provider=provider,
+            portfolio_id=portfolio_id,
+            asset_scope=asset_scope,
+        )
 
         logger.info(
-            'Start price refresh provider=%s portfolio_id=%s assets=%s',
+            'Start price refresh provider=%s portfolio_id=%s asset_scope=%s assets=%s',
             provider,
             portfolio_id,
+            asset_scope,
             len(pricing_assets),
         )
 

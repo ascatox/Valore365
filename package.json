@@ -1,8 +1,0 @@
-{
-  "dependencies": {
-    "@radix-ui/react-slot": "^1.2.4",
-    "@tabler/icons-react": "^3.36.1",
-    "lucide-react": "^0.574.0",
-    "recharts": "^3.7.0"
-  }
-}
