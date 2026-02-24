@@ -13,7 +13,7 @@ from .auth import AuthContext, require_auth
 from .config import get_settings
 from .db import engine
 from .errors import AppError
-from .finance_client import TwelveDataClient
+from .finance_client import make_finance_client
 from .historical_service import HistoricalIngestionService
 from .models import (
     AllocationItem,
@@ -58,13 +58,7 @@ repo = PortfolioRepository(engine)
 pricing_service = PriceIngestionService(settings, repo)
 historical_service = HistoricalIngestionService(settings, repo)
 scheduler = PriceRefreshScheduler(settings, pricing_service)
-finance_client = TwelveDataClient(
-    base_url=settings.finance_api_base_url,
-    api_key=settings.finance_api_key,
-    timeout_seconds=settings.finance_request_timeout_seconds,
-    max_retries=settings.finance_max_retries,
-    retry_backoff_seconds=settings.finance_retry_backoff_seconds,
-)
+finance_client = make_finance_client(settings)
 
 
 @asynccontextmanager
@@ -208,7 +202,7 @@ def discover_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(r
                 symbol=provider_symbol,
                 name=item.instrument_name,
                 exchange=exchange,
-                provider='twelvedata',
+                provider=settings.finance_provider,
                 provider_symbol=provider_symbol,
             )
         )
@@ -275,7 +269,7 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
         repo.create_asset_provider_symbol(
             AssetProviderSymbolCreate(
                 asset_id=resolved_asset.id,
-                provider=(payload.provider or "twelvedata").lower(),
+                provider=(payload.provider or settings.finance_provider).lower(),
                 provider_symbol=(payload.provider_symbol or symbol).upper(),
             )
         )
@@ -584,12 +578,12 @@ def search_symbols(
 )
 def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetLatestQuoteResponse:
     try:
-        pricing_asset = repo.get_asset_pricing_symbol(asset_id)
+        pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
         quote = finance_client.get_quote(pricing_asset.provider_symbol)
         return AssetLatestQuoteResponse(
             asset_id=pricing_asset.asset_id,
             symbol=pricing_asset.symbol,
-            provider="twelvedata",
+            provider=settings.finance_provider,
             provider_symbol=pricing_asset.provider_symbol,
             price=quote.price,
             ts=quote.ts,

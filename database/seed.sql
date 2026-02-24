@@ -17,7 +17,12 @@ set
   active = excluded.active;
 
 insert into asset_provider_symbols (asset_id, provider, provider_symbol)
-select id, 'twelvedata', symbol
+select id,
+       'yfinance',
+       case symbol
+           when 'VWCE' then 'VWCE.MI'
+           else symbol
+       end
 from assets
 where symbol in ('AAPL', 'MSFT', 'VWCE')
 on conflict (asset_id, provider) do update

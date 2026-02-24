@@ -1,9 +1,14 @@
 import logging
+import math
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from typing import TYPE_CHECKING
 
 import httpx
+
+if TYPE_CHECKING:
+    from .config import Settings
 
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -293,3 +298,154 @@ def _compute_retry_delay(exc: Exception, *, attempt: int, backoff_seconds: float
             except ValueError:
                 pass
     return backoff_seconds * (2 ** max(0, attempt - 1))
+
+
+class YahooFinanceClient:
+    """Client Yahoo Finance tramite la libreria yfinance (gratuito, no API key)."""
+
+    def search_symbols(self, query: str) -> list[ProviderSymbol]:
+        try:
+            import yfinance as yf
+            results = yf.Search(query, max_results=20).quotes
+            return [
+                ProviderSymbol(
+                    symbol=r.get('symbol', ''),
+                    instrument_name=r.get('shortname') or r.get('longname'),
+                    exchange=r.get('exchange'),
+                    country=None,
+                )
+                for r in results
+                if r.get('symbol')
+            ]
+        except Exception:
+            return []
+
+    def get_quote(self, symbol: str) -> ProviderQuote:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        try:
+            price = ticker.fast_info.last_price
+        except Exception:
+            price = None
+
+        if price is None or not math.isfinite(float(price)):
+            hist = ticker.history(period='5d')
+            if hist.empty:
+                raise ValueError(f"Nessuna quotazione disponibile per {symbol}")
+            close_col = hist['Close']
+            close_col = close_col.dropna()
+            if close_col.empty:
+                raise ValueError(f"Nessuna quotazione disponibile per {symbol}")
+            price = float(close_col.iloc[-1])
+
+        return ProviderQuote(
+            symbol=symbol,
+            price=float(price),
+            bid=None,
+            ask=None,
+            volume=None,
+            ts=datetime.now(UTC),
+        )
+
+    def get_daily_bars(
+        self,
+        symbol: str,
+        outputsize: int = 365,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        timezone: str = DEFAULT_TIMEZONE,
+        order: str = DEFAULT_ORDER,
+    ) -> list[ProviderDailyBar]:
+        import pandas as pd
+        import yfinance as yf
+
+        df = yf.download(
+            symbol,
+            start=start_date,
+            end=end_date,
+            auto_adjust=True,
+            progress=False,
+            multi_level_index=False,
+        )
+        if df.empty:
+            raise ValueError(f"Nessun dato storico per {symbol}")
+
+        bars: list[ProviderDailyBar] = []
+        for ts, row in df.iterrows():
+            try:
+                bars.append(ProviderDailyBar(
+                    day=ts.date() if hasattr(ts, 'date') else _parse_date(str(ts)),
+                    open=float(row['Open']),
+                    high=float(row['High']),
+                    low=float(row['Low']),
+                    close=float(row['Close']),
+                    volume=float(row['Volume']) if 'Volume' in row and pd.notna(row['Volume']) else None,
+                ))
+            except Exception:
+                continue
+
+        bars.sort(key=lambda x: x.day)
+        if order == 'desc':
+            bars.reverse()
+        return bars
+
+    def get_daily_fx_rates(
+        self,
+        from_currency: str,
+        to_currency: str,
+        outputsize: int = 365,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        timezone: str = DEFAULT_TIMEZONE,
+        order: str = DEFAULT_ORDER,
+    ) -> list[ProviderFxRate]:
+        import pandas as pd
+        import yfinance as yf
+
+        # Yahoo: EURUSD=X = quanti USD per 1 EUR
+        pair = f"{from_currency}{to_currency}=X"
+        df = yf.download(
+            pair,
+            start=start_date,
+            end=end_date,
+            auto_adjust=True,
+            progress=False,
+            multi_level_index=False,
+        )
+        if df.empty:
+            raise ValueError(f"Nessun dato FX per {pair}")
+
+        rates: list[ProviderFxRate] = []
+        for ts, row in df.iterrows():
+            try:
+                close = row['Close']
+                if not pd.notna(close):
+                    continue
+                rates.append(ProviderFxRate(
+                    day=ts.date() if hasattr(ts, 'date') else _parse_date(str(ts)),
+                    rate=float(close),
+                ))
+            except Exception:
+                continue
+
+        rates.sort(key=lambda x: x.day)
+        if order == 'desc':
+            rates.reverse()
+        return rates
+
+
+def make_finance_client(settings: 'Settings') -> TwelveDataClient | YahooFinanceClient:
+    """Factory: restituisce il client giusto in base a FINANCE_PROVIDER."""
+    provider = settings.finance_provider.strip().lower()
+    if provider == 'yfinance':
+        return YahooFinanceClient()
+    # fallback: TwelveData
+    return TwelveDataClient(
+        base_url=settings.finance_api_base_url,
+        api_key=settings.finance_api_key,
+        timeout_seconds=settings.finance_request_timeout_seconds,
+        max_retries=settings.finance_max_retries,
+        retry_backoff_seconds=settings.finance_retry_backoff_seconds,
+    )

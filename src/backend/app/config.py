@@ -10,8 +10,8 @@ class Settings(BaseSettings):
     app_env: str = 'dev'
     database_url: str = 'postgresql+psycopg://postgres:postgres@localhost:5432/valore365'
 
-    finance_provider: str = 'twelvedata'
-    finance_api_base_url: str = 'https://api.twelvedata.com'
+    finance_provider: str = 'yfinance'
+    finance_api_base_url: str = ''
     finance_api_key: str = ''
     finance_request_timeout_seconds: float = 10.0
     finance_max_retries: int = 3

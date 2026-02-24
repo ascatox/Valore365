@@ -24,9 +24,7 @@ services:
       environment:
         APP_ENV: dev
         DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/valore365
-        FINANCE_PROVIDER: twelvedata
-        FINANCE_API_BASE_URL: https://api.twelvedata.com
-        FINANCE_API_KEY: e2e1f50517b34745b21e3f8b35f31c21
+        FINANCE_PROVIDER: yfinance
         PRICE_SCHEDULER_ENABLED: "false"
       ports:
         - "8000:8000"
@@ -47,9 +45,7 @@ services:
       environment:
         APP_ENV: prod
         DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/valore365
-        FINANCE_PROVIDER: twelvedata
-        FINANCE_API_BASE_URL: https://api.twelvedata.com
-        FINANCE_API_KEY: e2e1f50517b34745b21e3f8b35f31c21
+        FINANCE_PROVIDER: yfinance
         PRICE_SCHEDULER_ENABLED: "true"
         PRICE_SCHEDULER_INTERVAL_SECONDS: "60"
       ports:
@@ -64,6 +60,8 @@ services:
     container_name: valore365-frontend
     ports:
       - "8080:80"
+    depends_on:
+      - api-dev
     networks:
       - valore365-network
 volumes:

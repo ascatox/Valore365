@@ -2,7 +2,7 @@ import logging
 from datetime import date, timedelta
 
 from .config import Settings
-from .finance_client import TwelveDataClient
+from .finance_client import make_finance_client
 from .models import DailyBackfillItem, DailyBackfillResponse, FxBackfillItem
 from .repository import PortfolioRepository
 
@@ -16,20 +16,11 @@ class HistoricalIngestionService:
 
     def backfill_daily(self, *, portfolio_id: int, days: int = 365, asset_scope: str = 'target') -> DailyBackfillResponse:
         provider = self.settings.finance_provider.strip().lower()
-        if provider != 'twelvedata':
-            raise ValueError(f"Provider non supportato: {provider}")
-
         outputsize = max(30, min(days, 2000))
         end_date = date.today()
         start_date = end_date - timedelta(days=outputsize - 1)
 
-        client = TwelveDataClient(
-            base_url=self.settings.finance_api_base_url,
-            api_key=self.settings.finance_api_key,
-            timeout_seconds=self.settings.finance_request_timeout_seconds,
-            max_retries=self.settings.finance_max_retries,
-            retry_backoff_seconds=self.settings.finance_retry_backoff_seconds,
-        )
+        client = make_finance_client(self.settings)
 
         pricing_assets = self.repository.get_assets_for_price_refresh(
             provider=provider,

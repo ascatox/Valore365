@@ -836,7 +836,7 @@ class PortfolioRepository:
             active=bool(row["active"]),
         )
 
-    def get_asset_pricing_symbol(self, asset_id: int, provider: str = "twelvedata") -> PricingAsset:
+    def get_asset_pricing_symbol(self, asset_id: int, provider: str = "yfinance") -> PricingAsset:
         provider_name = provider.strip().lower()
         with self.engine.begin() as conn:
             row = conn.execute(
@@ -1406,7 +1406,9 @@ class PortfolioRepository:
                     """
                     select id, symbol, coalesce(name, '') as name
                     from assets
-                    where lower(symbol) like :q or lower(coalesce(name, '')) like :q
+                    where lower(symbol) like :q
+                       or lower(coalesce(name, '')) like :q
+                       or lower(coalesce(isin, '')) like :q
                     order by symbol asc
                     limit 25
                     """

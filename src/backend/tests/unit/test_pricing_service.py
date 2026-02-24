@@ -15,7 +15,7 @@ class _FakeRepo:
     def __init__(self) -> None:
         self.saved = []
 
-    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None):
+    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target'):
         return [_FakeAsset(1, 'AAPL', 'AAPL')]
 
     def save_price_tick(self, **kwargs):
@@ -23,18 +23,12 @@ class _FakeRepo:
 
 
 class _FakeSettings:
-    finance_provider = 'twelvedata'
-    finance_api_base_url = 'https://api.twelvedata.com'
-    finance_api_key = 'k'
-    finance_request_timeout_seconds = 5.0
-    finance_max_retries = 1
-    finance_retry_backoff_seconds = 0.1
+    finance_provider = 'yfinance'
     finance_symbol_request_delay_seconds = 0.0
 
 
 class _FakeClient:
-    def __init__(self, **kwargs):
-        pass
+    pass
 
     def get_quote(self, symbol: str):
         class Q:
@@ -50,7 +44,7 @@ class _FakeClient:
 def test_refresh_prices_success(monkeypatch):
     import app.pricing_service as mod
 
-    monkeypatch.setattr(mod, 'TwelveDataClient', _FakeClient)
+    monkeypatch.setattr(mod, 'make_finance_client', lambda _: _FakeClient())
 
     repo = _FakeRepo()
     service = PriceIngestionService(_FakeSettings(), repo)

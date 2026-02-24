@@ -120,7 +120,7 @@ class AssetEnsureRequest(BaseModel):
     symbol: str = Field(min_length=1, max_length=64)
     name: str | None = Field(default=None, max_length=255)
     exchange: str | None = Field(default=None, max_length=255)
-    provider: str = Field(default='twelvedata', min_length=1, max_length=64)
+    provider: str = Field(default='yfinance', min_length=1, max_length=64)
     provider_symbol: str | None = Field(default=None, max_length=64)
     portfolio_id: int | None = Field(default=None, ge=1)
 

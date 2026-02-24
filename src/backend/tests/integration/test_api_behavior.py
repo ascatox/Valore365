@@ -36,7 +36,7 @@ class _FakeRepo:
 
     def get_idempotency_response(self, *, idempotency_key: str, endpoint: str):
         return {
-            'provider': 'twelvedata',
+            'provider': 'yfinance',
             'requested_assets': 1,
             'refreshed_assets': 1,
             'failed_assets': 0,

@@ -16,7 +16,7 @@ class _FakeRepo:
         self.bars_rows = []
         self.fx_rows = []
 
-    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None):
+    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target'):
         return [_FakeAsset(1, 'AAPL', 'AAPL')]
 
     def get_portfolio_base_currency(self, portfolio_id: int):
@@ -33,19 +33,11 @@ class _FakeRepo:
 
 
 class _FakeSettings:
-    finance_provider = 'twelvedata'
-    finance_api_base_url = 'https://api.twelvedata.com'
-    finance_api_key = 'k'
-    finance_request_timeout_seconds = 5.0
-    finance_max_retries = 1
-    finance_retry_backoff_seconds = 0.1
+    finance_provider = 'yfinance'
 
 
 class _FakeClient:
-    def __init__(self, **kwargs):
-        pass
-
-    def get_daily_bars(self, symbol: str, outputsize: int = 365):
+    def get_daily_bars(self, symbol: str, outputsize: int = 365, *, start_date=None, end_date=None, **kwargs):
         class B:
             def __init__(self, day):
                 self.day = day
@@ -57,7 +49,7 @@ class _FakeClient:
 
         return [B(date.today())]
 
-    def get_daily_fx_rates(self, from_currency: str, to_currency: str, outputsize: int = 365):
+    def get_daily_fx_rates(self, from_currency: str, to_currency: str, outputsize: int = 365, *, start_date=None, end_date=None, **kwargs):
         class F:
             def __init__(self, day):
                 self.day = day
@@ -69,7 +61,7 @@ class _FakeClient:
 def test_backfill_daily_batch_upsert(monkeypatch):
     import app.historical_service as mod
 
-    monkeypatch.setattr(mod, 'TwelveDataClient', _FakeClient)
+    monkeypatch.setattr(mod, 'make_finance_client', lambda _: _FakeClient())
 
     repo = _FakeRepo()
     service = HistoricalIngestionService(_FakeSettings(), repo)

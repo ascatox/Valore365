@@ -15,8 +15,10 @@ import {
   ActionIcon,
   TextInput,
   SegmentedControl,
+  Menu,
+  Tooltip,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconDotsVertical } from '@tabler/icons-react';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
 import {
@@ -501,7 +503,7 @@ export function PortfolioPage() {
         symbol: selected.symbol,
         name: selected.name,
         exchange: selected.exchange,
-        provider: selected.provider ?? 'twelvedata',
+        provider: selected.provider ?? 'yfinance',
         provider_symbol: selected.provider_symbol ?? selected.symbol,
         portfolio_id: Number.isFinite(portfolioId) ? portfolioId : undefined,
       });
@@ -607,7 +609,7 @@ export function PortfolioPage() {
         symbol: selected.symbol,
         name: selected.name,
         exchange: selected.exchange,
-        provider: selected.provider ?? 'twelvedata',
+        provider: selected.provider ?? 'yfinance',
         provider_symbol: selected.provider_symbol ?? selected.symbol,
         portfolio_id: Number.isFinite(portfolioId) ? portfolioId : undefined,
       });
@@ -874,43 +876,48 @@ export function PortfolioPage() {
 
   return (
     <>
+      {/* Header */}
       <Group justify="space-between" mb="md">
         <Title order={2} fw={700}>Il Mio Portafoglio</Title>
-        <Group gap="xs">
-          <Button variant="default" onClick={openCreatePortfolioModal}>
-            Nuovo Portfolio
-          </Button>
-          <Button leftSection={<IconEdit size={16} />} variant="default" onClick={openEditPortfolioModal} disabled={!selectedPortfolioId}>
-            Modifica
-          </Button>
-          <Button color="red" variant="light" onClick={() => setPortfolioDeleteOpened(true)} disabled={!selectedPortfolioId}>
-            Elimina
-          </Button>
-          <Button leftSection={<IconPlus size={18} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
-            Nuova Transazione
-          </Button>
-          <Button
-            leftSection={<IconPlus size={18} />}
-            variant="light"
-            onClick={openDrawer}
-            disabled={!selectedPortfolioId}
-            style={{ display: portfolioView === 'target' ? undefined : 'none' }}
-          >
-            Aggiungi Asset / Peso
-          </Button>
-        </Group>
+        <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openCreatePortfolioModal}>
+          Nuovo Portfolio
+        </Button>
       </Group>
 
-      <Group align="end" mb="md">
+      {/* Selezione portfolio + menu azioni */}
+      <Group mb="md" align="flex-end" gap="xs">
         <Select
-          label="Portfolio"
+          label="Portfolio attivo"
           placeholder={loadingPortfolios ? 'Caricamento...' : 'Seleziona portfolio'}
           data={portfolios.map((p) => ({ value: String(p.id), label: `${p.name} (#${p.id})` }))}
           value={selectedPortfolioId}
           onChange={setSelectedPortfolioId}
           disabled={loadingPortfolios || portfolios.length === 0}
-          w={360}
+          style={{ flex: 1, maxWidth: 420 }}
         />
+        <Tooltip label="Azioni portfolio" disabled={!selectedPortfolioId}>
+          <Menu shadow="md" width={200} position="bottom-end" disabled={!selectedPortfolioId}>
+            <Menu.Target>
+              <ActionIcon
+                variant="default"
+                size="lg"
+                disabled={!selectedPortfolioId}
+                aria-label="Azioni portfolio"
+              >
+                <IconDotsVertical size={18} />
+              </ActionIcon>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item leftSection={<IconEdit size={14} />} onClick={openEditPortfolioModal}>
+                Modifica portfolio
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => setPortfolioDeleteOpened(true)}>
+                Elimina portfolio
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </Tooltip>
         {(loadingPortfolios || loadingData) && (
           <Group gap="xs">
             <Loader size="sm" />
@@ -919,6 +926,7 @@ export function PortfolioPage() {
         )}
       </Group>
 
+      {/* Vista + azione contestuale */}
       <Group mb="md" justify="space-between">
         <SegmentedControl
           value={portfolioView}
@@ -928,11 +936,15 @@ export function PortfolioPage() {
             { value: 'target', label: 'Target Allocation' },
           ]}
         />
-        <Text size="sm" c="dimmed">
-          {portfolioView === 'transactions'
-            ? 'Vista principale MVP: inserimento e gestione transazioni'
-            : 'Vista opzionale: definizione pesi target'}
-        </Text>
+        {portfolioView === 'transactions' ? (
+          <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
+            Nuova Transazione
+          </Button>
+        ) : (
+          <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openDrawer} disabled={!selectedPortfolioId}>
+            Aggiungi Asset / Peso
+          </Button>
+        )}
       </Group>
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
@@ -1048,7 +1060,7 @@ export function PortfolioPage() {
           <Select
             searchable
             label="Cerca asset (DB + provider)"
-            placeholder="Scrivi simbolo o nome (es. AAPL, VWCE, Apple)"
+            placeholder="Scrivi simbolo, ISIN o nome (es. AAPL, IE00B3RBWM25, Apple)"
             searchValue={discoverQuery}
             onSearchChange={setDiscoverQuery}
             value={discoverSelectionKey}
@@ -1072,6 +1084,7 @@ export function PortfolioPage() {
             min={0}
             max={100}
             decimalScale={2}
+            fixedDecimalScale
             suffix="%"
           />
 
@@ -1105,7 +1118,7 @@ export function PortfolioPage() {
           <Select
             searchable
             label="Asset (DB + provider)"
-            placeholder="Cerca simbolo o nome"
+            placeholder="Cerca simbolo, ISIN o nome"
             searchValue={txDiscoverQuery}
             onSearchChange={setTxDiscoverQuery}
             value={txDiscoverSelectionKey}

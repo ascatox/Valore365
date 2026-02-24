@@ -4,7 +4,7 @@ import time
 import httpx
 
 from .config import Settings
-from .finance_client import TwelveDataClient
+from .finance_client import make_finance_client
 from .models import PriceRefreshItem, PriceRefreshResponse
 from .repository import PortfolioRepository
 
@@ -18,16 +18,7 @@ class PriceIngestionService:
 
     def refresh_prices(self, portfolio_id: int | None = None, asset_scope: str = 'target') -> PriceRefreshResponse:
         provider = self.settings.finance_provider.strip().lower()
-        if provider != 'twelvedata':
-            raise ValueError(f"Provider non supportato: {provider}")
-
-        client = TwelveDataClient(
-            base_url=self.settings.finance_api_base_url,
-            api_key=self.settings.finance_api_key,
-            timeout_seconds=self.settings.finance_request_timeout_seconds,
-            max_retries=self.settings.finance_max_retries,
-            retry_backoff_seconds=self.settings.finance_retry_backoff_seconds,
-        )
+        client = make_finance_client(self.settings)
 
         pricing_assets = self.repository.get_assets_for_price_refresh(
             provider=provider,
