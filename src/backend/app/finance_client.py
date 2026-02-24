@@ -1,5 +1,6 @@
 import logging
 import math
+import re
 import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -300,10 +301,94 @@ def _compute_retry_delay(exc: Exception, *, attempt: int, backoff_seconds: float
     return backoff_seconds * (2 ** max(0, attempt - 1))
 
 
+_ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')
+_OPENFIGI_URL = 'https://api.openfigi.com/v3/mapping'
+
+# Mappa exchCode OpenFIGI (codici Bloomberg 2 lettere) → suffisso Yahoo Finance
+_EXCHCODE_TO_YAHOO: dict[str, str] = {
+    'GS':  '.DE',   # Xetra / Frankfurt
+    'GR':  '.DE',   # Frankfurt Borsa (variante Xetra)
+    'GF':  '.F',    # Frankfurt Stock Exchange
+    'IM':  '.MI',   # Borsa Italiana
+    'FP':  '.PA',   # Euronext Paris
+    'NA':  '.AS',   # Euronext Amsterdam
+    'LN':  '.L',    # London Stock Exchange
+    'SE':  '.SW',   # SIX Swiss Exchange
+    'SW':  '.SW',   # SIX Swiss Exchange (variante)
+    'SM':  '.MC',   # Madrid
+    'FH':  '.HE',   # Helsinki
+    'NO':  '.OL',   # Oslo
+    'SS':  '.ST',   # Stockholm
+    'DC':  '.CO',   # Copenhagen
+    'AV':  '.VI',   # Vienna
+    'PL':  '.LS',   # Lisbon
+    'GA':  '.AT',   # Atene
+    'PW':  '.WA',   # Varsavia
+    'BB':  '.BR',   # Bruxelles
+    'ID':  '.IR',   # Dublino (Euronext)
+    'SQ':  '.SG',   # Singapore
+    'AU':  '.AX',   # Australia (ASX)
+    'JP':  '.T',    # Tokyo
+    # US: nessun suffisso (empty string già il default)
+    'UN':  '',      # NYSE
+    'UW':  '',      # NASDAQ
+    'UA':  '',      # NYSE American
+    'UR':  '',      # NYSE Arca
+    'UF':  '',      # OTC Bulletin Board
+}
+
+
+def _resolve_isin(isin: str) -> list[ProviderSymbol]:
+    """Chiama OpenFIGI per risolvere un codice ISIN in simboli Yahoo Finance."""
+    try:
+        with httpx.Client(timeout=6) as client:
+            resp = client.post(
+                _OPENFIGI_URL,
+                json=[{'idType': 'ID_ISIN', 'idValue': isin}],
+                headers={'Content-Type': 'application/json'},
+            )
+        if resp.status_code != 200:
+            return []
+        data = resp.json()
+        results: list[ProviderSymbol] = []
+        seen: set[str] = set()
+        for mapping in data:
+            for item in mapping.get('data', []):
+                ticker = (item.get('ticker') or '').strip()
+                exch = (item.get('exchCode') or '').strip()
+                name = item.get('name') or item.get('securityDescription')
+                if not ticker:
+                    continue
+                # Includi solo exchange noti; per US (empty string) va bene comunque
+                if exch and exch not in _EXCHCODE_TO_YAHOO:
+                    continue
+                suffix = _EXCHCODE_TO_YAHOO.get(exch, '')
+                yahoo_symbol = f"{ticker}{suffix}"
+                if yahoo_symbol in seen:
+                    continue
+                seen.add(yahoo_symbol)
+                label = f"{name} [{exch}]" if name and exch else (name or yahoo_symbol)
+                results.append(ProviderSymbol(
+                    symbol=yahoo_symbol,
+                    instrument_name=label,
+                    exchange=exch or None,
+                    country=None,
+                ))
+        return results
+    except Exception:
+        return []
+
+
 class YahooFinanceClient:
     """Client Yahoo Finance tramite la libreria yfinance (gratuito, no API key)."""
 
     def search_symbols(self, query: str) -> list[ProviderSymbol]:
+        q = query.strip().upper()
+        # Se la query sembra un ISIN, usa OpenFIGI per la risoluzione
+        if _ISIN_RE.match(q):
+            isin_results = _resolve_isin(q)
+            if isin_results:
+                return isin_results
         try:
             import yfinance as yf
             results = yf.Search(query, max_results=20).quotes

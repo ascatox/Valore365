@@ -122,10 +122,10 @@ assert_status "GET /api/assets/{id}" "200"
 assert_jq "GET /api/assets returns created symbol" '.id > 0 and .symbol == $sym' --arg sym "${ASSET_SYMBOL}"
 
 PROVIDER_SYMBOL="e2e_map_${UNIQ_SUFFIX}"
-APS_JSON="$(jq -nc --argjson aid "${ASSET_ID}" --arg ps "${PROVIDER_SYMBOL}" '{asset_id:$aid,provider:"twelvedata",provider_symbol:$ps}')"
+APS_JSON="$(jq -nc --argjson aid "${ASSET_ID}" --arg ps "${PROVIDER_SYMBOL}" '{asset_id:$aid,provider:"yfinance",provider_symbol:$ps}')"
 run_request POST "/api/asset-provider-symbols" "${APS_JSON}"
 assert_status "POST /api/asset-provider-symbols create" "200"
-assert_jq "provider symbol normalized" '.provider == "twelvedata" and .provider_symbol == $ps' --arg ps "${PROVIDER_SYMBOL^^}"
+assert_jq "provider symbol normalized" '.provider == "yfinance" and .provider_symbol == $ps' --arg ps "${PROVIDER_SYMBOL^^}"
 
 run_request POST "/api/asset-provider-symbols" "${APS_JSON}"
 assert_status "POST /api/asset-provider-symbols duplicate" "409"

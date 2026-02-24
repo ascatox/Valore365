@@ -46,13 +46,16 @@ jobs:
           docker compose --profile dev logs api-dev db || true
           exit 1
 
-      - name: Bootstrap database (schema + seed + migration)
+      - name: Bootstrap database (schema + seed + migrations)
         shell: bash
         run: |
           set -euo pipefail
           cat database/schema.sql | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
           cat database/seed.sql | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
-          cat database/migrations/20260217_01_operational_updates.sql | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
+          for migration in $(ls database/migrations/*.sql | sort); do
+            echo "Applying migration: ${migration}"
+            cat "${migration}" | docker exec -i valore365-db psql -v ON_ERROR_STOP=1 -U postgres -d valore365
+          done
 
       - name: Run REST E2E smoke suite
         env:

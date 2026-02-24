@@ -936,13 +936,9 @@ export function PortfolioPage() {
             { value: 'target', label: 'Target Allocation' },
           ]}
         />
-        {portfolioView === 'transactions' ? (
+        {portfolioView === 'transactions' && (
           <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
             Nuova Transazione
-          </Button>
-        ) : (
-          <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openDrawer} disabled={!selectedPortfolioId}>
-            Aggiungi Asset / Peso
           </Button>
         )}
       </Group>
