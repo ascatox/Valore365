@@ -17,12 +17,16 @@ class PortfolioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     base_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')
     timezone: str = Field(min_length=1, max_length=128)
+    target_notional: float | None = Field(default=None, ge=0)
+    cash_balance: float = Field(default=0.0, ge=0)
 
 
 class PortfolioUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     base_currency: str | None = Field(default=None, min_length=3, max_length=3, pattern='^[A-Z]{3}$')
     timezone: str | None = Field(default=None, min_length=1, max_length=128)
+    target_notional: float | None = Field(default=None, ge=0)
+    cash_balance: float | None = Field(default=None, ge=0)
 
 
 class PortfolioRead(PortfolioCreate):
@@ -45,6 +49,29 @@ class TransactionCreate(BaseModel):
 
 class TransactionRead(TransactionCreate):
     id: int
+
+
+class TransactionUpdate(BaseModel):
+    trade_at: datetime | None = None
+    quantity: float | None = Field(default=None, gt=0)
+    price: float | None = Field(default=None, ge=0)
+    fees: float | None = Field(default=None, ge=0)
+    taxes: float | None = Field(default=None, ge=0)
+    notes: str | None = None
+
+
+class TransactionListItem(TransactionRead):
+    symbol: str
+    asset_name: str | None = None
+
+
+class AssetLatestQuoteResponse(BaseModel):
+    asset_id: int
+    symbol: str
+    provider: str
+    provider_symbol: str
+    price: float
+    ts: datetime
 
 
 class AssetCreate(BaseModel):
@@ -127,6 +154,7 @@ class PortfolioSummary(BaseModel):
     unrealized_pl_pct: float
     day_change: float = 0.0
     day_change_pct: float = 0.0
+    cash_balance: float = 0.0
 
 
 class TimeSeriesPoint(BaseModel):
@@ -193,6 +221,27 @@ class PortfolioTargetAssetPerformanceResponse(BaseModel):
     portfolio_id: int
     points_count: int
     assets: list[PortfolioTargetAssetPerformanceSeries]
+
+
+class PortfolioTargetAssetIntradayPerformancePoint(BaseModel):
+    ts: str
+    weighted_index: float
+
+
+class PortfolioTargetAssetIntradayPerformanceSeries(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    weight_pct: float
+    return_pct: float
+    as_of: datetime | None = None
+    points: list[PortfolioTargetAssetIntradayPerformancePoint]
+
+
+class PortfolioTargetAssetIntradayPerformanceResponse(BaseModel):
+    portfolio_id: int
+    date: str
+    assets: list[PortfolioTargetAssetIntradayPerformanceSeries]
 
 
 class PortfolioTargetIntradayPoint(BaseModel):

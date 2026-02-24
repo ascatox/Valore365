@@ -5,8 +5,6 @@ import {
   Text,
   Group,
   Title,
-  Card,
-  SimpleGrid,
   Select,
   Alert,
   Loader,
@@ -16,20 +14,28 @@ import {
   NumberInput,
   ActionIcon,
   TextInput,
+  SegmentedControl,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash } from '@tabler/icons-react';
+import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
+import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
 import {
+  createTransaction,
+  deleteTransaction,
   createPortfolio,
   deletePortfolio,
   deletePortfolioTargetAllocation,
   discoverAssets,
   ensureAsset,
   getAdminPortfolios,
+  getAssetLatestQuote,
   getPortfolioTargetAllocation,
+  getPortfolioTransactions,
+  updateTransaction,
   updatePortfolio,
   upsertPortfolioTargetAllocation,
 } from '../services/api';
-import type { AssetDiscoverItem, Portfolio, PortfolioTargetAllocationItem } from '../services/api';
+import type { AssetDiscoverItem, Portfolio, PortfolioTargetAllocationItem, TransactionListItem } from '../services/api';
 
 const DASHBOARD_SELECTED_PORTFOLIO_STORAGE_KEY = 'valore365.dashboard.selectedPortfolioId';
 
@@ -40,8 +46,29 @@ export function PortfolioPage() {
   const [loadingPortfolios, setLoadingPortfolios] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transactionsError, setTransactionsError] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<TransactionListItem[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  const [deletingTransactionId, setDeletingTransactionId] = useState<number | null>(null);
+  const [transactionDeleteOpened, setTransactionDeleteOpened] = useState(false);
+  const [transactionIdToDelete, setTransactionIdToDelete] = useState<number | null>(null);
+  const [transactionLabelToDelete, setTransactionLabelToDelete] = useState<string | null>(null);
+  const [transactionFilterQuery, setTransactionFilterQuery] = useState('');
+  const [transactionFilterSide, setTransactionFilterSide] = useState<string>('all');
+  const [editTransactionOpened, setEditTransactionOpened] = useState(false);
+  const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
+  const [editTransactionLabel, setEditTransactionLabel] = useState<string | null>(null);
+  const [editTradeAt, setEditTradeAt] = useState('');
+  const [editQuantity, setEditQuantity] = useState<number | string>('');
+  const [editPrice, setEditPrice] = useState<number | string>('');
+  const [editFees, setEditFees] = useState<number | string>(0);
+  const [editTaxes, setEditTaxes] = useState<number | string>(0);
+  const [editNotes, setEditNotes] = useState('');
+  const [editTransactionError, setEditTransactionError] = useState<string | null>(null);
+  const [editTransactionSaving, setEditTransactionSaving] = useState(false);
 
   const [drawerOpened, setDrawerOpened] = useState(false);
+  const [transactionDrawerOpened, setTransactionDrawerOpened] = useState(false);
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
@@ -54,6 +81,9 @@ export function PortfolioPage() {
   const [portfolioFormName, setPortfolioFormName] = useState('');
   const [portfolioFormBaseCurrency, setPortfolioFormBaseCurrency] = useState('EUR');
   const [portfolioFormTimezone, setPortfolioFormTimezone] = useState('Europe/Rome');
+  const [portfolioFormTargetNotional, setPortfolioFormTargetNotional] = useState<number | string>('');
+  const [portfolioFormCashBalance, setPortfolioFormCashBalance] = useState<number | string>(0);
+  const [portfolioView, setPortfolioView] = useState<'transactions' | 'target'>('transactions');
 
   const [targetWeight, setTargetWeight] = useState<number | string>(0);
 
@@ -64,15 +94,66 @@ export function PortfolioPage() {
   const [resolvedAssetId, setResolvedAssetId] = useState<number | null>(null);
   const [resolvedAssetLabel, setResolvedAssetLabel] = useState<string | null>(null);
   const [ensuringAsset, setEnsuringAsset] = useState(false);
+  const [txFormError, setTxFormError] = useState<string | null>(null);
+  const [txFormSuccess, setTxFormSuccess] = useState<string | null>(null);
+  const [txFormSaving, setTxFormSaving] = useState(false);
+  const [txSide, setTxSide] = useState<'buy' | 'sell'>('buy');
+  const [txTradeAt, setTxTradeAt] = useState('');
+  const [txQuantity, setTxQuantity] = useState<number | string>('');
+  const [txPrice, setTxPrice] = useState<number | string>('');
+  const [txFees, setTxFees] = useState<number | string>(0);
+  const [txTaxes, setTxTaxes] = useState<number | string>(0);
+  const [txNotes, setTxNotes] = useState('');
+  const [txDiscoverQuery, setTxDiscoverQuery] = useState('');
+  const [txDiscoverItems, setTxDiscoverItems] = useState<AssetDiscoverItem[]>([]);
+  const [txDiscoverLoading, setTxDiscoverLoading] = useState(false);
+  const [txDiscoverSelectionKey, setTxDiscoverSelectionKey] = useState<string | null>(null);
+  const [txResolvedAssetId, setTxResolvedAssetId] = useState<number | null>(null);
+  const [txResolvedAssetLabel, setTxResolvedAssetLabel] = useState<string | null>(null);
+  const [txEnsuringAsset, setTxEnsuringAsset] = useState(false);
+  const [txPriceLoading, setTxPriceLoading] = useState(false);
 
   const selectedPortfolio = useMemo(
     () => portfolios.find((p) => String(p.id) === selectedPortfolioId) ?? null,
     [portfolios, selectedPortfolioId],
   );
 
+  const formatMoney = (value: number | null | undefined, currency?: string | null) => {
+    if (value == null || !Number.isFinite(value)) return 'N/D';
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: currency || 'EUR',
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
+
+  const formatDateTime = (value: string) => {
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return value;
+    return dt.toLocaleString('it-IT', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const currentDateTimeLocalValue = () => {
+    const now = new Date();
+    const pad = (v: number) => String(v).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  };
+
   const loadTargetAllocation = async (portfolioId: number) => {
     const rows = await getPortfolioTargetAllocation(portfolioId);
     setAllocations(rows);
+    return rows;
+  };
+
+  const loadTransactions = async (portfolioId: number) => {
+    const rows = await getPortfolioTransactions(portfolioId);
+    setTransactions(rows);
     return rows;
   };
 
@@ -106,6 +187,26 @@ export function PortfolioPage() {
     setEnsuringAsset(false);
     setFormError(null);
     setFormSuccess(null);
+  };
+
+  const resetTransactionForm = () => {
+    setTxFormError(null);
+    setTxFormSuccess(null);
+    setTxFormSaving(false);
+    setTxSide('buy');
+    setTxTradeAt(currentDateTimeLocalValue());
+    setTxQuantity('');
+    setTxPrice('');
+    setTxFees(0);
+    setTxTaxes(0);
+    setTxNotes('');
+    setTxDiscoverQuery('');
+    setTxDiscoverItems([]);
+    setTxDiscoverLoading(false);
+    setTxDiscoverSelectionKey(null);
+    setTxResolvedAssetId(null);
+    setTxResolvedAssetLabel(null);
+    setTxEnsuringAsset(false);
   };
 
   useEffect(() => {
@@ -157,6 +258,33 @@ export function PortfolioPage() {
   }, [selectedPortfolioId]);
 
   useEffect(() => {
+    if (!selectedPortfolioId) {
+      setTransactions([]);
+      setTransactionsError(null);
+      return;
+    }
+    const portfolioId = Number(selectedPortfolioId);
+    if (!Number.isFinite(portfolioId)) return;
+
+    let active = true;
+    setLoadingTransactions(true);
+    setTransactionsError(null);
+
+    loadTransactions(portfolioId)
+      .catch((err) => {
+        if (!active) return;
+        setTransactionsError(err instanceof Error ? err.message : 'Errore nel caricamento transazioni');
+      })
+      .finally(() => {
+        if (active) setLoadingTransactions(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedPortfolioId]);
+
+  useEffect(() => {
     if (!drawerOpened) return;
     const q = discoverQuery.trim();
     if (!q) {
@@ -186,9 +314,44 @@ export function PortfolioPage() {
     };
   }, [discoverQuery, drawerOpened]);
 
+  useEffect(() => {
+    if (!transactionDrawerOpened) return;
+    const q = txDiscoverQuery.trim();
+    if (!q) {
+      setTxDiscoverItems([]);
+      setTxDiscoverLoading(false);
+      return;
+    }
+
+    let active = true;
+    setTxDiscoverLoading(true);
+    const timer = window.setTimeout(() => {
+      discoverAssets(q)
+        .then((items) => {
+          if (active) setTxDiscoverItems(items);
+        })
+        .catch(() => {
+          if (active) setTxDiscoverItems([]);
+        })
+        .finally(() => {
+          if (active) setTxDiscoverLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [txDiscoverQuery, transactionDrawerOpened]);
+
   const totalWeight = useMemo(
     () => allocations.reduce((sum, item) => sum + item.weight_pct, 0),
     [allocations],
+  );
+  const portfolioTargetNotional = selectedPortfolio?.target_notional ?? null;
+  const assignedTargetValue = useMemo(
+    () => (portfolioTargetNotional != null ? (portfolioTargetNotional * totalWeight) / 100 : null),
+    [portfolioTargetNotional, totalWeight],
   );
 
   const openDrawer = () => {
@@ -196,11 +359,18 @@ export function PortfolioPage() {
     setDrawerOpened(true);
   };
 
+  const openTransactionDrawer = () => {
+    resetTransactionForm();
+    setTransactionDrawerOpened(true);
+  };
+
   const openCreatePortfolioModal = () => {
     setPortfolioModalMode('create');
     setPortfolioFormName('');
     setPortfolioFormBaseCurrency('EUR');
     setPortfolioFormTimezone('Europe/Rome');
+    setPortfolioFormTargetNotional('');
+    setPortfolioFormCashBalance(0);
     setPortfolioFormError(null);
     setPortfolioModalOpened(true);
   };
@@ -211,6 +381,8 @@ export function PortfolioPage() {
     setPortfolioFormName(selectedPortfolio.name);
     setPortfolioFormBaseCurrency(selectedPortfolio.base_currency);
     setPortfolioFormTimezone(selectedPortfolio.timezone);
+    setPortfolioFormTargetNotional(selectedPortfolio.target_notional ?? '');
+    setPortfolioFormCashBalance(selectedPortfolio.cash_balance ?? 0);
     setPortfolioFormError(null);
     setPortfolioModalOpened(true);
   };
@@ -220,6 +392,12 @@ export function PortfolioPage() {
     const name = portfolioFormName.trim();
     const baseCurrency = portfolioFormBaseCurrency.trim().toUpperCase();
     const timezone = portfolioFormTimezone.trim();
+    const normalizedTargetNotional =
+      portfolioFormTargetNotional === '' || portfolioFormTargetNotional === null
+        ? null
+        : typeof portfolioFormTargetNotional === 'number'
+          ? portfolioFormTargetNotional
+          : Number(portfolioFormTargetNotional);
     if (!name) {
       setPortfolioFormError('Nome portfolio obbligatorio');
       return;
@@ -232,6 +410,15 @@ export function PortfolioPage() {
       setPortfolioFormError('Timezone obbligatoria');
       return;
     }
+    if (normalizedTargetNotional !== null && (!Number.isFinite(normalizedTargetNotional) || normalizedTargetNotional < 0)) {
+      setPortfolioFormError('Controvalore target non valido');
+      return;
+    }
+    const normalizedCashBalance = portfolioFormCashBalance === '' ? 0 : Number(portfolioFormCashBalance);
+    if (!Number.isFinite(normalizedCashBalance) || normalizedCashBalance < 0) {
+      setPortfolioFormError('Cash disponibile non valido');
+      return;
+    }
 
     try {
       setPortfolioSaving(true);
@@ -240,6 +427,8 @@ export function PortfolioPage() {
           name,
           base_currency: baseCurrency,
           timezone,
+          target_notional: normalizedTargetNotional,
+          cash_balance: normalizedCashBalance,
         });
         await loadPortfolios(String(created.id));
         setFormSuccess(`Portfolio "${created.name}" creato`);
@@ -253,6 +442,8 @@ export function PortfolioPage() {
           name,
           base_currency: baseCurrency,
           timezone,
+          target_notional: normalizedTargetNotional,
+          cash_balance: normalizedCashBalance,
         });
         await loadPortfolios(String(updated.id));
         setFormSuccess(`Portfolio "${updated.name}" aggiornato`);
@@ -374,6 +565,222 @@ export function PortfolioPage() {
     }
   };
 
+  const handleTransactionDiscoverSelection = async (value: string | null) => {
+    setTxDiscoverSelectionKey(value);
+    setTxFormError(null);
+    setTxFormSuccess(null);
+    setTxResolvedAssetId(null);
+    setTxResolvedAssetLabel(null);
+    setTxPrice('');
+
+    if (!value) return;
+    const selected = txDiscoverItems.find((item) => item.key === value);
+    if (!selected) return;
+
+    const label = `${selected.symbol} - ${selected.name ?? 'N/D'}${selected.exchange ? ` (${selected.exchange})` : ''}`;
+
+    const fetchPrice = async (assetId: number) => {
+      setTxPriceLoading(true);
+      try {
+        const quote = await getAssetLatestQuote(assetId);
+        setTxPrice(quote.price);
+      } catch {
+        // prezzo non disponibile — l'utente lo inserisce manualmente
+      } finally {
+        setTxPriceLoading(false);
+      }
+    };
+
+    if (selected.source === 'db' && selected.asset_id) {
+      setTxResolvedAssetId(selected.asset_id);
+      setTxResolvedAssetLabel(label);
+      void fetchPrice(selected.asset_id);
+      return;
+    }
+
+    try {
+      setTxEnsuringAsset(true);
+      const portfolioId = Number(selectedPortfolioId);
+      const ensured = await ensureAsset({
+        source: selected.source,
+        asset_id: selected.asset_id,
+        symbol: selected.symbol,
+        name: selected.name,
+        exchange: selected.exchange,
+        provider: selected.provider ?? 'twelvedata',
+        provider_symbol: selected.provider_symbol ?? selected.symbol,
+        portfolio_id: Number.isFinite(portfolioId) ? portfolioId : undefined,
+      });
+      setTxResolvedAssetId(ensured.asset_id);
+      setTxResolvedAssetLabel(label);
+      if (ensured.created) {
+        setTxFormSuccess(`Asset ${ensured.symbol} creato e selezionato.`);
+      }
+      void fetchPrice(ensured.asset_id);
+    } catch (err) {
+      setTxFormError(err instanceof Error ? err.message : 'Errore nella risoluzione asset');
+    } finally {
+      setTxEnsuringAsset(false);
+    }
+  };
+
+  const handleCreateTransaction = async () => {
+    const portfolioId = Number(selectedPortfolioId);
+    const quantity = typeof txQuantity === 'number' ? txQuantity : Number(txQuantity);
+    const price = typeof txPrice === 'number' ? txPrice : Number(txPrice);
+    const fees = typeof txFees === 'number' ? txFees : Number(txFees || 0);
+    const taxes = typeof txTaxes === 'number' ? txTaxes : Number(txTaxes || 0);
+
+    setTxFormError(null);
+    setTxFormSuccess(null);
+
+    if (!Number.isFinite(portfolioId)) {
+      setTxFormError('Seleziona un portfolio valido');
+      return;
+    }
+    if (!txResolvedAssetId) {
+      setTxFormError('Seleziona un asset');
+      return;
+    }
+    if (!txTradeAt) {
+      setTxFormError('Data/ora operazione obbligatoria');
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setTxFormError('Quantita non valida');
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setTxFormError('Prezzo non valido');
+      return;
+    }
+    if (!Number.isFinite(fees) || fees < 0 || !Number.isFinite(taxes) || taxes < 0) {
+      setTxFormError('Fee/tasse non validi');
+      return;
+    }
+
+    try {
+      setTxFormSaving(true);
+      await createTransaction({
+        portfolio_id: portfolioId,
+        asset_id: txResolvedAssetId,
+        side: txSide,
+        trade_at: new Date(txTradeAt).toISOString(),
+        quantity,
+        price,
+        fees,
+        taxes,
+        trade_currency: selectedPortfolio?.base_currency ?? 'EUR',
+        notes: txNotes.trim() || null,
+      });
+      await loadTransactions(portfolioId);
+      setTxFormSuccess('Transazione salvata');
+      setTransactionDrawerOpened(false);
+      resetTransactionForm();
+    } catch (err) {
+      setTxFormError(err instanceof Error ? err.message : 'Errore salvataggio transazione');
+    } finally {
+      setTxFormSaving(false);
+    }
+  };
+
+  const handleDeleteTransaction = async (transactionId: number) => {
+    const portfolioId = Number(selectedPortfolioId);
+    if (!Number.isFinite(portfolioId)) return;
+
+    setTransactionsError(null);
+    try {
+      setDeletingTransactionId(transactionId);
+      await deleteTransaction(transactionId);
+      await loadTransactions(portfolioId);
+      setFormSuccess('Transazione eliminata');
+    } catch (err) {
+      setTransactionsError(err instanceof Error ? err.message : 'Errore eliminazione transazione');
+    } finally {
+      setDeletingTransactionId(null);
+    }
+  };
+
+  const openDeleteTransactionModal = (tx: TransactionListItem) => {
+    setTransactionIdToDelete(tx.id);
+    setTransactionLabelToDelete(`${tx.side.toUpperCase()} ${tx.symbol} (${tx.quantity})`);
+    setTransactionDeleteOpened(true);
+  };
+
+  const confirmDeleteTransaction = async () => {
+    if (!transactionIdToDelete) return;
+    await handleDeleteTransaction(transactionIdToDelete);
+    setTransactionDeleteOpened(false);
+    setTransactionIdToDelete(null);
+    setTransactionLabelToDelete(null);
+  };
+
+  const toLocalDateTimeInput = (value: string) => {
+    const dt = new Date(value);
+    if (Number.isNaN(dt.getTime())) return '';
+    const pad = (v: number) => String(v).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  };
+
+  const openEditTransactionModal = (tx: TransactionListItem) => {
+    setEditTransactionError(null);
+    setEditingTransactionId(tx.id);
+    setEditTransactionLabel(`${tx.symbol} (${tx.side.toUpperCase()})`);
+    setEditTradeAt(toLocalDateTimeInput(tx.trade_at));
+    setEditQuantity(tx.quantity);
+    setEditPrice(tx.price);
+    setEditFees(tx.fees ?? 0);
+    setEditTaxes(tx.taxes ?? 0);
+    setEditNotes(tx.notes ?? '');
+    setEditTransactionOpened(true);
+  };
+
+  const handleUpdateTransaction = async () => {
+    const portfolioId = Number(selectedPortfolioId);
+    const quantity = typeof editQuantity === 'number' ? editQuantity : Number(editQuantity);
+    const price = typeof editPrice === 'number' ? editPrice : Number(editPrice);
+    const fees = typeof editFees === 'number' ? editFees : Number(editFees || 0);
+    const taxes = typeof editTaxes === 'number' ? editTaxes : Number(editTaxes || 0);
+    if (!Number.isFinite(portfolioId) || !Number.isFinite(editingTransactionId ?? NaN)) return;
+
+    if (!editTradeAt) {
+      setEditTransactionError('Data/ora obbligatoria');
+      return;
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setEditTransactionError('Quantita non valida');
+      return;
+    }
+    if (!Number.isFinite(price) || price < 0) {
+      setEditTransactionError('Prezzo non valido');
+      return;
+    }
+    if (!Number.isFinite(fees) || fees < 0 || !Number.isFinite(taxes) || taxes < 0) {
+      setEditTransactionError('Fee/tasse non validi');
+      return;
+    }
+
+    try {
+      setEditTransactionError(null);
+      setEditTransactionSaving(true);
+      await updateTransaction(editingTransactionId as number, {
+        trade_at: new Date(editTradeAt).toISOString(),
+        quantity,
+        price,
+        fees,
+        taxes,
+        notes: editNotes.trim() || null,
+      });
+      await loadTransactions(portfolioId);
+      setEditTransactionOpened(false);
+      setFormSuccess('Transazione aggiornata');
+    } catch (err) {
+      setEditTransactionError(err instanceof Error ? err.message : 'Errore aggiornamento transazione');
+    } finally {
+      setEditTransactionSaving(false);
+    }
+  };
+
   const rows = allocations.map((item) => (
     <Table.Tr key={item.asset_id}>
       <Table.Td>
@@ -381,6 +788,11 @@ export function PortfolioPage() {
         <Text size="xs" c="dimmed">{item.name}</Text>
       </Table.Td>
       <Table.Td style={{ textAlign: 'right' }}>{item.weight_pct.toFixed(2)}%</Table.Td>
+      <Table.Td style={{ textAlign: 'right' }}>
+        {portfolioTargetNotional != null
+          ? formatMoney((portfolioTargetNotional * item.weight_pct) / 100, selectedPortfolio?.base_currency)
+          : 'N/D'}
+      </Table.Td>
       <Table.Td style={{ textAlign: 'right' }}>
         <ActionIcon color="red" variant="light" onClick={() => handleDeleteAllocation(item.asset_id)} aria-label={`Rimuovi ${item.symbol}`}>
           <IconTrash size={16} />
@@ -396,6 +808,70 @@ export function PortfolioPage() {
       (item.source === 'db' ? ' [DB]' : ' [Provider]'),
   }));
 
+  const txDiscoverOptions = txDiscoverItems.map((item) => ({
+    value: item.key,
+    label:
+      `${item.symbol} - ${item.name ?? 'N/D'}${item.exchange ? ` (${item.exchange})` : ''}` +
+      (item.source === 'db' ? ' [DB]' : ' [Provider]'),
+  }));
+
+  const filteredTransactions = useMemo(() => {
+    const q = transactionFilterQuery.trim().toLowerCase();
+    return transactions.filter((tx) => {
+      const sideMatch = transactionFilterSide === 'all' || tx.side === transactionFilterSide;
+      if (!sideMatch) return false;
+      if (!q) return true;
+      return (
+        tx.symbol.toLowerCase().includes(q) ||
+        (tx.asset_name ?? '').toLowerCase().includes(q) ||
+        (tx.notes ?? '').toLowerCase().includes(q)
+      );
+    });
+  }, [transactions, transactionFilterQuery, transactionFilterSide]);
+
+  const transactionRows = filteredTransactions.map((tx) => {
+    const gross = tx.quantity * tx.price;
+    const total = tx.side === 'buy' ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0) : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+    return (
+      <Table.Tr key={tx.id}>
+        <Table.Td>{formatDateTime(tx.trade_at)}</Table.Td>
+        <Table.Td>
+          <Text fw={600} c={tx.side === 'buy' ? 'teal' : 'orange'}>
+            {tx.side.toUpperCase()}
+          </Text>
+        </Table.Td>
+        <Table.Td>
+          <Text fw={500}>{tx.symbol}</Text>
+          {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
+        </Table.Td>
+        <Table.Td style={{ textAlign: 'right' }}>{tx.quantity}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }}>{formatMoney(tx.price, tx.trade_currency)}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }}>{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }}>{formatMoney(total, tx.trade_currency)}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }}>
+          <ActionIcon
+            color="blue"
+            variant="light"
+            onClick={() => openEditTransactionModal(tx)}
+            aria-label={`Modifica transazione ${tx.id}`}
+            mr={6}
+          >
+            <IconEdit size={16} />
+          </ActionIcon>
+          <ActionIcon
+            color="red"
+            variant="light"
+            onClick={() => openDeleteTransactionModal(tx)}
+            loading={deletingTransactionId === tx.id}
+            aria-label={`Elimina transazione ${tx.id}`}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Table.Td>
+      </Table.Tr>
+    );
+  });
+
   return (
     <>
       <Group justify="space-between" mb="md">
@@ -410,7 +886,16 @@ export function PortfolioPage() {
           <Button color="red" variant="light" onClick={() => setPortfolioDeleteOpened(true)} disabled={!selectedPortfolioId}>
             Elimina
           </Button>
-          <Button leftSection={<IconPlus size={18} />} variant="light" onClick={openDrawer} disabled={!selectedPortfolioId}>
+          <Button leftSection={<IconPlus size={18} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
+            Nuova Transazione
+          </Button>
+          <Button
+            leftSection={<IconPlus size={18} />}
+            variant="light"
+            onClick={openDrawer}
+            disabled={!selectedPortfolioId}
+            style={{ display: portfolioView === 'target' ? undefined : 'none' }}
+          >
             Aggiungi Asset / Peso
           </Button>
         </Group>
@@ -434,46 +919,51 @@ export function PortfolioPage() {
         )}
       </Group>
 
+      <Group mb="md" justify="space-between">
+        <SegmentedControl
+          value={portfolioView}
+          onChange={(value) => setPortfolioView((value as 'transactions' | 'target') ?? 'transactions')}
+          data={[
+            { value: 'transactions', label: 'Transazioni' },
+            { value: 'target', label: 'Target Allocation' },
+          ]}
+        />
+        <Text size="sm" c="dimmed">
+          {portfolioView === 'transactions'
+            ? 'Vista principale MVP: inserimento e gestione transazioni'
+            : 'Vista opzionale: definizione pesi target'}
+        </Text>
+      </Group>
+
       {error && <Alert color="red" mb="md">{error}</Alert>}
+      {transactionsError && <Alert color="red" mb="md">{transactionsError}</Alert>}
       {formSuccess && <Alert color="teal" mb="md">{formSuccess}</Alert>}
 
-      <SimpleGrid cols={{ base: 1, md: 3 }} mb="lg">
-        <Card withBorder>
-          <Text size="sm" c="dimmed">Asset in portfolio</Text>
-          <Text fw={700} size="xl">{allocations.length}</Text>
-        </Card>
-        <Card withBorder>
-          <Text size="sm" c="dimmed">Peso totale assegnato</Text>
-          <Text fw={700} size="xl">{totalWeight.toFixed(2)}%</Text>
-        </Card>
-        <Card withBorder>
-          <Text size="sm" c="dimmed">Peso residuo</Text>
-          <Text fw={700} size="xl" c={totalWeight > 100 ? 'red' : 'teal'}>
-            {(100 - totalWeight).toFixed(2)}%
-          </Text>
-        </Card>
-      </SimpleGrid>
+      {portfolioView === 'target' && (
+        <TargetAllocationSection
+          allocationsCount={allocations.length}
+          totalWeight={totalWeight}
+          portfolioTargetNotionalLabel={formatMoney(portfolioTargetNotional, selectedPortfolio?.base_currency)}
+          assignedTargetValueLabel={
+            assignedTargetValue != null ? formatMoney(assignedTargetValue, selectedPortfolio?.base_currency) : null
+          }
+          selectedPortfolioId={selectedPortfolioId}
+          rows={rows}
+          hasRows={rows.length > 0}
+          onOpenAddAssetWeight={openDrawer}
+        />
+      )}
 
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Asset</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Peso Target</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {rows.length ? rows : (
-            <Table.Tr>
-              <Table.Td colSpan={3}>
-                <Text c="dimmed" ta="center">
-                  {selectedPortfolioId ? 'Nessun asset assegnato al portafoglio' : 'Nessun portafoglio disponibile'}
-                </Text>
-              </Table.Td>
-            </Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
+      <TransactionsSection
+        loading={loadingTransactions}
+        filterQuery={transactionFilterQuery}
+        onFilterQueryChange={setTransactionFilterQuery}
+        filterSide={transactionFilterSide}
+        onFilterSideChange={setTransactionFilterSide}
+        rows={transactionRows}
+        hasRows={transactionRows.length > 0}
+        selectedPortfolioId={selectedPortfolioId}
+      />
 
       <Modal
         opened={portfolioModalOpened}
@@ -501,6 +991,24 @@ export function PortfolioPage() {
             value={portfolioFormTimezone}
             onChange={(event) => setPortfolioFormTimezone(event.currentTarget.value)}
             placeholder="Europe/Rome"
+          />
+          <NumberInput
+            label={`Controvalore target (${portfolioFormBaseCurrency || 'EUR'})`}
+            value={portfolioFormTargetNotional}
+            onChange={setPortfolioFormTargetNotional}
+            min={0}
+            decimalScale={2}
+            placeholder="Es. 100000"
+            description="Opzionale. Usato per calcolare il controvalore target per asset dai pesi %."
+          />
+          <NumberInput
+            label={`Cash disponibile (${portfolioFormBaseCurrency || 'EUR'})`}
+            value={portfolioFormCashBalance}
+            onChange={setPortfolioFormCashBalance}
+            min={0}
+            decimalScale={2}
+            placeholder="Es. 5000"
+            description="Liquidità non investita nel portfolio."
           />
           <Button onClick={handleSavePortfolio} loading={portfolioSaving}>
             {portfolioModalMode === 'create' ? 'Crea Portfolio' : 'Salva Modifiche'}
@@ -572,6 +1080,131 @@ export function PortfolioPage() {
           </Button>
         </Stack>
       </Drawer>
+
+      <Drawer
+        opened={transactionDrawerOpened}
+        onClose={() => setTransactionDrawerOpened(false)}
+        title="Nuova Transazione"
+        position="right"
+        size="md"
+      >
+        <Stack>
+          {txFormError && <Alert color="red">{txFormError}</Alert>}
+          {txFormSuccess && <Alert color="teal">{txFormSuccess}</Alert>}
+
+          <Select
+            label="Tipo"
+            data={[
+              { value: 'buy', label: 'BUY' },
+              { value: 'sell', label: 'SELL' },
+            ]}
+            value={txSide}
+            onChange={(value) => setTxSide((value as 'buy' | 'sell') ?? 'buy')}
+          />
+
+          <Select
+            searchable
+            label="Asset (DB + provider)"
+            placeholder="Cerca simbolo o nome"
+            searchValue={txDiscoverQuery}
+            onSearchChange={setTxDiscoverQuery}
+            value={txDiscoverSelectionKey}
+            onChange={(value) => {
+              void handleTransactionDiscoverSelection(value);
+            }}
+            data={txDiscoverOptions}
+            nothingFoundMessage={txDiscoverQuery.trim() ? 'Nessun risultato' : 'Inizia a digitare'}
+            rightSection={txDiscoverLoading || txEnsuringAsset ? <Loader size="xs" /> : null}
+            clearable
+          />
+
+          <Text size="sm" c="dimmed">
+            {txResolvedAssetLabel ? `Asset selezionato: ${txResolvedAssetLabel}` : 'Seleziona un asset dalla ricerca'}
+          </Text>
+
+          <TextInput
+            label="Data / ora operazione"
+            type="datetime-local"
+            value={txTradeAt}
+            onChange={(event) => setTxTradeAt(event.currentTarget.value)}
+          />
+
+          <NumberInput label="Quantita" value={txQuantity} onChange={setTxQuantity} min={0} decimalScale={8} />
+          <NumberInput
+            label="Prezzo"
+            value={txPrice}
+            onChange={setTxPrice}
+            min={0}
+            decimalScale={6}
+            rightSection={txPriceLoading ? <Loader size="xs" /> : null}
+            description={txPriceLoading ? 'Caricamento prezzo...' : undefined}
+          />
+          <NumberInput label="Fee" value={txFees} onChange={setTxFees} min={0} decimalScale={4} />
+          <NumberInput label="Tasse" value={txTaxes} onChange={setTxTaxes} min={0} decimalScale={4} />
+          <TextInput label="Note" value={txNotes} onChange={(event) => setTxNotes(event.currentTarget.value)} />
+
+          <Button onClick={handleCreateTransaction} loading={txFormSaving || txEnsuringAsset}>
+            Salva Transazione
+          </Button>
+        </Stack>
+      </Drawer>
+
+      <Modal
+        opened={editTransactionOpened}
+        onClose={() => setEditTransactionOpened(false)}
+        title={`Modifica Transazione${editTransactionLabel ? ` - ${editTransactionLabel}` : ''}`}
+        centered
+      >
+        <Stack>
+          {editTransactionError && <Alert color="red">{editTransactionError}</Alert>}
+          <TextInput
+            label="Data / ora operazione"
+            type="datetime-local"
+            value={editTradeAt}
+            onChange={(event) => setEditTradeAt(event.currentTarget.value)}
+          />
+          <NumberInput label="Quantita" value={editQuantity} onChange={setEditQuantity} min={0} decimalScale={8} />
+          <NumberInput label="Prezzo" value={editPrice} onChange={setEditPrice} min={0} decimalScale={6} />
+          <NumberInput label="Fee" value={editFees} onChange={setEditFees} min={0} decimalScale={4} />
+          <NumberInput label="Tasse" value={editTaxes} onChange={setEditTaxes} min={0} decimalScale={4} />
+          <TextInput label="Note" value={editNotes} onChange={(event) => setEditNotes(event.currentTarget.value)} />
+          <Button onClick={handleUpdateTransaction} loading={editTransactionSaving}>
+            Salva Modifiche
+          </Button>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={transactionDeleteOpened}
+        onClose={() => setTransactionDeleteOpened(false)}
+        title="Conferma eliminazione transazione"
+        centered
+      >
+        <Stack>
+          <Text size="sm">
+            Vuoi eliminare la transazione {transactionLabelToDelete ? `"${transactionLabelToDelete}"` : ''}?
+          </Text>
+          <Text size="sm" c="dimmed">
+            L'operazione aggiornera' automaticamente storico, posizioni e dashboard.
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setTransactionDeleteOpened(false)}
+              disabled={deletingTransactionId != null}
+            >
+              Annulla
+            </Button>
+            <Button
+              color="red"
+              onClick={() => void confirmDeleteTransaction()}
+              loading={deletingTransactionId === transactionIdToDelete}
+            >
+              Elimina Transazione
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   );
 }

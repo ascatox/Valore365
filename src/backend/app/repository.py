@@ -2,6 +2,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 import json
+from bisect import bisect_right
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -23,13 +24,18 @@ from .models import (
     PortfolioTargetAssetPerformancePoint,
     PortfolioTargetAssetPerformanceResponse,
     PortfolioTargetAssetPerformanceSeries,
+    PortfolioTargetAssetIntradayPerformancePoint,
+    PortfolioTargetAssetIntradayPerformanceResponse,
+    PortfolioTargetAssetIntradayPerformanceSeries,
     PortfolioTargetIntradayPoint,
     PortfolioTargetIntradayResponse,
     PortfolioTargetAllocationUpsert,
     Position,
     TimeSeriesPoint,
     TransactionCreate,
+    TransactionListItem,
     TransactionRead,
+    TransactionUpdate,
 )
 
 
@@ -37,6 +43,7 @@ from .models import (
 class PortfolioData:
     id: int
     base_currency: str
+    cash_balance: float
 
 
 @dataclass
@@ -526,12 +533,106 @@ class PortfolioRepository:
             assets=assets_out,
         )
 
+    def get_portfolio_target_asset_intraday_performance(
+        self, portfolio_id: int, day: date
+    ) -> PortfolioTargetAssetIntradayPerformanceResponse:
+        day_start = datetime.combine(day, time.min)
+        day_end = day_start + timedelta(days=1)
+
+        with self.engine.begin() as conn:
+            if self._get_portfolio(conn, portfolio_id) is None:
+                raise ValueError("Portfolio non trovato")
+
+            alloc_rows = conn.execute(
+                text(
+                    """
+                    select pta.asset_id,
+                           pta.weight_pct::float8 as weight_pct,
+                           a.symbol,
+                           coalesce(a.name, a.symbol) as name
+                    from portfolio_target_allocations pta
+                    join assets a on a.id = pta.asset_id
+                    where pta.portfolio_id = :portfolio_id
+                    order by pta.weight_pct desc, a.symbol asc
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+            if not alloc_rows:
+                return PortfolioTargetAssetIntradayPerformanceResponse(
+                    portfolio_id=portfolio_id, date=day.isoformat(), assets=[]
+                )
+
+            asset_ids = [int(r["asset_id"]) for r in alloc_rows]
+            tick_rows = conn.execute(
+                text(
+                    """
+                    select asset_id, ts, last::float8 as last
+                    from price_ticks
+                    where asset_id = any(:asset_ids)
+                      and ts >= :day_start
+                      and ts < :day_end
+                    order by asset_id asc, ts asc
+                    """
+                ),
+                {"asset_ids": asset_ids, "day_start": day_start, "day_end": day_end},
+            ).mappings().all()
+
+        ticks_by_asset: dict[int, list[tuple[datetime, float]]] = defaultdict(list)
+        for row in tick_rows:
+            aid = int(row["asset_id"])
+            ts_value = row["ts"]
+            px = float(row["last"])
+            if not isinstance(ts_value, datetime) or px <= 0:
+                continue
+            ticks_by_asset[aid].append((ts_value, px))
+
+        assets_out: list[PortfolioTargetAssetIntradayPerformanceSeries] = []
+        for row in alloc_rows:
+            aid = int(row["asset_id"])
+            series = ticks_by_asset.get(aid, [])
+            if not series:
+                points: list[PortfolioTargetAssetIntradayPerformancePoint] = []
+                ret = 0.0
+                as_of = None
+            else:
+                base_px = series[0][1]
+                points = [
+                    PortfolioTargetAssetIntradayPerformancePoint(
+                        ts=ts_value.isoformat(),
+                        weighted_index=round((px / base_px) * 100.0, 4),
+                    )
+                    for ts_value, px in series
+                    if base_px > 0
+                ]
+                ret = round(((series[-1][1] / base_px) - 1.0) * 100.0, 2) if base_px > 0 else 0.0
+                as_of = series[-1][0]
+
+            assets_out.append(
+                PortfolioTargetAssetIntradayPerformanceSeries(
+                    asset_id=aid,
+                    symbol=str(row["symbol"]),
+                    name=str(row["name"]),
+                    weight_pct=float(row["weight_pct"]),
+                    return_pct=ret,
+                    as_of=as_of,
+                    points=points,
+                )
+            )
+
+        return PortfolioTargetAssetIntradayPerformanceResponse(
+            portfolio_id=portfolio_id,
+            date=day.isoformat(),
+            assets=assets_out,
+        )
+
     def list_portfolios(self) -> list[PortfolioRead]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 text(
                     """
-                    select id, name, base_currency, timezone, created_at
+                    select id, name, base_currency, timezone, target_notional, cash_balance, created_at
                     from portfolios
                     order by created_at desc, id desc
                     """
@@ -544,6 +645,8 @@ class PortfolioRepository:
                 name=str(row["name"]),
                 base_currency=str(row["base_currency"]),
                 timezone=str(row["timezone"]),
+                target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
+                cash_balance=float(row["cash_balance"]),
                 created_at=row["created_at"],
             )
             for row in rows
@@ -553,6 +656,8 @@ class PortfolioRepository:
         name = payload.name.strip()
         base_currency = payload.base_currency.strip().upper()
         timezone = payload.timezone.strip()
+        target_notional = float(payload.target_notional) if payload.target_notional is not None else None
+        cash_balance = float(payload.cash_balance)
 
         if not name:
             raise ValueError("Nome portfolio obbligatorio")
@@ -563,15 +668,17 @@ class PortfolioRepository:
             row = conn.execute(
                 text(
                     """
-                    insert into portfolios (name, base_currency, timezone)
-                    values (:name, :base_currency, :timezone)
-                    returning id, name, base_currency, timezone, created_at
+                    insert into portfolios (name, base_currency, timezone, target_notional, cash_balance)
+                    values (:name, :base_currency, :timezone, :target_notional, :cash_balance)
+                    returning id, name, base_currency, timezone, target_notional, cash_balance, created_at
                     """
                 ),
                 {
                     "name": name,
                     "base_currency": base_currency,
                     "timezone": timezone,
+                    "target_notional": target_notional,
+                    "cash_balance": cash_balance,
                 },
             ).mappings().fetchone()
 
@@ -583,6 +690,8 @@ class PortfolioRepository:
             name=str(row["name"]),
             base_currency=str(row["base_currency"]),
             timezone=str(row["timezone"]),
+            target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
+            cash_balance=float(row["cash_balance"]),
             created_at=row["created_at"],
         )
 
@@ -615,6 +724,18 @@ class PortfolioRepository:
             params["timezone"] = timezone
             set_clauses.append("timezone = :timezone")
 
+        if "target_notional" in updates:
+            raw_target_notional = updates["target_notional"]
+            params["target_notional"] = None if raw_target_notional is None else float(raw_target_notional)
+            set_clauses.append("target_notional = :target_notional")
+
+        if "cash_balance" in updates:
+            raw_cash_balance = updates["cash_balance"]
+            if raw_cash_balance is None or float(raw_cash_balance) < 0:
+                raise ValueError("Cash balance non valido")
+            params["cash_balance"] = float(raw_cash_balance)
+            set_clauses.append("cash_balance = :cash_balance")
+
         if not set_clauses:
             raise ValueError("Nessun campo valido da aggiornare")
 
@@ -625,7 +746,7 @@ class PortfolioRepository:
                     update portfolios
                     set {", ".join(set_clauses)}
                     where id = :id
-                    returning id, name, base_currency, timezone, created_at
+                    returning id, name, base_currency, timezone, target_notional, cash_balance, created_at
                     """
                 )
                 ,
@@ -640,6 +761,8 @@ class PortfolioRepository:
             name=str(row["name"]),
             base_currency=str(row["base_currency"]),
             timezone=str(row["timezone"]),
+            target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
+            cash_balance=float(row["cash_balance"]),
             created_at=row["created_at"],
         )
 
@@ -713,6 +836,32 @@ class PortfolioRepository:
             active=bool(row["active"]),
         )
 
+    def get_asset_pricing_symbol(self, asset_id: int, provider: str = "twelvedata") -> PricingAsset:
+        provider_name = provider.strip().lower()
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select a.id as asset_id,
+                           a.symbol,
+                           coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                    from assets a
+                    left join asset_provider_symbols aps
+                      on aps.asset_id = a.id
+                     and aps.provider = :provider
+                    where a.id = :asset_id
+                    """
+                ),
+                {"asset_id": asset_id, "provider": provider_name},
+            ).mappings().fetchone()
+        if row is None:
+            raise ValueError("Asset non trovato")
+        return PricingAsset(
+            asset_id=int(row["asset_id"]),
+            symbol=str(row["symbol"]),
+            provider_symbol=str(row["provider_symbol"]),
+        )
+
     def create_asset_provider_symbol(self, payload: AssetProviderSymbolCreate) -> AssetProviderSymbolRead:
         provider = payload.provider.strip().lower()
         provider_symbol = payload.provider_symbol.strip().upper()
@@ -755,9 +904,17 @@ class PortfolioRepository:
                 raise ValueError("Asset non trovato")
 
             if side == "sell":
-                qty = self._current_quantity(conn, payload.portfolio_id, payload.asset_id)
-                if float(payload.quantity) > qty:
-                    raise ValueError("Quantita insufficiente per sell")
+                self._assert_non_negative_inventory_timeline(
+                    conn,
+                    payload.portfolio_id,
+                    payload.asset_id,
+                    candidate={
+                        "id": None,
+                        "trade_at": payload.trade_at,
+                        "side": side,
+                        "quantity": float(payload.quantity),
+                    },
+                )
 
             row = conn.execute(
                 text(
@@ -801,16 +958,138 @@ class PortfolioRepository:
             notes=payload.notes,
         )
 
-    def get_positions(self, portfolio_id: int) -> list[Position]:
+    def list_transactions(self, portfolio_id: int) -> list[TransactionListItem]:
         with self.engine.begin() as conn:
             if self._get_portfolio(conn, portfolio_id) is None:
+                raise ValueError("Portfolio non trovato")
+
+            rows = conn.execute(
+                text(
+                    """
+                    select t.id,
+                           t.portfolio_id,
+                           t.asset_id,
+                           t.side,
+                           t.trade_at,
+                           t.quantity::float8 as quantity,
+                           t.price::float8 as price,
+                           t.fees::float8 as fees,
+                           t.taxes::float8 as taxes,
+                           t.trade_currency,
+                           t.notes,
+                           a.symbol,
+                           a.name as asset_name
+                    from transactions t
+                    join assets a on a.id = t.asset_id
+                    where t.portfolio_id = :portfolio_id
+                    order by t.trade_at desc, t.id desc
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+        return [
+            TransactionListItem(
+                id=int(row["id"]),
+                portfolio_id=int(row["portfolio_id"]),
+                asset_id=int(row["asset_id"]),
+                side=str(row["side"]),
+                trade_at=row["trade_at"],
+                quantity=float(row["quantity"]),
+                price=float(row["price"]),
+                fees=float(row["fees"]),
+                taxes=float(row["taxes"]),
+                trade_currency=str(row["trade_currency"]),
+                notes=row["notes"],
+                symbol=str(row["symbol"]),
+                asset_name=row["asset_name"],
+            )
+            for row in rows
+        ]
+
+    def update_transaction(self, transaction_id: int, payload: TransactionUpdate) -> TransactionRead:
+        updates = payload.model_dump(exclude_unset=True)
+        with self.engine.begin() as conn:
+            existing = self._get_transaction(conn, transaction_id)
+            if existing is None:
+                raise ValueError("Transazione non trovata")
+
+            if "trade_at" in updates or "quantity" in updates:
+                candidate_trade_at = updates.get("trade_at", existing["trade_at"])
+                if candidate_trade_at is None:
+                    raise ValueError("trade_at non puo essere nullo")
+                self._assert_non_negative_inventory_timeline(
+                    conn,
+                    int(existing["portfolio_id"]),
+                    int(existing["asset_id"]),
+                    candidate={
+                        "id": int(existing["id"]),
+                        "trade_at": candidate_trade_at,
+                        "side": str(existing["side"]),
+                        "quantity": float(updates.get("quantity", existing["quantity"])),
+                    },
+                    exclude_transaction_id=transaction_id,
+                )
+
+            if updates:
+                assignments = ", ".join(f"{field} = :{field}" for field in updates.keys())
+                conn.execute(
+                    text(f"update transactions set {assignments} where id = :transaction_id"),
+                    {"transaction_id": transaction_id, **updates},
+                )
+                existing = self._get_transaction(conn, transaction_id)
+                if existing is None:
+                    raise ValueError("Transazione non trovata")
+
+        return TransactionRead(
+            id=int(existing["id"]),
+            portfolio_id=int(existing["portfolio_id"]),
+            asset_id=int(existing["asset_id"]),
+            side=str(existing["side"]),
+            trade_at=existing["trade_at"],
+            quantity=float(existing["quantity"]),
+            price=float(existing["price"]),
+            fees=float(existing["fees"]),
+            taxes=float(existing["taxes"]),
+            trade_currency=str(existing["trade_currency"]),
+            notes=existing["notes"],
+        )
+
+    def delete_transaction(self, transaction_id: int) -> None:
+        with self.engine.begin() as conn:
+            existing = self._get_transaction(conn, transaction_id)
+            if existing is None:
+                raise ValueError("Transazione non trovata")
+            self._assert_non_negative_inventory_timeline(
+                conn,
+                int(existing["portfolio_id"]),
+                int(existing["asset_id"]),
+                exclude_transaction_id=transaction_id,
+            )
+            deleted = conn.execute(
+                text("delete from transactions where id = :transaction_id"),
+                {"transaction_id": transaction_id},
+            )
+            if deleted.rowcount == 0:
+                raise ValueError("Transazione non trovata")
+
+    def get_positions(self, portfolio_id: int) -> list[Position]:
+        with self.engine.begin() as conn:
+            portfolio = self._get_portfolio(conn, portfolio_id)
+            if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
             tx_rows = conn.execute(
                 text(
                     """
-                    select asset_id, side, quantity::float8 as quantity, price::float8 as price,
-                           fees::float8 as fees, taxes::float8 as taxes
+                    select asset_id,
+                           side,
+                           trade_at::date as trade_date,
+                           quantity::float8 as quantity,
+                           price::float8 as price,
+                           fees::float8 as fees,
+                           taxes::float8 as taxes,
+                           trade_currency
                     from transactions
                     where portfolio_id = :portfolio_id
                     order by trade_at asc, id asc
@@ -824,9 +1103,58 @@ class PortfolioRepository:
 
             asset_ids = sorted({int(r["asset_id"]) for r in tx_rows})
             assets = self._get_assets(conn, asset_ids)
-            prices = self._get_latest_prices(conn, asset_ids)
+            asset_meta = self._get_asset_meta(conn, asset_ids)
+            daily_prices = self._get_latest_daily_prices(conn, asset_ids)
+            base_ccy = portfolio.base_currency
+
+            fx_currencies = sorted(
+                {
+                    str(r["trade_currency"])
+                    for r in tx_rows
+                    if r.get("trade_currency") and str(r["trade_currency"]) != base_ccy
+                }
+                | {
+                    meta.quote_currency
+                    for meta in asset_meta.values()
+                    if meta.quote_currency != base_ccy
+                }
+            )
+            fx_rows = []
+            if fx_currencies:
+                fx_rows = conn.execute(
+                    text(
+                        """
+                        select from_ccy, price_date, rate::float8 as rate
+                        from fx_rates_1d
+                        where from_ccy = any(:from_ccy)
+                          and to_ccy = :to_ccy
+                        order by from_ccy asc, price_date asc
+                        """
+                    ),
+                    {"from_ccy": fx_currencies, "to_ccy": base_ccy},
+                ).mappings().all()
 
             grouped: dict[int, dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0})
+            fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
+            for row in fx_rows:
+                fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
+
+            fx_dates = {ccy: [d for d, _ in series] for ccy, series in fx_series.items()}
+
+            def fx_rate_on_or_before(currency: str, day: date | None) -> float | None:
+                if currency == base_ccy:
+                    return 1.0
+                if day is None:
+                    return None
+                series = fx_series.get(currency)
+                dates = fx_dates.get(currency)
+                if not series or not dates:
+                    return None
+                idx = bisect_right(dates, day) - 1
+                if idx < 0:
+                    return None
+                return series[idx][1]
+
             for tx in tx_rows:
                 aid = int(tx["asset_id"])
                 lot = grouped[aid]
@@ -834,10 +1162,15 @@ class PortfolioRepository:
                 price = float(tx["price"])
                 fees = float(tx["fees"])
                 taxes = float(tx["taxes"])
+                trade_day = tx["trade_date"]
+                trade_ccy = str(tx["trade_currency"])
+                tx_fx = fx_rate_on_or_before(trade_ccy, trade_day) or 1.0
+                gross_cost_base = qty * price * tx_fx
+                fees_taxes_base = (fees + taxes) * tx_fx
 
                 if tx["side"] == "buy":
                     lot["quantity"] += qty
-                    lot["cost"] += qty * price + fees + taxes
+                    lot["cost"] += gross_cost_base + fees_taxes_base
                 else:
                     if lot["quantity"] <= 0:
                         continue
@@ -853,7 +1186,14 @@ class PortfolioRepository:
                 if qty <= 0:
                     continue
                 avg_cost = lot["cost"] / qty if qty else 0.0
-                market_price = prices.get(aid, avg_cost)
+                price_info = daily_prices.get(aid)
+                meta = asset_meta.get(aid)
+                market_price = avg_cost
+                if price_info and meta is not None:
+                    price_day, latest_close = price_info
+                    quote_fx = fx_rate_on_or_before(meta.quote_currency, price_day)
+                    if quote_fx is not None:
+                        market_price = latest_close * quote_fx
                 market_value = qty * market_price
                 cost_basis = qty * avg_cost
                 pl = market_value - cost_basis
@@ -905,6 +1245,7 @@ class PortfolioRepository:
             cost_basis=round(cost_basis, 2),
             unrealized_pl=round(pl, 2),
             unrealized_pl_pct=round(pl_pct, 2),
+            cash_balance=portfolio.cash_balance,
         )
 
     def get_timeseries(self, portfolio_id: int, range_value: str, interval: str) -> list[TimeSeriesPoint]:
@@ -1396,12 +1737,16 @@ class PortfolioRepository:
 
     def _get_portfolio(self, conn, portfolio_id: int) -> PortfolioData | None:
         row = conn.execute(
-            text("select id, base_currency from portfolios where id = :id"),
+            text("select id, base_currency, cash_balance from portfolios where id = :id"),
             {"id": portfolio_id},
         ).mappings().fetchone()
         if row is None:
             return None
-        return PortfolioData(id=int(row["id"]), base_currency=str(row["base_currency"]))
+        return PortfolioData(
+            id=int(row["id"]),
+            base_currency=str(row["base_currency"]),
+            cash_balance=float(row["cash_balance"]),
+        )
 
     def _asset_exists(self, conn, asset_id: int) -> bool:
         row = conn.execute(text("select 1 from assets where id = :id"), {"id": asset_id}).fetchone()
@@ -1419,6 +1764,102 @@ class PortfolioRepository:
             {"portfolio_id": portfolio_id, "asset_id": asset_id},
         ).mappings().fetchone()
         return float(row["quantity"]) if row is not None else 0.0
+
+    def _assert_non_negative_inventory_timeline(
+        self,
+        conn,
+        portfolio_id: int,
+        asset_id: int,
+        *,
+        candidate: dict | None = None,
+        exclude_transaction_id: int | None = None,
+    ) -> None:
+        params: dict[str, object] = {"portfolio_id": portfolio_id, "asset_id": asset_id}
+        exclude_clause = ""
+        if exclude_transaction_id is not None:
+            exclude_clause = "and id <> :exclude_transaction_id"
+            params["exclude_transaction_id"] = exclude_transaction_id
+
+        rows = conn.execute(
+            text(
+                f"""
+                select id, trade_at, side, quantity::float8 as quantity
+                from transactions
+                where portfolio_id = :portfolio_id
+                  and asset_id = :asset_id
+                  {exclude_clause}
+                order by trade_at asc, id asc
+                """
+            ),
+            params,
+        ).mappings().all()
+
+        timeline = [
+            {
+                "id": int(row["id"]),
+                "trade_at": row["trade_at"],
+                "side": str(row["side"]),
+                "quantity": float(row["quantity"]),
+            }
+            for row in rows
+        ]
+        if candidate is not None:
+            timeline.append(candidate)
+
+        timeline.sort(
+            key=lambda item: (
+                item["trade_at"],
+                int(item["id"]) if item.get("id") is not None else 10**18,
+            )
+        )
+
+        running_qty = 0.0
+        epsilon = 1e-9
+        for item in timeline:
+            if item.get("trade_at") is None:
+                raise ValueError("trade_at non puo essere nullo")
+            side = str(item["side"]).lower()
+            qty = float(item["quantity"])
+            running_qty = running_qty + qty if side == "buy" else running_qty - qty
+            if running_qty < -epsilon:
+                raise ValueError("Quantita insufficiente per sell alla data operazione")
+
+    def _current_quantity_excluding_transaction(self, conn, portfolio_id: int, asset_id: int, transaction_id: int) -> float:
+        row = conn.execute(
+            text(
+                """
+                select coalesce(sum(case when side='buy' then quantity else -quantity end), 0)::float8 as quantity
+                from transactions
+                where portfolio_id = :portfolio_id
+                  and asset_id = :asset_id
+                  and id <> :transaction_id
+                """
+            ),
+            {"portfolio_id": portfolio_id, "asset_id": asset_id, "transaction_id": transaction_id},
+        ).mappings().fetchone()
+        return float(row["quantity"]) if row is not None else 0.0
+
+    def _get_transaction(self, conn, transaction_id: int):
+        return conn.execute(
+            text(
+                """
+                select id,
+                       portfolio_id,
+                       asset_id,
+                       side,
+                       trade_at,
+                       quantity::float8 as quantity,
+                       price::float8 as price,
+                       fees::float8 as fees,
+                       taxes::float8 as taxes,
+                       trade_currency,
+                       notes
+                from transactions
+                where id = :transaction_id
+                """
+            ),
+            {"transaction_id": transaction_id},
+        ).mappings().fetchone()
 
     def _get_assets(self, conn, asset_ids: list[int]) -> dict[int, dict[str, str]]:
         rows = conn.execute(
@@ -1466,3 +1907,24 @@ class PortfolioRepository:
             {"asset_ids": asset_ids},
         ).mappings().all()
         return {int(r["asset_id"]): float(r["last"]) for r in rows}
+
+    def _get_latest_daily_prices(self, conn, asset_ids: list[int]) -> dict[int, tuple[date, float]]:
+        rows = conn.execute(
+            text(
+                """
+                with latest_daily as (
+                    select distinct on (asset_id)
+                        asset_id,
+                        price_date,
+                        close::float8 as close
+                    from price_bars_1d
+                    where asset_id = any(:asset_ids)
+                    order by asset_id, price_date desc
+                )
+                select asset_id, price_date, close
+                from latest_daily
+                """
+            ),
+            {"asset_ids": asset_ids},
+        ).mappings().all()
+        return {int(r["asset_id"]): (r["price_date"], float(r["close"])) for r in rows}

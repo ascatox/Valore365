@@ -52,6 +52,49 @@ class _FakeRepo:
             'errors': [],
         }
 
+    def list_transactions(self, portfolio_id: int):
+        return [
+            {
+                'id': 10,
+                'portfolio_id': portfolio_id,
+                'asset_id': 1,
+                'side': 'buy',
+                'trade_at': '2026-02-24T10:00:00Z',
+                'quantity': 2.0,
+                'price': 100.0,
+                'fees': 1.0,
+                'taxes': 0.0,
+                'trade_currency': 'EUR',
+                'notes': 'test',
+                'symbol': 'AAPL',
+                'asset_name': 'Apple Inc.',
+            }
+        ]
+
+    def update_transaction(self, transaction_id: int, payload):
+        if transaction_id == 404:
+            raise ValueError('Transazione non trovata')
+        if payload.quantity == 999:
+            raise ValueError('Quantita insufficiente per sell')
+        return {
+            'id': transaction_id,
+            'portfolio_id': 1,
+            'asset_id': 1,
+            'side': 'buy',
+            'trade_at': payload.trade_at or '2026-02-24T10:00:00Z',
+            'quantity': payload.quantity if payload.quantity is not None else 1.0,
+            'price': payload.price if payload.price is not None else 100.0,
+            'fees': payload.fees if payload.fees is not None else 0.0,
+            'taxes': payload.taxes if payload.taxes is not None else 0.0,
+            'trade_currency': 'EUR',
+            'notes': payload.notes,
+        }
+
+    def delete_transaction(self, transaction_id: int):
+        if transaction_id == 404:
+            raise ValueError('Transazione non trovata')
+        return None
+
 
 class _FailPricingService:
     def refresh_prices(self, portfolio_id=None):
@@ -108,3 +151,59 @@ def test_idempotency_refresh_returns_cached(monkeypatch):
     payload = response.json()
     assert payload['requested_assets'] == 1
     assert payload['refreshed_assets'] == 1
+
+
+def test_list_transactions_route(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/portfolios/1/transactions')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]['id'] == 10
+    assert payload[0]['symbol'] == 'AAPL'
+
+
+def test_patch_transaction_route_not_found(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    client = TestClient(api_main.app)
+
+    response = client.patch('/api/transactions/404', json={'price': 123.45})
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload['error']['code'] == 'not_found'
+
+
+def test_patch_transaction_route_bad_request(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    client = TestClient(api_main.app)
+
+    response = client.patch('/api/transactions/1', json={'quantity': 999})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'
+
+
+def test_delete_transaction_route_not_found(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    client = TestClient(api_main.app)
+
+    response = client.delete('/api/transactions/404')
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload['error']['code'] == 'not_found'
+
+
+def test_delete_transaction_route_ok(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    client = TestClient(api_main.app)
+
+    response = client.delete('/api/transactions/1')
+
+    assert response.status_code == 200
+    assert response.json() == {'status': 'ok'}

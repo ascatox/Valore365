@@ -12,6 +12,8 @@ export interface Portfolio {
   name: string;
   base_currency: string;
   timezone: string;
+  target_notional: number | null;
+  cash_balance: number;
   created_at: string;
 }
 
@@ -19,12 +21,16 @@ export interface PortfolioCreateInput {
   name: string;
   base_currency: string;
   timezone: string;
+  target_notional?: number | null;
+  cash_balance?: number;
 }
 
 export interface PortfolioUpdateInput {
   name?: string;
   base_currency?: string;
   timezone?: string;
+  target_notional?: number | null;
+  cash_balance?: number;
 }
 
 export interface PortfolioSummary {
@@ -36,6 +42,7 @@ export interface PortfolioSummary {
   unrealized_pl_pct: number;
   day_change: number;
   day_change_pct: number;
+  cash_balance: number;
 }
 
 export interface Position {
@@ -122,6 +129,27 @@ export interface PortfolioTargetAssetPerformanceResponse {
   portfolio_id: number;
   points_count: number;
   assets: PortfolioTargetAssetPerformanceSeries[];
+}
+
+export interface PortfolioTargetAssetIntradayPerformancePoint {
+  ts: string;
+  weighted_index: number;
+}
+
+export interface PortfolioTargetAssetIntradayPerformanceSeries {
+  asset_id: number;
+  symbol: string;
+  name: string;
+  weight_pct: number;
+  return_pct: number;
+  as_of: string | null;
+  points: PortfolioTargetAssetIntradayPerformancePoint[];
+}
+
+export interface PortfolioTargetAssetIntradayPerformanceResponse {
+  portfolio_id: number;
+  date: string;
+  assets: PortfolioTargetAssetIntradayPerformanceSeries[];
 }
 
 export interface PriceRefreshResponse {
@@ -214,6 +242,15 @@ export interface AssetEnsureResponse {
   created: boolean;
 }
 
+export interface AssetLatestQuoteResponse {
+  asset_id: number;
+  symbol: string;
+  provider: string;
+  provider_symbol: string;
+  price: number;
+  ts: string;
+}
+
 export interface TransactionCreateInput {
   portfolio_id: number;
   asset_id: number;
@@ -229,6 +266,20 @@ export interface TransactionCreateInput {
 
 export interface TransactionRead extends TransactionCreateInput {
   id: number;
+}
+
+export interface TransactionListItem extends TransactionRead {
+  symbol: string;
+  asset_name?: string | null;
+}
+
+export interface TransactionUpdateInput {
+  trade_at?: string;
+  quantity?: number;
+  price?: number;
+  fees?: number;
+  taxes?: number;
+  notes?: string | null;
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
@@ -316,6 +367,15 @@ export const getPortfolioTargetAssetPerformance = async (
   portfolioId: number,
 ): Promise<PortfolioTargetAssetPerformanceResponse> => {
   return apiFetch<PortfolioTargetAssetPerformanceResponse>(`/portfolios/${portfolioId}/target-performance/assets`);
+};
+
+export const getPortfolioTargetAssetIntradayPerformance = async (
+  portfolioId: number,
+  date: string,
+): Promise<PortfolioTargetAssetIntradayPerformanceResponse> => {
+  return apiFetch<PortfolioTargetAssetIntradayPerformanceResponse>(
+    `/portfolios/${portfolioId}/target-performance/assets/intraday?date=${encodeURIComponent(date)}`,
+  );
 };
 
 export const refreshPortfolioPrices = async (
@@ -406,9 +466,33 @@ export const ensureAsset = async (payload: AssetEnsureInput): Promise<AssetEnsur
   });
 };
 
+export const getAssetLatestQuote = async (assetId: number): Promise<AssetLatestQuoteResponse> => {
+  return apiFetch<AssetLatestQuoteResponse>(`/assets/${assetId}/latest-quote`);
+};
+
 export const createTransaction = async (payload: TransactionCreateInput): Promise<TransactionRead> => {
   return apiFetch<TransactionRead>('/transactions', {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+};
+
+export const getPortfolioTransactions = async (portfolioId: number): Promise<TransactionListItem[]> => {
+  return apiFetch<TransactionListItem[]>(`/portfolios/${portfolioId}/transactions`);
+};
+
+export const updateTransaction = async (
+  transactionId: number,
+  payload: TransactionUpdateInput,
+): Promise<TransactionRead> => {
+  return apiFetch<TransactionRead>(`/transactions/${transactionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deleteTransaction = async (transactionId: number): Promise<{ status: string }> => {
+  return apiFetch<{ status: string }>(`/transactions/${transactionId}`, {
+    method: 'DELETE',
   });
 };

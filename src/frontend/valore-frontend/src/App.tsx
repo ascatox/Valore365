@@ -1,8 +1,8 @@
+import { useState } from 'react';
 import {
   AppShell,
   Burger,
   Group,
-  Switch,
   ActionIcon,
   Button,
   NavLink,
@@ -11,7 +11,16 @@ import {
   Title,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconSun, IconMoon, IconRefresh, IconLayoutDashboard, IconBriefcase, IconSettings } from '@tabler/icons-react';
+import {
+  IconSun,
+  IconMoon,
+  IconRefresh,
+  IconLayoutDashboard,
+  IconBriefcase,
+  IconSettings,
+  IconChevronsLeft,
+  IconChevronsRight,
+} from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { PortfolioPage } from './pages/Portfolio.page.tsx';
 import { DashboardPage } from './pages/Dashboard.page.tsx';
@@ -19,6 +28,7 @@ import { SettingsPage } from './pages/Settings.page.tsx';
 
 function App() {
   const [opened, { toggle }] = useDisclosure();
+  const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const handleGlobalRefresh = () => {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
@@ -28,17 +38,25 @@ function App() {
     <BrowserRouter>
       <AppShell
         header={{ height: 60 }}
-        navbar={{ width: 250, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+        navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: !opened } }}
         padding="md"
       >
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between">
             <Group>
               <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+              <ActionIcon
+                visibleFrom="sm"
+                variant="default"
+                size="lg"
+                aria-label={navbarExpanded ? 'Comprimi menu laterale' : 'Espandi menu laterale'}
+                onClick={() => setNavbarExpanded((v) => !v)}
+              >
+                {navbarExpanded ? <IconChevronsLeft size={18} /> : <IconChevronsRight size={18} />}
+              </ActionIcon>
               <Title order={3}>Valore365</Title>
             </Group>
             <Group>
-              <Switch label="Privacy Mode" offLabel="OFF" onLabel="ON" />
               <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Toggle color scheme">
                 {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
               </ActionIcon>
@@ -53,20 +71,23 @@ function App() {
           <NavLink
               component={Link}
               to="/"
-              label="Dashboard"
+              label={navbarExpanded ? 'Dashboard' : undefined}
               leftSection={<IconLayoutDashboard size={16} />}
+              aria-label="Dashboard"
           />
           <NavLink
               component={Link}
               to="/portfolio"
-              label="Portfolio"
+              label={navbarExpanded ? 'Portfolio' : undefined}
               leftSection={<IconBriefcase size={16} />}
+              aria-label="Portfolio"
           />
           <NavLink
               component={Link}
               to="/settings"
-              label="Settings"
+              label={navbarExpanded ? 'Settings' : undefined}
               leftSection={<IconSettings size={16} />}
+              aria-label="Settings"
           />
         </AppShell.Navbar>
 

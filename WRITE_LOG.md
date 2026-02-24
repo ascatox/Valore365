@@ -930,3 +930,32 @@ ode_modules, dist e .env dal versionamento.
 - Motivo: tracciamento operazioni di scrittura
 - Dettagli: registrate le modifiche di refactor FE con estrazione componenti atomici e sezioni dashboard fuori da App.tsx.
 
+
+## 2026-02-24 Smoke Test MVP (Checklist Manuale)
+- Prerequisiti: DB PostgreSQL attivo, backend FastAPI avviato, frontend avviato.
+- Seleziona o crea un portfolio dalla pagina `Portfolio`.
+- Clicca `Nuova Transazione`.
+- Cerca un asset con discover (es. `AAPL`), selezionalo e salva un `BUY`.
+- Inserisci un secondo `BUY` sullo stesso asset con prezzo diverso.
+- Inserisci un `SELL` con quantita inferiore alla posizione aperta.
+- Verifica in `Portfolio`: storico con 3 righe ordinate per data desc.
+- Verifica in `Portfolio`: delete rimuove una riga e aggiorna la tabella.
+- Verifica in `Portfolio`: modifica aggiorna quantita/prezzo/note della riga.
+- Verifica in `Dashboard`: sezione `Portfolio Tracker (MVP)` con KPI valorizzati.
+- Verifica in `Dashboard`: tabella posizioni con almeno una posizione e P/L coerente.
+- Verifica in `Dashboard`: tabella allocazione reale con pesi > 0.
+- Caso errore: modifica una `SELL` con quantita eccessiva e verifica messaggio `Quantita insufficiente per sell`.
+- Note esecuzione: annotare bug residui, endpoint coinvolti, screenshot se utili.
+
+## 2026-02-24 Smoke Test MVP (Esito Eseguito)
+- Stack dev avviato con `docker compose --profile dev up --build -d`.
+- Servizi verificati attivi: `valore365-db`, `valore365-api-dev`, `valore365-frontend`.
+- Health backend verificato: `GET /api/health` -> `{"status":"ok"}`.
+- Frontend verificato raggiungibile su `http://localhost:8080` (HTTP 200).
+- Creato portfolio smoke test: `id=7` (`Smoke Portfolio 20260224`).
+- Creato asset locale smoke test: `SMKTEST26` (`id=19`).
+- Create transazioni eseguite: `BUY`, `BUY`, `SELL` (OK).
+- Verifiche endpoint OK: `GET /portfolios/7/transactions`, `positions`, `summary`, `allocation`.
+- Verificato `PATCH /transactions/{id}` (OK) e caso errore `sell` eccessiva -> `400 bad_request` con messaggio corretto.
+- Verificato `DELETE /transactions/{id}` (OK) con ricalcolo corretto di storico/posizioni/summary/allocation.
+- Stato finale portfolio smoke: 2 transazioni, posizione residua `7`, `avg_cost=100.1`, `market_value=700.7`, allocazione `100%`.

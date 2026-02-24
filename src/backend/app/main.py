@@ -17,6 +17,7 @@ from .finance_client import TwelveDataClient
 from .historical_service import HistoricalIngestionService
 from .models import (
     AllocationItem,
+    AssetLatestQuoteResponse,
     AssetCreate,
     AssetDiscoverItem,
     AssetDiscoverResponse,
@@ -33,6 +34,7 @@ from .models import (
     PortfolioUpdate,
     PortfolioTargetAllocationItem,
     PortfolioTargetAssetPerformanceResponse,
+    PortfolioTargetAssetIntradayPerformanceResponse,
     PortfolioTargetIntradayResponse,
     PortfolioTargetPerformanceResponse,
     PortfolioTargetAllocationUpsert,
@@ -40,7 +42,9 @@ from .models import (
     PriceRefreshResponse,
     TimeSeriesPoint,
     TransactionCreate,
+    TransactionListItem,
     TransactionRead,
+    TransactionUpdate,
 )
 from .pricing_service import PriceIngestionService
 from .repository import PortfolioRepository
@@ -310,12 +314,58 @@ def create_asset_provider_symbol(
         raise AppError(code="bad_request", message=message, status_code=400) from exc
 
 
+@router.get(
+    "/portfolios/{portfolio_id}/transactions",
+    response_model=list[TransactionListItem],
+    responses={404: {"model": ErrorResponse}},
+)
+def list_transactions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[TransactionListItem]:
+    try:
+        return repo.list_transactions(portfolio_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
 @router.post("/transactions", response_model=TransactionRead, responses={400: {"model": ErrorResponse}})
 def create_transaction(payload: TransactionCreate, _auth: AuthContext = Depends(require_auth)) -> TransactionRead:
     try:
         return repo.create_transaction(payload)
     except ValueError as exc:
         raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
+
+
+@router.patch(
+    "/transactions/{transaction_id}",
+    response_model=TransactionRead,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def update_transaction(
+    transaction_id: int,
+    payload: TransactionUpdate,
+    _auth: AuthContext = Depends(require_auth),
+) -> TransactionRead:
+    try:
+        return repo.update_transaction(transaction_id, payload)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovata" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.delete(
+    "/transactions/{transaction_id}",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def delete_transaction(transaction_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+    try:
+        repo.delete_transaction(transaction_id)
+        return {"status": "ok"}
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovata" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
 
 
 @router.post("/prices/refresh", response_model=PriceRefreshResponse, responses={400: {"model": ErrorResponse}})
@@ -440,6 +490,22 @@ def get_target_asset_performance(
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
 
+@router.get(
+    "/portfolios/{portfolio_id}/target-performance/assets/intraday",
+    response_model=PortfolioTargetAssetIntradayPerformanceResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+def get_target_asset_intraday_performance(
+    portfolio_id: int,
+    date: date,
+    _auth: AuthContext = Depends(require_auth),
+) -> PortfolioTargetAssetIntradayPerformanceResponse:
+    try:
+        return repo.get_portfolio_target_asset_intraday_performance(portfolio_id, date)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
 @router.post(
     "/portfolios/{portfolio_id}/target-allocation",
     response_model=PortfolioTargetAllocationItem,
@@ -509,6 +575,30 @@ def search_symbols(
 ) -> dict[str, list[dict[str, str]]]:
     symbols_list = finance_client.search_symbols(q)
     return {"symbols": [asdict(s) for s in symbols_list]}
+
+
+@router.get(
+    "/assets/{asset_id}/latest-quote",
+    response_model=AssetLatestQuoteResponse,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetLatestQuoteResponse:
+    try:
+        pricing_asset = repo.get_asset_pricing_symbol(asset_id)
+        quote = finance_client.get_quote(pricing_asset.provider_symbol)
+        return AssetLatestQuoteResponse(
+            asset_id=pricing_asset.asset_id,
+            symbol=pricing_asset.symbol,
+            provider="twelvedata",
+            provider_symbol=pricing_asset.provider_symbol,
+            price=quote.price,
+            ts=quote.ts,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status = 404 if "asset non trovato" in message.lower() else 400
+        code = "not_found" if status == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status) from exc
 
 
 app.include_router(router, prefix="/api")

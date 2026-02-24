@@ -10,6 +10,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/migrations
+    networks:
+      - valore365-network
   api-dev:
       profiles: ["dev"]
       build:
@@ -30,6 +33,8 @@ services:
       volumes:
         - ./src/backend/app:/app/app
       command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      networks:
+        - valore365-network
 
   api-prod:
       profiles: ["prod"]
@@ -49,6 +54,8 @@ services:
         PRICE_SCHEDULER_INTERVAL_SECONDS: "60"
       ports:
         - "8000:8000"
+      networks:
+        - valore365-network
   frontend:
     profiles: ["dev"]
     build:
@@ -57,5 +64,9 @@ services:
     container_name: valore365-frontend
     ports:
       - "8080:80"
+    networks:
+      - valore365-network
 volumes:
   postgres_data: {}
+networks:
+  valore365-network:

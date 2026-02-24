@@ -3,6 +3,7 @@ create table portfolios (
   name text not null default 'Valore365 Portfolio',
   base_currency char(3) not null,
   timezone text not null default 'Europe/Rome',
+  target_notional numeric(28,10),
   created_at timestamptz not null default now()
 );
 
