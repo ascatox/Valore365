@@ -53,7 +53,7 @@ export function TargetAllocationSection({
 
       <Card withBorder mb="lg">
         <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
-          <Title order={4}>Target Allocation</Title>
+          <Title order={4}>Allocazione target</Title>
           <Button leftSection={<IconPlus size={16} />} variant="light" onClick={onOpenAddAssetWeight} disabled={!selectedPortfolioId}>
             Aggiungi Asset / Peso
           </Button>

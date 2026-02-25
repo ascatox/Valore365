@@ -141,6 +141,8 @@ export function PortfolioPage() {
     });
   };
 
+  const formatTransactionSideLabel = (side: 'buy' | 'sell') => (side === 'buy' ? 'Acquisto' : 'Vendita');
+
   const currentDateTimeLocalValue = () => {
     const now = new Date();
     const pad = (v: number) => String(v).padStart(2, '0');
@@ -705,7 +707,7 @@ export function PortfolioPage() {
 
   const openDeleteTransactionModal = (tx: TransactionListItem) => {
     setTransactionIdToDelete(tx.id);
-    setTransactionLabelToDelete(`${tx.side.toUpperCase()} ${tx.symbol} (${tx.quantity})`);
+    setTransactionLabelToDelete(`${formatTransactionSideLabel(tx.side)} ${tx.symbol} (${tx.quantity})`);
     setTransactionDeleteOpened(true);
   };
 
@@ -727,7 +729,7 @@ export function PortfolioPage() {
   const openEditTransactionModal = (tx: TransactionListItem) => {
     setEditTransactionError(null);
     setEditingTransactionId(tx.id);
-    setEditTransactionLabel(`${tx.symbol} (${tx.side.toUpperCase()})`);
+    setEditTransactionLabel(`${tx.symbol} (${formatTransactionSideLabel(tx.side)})`);
     setEditTradeAt(toLocalDateTimeInput(tx.trade_at));
     setEditQuantity(tx.quantity);
     setEditPrice(tx.price);
@@ -839,7 +841,7 @@ export function PortfolioPage() {
         <Table.Td>{formatDateTime(tx.trade_at)}</Table.Td>
         <Table.Td>
           <Text fw={600} c={tx.side === 'buy' ? 'teal' : 'orange'}>
-            {tx.side.toUpperCase()}
+            {formatTransactionSideLabel(tx.side)}
           </Text>
         </Table.Td>
         <Table.Td>
@@ -933,7 +935,7 @@ export function PortfolioPage() {
           onChange={(value) => setPortfolioView((value as 'transactions' | 'target') ?? 'transactions')}
           data={[
             { value: 'transactions', label: 'Transazioni' },
-            { value: 'target', label: 'Target Allocation' },
+            { value: 'target', label: 'Allocazione target' },
           ]}
         />
         {portfolioView === 'transactions' && (
@@ -1105,8 +1107,8 @@ export function PortfolioPage() {
           <Select
             label="Tipo"
             data={[
-              { value: 'buy', label: 'BUY' },
-              { value: 'sell', label: 'SELL' },
+              { value: 'buy', label: 'Acquisto' },
+              { value: 'sell', label: 'Vendita' },
             ]}
             value={txSide}
             onChange={(value) => setTxSide((value as 'buy' | 'sell') ?? 'buy')}

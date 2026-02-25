@@ -44,8 +44,8 @@ export function TransactionsSection({
           label="Tipo"
           data={[
             { value: 'all', label: 'Tutti' },
-            { value: 'buy', label: 'BUY' },
-            { value: 'sell', label: 'SELL' },
+            { value: 'buy', label: 'Acquisto' },
+            { value: 'sell', label: 'Vendita' },
           ]}
           value={filterSide}
           onChange={(value) => onFilterSideChange(value ?? 'all')}

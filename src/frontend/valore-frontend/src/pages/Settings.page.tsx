@@ -49,7 +49,7 @@ export function SettingsPage() {
                 style={{ maxWidth: 300 }}
               />
               <Switch
-                label="Avvia in Privacy Mode"
+                label="Avvia in modalità privacy"
                 description="Se attivo, i valori monetari saranno offuscati all'avvio."
               />
               <Stack gap="xs">
@@ -63,7 +63,7 @@ export function SettingsPage() {
                       label: (
                         <Center>
                           <IconSun size={16} />
-                          <Box ml="xs">Light</Box>
+                          <Box ml="xs">Chiaro</Box>
                         </Center>
                       ),
                     },
@@ -72,7 +72,7 @@ export function SettingsPage() {
                       label: (
                         <Center>
                           <IconMoon size={16} />
-                          <Box ml="xs">Dark</Box>
+                          <Box ml="xs">Scuro</Box>
                         </Center>
                       ),
                     },
@@ -97,13 +97,13 @@ export function SettingsPage() {
           <Stack>
             <Title order={3}>Impostazioni Fiscali</Title>
             <NumberInput
-              label="Tassa sui Capital Gain (%)"
+              label="Tassa sulle plusvalenze (%)"
               defaultValue={26}
               suffix=" %"
               style={{ maxWidth: 300 }}
             />
             <NumberInput
-              label="Commissioni Broker di Default (€)"
+              label="Commissioni broker predefinite (€)"
               defaultValue={1.99}
               prefix="€ "
               decimalScale={2}
@@ -119,7 +119,7 @@ export function SettingsPage() {
                 <Title order={3}>Sicurezza e Dati</Title>
                 <Paper withBorder p="lg" style={{ borderColor: theme.colors.red[6] }}>
                     <Stack>
-                        <Title order={4} c="red">Danger Zone</Title>
+                        <Title order={4} c="red">Area critica</Title>
                         <Text>Queste azioni sono irreversibili. Procedi con cautela.</Text>
                          <Group justify="flex-start">
                             <Button>Esporta Dati in CSV</Button>

@@ -66,7 +66,7 @@ function App() {
               <Title order={4} hiddenFrom="sm">V365</Title>
             </Group>
             <Group>
-              <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Toggle color scheme">
+              <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
                 {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
               </ActionIcon>
               <ActionIcon variant="default" size="lg" onClick={handleGlobalRefresh} hiddenFrom="sm" aria-label="Aggiorna">
@@ -100,9 +100,9 @@ function App() {
           <NavLink
               component={Link}
               to="/settings"
-              label={navbarExpanded ? 'Settings' : undefined}
+              label={navbarExpanded ? 'Impostazioni' : undefined}
               leftSection={<IconSettings size={16} />}
-              aria-label="Settings"
+              aria-label="Impostazioni"
               onClick={close}
           />
         </AppShell.Navbar>
