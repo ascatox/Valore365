@@ -296,3 +296,24 @@ class DailyBackfillResponse(BaseModel):
     asset_items: list[DailyBackfillItem]
     fx_items: list[FxBackfillItem]
     errors: list[str]
+
+
+class MarketQuoteItem(BaseModel):
+    symbol: str
+    name: str
+    price: float | None = None
+    previous_close: float | None = None
+    change: float | None = None
+    change_pct: float | None = None
+    ts: datetime | None = None
+    error: str | None = None
+
+
+class MarketCategory(BaseModel):
+    category: str
+    label: str
+    items: list[MarketQuoteItem]
+
+
+class MarketQuotesResponse(BaseModel):
+    categories: list[MarketCategory]

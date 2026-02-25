@@ -16,17 +16,19 @@ import {
   Center,
   Box,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop } from '@tabler/icons-react';
 
 export function SettingsPage() {
   const theme = useMantineTheme();
   const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   return (
     <Stack gap={0}>
       <Title order={2} fw={700} mb="md">Impostazioni</Title>
 
-      <Tabs orientation="vertical" defaultValue="general" variant="pills" radius="md">
+      <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} defaultValue="general" variant="pills" radius="md">
         <Tabs.List>
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
           <Tabs.Tab value="tax" leftSection={<IconReceipt size={18} />}>Fiscalità</Tabs.Tab>
@@ -34,7 +36,7 @@ export function SettingsPage() {
         </Tabs.List>
 
         <Tabs.Panel value="general">
-          <Paper withBorder p="lg" radius="md" ml="md">
+          <Paper withBorder p="lg" radius="md" ml={isMobile ? 0 : 'md'} mt={isMobile ? 'md' : 0}>
             <Stack gap="lg">
               <Title order={3}>Impostazioni Generali</Title>
               <Select
@@ -91,7 +93,7 @@ export function SettingsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="tax">
-        <Paper withBorder p="lg" radius="md" ml="md">
+        <Paper withBorder p="lg" radius="md" ml={isMobile ? 0 : 'md'} mt={isMobile ? 'md' : 0}>
           <Stack>
             <Title order={3}>Impostazioni Fiscali</Title>
             <NumberInput
@@ -112,7 +114,7 @@ export function SettingsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="security">
-        <Paper withBorder p="lg" radius="md" ml="md">
+        <Paper withBorder p="lg" radius="md" ml={isMobile ? 0 : 'md'} mt={isMobile ? 'md' : 0}>
             <Stack>
                 <Title order={3}>Sicurezza e Dati</Title>
                 <Paper withBorder p="lg" style={{ borderColor: theme.colors.red[6] }}>

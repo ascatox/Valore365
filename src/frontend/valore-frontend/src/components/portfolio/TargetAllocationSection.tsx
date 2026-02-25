@@ -52,35 +52,37 @@ export function TargetAllocationSection({
       </SimpleGrid>
 
       <Card withBorder mb="lg">
-        <Group justify="space-between" mb="sm">
+        <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
           <Title order={4}>Target Allocation</Title>
           <Button leftSection={<IconPlus size={16} />} variant="light" onClick={onOpenAddAssetWeight} disabled={!selectedPortfolioId}>
             Aggiungi Asset / Peso
           </Button>
         </Group>
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Asset</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Peso Target</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Controvalore Target</Table.Th>
-              <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {hasRows ? (
-              rows
-            ) : (
+        <Table.ScrollContainer minWidth={450}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
               <Table.Tr>
-                <Table.Td colSpan={4}>
-                  <Text c="dimmed" ta="center">
-                    {selectedPortfolioId ? 'Nessun asset assegnato al portafoglio' : 'Nessun portafoglio disponibile'}
-                  </Text>
-                </Table.Td>
+                <Table.Th>Asset</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Peso Target</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Controvalore Target</Table.Th>
+                <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>
               </Table.Tr>
-            )}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {hasRows ? (
+                rows
+              ) : (
+                <Table.Tr>
+                  <Table.Td colSpan={4}>
+                    <Text c="dimmed" ta="center">
+                      {selectedPortfolioId ? 'Nessun asset assegnato al portafoglio' : 'Nessun portafoglio disponibile'}
+                    </Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Card>
     </>
   );

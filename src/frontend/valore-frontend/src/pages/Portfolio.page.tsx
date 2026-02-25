@@ -39,7 +39,7 @@ import {
 } from '../services/api';
 import type { AssetDiscoverItem, Portfolio, PortfolioTargetAllocationItem, TransactionListItem } from '../services/api';
 
-const DASHBOARD_SELECTED_PORTFOLIO_STORAGE_KEY = 'valore365.dashboard.selectedPortfolioId';
+import { STORAGE_KEYS } from '../components/dashboard/constants';
 
 export function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -168,9 +168,9 @@ export function PortfolioPage() {
       const nextSelected = exists ? candidate : (items[0] ? String(items[0].id) : null);
       if (typeof window !== 'undefined') {
         if (nextSelected) {
-          window.localStorage.setItem(DASHBOARD_SELECTED_PORTFOLIO_STORAGE_KEY, nextSelected);
+          window.localStorage.setItem(STORAGE_KEYS.selectedPortfolioId, nextSelected);
         } else {
-          window.localStorage.removeItem(DASHBOARD_SELECTED_PORTFOLIO_STORAGE_KEY);
+          window.localStorage.removeItem(STORAGE_KEYS.selectedPortfolioId);
         }
       }
       return nextSelected;
@@ -846,9 +846,9 @@ export function PortfolioPage() {
           <Text fw={500}>{tx.symbol}</Text>
           {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
         </Table.Td>
-        <Table.Td style={{ textAlign: 'right' }}>{tx.quantity}</Table.Td>
-        <Table.Td style={{ textAlign: 'right' }}>{formatMoney(tx.price, tx.trade_currency)}</Table.Td>
-        <Table.Td style={{ textAlign: 'right' }}>{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{tx.quantity}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{formatMoney(tx.price, tx.trade_currency)}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }}>{formatMoney(total, tx.trade_currency)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }}>
           <ActionIcon
@@ -877,7 +877,7 @@ export function PortfolioPage() {
   return (
     <>
       {/* Header */}
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap" gap="xs">
         <Title order={2} fw={700}>Il Mio Portafoglio</Title>
         <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openCreatePortfolioModal}>
           Nuovo Portfolio
@@ -1064,6 +1064,7 @@ export function PortfolioPage() {
               void handleDiscoverSelection(value);
             }}
             data={discoverOptions}
+            filter={({ options }) => options}
             nothingFoundMessage={discoverQuery.trim() ? 'Nessun risultato' : 'Inizia a digitare'}
             rightSection={discoverLoading || ensuringAsset ? <Loader size="xs" /> : null}
             clearable
@@ -1122,6 +1123,7 @@ export function PortfolioPage() {
               void handleTransactionDiscoverSelection(value);
             }}
             data={txDiscoverOptions}
+            filter={({ options }) => options}
             nothingFoundMessage={txDiscoverQuery.trim() ? 'Nessun risultato' : 'Inizia a digitare'}
             rightSection={txDiscoverLoading || txEnsuringAsset ? <Loader size="xs" /> : null}
             clearable

@@ -66,7 +66,7 @@
         # watch-backend = "npm run watch-backend";
         codex="npm i -g @openai/codex";
         claude="curl -fsSL https://claude.ai/install.sh | bash";
-        path_claude="echo 'export PATH='$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc";
+        #path_claude="echo 'export PATH='$HOME/.local/bin:$PATH' >> ~/.bashrc && source ~/.bashrc";
       };
     };
   };

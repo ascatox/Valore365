@@ -26,9 +26,15 @@ class Settings(BaseSettings):
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""
 
+    cors_allowed_origins: str = "http://localhost:5173"
+
     @property
     def clerk_authorized_parties_list(self) -> list[str]:
         return [value.strip() for value in self.clerk_authorized_parties.split(",") if value.strip()]
+
+    @property
+    def cors_allowed_origins_list(self) -> list[str]:
+        return [v.strip() for v in self.cors_allowed_origins.split(",") if v.strip()]
 
 
 @lru_cache(maxsize=1)

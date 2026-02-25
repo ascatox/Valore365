@@ -1,8 +1,9 @@
 
 import logging
+import time as _time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import Depends, FastAPI, Header, Query, Request, APIRouter
 from fastapi.exceptions import RequestValidationError
@@ -28,6 +29,9 @@ from .models import (
     AssetRead,
     DailyBackfillResponse,
     ErrorResponse,
+    MarketCategory,
+    MarketQuoteItem,
+    MarketQuotesResponse,
     PortfolioCreate,
     PortfolioRead,
     PortfolioSummary,
@@ -72,9 +76,10 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Valore365 API", version="0.6.0", lifespan=lifespan)
 
+cors_origins = ["*"] if settings.app_env == "dev" else settings.cors_allowed_origins_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -566,7 +571,7 @@ def get_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)
 @router.get("/symbols")
 def search_symbols(
     q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)
-) -> dict[str, list[dict[str, str]]]:
+) -> dict[str, list[dict[str, str | None]]]:
     symbols_list = finance_client.search_symbols(q)
     return {"symbols": [asdict(s) for s in symbols_list]}
 
@@ -593,6 +598,82 @@ def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_a
         status = 404 if "asset non trovato" in message.lower() else 400
         code = "not_found" if status == 404 else "bad_request"
         raise AppError(code=code, message=message, status_code=status) from exc
+
+
+MARKET_SYMBOLS: dict[str, dict[str, list[tuple[str, str]]]] = {
+    "indices": {
+        "label": "Indici",
+        "symbols": [
+            ("^GSPC", "S&P 500"),
+            ("^DJI", "Dow Jones"),
+            ("^IXIC", "Nasdaq"),
+            ("^STOXX50E", "Euro Stoxx 50"),
+            ("FTSEMIB.MI", "FTSE MIB"),
+            ("^FTSE", "FTSE 100"),
+            ("^GDAXI", "DAX"),
+            ("^N225", "Nikkei 225"),
+        ],
+    },
+    "commodities": {
+        "label": "Materie Prime",
+        "symbols": [
+            ("GC=F", "Oro"),
+            ("SI=F", "Argento"),
+            ("CL=F", "Petrolio WTI"),
+        ],
+    },
+    "crypto": {
+        "label": "Criptovalute",
+        "symbols": [
+            ("BTC-USD", "Bitcoin"),
+            ("ETH-USD", "Ethereum"),
+            ("SOL-USD", "Solana"),
+        ],
+    },
+}
+
+
+@router.get("/markets/quotes", response_model=MarketQuotesResponse)
+def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuotesResponse:
+    categories: list[MarketCategory] = []
+    delay = settings.finance_symbol_request_delay_seconds
+    first_call = True
+
+    for cat_key, cat_info in MARKET_SYMBOLS.items():
+        items: list[MarketQuoteItem] = []
+        for symbol, name in cat_info["symbols"]:
+            if not first_call and delay > 0:
+                _time.sleep(delay)
+            first_call = False
+
+            try:
+                mq = finance_client.get_market_quote(symbol)
+                change: float | None = None
+                change_pct: float | None = None
+                if mq.price is not None and mq.previous_close is not None and mq.previous_close != 0:
+                    change = mq.price - mq.previous_close
+                    change_pct = (change / mq.previous_close) * 100
+
+                items.append(MarketQuoteItem(
+                    symbol=symbol,
+                    name=name,
+                    price=mq.price,
+                    previous_close=mq.previous_close,
+                    change=round(change, 4) if change is not None else None,
+                    change_pct=round(change_pct, 4) if change_pct is not None else None,
+                    ts=mq.ts,
+                    error=None if mq.price is not None else "Prezzo non disponibile",
+                ))
+            except Exception as exc:
+                items.append(MarketQuoteItem(
+                    symbol=symbol,
+                    name=name,
+                    error=str(exc),
+                ))
+
+        categories.append(MarketCategory(category=cat_key, label=cat_info["label"], items=items))
+
+    return MarketQuotesResponse(categories=categories)
 
 
 app.include_router(router, prefix="/api")

@@ -1,73 +1,86 @@
-# React + TypeScript + Vite
+# Frontend - Valore365
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend SPA `React + Vite + TypeScript + Mantine` per dashboard, gestione portfolio/transazioni e impostazioni.
 
-Currently, two official plugins are available:
+## Stack
+- React 18
+- Vite 5
+- TypeScript
+- Mantine 7
+- Recharts
+- React Router
+- Clerk (opzionale, autenticazione)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Funzionalita implementate
+- Layout applicativo con navbar, refresh globale e toggle tema
+- Dashboard con tab `Panoramica`, `Posizioni`, `Analisi`
+- Selezione portfolio persistita in `localStorage`
+- Refresh dati dashboard via evento globale (`valore365:refresh-dashboard`)
+- Pull-to-refresh su mobile
+- Pagina `Portfolio` con CRUD portfolio, target allocation, gestione asset target (ricerca DB + provider) e CRUD transazioni
+- Pagina `Settings` (UI impostazioni generali/fiscali/sicurezza)
+- Auth opzionale con Clerk (`AuthGuard` + `ClerkTokenBridge`)
 
-## React Compiler
+## Requisiti
+- Node.js 20+ (consigliato)
+- Backend Valore365 disponibile su `http://localhost:8000` in locale
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Avvio locale
+Da `src/frontend/valore-frontend`:
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Apri:
+- `http://localhost:5173`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Il dev server Vite proxya `/api` verso `http://localhost:8000` (vedi `vite.config.ts`).
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Build e lint
+```bash
+npm run build
+npm run lint
 ```
+
+Output build:
+- `dist/`
+
+## Configurazione
+### API backend
+Il client usa `'/api'` come base path (`src/services/api.ts`).
+
+Questo significa:
+- locale: funziona tramite proxy Vite
+- Docker frontend: funziona tramite proxy Nginx (`nginx.conf`)
+- deploy separato frontend/backend: serve un rewrite/proxy `/api` oppure una modifica del client API per usare un URL configurabile
+
+### Clerk (opzionale)
+Variabile supportata:
+- `VITE_CLERK_PUBLISHABLE_KEY`
+
+Comportamento:
+- assente: app senza autenticazione frontend
+- presente: `AuthGuard` forza login e `ClerkTokenBridge` inoltra il bearer token alle chiamate API
+
+## Docker
+Il `Dockerfile`:
+- builda l'app con Vite
+- serve `dist/` con Nginx
+- usa `nginx.conf` con proxy `/api` verso `api-dev:8000`
+
+Build arg supportato:
+- `VITE_CLERK_PUBLISHABLE_KEY` (opzionale)
+
+## Struttura principale
+- `src/App.tsx`: shell, routing, refresh globale
+- `src/main.tsx`: bootstrap Mantine + Clerk provider opzionale
+- `src/services/api.ts`: client API + tipi TypeScript
+- `src/pages/Dashboard.page.tsx`: dashboard e tab analitici
+- `src/pages/Portfolio.page.tsx`: portfolio, target allocation e transazioni
+- `src/pages/Settings.page.tsx`: impostazioni (UI)
+
+## Note operative
+- Il backend deve esporre le route sotto `/api`.
+- Se abiliti Clerk lato frontend, abilita anche il backend per una validazione end-to-end coerente.

@@ -52,6 +52,14 @@ class ProviderSymbol:
     country: str | None
 
 
+@dataclass
+class ProviderMarketQuote:
+    symbol: str
+    price: float | None
+    previous_close: float | None
+    ts: datetime
+
+
 class TwelveDataClient:
     def __init__(
         self,
@@ -106,6 +114,23 @@ class TwelveDataClient:
             volume=_parse_float(payload, ['volume']),
             ts=ts,
         )
+
+    def get_market_quote(self, symbol: str) -> ProviderMarketQuote:
+        try:
+            quote = self.get_quote(symbol)
+            return ProviderMarketQuote(
+                symbol=symbol,
+                price=quote.price,
+                previous_close=None,
+                ts=quote.ts,
+            )
+        except Exception:
+            return ProviderMarketQuote(
+                symbol=symbol,
+                price=None,
+                previous_close=None,
+                ts=datetime.now(UTC),
+            )
 
     def get_daily_bars(
         self,
@@ -429,6 +454,41 @@ class YahooFinanceClient:
             bid=None,
             ask=None,
             volume=None,
+            ts=datetime.now(UTC),
+        )
+
+    def get_market_quote(self, symbol: str) -> ProviderMarketQuote:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        price: float | None = None
+        previous_close: float | None = None
+        try:
+            price = ticker.fast_info.last_price
+            previous_close = ticker.fast_info.previous_close
+        except Exception:
+            pass
+
+        if price is None or not math.isfinite(float(price)):
+            try:
+                hist = ticker.history(period='5d')
+                if not hist.empty:
+                    close_col = hist['Close'].dropna()
+                    if not close_col.empty:
+                        price = float(close_col.iloc[-1])
+                        if len(close_col) >= 2:
+                            previous_close = float(close_col.iloc[-2])
+            except Exception:
+                pass
+
+        if price is not None and not math.isfinite(float(price)):
+            price = None
+        if previous_close is not None and not math.isfinite(float(previous_close)):
+            previous_close = None
+
+        return ProviderMarketQuote(
+            symbol=symbol,
+            price=float(price) if price is not None else None,
+            previous_close=float(previous_close) if previous_close is not None else None,
             ts=datetime.now(UTC),
         )
 

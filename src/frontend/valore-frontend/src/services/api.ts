@@ -1,5 +1,11 @@
 const API_URL = '/api';
 
+type TokenGetter = () => Promise<string | null>;
+let _getToken: TokenGetter = async () => null;
+export function setTokenGetter(fn: TokenGetter): void {
+  _getToken = fn;
+}
+
 export interface ApiErrorPayload {
   error?: {
     code: string;
@@ -283,9 +289,12 @@ export interface TransactionUpdateInput {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await _getToken();
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await fetch(`${API_URL}${path}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...(init?.headers ?? {}),
     },
     ...init,

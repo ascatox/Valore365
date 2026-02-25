@@ -51,33 +51,35 @@ export function TransactionsSection({
           onChange={(value) => onFilterSideChange(value ?? 'all')}
         />
       </Group>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Data</Table.Th>
-            <Table.Th>Tipo</Table.Th>
-            <Table.Th>Asset</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Qta</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Prezzo</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Fee</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Totale</Table.Th>
-            <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {hasRows ? (
-            rows
-          ) : (
+      <Table.ScrollContainer minWidth={600}>
+        <Table striped highlightOnHover>
+          <Table.Thead>
             <Table.Tr>
-              <Table.Td colSpan={8}>
-                <Text c="dimmed" ta="center">
-                  {selectedPortfolioId ? 'Nessuna transazione presente' : 'Seleziona un portafoglio'}
-                </Text>
-              </Table.Td>
+              <Table.Th>Data</Table.Th>
+              <Table.Th>Tipo</Table.Th>
+              <Table.Th>Asset</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }} visibleFrom="sm">Qta</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }} visibleFrom="sm">Prezzo</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }} visibleFrom="md">Fee</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }}>Totale</Table.Th>
+              <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>
             </Table.Tr>
-          )}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {hasRows ? (
+              rows
+            ) : (
+              <Table.Tr>
+                <Table.Td colSpan={8}>
+                  <Text c="dimmed" ta="center">
+                    {selectedPortfolioId ? 'Nessuna transazione presente' : 'Seleziona un portafoglio'}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            )}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
     </Card>
   );
 }
