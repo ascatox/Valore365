@@ -156,7 +156,7 @@ Da root repository:
 docker compose --profile dev up --build
 ```
 
-- Prod-like backend+DB:
+- Prod-like completo (backend + DB + frontend-prod):
 ```bash
 docker compose --profile prod up --build
 ```

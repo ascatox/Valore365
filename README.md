@@ -57,14 +57,15 @@ Da root progetto:
 docker compose --profile dev up --build
 ```
 
-- Solo backend prod-like + DB:
+- Stack prod-like completo (DB + API + frontend):
 ```bash
 docker compose --profile prod up --build
 ```
 
 Note:
 - Il servizio `frontend` è presente solo nel profilo `dev`.
-- Il frontend Docker usa Nginx con proxy `/api -> api-dev:8000`.
+- Il servizio `frontend-prod` è presente nel profilo `prod`.
+- `frontend` usa proxy `/api -> api-dev:8000` e `frontend-prod` usa `/api -> api-prod:8000`.
 
 ## Deploy (beta) consigliato
 Per una beta SaaS, la combinazione più pragmatica con questo codice è:
