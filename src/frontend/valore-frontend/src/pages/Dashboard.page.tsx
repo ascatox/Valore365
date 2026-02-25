@@ -8,16 +8,19 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconChartPie, IconList, IconChartBar } from '@tabler/icons-react';
+import { IconChartPie, IconList, IconChartBar, IconWorld } from '@tabler/icons-react';
 import { useDashboardData } from '../components/dashboard/hooks/useDashboardData';
+import { useMarketData } from '../components/dashboard/hooks/useMarketData';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
 import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
+import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 
 export function DashboardPage() {
   const data = useDashboardData();
+  const marketData = useMarketData();
   const {
     portfolios,
     selectedPortfolioId,
@@ -84,6 +87,9 @@ export function DashboardPage() {
           <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
             Analisi
           </Tabs.Tab>
+          <Tabs.Tab value="mercati" leftSection={<IconWorld size={16} />}>
+            Mercati
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="panoramica">
@@ -96,6 +102,10 @@ export function DashboardPage() {
 
         <Tabs.Panel value="analisi">
           <AnalisiTab data={data} />
+        </Tabs.Panel>
+
+        <Tabs.Panel value="mercati">
+          <MercatiTab marketData={marketData} isActive={activeTab === 'mercati'} />
         </Tabs.Panel>
       </Tabs>
     </div>

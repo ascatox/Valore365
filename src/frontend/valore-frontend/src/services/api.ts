@@ -288,6 +288,27 @@ export interface TransactionUpdateInput {
   notes?: string | null;
 }
 
+export interface MarketQuoteItem {
+  symbol: string;
+  name: string;
+  price: number | null;
+  previous_close: number | null;
+  change: number | null;
+  change_pct: number | null;
+  ts: string | null;
+  error: string | null;
+}
+
+export interface MarketCategory {
+  category: string;
+  label: string;
+  items: MarketQuoteItem[];
+}
+
+export interface MarketQuotesResponse {
+  categories: MarketCategory[];
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await _getToken();
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -504,4 +525,8 @@ export const deleteTransaction = async (transactionId: number): Promise<{ status
   return apiFetch<{ status: string }>(`/transactions/${transactionId}`, {
     method: 'DELETE',
   });
+};
+
+export const getMarketQuotes = async (): Promise<MarketQuotesResponse> => {
+  return apiFetch<MarketQuotesResponse>('/markets/quotes');
 };
