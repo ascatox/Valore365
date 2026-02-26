@@ -1,27 +1,30 @@
 import { IconCoin, IconActivity, IconArrowUpRight, IconChartPie } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { formatMoney, formatPct, formatShortDate, getVariationColor } from '../formatters';
-import type { PortfolioTargetPerformanceResponse, PortfolioTargetAllocationItem, Portfolio, PortfolioSummary } from '../../../services/api';
+import type { PortfolioTargetAllocationItem, Portfolio, PortfolioSummary } from '../../../services/api';
+import type { PerformerItem } from '../types';
 
 interface AnalysisKpiGridProps {
   indexCardStats: { index: number; diffPts: number; diffPct: number } | null;
   totalAssignedWeight: number;
-  targetPerformance: PortfolioTargetPerformanceResponse | null;
   allocation: PortfolioTargetAllocationItem[];
   selectedPortfolio: Portfolio | null;
   portfolioSummary: PortfolioSummary | null;
   currency: string;
+  bestPerformer: PerformerItem | null;
+  worstPerformer: PerformerItem | null;
 }
 
 export function AnalysisKpiGrid({
   indexCardStats,
   totalAssignedWeight,
-  targetPerformance,
   portfolioSummary,
   currency,
+  bestPerformer,
+  worstPerformer,
 }: AnalysisKpiGridProps) {
-  const best = targetPerformance?.best ?? null;
-  const worst = targetPerformance?.worst ?? null;
+  const best = bestPerformer;
+  const worst = worstPerformer;
 
   const items = [
     {

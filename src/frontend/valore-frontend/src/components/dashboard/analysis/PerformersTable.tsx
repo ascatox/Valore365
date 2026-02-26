@@ -24,7 +24,7 @@ export function PerformersTable({ performers }: PerformersTableProps) {
               <Table.Td>
                 <Text size="sm" fw={500}>{item.symbol}</Text>
                 <Text size="xs" c="dimmed">{item.name}</Text>
-                <Text size="xs" c="dimmed">{formatDateTime(item.as_of)}</Text>
+                {item.as_of ? <Text size="xs" c="dimmed">{formatDateTime(item.as_of)}</Text> : null}
               </Table.Td>
               <Table.Td align="right">Indice target</Table.Td>
               <Table.Td align="right">

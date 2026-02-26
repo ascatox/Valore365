@@ -48,17 +48,37 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
     [allocation],
   );
 
-  const performers = useMemo<PerformerItem[]>(() => {
-    const best = targetPerformance?.best;
-    const worst = targetPerformance?.worst;
-    return [best, worst].filter(Boolean).map((p) => ({
-      symbol: p!.symbol,
-      name: p!.name,
-      return_pct: p!.return_pct,
-      as_of: p!.as_of,
-      asset_id: p!.asset_id,
-    }));
-  }, [targetPerformance]);
+  const performerStats = useMemo(() => {
+    const computed = assetMiniCharts
+      .map((asset) => {
+        const values = asset.chart
+          .map((p) => Number(p.value))
+          .filter((v) => Number.isFinite(v));
+        if (values.length < 2) return null;
+        const first = values[0];
+        const last = values[values.length - 1];
+        if (!Number.isFinite(first) || !Number.isFinite(last) || first <= 0) return null;
+        const returnPct = ((last / first) - 1) * 100;
+        return {
+          symbol: asset.symbol,
+          name: asset.name,
+          return_pct: returnPct,
+          as_of: asset.as_of,
+          asset_id: asset.asset_id,
+        } satisfies PerformerItem;
+      })
+      .filter(Boolean) as PerformerItem[];
+
+    if (!computed.length) {
+      return { best: null as PerformerItem | null, worst: null as PerformerItem | null, rows: [] as PerformerItem[] };
+    }
+
+    const sorted = [...computed].sort((a, b) => b.return_pct - a.return_pct);
+    const best = sorted[0] ?? null;
+    const worst = sorted[sorted.length - 1] ?? null;
+    const rows = best && worst && best.asset_id !== worst.asset_id ? [best, worst] : best ? [best] : [];
+    return { best, worst, rows };
+  }, [assetMiniCharts]);
 
   const isIntraday = chartWindow === '1';
   const activeChartData = isIntraday ? mainIntradayChartData : chartData;
@@ -90,11 +110,12 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
       <AnalysisKpiGrid
         indexCardStats={indexCardStats}
         totalAssignedWeight={totalAssignedWeight}
-        targetPerformance={targetPerformance}
         allocation={allocation}
         selectedPortfolio={selectedPortfolio}
         portfolioSummary={portfolioSummary}
         currency={mvpCurrency}
+        bestPerformer={performerStats.best}
+        worstPerformer={performerStats.worst}
       />
 
       <div style={{ marginTop: 16 }}>
@@ -142,7 +163,7 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 7 }}>
           <Card withBorder radius="md" p={0} shadow="sm">
-            <PerformersTable performers={performers} />
+            <PerformersTable performers={performerStats.rows} />
           </Card>
         </Grid.Col>
       </Grid>

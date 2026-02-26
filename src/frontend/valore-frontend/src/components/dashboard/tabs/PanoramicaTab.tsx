@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Alert, Grid, Paper, SegmentedControl, Text } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
@@ -14,6 +15,7 @@ interface PanoramicaTabProps {
 }
 
 export function PanoramicaTab({ data }: PanoramicaTabProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const {
     portfolioSummary,
     portfolioAllocation,
@@ -32,7 +34,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
 
   const kpiItems = useMemo(() => [
     {
-      label: 'Valore Totale',
+      label: isMobile ? 'Valore Tot' : 'Valore Totale',
       value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
       icon: IconCoin,
       iconColor: 'blue' as const,
@@ -52,7 +54,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
       iconColor: 'green' as const,
     },
     {
-      label: 'Var. Giornaliera',
+      label: isMobile ? 'Var. Giorn' : 'Var. Giornaliera',
       value: portfolioSummary
         ? `${formatMoney(portfolioSummary.day_change, mvpCurrency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
         : 'N/D',
@@ -66,7 +68,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
       icon: IconCoin,
       iconColor: 'grape' as const,
     },
-  ], [portfolioSummary, mvpCurrency]);
+  ], [portfolioSummary, mvpCurrency, isMobile]);
 
   const chartStats = mvpTimeseriesStats
     ? [
