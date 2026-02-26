@@ -2,7 +2,7 @@
 
 ## Contesto
 
-Valore365 è un portfolio tracker SaaS (FastAPI + React/Mantine + PostgreSQL) che già gestisce portafogli target con allocazioni, drift analysis e ribilanciamento manuale. L'utente vuole aggiungere un **agente AI conversazionale** (Claude API) che fornisca consigli sia di ribilanciamento che di ottimizzazione del target, accessibile tramite una **chat sidebar** nell'interfaccia.
+Valore365 è un portfolio tracker SaaS (FastAPI + React/Mantine + PostgreSQL) che già gestisce portafogli target con allocazioni, drift analysis e ribilanciamento manuale. L'utente vuole aggiungere un **agente AI conversazionale** accessibile tramite una **chat sidebar** nell'interfaccia, con supporto **multi-provider**: sia **Anthropic (Claude)** che **OpenAI (GPT)**. Il provider viene scelto tramite configurazione env.
 
 ---
 
@@ -30,7 +30,7 @@ build_portfolio_context(repo, portfolio_id, user_id)
 SYSTEM_PROMPT.format(context=portfolio_text)
     │
     ▼
-anthropic.messages.stream(system=..., messages=conversazione)
+LLM provider (Anthropic o OpenAI) .stream(messages=conversazione)
     │
     ▼
 StreamingResponse (SSE text/event-stream)
@@ -64,9 +64,21 @@ File core dell'agente. Contiene:
 - Regole: basarsi solo sui dati forniti, non inventare, specificare che sono suggerimenti non raccomandazioni personalizzate
 - Placeholder `{context}` per i dati portfolio
 
-**`stream_advisor_response(api_key, model, system_prompt, messages) → Generator`:**
-- Usa `anthropic.Anthropic(api_key=...)` (client sync)
-- `client.messages.stream(model=..., max_tokens=2048, system=..., messages=...)`
+**`stream_advisor_response(settings, system_prompt, messages) → Generator`:**
+
+Funzione che seleziona il provider in base a `settings.advisor_provider` e chiama il relativo client:
+
+**Provider Anthropic (`advisor_provider == "anthropic"`):**
+- Usa `anthropic.Anthropic(api_key=settings.anthropic_api_key)` (client sync)
+- `client.messages.stream(model=settings.advisor_model, max_tokens=2048, system=system_prompt, messages=...)`
+- Parsa `text_delta` events dal stream
+
+**Provider OpenAI (`advisor_provider == "openai"`):**
+- Usa `openai.OpenAI(api_key=settings.openai_api_key)` (client sync)
+- `client.chat.completions.create(model=settings.advisor_model, max_tokens=2048, stream=True, messages=[{"role":"system","content":system_prompt}, ...conversazione])`
+- Parsa `chunk.choices[0].delta.content` dal stream
+
+**Output comune (SSE):**
 - Yield chunk SSE formattati: `data: {"type":"text_delta","content":"..."}\n\n`
 - Yield finale: `data: {"type":"done","content":""}\n\n`
 - Gestione errori con yield `data: {"type":"error","content":"..."}\n\n`
@@ -75,10 +87,16 @@ File core dell'agente. Contiene:
 
 Aggiungere alla classe `Settings`:
 ```python
+advisor_provider: str = "anthropic"           # "anthropic" o "openai"
 anthropic_api_key: str = ""
-advisor_model: str = "claude-sonnet-4-20250514"
+openai_api_key: str = ""
+advisor_model: str = ""                       # se vuoto, default automatico per provider
 ```
-Letti da env vars `ANTHROPIC_API_KEY` e `ADVISOR_MODEL`.
+Letti da env vars `ADVISOR_PROVIDER`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `ADVISOR_MODEL`.
+
+**Logica default del modello:** se `advisor_model` è vuoto, il backend usa:
+- `"claude-sonnet-4-20250514"` per provider `anthropic`
+- `"gpt-4o"` per provider `openai`
 
 ### 3. MODIFICA: `src/backend/app/main.py`
 
@@ -86,18 +104,19 @@ Aggiungere 2 endpoint:
 
 **`POST /api/advisor/chat`** → `StreamingResponse(media_type="text/event-stream")`
 - Auth required
-- Se `anthropic_api_key` vuoto → 503
+- Se la API key del provider selezionato è vuota → 503
 - Chiama `build_portfolio_context` → `SYSTEM_PROMPT.format(context=...)` → `stream_advisor_response`
 - Headers: `Cache-Control: no-cache`, `X-Accel-Buffering: no`
 
-**`GET /api/advisor/status`** → `{"available": bool}`
-- Permette al frontend di sapere se l'advisor è configurato
+**`GET /api/advisor/status`** → `{"available": bool, "provider": str}`
+- Permette al frontend di sapere se l'advisor è configurato e quale provider è attivo
 
 ### 4. MODIFICA: `src/backend/requirements.txt`
 
 Aggiungere:
 ```
 anthropic>=0.39.0
+openai>=1.40.0
 ```
 
 ### 5. NUOVO: `src/frontend/valore-frontend/src/components/advisor/AdvisorChat.tsx` (~180 righe)
@@ -130,7 +149,7 @@ Sub-componente per singolo messaggio:
 ### 7. MODIFICA: `src/frontend/valore-frontend/src/services/api.ts`
 
 Aggiungere:
-- Tipi `AdvisorMessage`, `AdvisorStatus`
+- Tipi `AdvisorMessage`, `AdvisorStatus` (con campo `provider`)
 - `getAdvisorStatus(): Promise<AdvisorStatus>`
 - `getAuthToken(): Promise<string | null>` — esporta il token getter per uso diretto in fetch SSE
 
@@ -149,11 +168,28 @@ Aggiungere:
 
 Variabili d'ambiente da aggiungere (`.env`):
 ```
-ANTHROPIC_API_KEY=sk-ant-...        # obbligatorio per attivare l'advisor
-ADVISOR_MODEL=claude-sonnet-4-20250514  # opzionale, default sonnet
+# Provider LLM: "anthropic" o "openai" (default: anthropic)
+ADVISOR_PROVIDER=anthropic
+
+# API keys — serve solo quella del provider scelto
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+
+# Modello — opzionale, usa default per provider se vuoto
+# Anthropic: claude-sonnet-4-20250514 | OpenAI: gpt-4o
+ADVISOR_MODEL=
 ```
 
-Se la API key non è configurata, il bottone advisor non appare nel frontend.
+**Esempi di configurazione:**
+
+| Scenario | `ADVISOR_PROVIDER` | API Key necessaria | `ADVISOR_MODEL` (default) |
+|---|---|---|---|
+| Claude Sonnet | `anthropic` | `ANTHROPIC_API_KEY` | `claude-sonnet-4-20250514` |
+| Claude Opus | `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-4-20250514` |
+| GPT-4o | `openai` | `OPENAI_API_KEY` | `gpt-4o` |
+| GPT-4o mini | `openai` | `OPENAI_API_KEY` | `gpt-4o-mini` |
+
+Se la API key del provider selezionato non è configurata, il bottone advisor non appare nel frontend.
 
 ---
 
@@ -167,8 +203,8 @@ Se la API key non è configurata, il bottone advisor non appare nel frontend.
 
 ## Sequenza di implementazione
 
-1. `requirements.txt` — aggiungere `anthropic`
-2. `config.py` — aggiungere settings
+1. `requirements.txt` — aggiungere `anthropic` e `openai`
+2. `config.py` — aggiungere settings (provider, api keys, model)
 3. `advisor_service.py` — creare file (modelli, context builder, prompt, streaming)
 4. `main.py` — aggiungere 2 route
 5. `api.ts` — aggiungere tipi e funzioni
@@ -176,7 +212,7 @@ Se la API key non è configurata, il bottone advisor non appare nel frontend.
 7. `AdvisorChat.tsx` — creare componente chat
 8. `Dashboard.page.tsx` — integrare bottone e drawer
 
-**Codice nuovo totale stimato: ~400 righe**
+**Codice nuovo totale stimato: ~450 righe**
 
 ---
 
@@ -187,3 +223,4 @@ Se la API key non è configurata, il bottone advisor non appare nel frontend.
 3. **Frontend**: verificare bottone advisor visibile nella dashboard
 4. **Frontend**: aprire drawer, inviare messaggio, verificare risposta streaming
 5. **E2E**: selezionare un portfolio con target allocation, chiedere analisi ribilanciamento, verificare che i dati citati corrispondano ai dati reali del portfolio
+6. **Multi-provider**: testare switch da `ADVISOR_PROVIDER=anthropic` a `openai`, verificare che lo streaming funzioni correttamente con entrambi
