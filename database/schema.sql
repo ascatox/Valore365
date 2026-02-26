@@ -4,8 +4,11 @@ create table portfolios (
   base_currency char(3) not null,
   timezone text not null default 'Europe/Rome',
   target_notional numeric(28,10),
+  owner_user_id varchar(255) not null default 'dev-user',
   created_at timestamptz not null default now()
 );
+
+create index idx_portfolios_owner_user_id on portfolios(owner_user_id);
 
 create table assets (
   id bigserial primary key,
@@ -43,12 +46,14 @@ create table transactions (
   fees numeric(28,10) not null default 0,
   taxes numeric(28,10) not null default 0,
   trade_currency char(3) not null,
-  notes text
+  notes text,
+  owner_user_id varchar(255) not null default 'dev-user'
 );
 
 create index idx_tx_portfolio_time on transactions(portfolio_id, trade_at);
 create index idx_tx_asset_time on transactions(asset_id, trade_at);
 create index idx_tx_portfolio_asset_trade on transactions(portfolio_id, asset_id, trade_at);
+create index idx_transactions_owner_portfolio_trade on transactions(owner_user_id, portfolio_id, trade_at);
 
 create table price_ticks (
   asset_id bigint not null references assets(id) on delete cascade,
@@ -103,9 +108,12 @@ create table api_idempotency_keys (
   idempotency_key varchar(128) not null,
   endpoint text not null,
   response_json jsonb not null,
+  owner_user_id varchar(255) not null default 'dev-user',
   created_at timestamptz not null default now(),
-  primary key (idempotency_key, endpoint)
+  primary key (idempotency_key, endpoint, owner_user_id)
 );
+
+create index idx_api_idempotency_keys_owner on api_idempotency_keys(owner_user_id);
 
 create table app_user_settings (
   user_id varchar(255) primary key,

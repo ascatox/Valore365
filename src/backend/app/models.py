@@ -43,6 +43,15 @@ class PortfolioRead(PortfolioCreate):
     created_at: datetime
 
 
+class PortfolioCloneRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class PortfolioCloneResponse(BaseModel):
+    portfolio: PortfolioRead
+    target_allocations_copied: int = Field(ge=0)
+
+
 class TransactionCreate(BaseModel):
     portfolio_id: int = Field(ge=1)
     asset_id: int = Field(ge=1)

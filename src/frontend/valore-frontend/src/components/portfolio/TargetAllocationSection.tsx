@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Button, Card, Group, SimpleGrid, Table, Text, Title } from '@mantine/core';
+import { Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 
 interface TargetAllocationSectionProps {
@@ -9,6 +9,7 @@ interface TargetAllocationSectionProps {
   assignedTargetValueLabel: string | null;
   selectedPortfolioId: string | null;
   rows: ReactNode;
+  mobileCards?: ReactNode;
   hasRows: boolean;
   onOpenAddAssetWeight: () => void;
   showActions?: boolean;
@@ -21,6 +22,7 @@ export function TargetAllocationSection({
   assignedTargetValueLabel,
   selectedPortfolioId,
   rows,
+  mobileCards,
   hasRows,
   onOpenAddAssetWeight,
   showActions = true,
@@ -62,7 +64,19 @@ export function TargetAllocationSection({
             </Button>
           )}
         </Group>
-        <Table.ScrollContainer minWidth={450}>
+        <Stack gap="sm" hiddenFrom="sm">
+          {hasRows ? (
+            mobileCards
+          ) : (
+            <Card withBorder>
+              <Text c="dimmed" ta="center">
+                {selectedPortfolioId ? 'Nessun asset assegnato al portafoglio' : 'Nessun portafoglio disponibile'}
+              </Text>
+            </Card>
+          )}
+        </Stack>
+
+        <Table.ScrollContainer minWidth={450} visibleFrom="sm">
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>

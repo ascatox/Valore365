@@ -48,6 +48,15 @@ export interface PortfolioUpdateInput {
   cash_balance?: number;
 }
 
+export interface PortfolioCloneInput {
+  name?: string | null;
+}
+
+export interface PortfolioCloneResponse {
+  portfolio: Portfolio;
+  target_allocations_copied: number;
+}
+
 export interface PortfolioSummary {
   portfolio_id: number;
   base_currency: string;
@@ -420,6 +429,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await _getToken();
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const response = await fetch(`${API_URL}${path}`, {
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       ...authHeaders,
@@ -447,9 +457,12 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const getAdminPortfolios = async (): Promise<Portfolio[]> => {
-  return apiFetch<Portfolio[]>('/admin/portfolios');
+export const getPortfolios = async (): Promise<Portfolio[]> => {
+  return apiFetch<Portfolio[]>('/portfolios');
 };
+
+/** @deprecated Use getPortfolios instead */
+export const getAdminPortfolios = getPortfolios;
 
 export const getUserSettings = async (): Promise<UserSettings> => {
   return apiFetch<UserSettings>('/settings/user');
@@ -479,6 +492,13 @@ export const updatePortfolio = async (portfolioId: number, payload: PortfolioUpd
 export const deletePortfolio = async (portfolioId: number): Promise<{ status: string }> => {
   return apiFetch<{ status: string }>(`/portfolios/${portfolioId}`, {
     method: 'DELETE',
+  });
+};
+
+export const clonePortfolio = async (portfolioId: number, payload: PortfolioCloneInput): Promise<PortfolioCloneResponse> => {
+  return apiFetch<PortfolioCloneResponse>(`/portfolios/${portfolioId}/clone`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 };
 

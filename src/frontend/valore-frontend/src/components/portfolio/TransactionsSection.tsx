@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Card, Group, Loader, Select, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core';
+import { Card, Group, Loader, Select, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core';
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
 
 interface TransactionsSectionProps {
@@ -13,6 +13,7 @@ interface TransactionsSectionProps {
   sortDir: string;
   onSortDirChange: (value: string) => void;
   rows: ReactNode;
+  mobileCards?: ReactNode;
   hasRows: boolean;
   selectedPortfolioId: string | null;
   showActions?: boolean;
@@ -34,6 +35,7 @@ export function TransactionsSection({
   sortDir,
   onSortDirChange,
   rows,
+  mobileCards,
   hasRows,
   selectedPortfolioId,
   showActions = true,
@@ -59,7 +61,7 @@ export function TransactionsSection({
           </Group>
         )}
       </Group>
-      <Group mb="sm" grow>
+      <Group mb="sm" grow visibleFrom="sm">
         <TextInput
           label="Filtro testo"
           placeholder="Ticker, nome asset, note"
@@ -97,7 +99,19 @@ export function TransactionsSection({
           onChange={(value) => onSortDirChange(value ?? 'desc')}
         />
       </Group>
-      <Table.ScrollContainer minWidth={600}>
+      <Stack gap="sm" hiddenFrom="sm">
+        {hasRows ? (
+          mobileCards
+        ) : (
+          <Card withBorder>
+            <Text c="dimmed" ta="center">
+              {selectedPortfolioId ? 'Nessuna transazione presente' : 'Seleziona un portafoglio'}
+            </Text>
+          </Card>
+        )}
+      </Stack>
+
+      <Table.ScrollContainer minWidth={600} visibleFrom="sm">
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
@@ -123,7 +137,7 @@ export function TransactionsSection({
             {hasRows ? (
               rows
             ) : (
-                <Table.Tr>
+              <Table.Tr>
                 <Table.Td colSpan={showActions ? 8 : 7}>
                   <Text c="dimmed" ta="center">
                     {selectedPortfolioId ? 'Nessuna transazione presente' : 'Seleziona un portafoglio'}

@@ -6,6 +6,7 @@ import {
   Select,
   Switch,
   NumberInput,
+  TextInput,
   Text,
   Button,
   Title,
@@ -28,10 +29,16 @@ export function SettingsPage() {
   const { colorScheme, setColorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [brokerDefaultFee, setBrokerDefaultFee] = useState<number | string>(1.99);
+  const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
+
+    if (typeof window !== 'undefined') {
+      const rawPrivacy = window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled);
+      setPrivacyModeEnabled(rawPrivacy === 'true');
+    }
 
     getUserSettings()
       .then((settings) => {
@@ -58,6 +65,13 @@ export function SettingsPage() {
       active = false;
     };
   }, []);
+
+  const handlePrivacyModeChange = (checked: boolean) => {
+    setPrivacyModeEnabled(checked);
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, String(checked));
+    }
+  };
 
   const handleSaveTaxSettings = () => {
     const fee = typeof brokerDefaultFee === 'number' ? brokerDefaultFee : Number(brokerDefaultFee);
@@ -106,6 +120,8 @@ export function SettingsPage() {
               <Switch
                 label="Avvia in modalità privacy"
                 description="Se attivo, i valori monetari saranno offuscati all'avvio."
+                checked={privacyModeEnabled}
+                onChange={(event) => handlePrivacyModeChange(event.currentTarget.checked)}
               />
               <Stack gap="xs">
                 <Text fw={500} size="sm">Aspetto dell'Applicazione</Text>
@@ -152,23 +168,42 @@ export function SettingsPage() {
           <Stack>
             <Title order={3}>Impostazioni Fiscali</Title>
             {settingsSavedMessage && <Alert color={settingsSavedMessage.includes('non valide') ? 'red' : 'teal'}>{settingsSavedMessage}</Alert>}
-            <NumberInput
-              label="Tassa sulle plusvalenze (%)"
-              defaultValue={26}
-              suffix=" %"
-              style={{ maxWidth: 300 }}
-            />
-            <NumberInput
-              label="Commissioni broker predefinite (€)"
-              value={brokerDefaultFee}
-              onChange={(value) => {
-                setBrokerDefaultFee(value);
-                if (settingsSavedMessage) setSettingsSavedMessage(null);
-              }}
-              prefix="€ "
-              decimalScale={2}
-              style={{ maxWidth: 300 }}
-            />
+            {privacyModeEnabled ? (
+              <>
+                <TextInput
+                  label="Tassa sulle plusvalenze (%)"
+                  value="******"
+                  readOnly
+                  style={{ maxWidth: 300 }}
+                />
+                <TextInput
+                  label="Commissioni broker predefinite (€)"
+                  value="******"
+                  readOnly
+                  style={{ maxWidth: 300 }}
+                />
+              </>
+            ) : (
+              <>
+                <NumberInput
+                  label="Tassa sulle plusvalenze (%)"
+                  defaultValue={26}
+                  suffix=" %"
+                  style={{ maxWidth: 300 }}
+                />
+                <NumberInput
+                  label="Commissioni broker predefinite (€)"
+                  value={brokerDefaultFee}
+                  onChange={(value) => {
+                    setBrokerDefaultFee(value);
+                    if (settingsSavedMessage) setSettingsSavedMessage(null);
+                  }}
+                  prefix="€ "
+                  decimalScale={2}
+                  style={{ maxWidth: 300 }}
+                />
+              </>
+            )}
             <Group justify="flex-start">
               <Button onClick={handleSaveTaxSettings}>Salva impostazioni fiscali</Button>
             </Group>

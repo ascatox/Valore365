@@ -16,4 +16,5 @@ export const STORAGE_KEYS = {
   chartWindow: 'valore365.dashboard.chartWindow',
   activeTab: 'valore365.dashboard.activeTab',
   brokerDefaultFee: 'valore365.settings.brokerDefaultFee',
+  privacyModeEnabled: 'valore365.settings.privacyModeEnabled',
 } as const;

@@ -14,6 +14,8 @@ from .models import (
     AssetProviderSymbolRead,
     AssetRead,
     PortfolioCreate,
+    PortfolioCloneRequest,
+    PortfolioCloneResponse,
     PortfolioRead,
     PortfolioUpdate,
     PortfolioSummary,
@@ -117,9 +119,9 @@ class PortfolioRepository:
             )
         return self.get_user_settings(normalized_user_id)
 
-    def list_portfolio_target_allocations(self, portfolio_id: int) -> list[PortfolioTargetAllocationItem]:
+    def list_portfolio_target_allocations(self, portfolio_id: int, user_id: str) -> list[PortfolioTargetAllocationItem]:
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
 
             rows = conn.execute(
@@ -149,10 +151,10 @@ class PortfolioRepository:
         ]
 
     def upsert_portfolio_target_allocation(
-        self, portfolio_id: int, payload: PortfolioTargetAllocationUpsert
+        self, portfolio_id: int, payload: PortfolioTargetAllocationUpsert, user_id: str
     ) -> PortfolioTargetAllocationItem:
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
             if not self._asset_exists(conn, payload.asset_id):
                 raise ValueError("Asset non trovato")
@@ -160,8 +162,8 @@ class PortfolioRepository:
             conn.execute(
                 text(
                     """
-                    insert into portfolio_target_allocations (portfolio_id, asset_id, weight_pct)
-                    values (:portfolio_id, :asset_id, :weight_pct)
+                    insert into portfolio_target_allocations (portfolio_id, asset_id, weight_pct, owner_user_id)
+                    values (:portfolio_id, :asset_id, :weight_pct, :owner_user_id)
                     on conflict (portfolio_id, asset_id)
                     do update set
                       weight_pct = excluded.weight_pct,
@@ -172,35 +174,36 @@ class PortfolioRepository:
                     "portfolio_id": portfolio_id,
                     "asset_id": payload.asset_id,
                     "weight_pct": payload.weight_pct,
+                    "owner_user_id": user_id,
                 },
             )
 
-        items = self.list_portfolio_target_allocations(portfolio_id)
+        items = self.list_portfolio_target_allocations(portfolio_id, user_id)
         for item in items:
             if item.asset_id == payload.asset_id:
                 return item
         raise ValueError("Impossibile salvare allocazione target")
 
-    def delete_portfolio_target_allocation(self, portfolio_id: int, asset_id: int) -> None:
+    def delete_portfolio_target_allocation(self, portfolio_id: int, asset_id: int, user_id: str) -> None:
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
             conn.execute(
                 text(
                     """
                     delete from portfolio_target_allocations
-                    where portfolio_id = :portfolio_id and asset_id = :asset_id
+                    where portfolio_id = :portfolio_id and asset_id = :asset_id and owner_user_id = :owner_user_id
                     """
                 ),
-                {"portfolio_id": portfolio_id, "asset_id": asset_id},
+                {"portfolio_id": portfolio_id, "asset_id": asset_id, "owner_user_id": user_id},
             )
 
-    def get_portfolio_target_performance(self, portfolio_id: int) -> PortfolioTargetPerformanceResponse:
+    def get_portfolio_target_performance(self, portfolio_id: int, user_id: str) -> PortfolioTargetPerformanceResponse:
         end_date = date.today()
         start_date = end_date - timedelta(days=364)
 
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
 
             alloc_rows = conn.execute(
@@ -354,12 +357,12 @@ class PortfolioRepository:
             worst=worst,
         )
 
-    def get_portfolio_target_intraday_performance(self, portfolio_id: int, day: date) -> PortfolioTargetIntradayResponse:
+    def get_portfolio_target_intraday_performance(self, portfolio_id: int, day: date, user_id: str) -> PortfolioTargetIntradayResponse:
         day_start = datetime.combine(day, time.min)
         day_end = day_start + timedelta(days=1)
 
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
 
             alloc_rows = conn.execute(
@@ -445,12 +448,12 @@ class PortfolioRepository:
 
         return PortfolioTargetIntradayResponse(portfolio_id=portfolio_id, date=day.isoformat(), points=points)
 
-    def get_portfolio_target_asset_performance(self, portfolio_id: int) -> PortfolioTargetAssetPerformanceResponse:
+    def get_portfolio_target_asset_performance(self, portfolio_id: int, user_id: str) -> PortfolioTargetAssetPerformanceResponse:
         end_date = date.today()
         start_date = end_date - timedelta(days=364)
 
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
 
             alloc_rows = conn.execute(
@@ -581,13 +584,13 @@ class PortfolioRepository:
         )
 
     def get_portfolio_target_asset_intraday_performance(
-        self, portfolio_id: int, day: date
+        self, portfolio_id: int, day: date, user_id: str
     ) -> PortfolioTargetAssetIntradayPerformanceResponse:
         day_start = datetime.combine(day, time.min)
         day_end = day_start + timedelta(days=1)
 
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
 
             alloc_rows = conn.execute(
@@ -674,16 +677,18 @@ class PortfolioRepository:
             assets=assets_out,
         )
 
-    def list_portfolios(self) -> list[PortfolioRead]:
+    def list_portfolios(self, user_id: str) -> list[PortfolioRead]:
         with self.engine.begin() as conn:
             rows = conn.execute(
                 text(
                     """
                     select id, name, base_currency, timezone, target_notional, cash_balance, created_at
                     from portfolios
+                    where owner_user_id = :user_id
                     order by created_at desc, id desc
                     """
-                )
+                ),
+                {"user_id": user_id},
             ).mappings().all()
 
         return [
@@ -699,7 +704,7 @@ class PortfolioRepository:
             for row in rows
         ]
 
-    def create_portfolio(self, payload: PortfolioCreate) -> PortfolioRead:
+    def create_portfolio(self, payload: PortfolioCreate, user_id: str) -> PortfolioRead:
         name = payload.name.strip()
         base_currency = payload.base_currency.strip().upper()
         timezone = payload.timezone.strip()
@@ -715,8 +720,8 @@ class PortfolioRepository:
             row = conn.execute(
                 text(
                     """
-                    insert into portfolios (name, base_currency, timezone, target_notional, cash_balance)
-                    values (:name, :base_currency, :timezone, :target_notional, :cash_balance)
+                    insert into portfolios (name, base_currency, timezone, target_notional, cash_balance, owner_user_id)
+                    values (:name, :base_currency, :timezone, :target_notional, :cash_balance, :owner_user_id)
                     returning id, name, base_currency, timezone, target_notional, cash_balance, created_at
                     """
                 ),
@@ -726,6 +731,7 @@ class PortfolioRepository:
                     "timezone": timezone,
                     "target_notional": target_notional,
                     "cash_balance": cash_balance,
+                    "owner_user_id": user_id,
                 },
             ).mappings().fetchone()
 
@@ -742,13 +748,13 @@ class PortfolioRepository:
             created_at=row["created_at"],
         )
 
-    def update_portfolio(self, portfolio_id: int, payload: PortfolioUpdate) -> PortfolioRead:
+    def update_portfolio(self, portfolio_id: int, payload: PortfolioUpdate, user_id: str) -> PortfolioRead:
         updates = payload.model_dump(exclude_unset=True)
         if not updates:
             raise ValueError("Nessun campo da aggiornare")
 
         set_clauses: list[str] = []
-        params: dict[str, object] = {"id": portfolio_id}
+        params: dict[str, object] = {"id": portfolio_id, "user_id": user_id}
 
         if "name" in updates:
             name = str(updates["name"]).strip()
@@ -792,7 +798,7 @@ class PortfolioRepository:
                     f"""
                     update portfolios
                     set {", ".join(set_clauses)}
-                    where id = :id
+                    where id = :id and owner_user_id = :user_id
                     returning id, name, base_currency, timezone, target_notional, cash_balance, created_at
                     """
                 )
@@ -813,11 +819,85 @@ class PortfolioRepository:
             created_at=row["created_at"],
         )
 
-    def delete_portfolio(self, portfolio_id: int) -> None:
+    def clone_portfolio(self, portfolio_id: int, payload: PortfolioCloneRequest, user_id: str) -> PortfolioCloneResponse:
+        with self.engine.begin() as conn:
+            source = conn.execute(
+                text(
+                    """
+                    select id, name, base_currency, timezone, target_notional, cash_balance
+                    from portfolios
+                    where id = :id and owner_user_id = :user_id
+                    """
+                ),
+                {"id": portfolio_id, "user_id": user_id},
+            ).mappings().fetchone()
+            if source is None:
+                raise ValueError("Portfolio non trovato")
+
+            clone_name = (payload.name or "").strip()
+            if not clone_name:
+                clone_name = f'{str(source["name"]).strip()} (Copia)'
+            if not clone_name:
+                raise ValueError("Nome portfolio clone obbligatorio")
+
+            created = conn.execute(
+                text(
+                    """
+                    insert into portfolios (name, base_currency, timezone, target_notional, cash_balance, owner_user_id)
+                    values (:name, :base_currency, :timezone, :target_notional, :cash_balance, :owner_user_id)
+                    returning id, name, base_currency, timezone, target_notional, cash_balance, created_at
+                    """
+                ),
+                {
+                    "name": clone_name,
+                    "base_currency": str(source["base_currency"]),
+                    "timezone": str(source["timezone"]),
+                    "target_notional": source["target_notional"],
+                    "cash_balance": float(source["cash_balance"] or 0),
+                    "owner_user_id": user_id,
+                },
+            ).mappings().fetchone()
+            if created is None:
+                raise ValueError("Impossibile clonare portfolio")
+
+            new_portfolio_id = int(created["id"])
+
+            inserted_alloc = conn.execute(
+                text(
+                    """
+                    insert into portfolio_target_allocations (portfolio_id, asset_id, weight_pct, owner_user_id)
+                    select :new_portfolio_id, pta.asset_id, pta.weight_pct, cast(:new_owner_user_id as varchar(255))
+                    from portfolio_target_allocations pta
+                    where pta.portfolio_id = :source_portfolio_id
+                      and pta.owner_user_id = :source_owner_user_id
+                    """
+                ),
+                {
+                    "new_portfolio_id": new_portfolio_id,
+                    "source_portfolio_id": portfolio_id,
+                    "source_owner_user_id": user_id,
+                    "new_owner_user_id": user_id,
+                },
+            )
+
+        return PortfolioCloneResponse(
+            portfolio=PortfolioRead(
+                id=int(created["id"]),
+                name=str(created["name"]),
+                base_currency=str(created["base_currency"]),
+                timezone=str(created["timezone"]),
+                target_notional=float(created["target_notional"]) if created["target_notional"] is not None else None,
+                cash_balance=float(created["cash_balance"]),
+                created_at=created["created_at"],
+            ),
+            target_allocations_copied=int(inserted_alloc.rowcount or 0),
+        )
+
+    def delete_portfolio(self, portfolio_id: int, user_id: str) -> None:
         with self.engine.begin() as conn:
             row = conn.execute(
-                text("delete from portfolios where id = :id returning id"),
-                {"id": portfolio_id},
+                text("delete from portfolios where id = :id and owner_user_id = :user_id returning id"),
+                {"id": portfolio_id, "user_id": user_id},
             ).fetchone()
 
         if row is None:
@@ -937,14 +1017,14 @@ class PortfolioRepository:
             provider_symbol=provider_symbol,
         )
 
-    def create_transaction(self, payload: TransactionCreate) -> TransactionRead:
+    def create_transaction(self, payload: TransactionCreate, user_id: str) -> TransactionRead:
         side = payload.side.lower().strip()
         currency = payload.trade_currency.upper().strip()
         if side not in {"buy", "sell"}:
             raise ValueError("side deve essere buy o sell")
 
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio(conn, payload.portfolio_id)
+            portfolio = self._get_portfolio_for_user(conn, payload.portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
             if not self._asset_exists(conn, payload.asset_id):
@@ -967,9 +1047,9 @@ class PortfolioRepository:
                 text(
                     """
                     insert into transactions (
-                        portfolio_id, asset_id, side, trade_at, quantity, price, fees, taxes, trade_currency, notes
+                        portfolio_id, asset_id, side, trade_at, quantity, price, fees, taxes, trade_currency, notes, owner_user_id
                     ) values (
-                        :portfolio_id, :asset_id, :side, :trade_at, :quantity, :price, :fees, :taxes, :trade_currency, :notes
+                        :portfolio_id, :asset_id, :side, :trade_at, :quantity, :price, :fees, :taxes, :trade_currency, :notes, :owner_user_id
                     )
                     returning id
                     """
@@ -985,6 +1065,7 @@ class PortfolioRepository:
                     "taxes": payload.taxes,
                     "trade_currency": currency,
                     "notes": payload.notes,
+                    "owner_user_id": user_id,
                 },
             ).fetchone()
 
@@ -1005,9 +1086,9 @@ class PortfolioRepository:
             notes=payload.notes,
         )
 
-    def list_transactions(self, portfolio_id: int) -> list[TransactionListItem]:
+    def list_transactions(self, portfolio_id: int, user_id: str) -> list[TransactionListItem]:
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
 
             rows = conn.execute(
@@ -1054,10 +1135,10 @@ class PortfolioRepository:
             for row in rows
         ]
 
-    def update_transaction(self, transaction_id: int, payload: TransactionUpdate) -> TransactionRead:
+    def update_transaction(self, transaction_id: int, payload: TransactionUpdate, user_id: str) -> TransactionRead:
         updates = payload.model_dump(exclude_unset=True)
         with self.engine.begin() as conn:
-            existing = self._get_transaction(conn, transaction_id)
+            existing = self._get_transaction_for_user(conn, transaction_id, user_id)
             if existing is None:
                 raise ValueError("Transazione non trovata")
 
@@ -1081,10 +1162,10 @@ class PortfolioRepository:
             if updates:
                 assignments = ", ".join(f"{field} = :{field}" for field in updates.keys())
                 conn.execute(
-                    text(f"update transactions set {assignments} where id = :transaction_id"),
-                    {"transaction_id": transaction_id, **updates},
+                    text(f"update transactions set {assignments} where id = :transaction_id and owner_user_id = :user_id"),
+                    {"transaction_id": transaction_id, "user_id": user_id, **updates},
                 )
-                existing = self._get_transaction(conn, transaction_id)
+                existing = self._get_transaction_for_user(conn, transaction_id, user_id)
                 if existing is None:
                     raise ValueError("Transazione non trovata")
 
@@ -1102,9 +1183,9 @@ class PortfolioRepository:
             notes=existing["notes"],
         )
 
-    def delete_transaction(self, transaction_id: int) -> None:
+    def delete_transaction(self, transaction_id: int, user_id: str) -> None:
         with self.engine.begin() as conn:
-            existing = self._get_transaction(conn, transaction_id)
+            existing = self._get_transaction_for_user(conn, transaction_id, user_id)
             if existing is None:
                 raise ValueError("Transazione non trovata")
             self._assert_non_negative_inventory_timeline(
@@ -1114,15 +1195,15 @@ class PortfolioRepository:
                 exclude_transaction_id=transaction_id,
             )
             deleted = conn.execute(
-                text("delete from transactions where id = :transaction_id"),
-                {"transaction_id": transaction_id},
+                text("delete from transactions where id = :transaction_id and owner_user_id = :user_id"),
+                {"transaction_id": transaction_id, "user_id": user_id},
             )
             if deleted.rowcount == 0:
                 raise ValueError("Transazione non trovata")
 
-    def get_positions(self, portfolio_id: int) -> list[Position]:
+    def get_positions(self, portfolio_id: int, user_id: str) -> list[Position]:
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio(conn, portfolio_id)
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
@@ -1281,13 +1362,13 @@ class PortfolioRepository:
             positions.sort(key=lambda p: p.market_value, reverse=True)
             return positions
 
-    def get_summary(self, portfolio_id: int) -> PortfolioSummary:
+    def get_summary(self, portfolio_id: int, user_id: str) -> PortfolioSummary:
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio(conn, portfolio_id)
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-        positions = self.get_positions(portfolio_id)
+        positions = self.get_positions(portfolio_id, user_id)
         market_value = sum(p.market_value for p in positions)
         cost_basis = sum(p.quantity * p.avg_cost for p in positions)
         pl = market_value - cost_basis
@@ -1303,7 +1384,7 @@ class PortfolioRepository:
             cash_balance=portfolio.cash_balance,
         )
 
-    def get_timeseries(self, portfolio_id: int, range_value: str, interval: str) -> list[TimeSeriesPoint]:
+    def get_timeseries(self, portfolio_id: int, range_value: str, interval: str, user_id: str) -> list[TimeSeriesPoint]:
         if range_value != "1y" or interval != "1d":
             raise ValueError("Solo range=1y e interval=1d supportati in V1")
 
@@ -1311,7 +1392,7 @@ class PortfolioRepository:
         start_date = end_date - timedelta(days=364)
 
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio(conn, portfolio_id)
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
             base_ccy = portfolio.base_currency
@@ -1438,8 +1519,8 @@ class PortfolioRepository:
 
         return points
 
-    def get_allocation(self, portfolio_id: int) -> list[AllocationItem]:
-        positions = self.get_positions(portfolio_id)
+    def get_allocation(self, portfolio_id: int, user_id: str) -> list[AllocationItem]:
+        positions = self.get_positions(portfolio_id, user_id)
         total = sum(p.market_value for p in positions)
         if total == 0:
             return []
@@ -1478,6 +1559,7 @@ class PortfolioRepository:
         provider: str,
         portfolio_id: int | None = None,
         asset_scope: str = "target",
+        user_id: str | None = None,
     ) -> list[PricingAsset]:
         provider_value = provider.strip().lower()
         scope = (asset_scope or "target").strip().lower()
@@ -1501,7 +1583,7 @@ class PortfolioRepository:
                     {"provider": provider_value},
                 ).mappings().all()
             else:
-                if self._get_portfolio(conn, portfolio_id) is None:
+                if user_id and self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                     raise ValueError("Portfolio non trovato")
                 if scope == "all":
                     rows = conn.execute(
@@ -1735,30 +1817,36 @@ class PortfolioRepository:
                 payload,
             )
 
-    def get_idempotency_response(self, *, idempotency_key: str, endpoint: str) -> dict | None:
+    def get_idempotency_response(self, *, idempotency_key: str, endpoint: str, user_id: str | None = None) -> dict | None:
+        if user_id:
+            query = """
+                select response_json
+                from api_idempotency_keys
+                where idempotency_key = :idempotency_key and endpoint = :endpoint and owner_user_id = :user_id
+            """
+            params = {"idempotency_key": idempotency_key, "endpoint": endpoint, "user_id": user_id}
+        else:
+            query = """
+                select response_json
+                from api_idempotency_keys
+                where idempotency_key = :idempotency_key and endpoint = :endpoint
+            """
+            params = {"idempotency_key": idempotency_key, "endpoint": endpoint}
         with self.engine.begin() as conn:
-            row = conn.execute(
-                text(
-                    """
-                    select response_json
-                    from api_idempotency_keys
-                    where idempotency_key = :idempotency_key and endpoint = :endpoint
-                    """
-                ),
-                {"idempotency_key": idempotency_key, "endpoint": endpoint},
-            ).mappings().fetchone()
+            row = conn.execute(text(query), params).mappings().fetchone()
         if row is None:
             return None
         return row["response_json"]
 
-    def save_idempotency_response(self, *, idempotency_key: str, endpoint: str, response_payload: dict) -> None:
+    def save_idempotency_response(self, *, idempotency_key: str, endpoint: str, response_payload: dict, user_id: str | None = None) -> None:
+        owner_user_id = user_id or "dev-user"
         with self.engine.begin() as conn:
             conn.execute(
                 text(
                     """
-                    insert into api_idempotency_keys (idempotency_key, endpoint, response_json)
-                    values (:idempotency_key, :endpoint, cast(:response_json as jsonb))
-                    on conflict (idempotency_key, endpoint)
+                    insert into api_idempotency_keys (idempotency_key, endpoint, response_json, owner_user_id)
+                    values (:idempotency_key, :endpoint, cast(:response_json as jsonb), :owner_user_id)
+                    on conflict (idempotency_key, endpoint, owner_user_id)
                     do update set response_json = excluded.response_json
                     """
                 ),
@@ -1766,12 +1854,20 @@ class PortfolioRepository:
                     "idempotency_key": idempotency_key,
                     "endpoint": endpoint,
                     "response_json": json.dumps(response_payload),
+                    "owner_user_id": owner_user_id,
                 },
             )
 
-    def get_portfolio_base_currency(self, portfolio_id: int) -> str:
+    def get_portfolio_base_currency(self, portfolio_id: int, user_id: str | None = None) -> str:
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio(conn, portfolio_id)
+            if user_id:
+                portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
+            else:
+                row = conn.execute(
+                    text("select id, base_currency, cash_balance from portfolios where id = :id"),
+                    {"id": portfolio_id},
+                ).mappings().fetchone()
+                portfolio = PortfolioData(id=int(row["id"]), base_currency=str(row["base_currency"]), cash_balance=float(row["cash_balance"])) if row else None
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
             return portfolio.base_currency
@@ -1792,10 +1888,10 @@ class PortfolioRepository:
             ).mappings().all()
         return {int(r["id"]): str(r["quote_currency"]) for r in rows}
 
-    def get_price_coverage(self, portfolio_id: int, days: int = 365) -> list[dict]:
+    def get_price_coverage(self, portfolio_id: int, days: int = 365, user_id: str | None = None) -> list[dict]:
         """Return price bar coverage stats for each asset in the portfolio target allocation."""
         with self.engine.begin() as conn:
-            if self._get_portfolio(conn, portfolio_id) is None:
+            if user_id and self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
             rows = conn.execute(
                 text(
@@ -1839,10 +1935,10 @@ class PortfolioRepository:
             })
         return result
 
-    def _get_portfolio(self, conn, portfolio_id: int) -> PortfolioData | None:
+    def _get_portfolio_for_user(self, conn, portfolio_id: int, user_id: str) -> PortfolioData | None:
         row = conn.execute(
-            text("select id, base_currency, cash_balance from portfolios where id = :id"),
-            {"id": portfolio_id},
+            text("select id, base_currency, cash_balance from portfolios where id = :id and owner_user_id = :user_id"),
+            {"id": portfolio_id, "user_id": user_id},
         ).mappings().fetchone()
         if row is None:
             return None
@@ -1943,7 +2039,7 @@ class PortfolioRepository:
         ).mappings().fetchone()
         return float(row["quantity"]) if row is not None else 0.0
 
-    def _get_transaction(self, conn, transaction_id: int):
+    def _get_transaction_for_user(self, conn, transaction_id: int, user_id: str):
         return conn.execute(
             text(
                 """
@@ -1959,10 +2055,10 @@ class PortfolioRepository:
                        trade_currency,
                        notes
                 from transactions
-                where id = :transaction_id
+                where id = :transaction_id and owner_user_id = :user_id
                 """
             ),
-            {"transaction_id": transaction_id},
+            {"transaction_id": transaction_id, "user_id": user_id},
         ).mappings().fetchone()
 
     def _get_assets(self, conn, asset_ids: list[int]) -> dict[int, dict[str, str]]:

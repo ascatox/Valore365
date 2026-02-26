@@ -36,6 +36,8 @@ from .models import (
     MarketQuoteItem,
     MarketQuotesResponse,
     PortfolioCreate,
+    PortfolioCloneRequest,
+    PortfolioCloneResponse,
     PortfolioRead,
     PortfolioSummary,
     PortfolioUpdate,
@@ -136,14 +138,14 @@ def update_user_settings(payload: UserSettingsUpdate, _auth: AuthContext = Depen
 @router.post("/portfolios", response_model=PortfolioRead, responses={400: {"model": ErrorResponse}})
 def create_portfolio(payload: PortfolioCreate, _auth: AuthContext = Depends(require_auth)) -> PortfolioRead:
     try:
-        return repo.create_portfolio(payload)
+        return repo.create_portfolio(payload, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
 
 
-@router.get("/admin/portfolios", response_model=list[PortfolioRead], responses={400: {"model": ErrorResponse}})
-def admin_list_portfolios(_auth: AuthContext = Depends(require_auth)) -> list[PortfolioRead]:
-    return repo.list_portfolios()
+@router.get("/portfolios", response_model=list[PortfolioRead], responses={400: {"model": ErrorResponse}})
+def list_portfolios(_auth: AuthContext = Depends(require_auth)) -> list[PortfolioRead]:
+    return repo.list_portfolios(_auth.user_id)
 
 
 @router.patch(
@@ -157,7 +159,26 @@ def update_portfolio(
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioRead:
     try:
-        return repo.update_portfolio(portfolio_id, payload)
+        return repo.update_portfolio(portfolio_id, payload, _auth.user_id)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.post(
+    "/portfolios/{portfolio_id}/clone",
+    response_model=PortfolioCloneResponse,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def clone_portfolio(
+    portfolio_id: int,
+    payload: PortfolioCloneRequest,
+    _auth: AuthContext = Depends(require_auth),
+) -> PortfolioCloneResponse:
+    try:
+        return repo.clone_portfolio(portfolio_id, payload, _auth.user_id)
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "non trovato" in message.lower() else 400
@@ -171,7 +192,7 @@ def update_portfolio(
 )
 def delete_portfolio(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
     try:
-        repo.delete_portfolio(portfolio_id)
+        repo.delete_portfolio(portfolio_id, _auth.user_id)
         return {"status": "ok"}
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
@@ -266,7 +287,7 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
     base_ccy = "EUR"
     if payload.portfolio_id is not None:
         try:
-            base_ccy = repo.get_portfolio_base_currency(payload.portfolio_id)
+            base_ccy = repo.get_portfolio_base_currency(payload.portfolio_id, user_id=_auth.user_id)
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -349,7 +370,7 @@ def create_asset_provider_symbol(
 )
 def list_transactions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[TransactionListItem]:
     try:
-        return repo.list_transactions(portfolio_id)
+        return repo.list_transactions(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -357,7 +378,7 @@ def list_transactions(portfolio_id: int, _auth: AuthContext = Depends(require_au
 @router.post("/transactions", response_model=TransactionRead, responses={400: {"model": ErrorResponse}})
 def create_transaction(payload: TransactionCreate, _auth: AuthContext = Depends(require_auth)) -> TransactionRead:
     try:
-        result = repo.create_transaction(payload)
+        result = repo.create_transaction(payload, _auth.user_id)
         threading.Thread(
             target=historical_service.backfill_single_asset,
             kwargs={"asset_id": payload.asset_id, "portfolio_id": payload.portfolio_id},
@@ -379,7 +400,7 @@ def update_transaction(
     _auth: AuthContext = Depends(require_auth),
 ) -> TransactionRead:
     try:
-        return repo.update_transaction(transaction_id, payload)
+        return repo.update_transaction(transaction_id, payload, _auth.user_id)
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "non trovata" in message.lower() else 400
@@ -393,7 +414,7 @@ def update_transaction(
 )
 def delete_transaction(transaction_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
     try:
-        repo.delete_transaction(transaction_id)
+        repo.delete_transaction(transaction_id, _auth.user_id)
         return {"status": "ok"}
     except ValueError as exc:
         message = str(exc)
@@ -411,14 +432,14 @@ def refresh_prices(
 ) -> PriceRefreshResponse:
     endpoint = f"prices_refresh:{portfolio_id}:{asset_scope}"
     if idempotency_key:
-        cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint)
+        cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint, user_id=_auth.user_id)
         if cached:
             return PriceRefreshResponse.model_validate(cached)
     try:
-        response = pricing_service.refresh_prices(portfolio_id=portfolio_id, asset_scope=asset_scope)
+        response = pricing_service.refresh_prices(portfolio_id=portfolio_id, asset_scope=asset_scope, user_id=_auth.user_id)
         if idempotency_key:
             repo.save_idempotency_response(
-                idempotency_key=idempotency_key, endpoint=endpoint, response_payload=response.model_dump(mode="json")
+                idempotency_key=idempotency_key, endpoint=endpoint, response_payload=response.model_dump(mode="json"), user_id=_auth.user_id
             )
         return response
     except ValueError as exc:
@@ -435,14 +456,14 @@ def backfill_daily_prices(
 ) -> DailyBackfillResponse:
     endpoint = f"prices_backfill_daily:{portfolio_id}:{days}:{asset_scope}"
     if idempotency_key:
-        cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint)
+        cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint, user_id=_auth.user_id)
         if cached:
             return DailyBackfillResponse.model_validate(cached)
     try:
-        response = historical_service.backfill_daily(portfolio_id=portfolio_id, days=days, asset_scope=asset_scope)
+        response = historical_service.backfill_daily(portfolio_id=portfolio_id, days=days, asset_scope=asset_scope, user_id=_auth.user_id)
         if idempotency_key:
             repo.save_idempotency_response(
-                idempotency_key=idempotency_key, endpoint=endpoint, response_payload=response.model_dump(mode="json")
+                idempotency_key=idempotency_key, endpoint=endpoint, response_payload=response.model_dump(mode="json"), user_id=_auth.user_id
             )
         return response
     except ValueError as exc:
@@ -454,7 +475,7 @@ def backfill_daily_prices(
 )
 def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[Position]:
     try:
-        return repo.get_positions(portfolio_id)
+        return repo.get_positions(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -462,7 +483,7 @@ def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth))
 @router.get("/portfolios/{portfolio_id}/summary", response_model=PortfolioSummary, responses={404: {"model": ErrorResponse}})
 def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> PortfolioSummary:
     try:
-        return repo.get_summary(portfolio_id)
+        return repo.get_summary(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -474,7 +495,7 @@ def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -
 )
 def get_target_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PortfolioTargetAllocationItem]:
     try:
-        return repo.list_portfolio_target_allocations(portfolio_id)
+        return repo.list_portfolio_target_allocations(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -488,7 +509,7 @@ def get_target_performance(
     portfolio_id: int, _auth: AuthContext = Depends(require_auth)
 ) -> PortfolioTargetPerformanceResponse:
     try:
-        return repo.get_portfolio_target_performance(portfolio_id)
+        return repo.get_portfolio_target_performance(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -504,7 +525,7 @@ def get_target_performance_intraday(
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetIntradayResponse:
     try:
-        return repo.get_portfolio_target_intraday_performance(portfolio_id, date)
+        return repo.get_portfolio_target_intraday_performance(portfolio_id, date, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -519,7 +540,7 @@ def get_target_asset_performance(
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetAssetPerformanceResponse:
     try:
-        return repo.get_portfolio_target_asset_performance(portfolio_id)
+        return repo.get_portfolio_target_asset_performance(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -535,7 +556,7 @@ def get_target_asset_intraday_performance(
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetAssetIntradayPerformanceResponse:
     try:
-        return repo.get_portfolio_target_asset_intraday_performance(portfolio_id, date)
+        return repo.get_portfolio_target_asset_intraday_performance(portfolio_id, date, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -551,7 +572,7 @@ def upsert_target_allocation(
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetAllocationItem:
     try:
-        result = repo.upsert_portfolio_target_allocation(portfolio_id, payload)
+        result = repo.upsert_portfolio_target_allocation(portfolio_id, payload, _auth.user_id)
         threading.Thread(
             target=historical_service.backfill_single_asset,
             kwargs={"asset_id": payload.asset_id, "portfolio_id": portfolio_id},
@@ -571,7 +592,7 @@ def upsert_target_allocation(
 )
 def delete_target_allocation(portfolio_id: int, asset_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
     try:
-        repo.delete_portfolio_target_allocation(portfolio_id, asset_id)
+        repo.delete_portfolio_target_allocation(portfolio_id, asset_id, _auth.user_id)
         return {"status": "ok"}
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
@@ -589,7 +610,7 @@ def get_data_coverage(
     _auth: AuthContext = Depends(require_auth),
 ) -> DataCoverageResponse:
     try:
-        rows = repo.get_price_coverage(portfolio_id, days=days)
+        rows = repo.get_price_coverage(portfolio_id, days=days, user_id=_auth.user_id)
         assets = [AssetCoverageItem(**r) for r in rows]
         sufficient = all(a.coverage_pct >= threshold_pct for a in assets) if assets else True
         return DataCoverageResponse(
@@ -614,10 +635,10 @@ def rebalance_preview(
     _auth: AuthContext = Depends(require_auth),
 ) -> RebalancePreviewResponse:
     try:
-        target_alloc = repo.list_portfolio_target_allocations(portfolio_id)
-        summary = repo.get_summary(portfolio_id)
-        allocation = repo.get_allocation(portfolio_id)
-        positions = repo.get_positions(portfolio_id)
+        target_alloc = repo.list_portfolio_target_allocations(portfolio_id, _auth.user_id)
+        summary = repo.get_summary(portfolio_id, _auth.user_id)
+        allocation = repo.get_allocation(portfolio_id, _auth.user_id)
+        positions = repo.get_positions(portfolio_id, _auth.user_id)
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "non trovato" in message.lower() else 400
@@ -844,7 +865,7 @@ def rebalance_commit(
     _auth: AuthContext = Depends(require_auth),
 ) -> RebalanceCommitResponse:
     try:
-        portfolio_summary = repo.get_summary(portfolio_id)
+        portfolio_summary = repo.get_summary(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
@@ -866,7 +887,8 @@ def rebalance_commit(
                     taxes=item.taxes,
                     trade_currency=portfolio_summary.base_currency,
                     notes=item.notes,
-                )
+                ),
+                _auth.user_id,
             )
             created_items.append(
                 RebalanceCommitCreatedItem(
@@ -910,7 +932,7 @@ def get_timeseries(
     _auth: AuthContext = Depends(require_auth),
 ) -> list[TimeSeriesPoint]:
     try:
-        return repo.get_timeseries(portfolio_id, range_value=range, interval=interval)
+        return repo.get_timeseries(portfolio_id, range_value=range, interval=interval, user_id=_auth.user_id)
     except ValueError as exc:
         message = str(exc)
         status = 404 if "portfolio non trovato" in message.lower() else 400
@@ -925,7 +947,7 @@ def get_timeseries(
 )
 def get_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[AllocationItem]:
     try:
-        return repo.get_allocation(portfolio_id)
+        return repo.get_allocation(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 

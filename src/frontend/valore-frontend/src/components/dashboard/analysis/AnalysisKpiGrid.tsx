@@ -1,7 +1,7 @@
 import { IconCoin, IconActivity, IconArrowUpRight, IconChartPie } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
-import { formatPct, formatShortDate } from '../formatters';
-import type { PortfolioTargetPerformanceResponse, PortfolioTargetAllocationItem, Portfolio } from '../../../services/api';
+import { formatMoney, formatPct, formatShortDate, getVariationColor } from '../formatters';
+import type { PortfolioTargetPerformanceResponse, PortfolioTargetAllocationItem, Portfolio, PortfolioSummary } from '../../../services/api';
 
 interface AnalysisKpiGridProps {
   indexCardStats: { index: number; diffPts: number; diffPct: number } | null;
@@ -9,20 +9,27 @@ interface AnalysisKpiGridProps {
   targetPerformance: PortfolioTargetPerformanceResponse | null;
   allocation: PortfolioTargetAllocationItem[];
   selectedPortfolio: Portfolio | null;
+  portfolioSummary: PortfolioSummary | null;
+  currency: string;
 }
 
 export function AnalysisKpiGrid({
   indexCardStats,
   totalAssignedWeight,
   targetPerformance,
+  portfolioSummary,
+  currency,
 }: AnalysisKpiGridProps) {
   const best = targetPerformance?.best ?? null;
   const worst = targetPerformance?.worst ?? null;
 
   const items = [
     {
-      label: 'Indice Portafoglio',
-      value: indexCardStats ? indexCardStats.index.toFixed(2) : 'N/D',
+      label: 'Var. Attuale Portafoglio',
+      value: portfolioSummary
+        ? `${formatMoney(portfolioSummary.day_change, currency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
+        : 'N/D',
+      color: getVariationColor(portfolioSummary?.day_change ?? 0),
       icon: IconCoin,
       iconColor: 'blue' as const,
     },

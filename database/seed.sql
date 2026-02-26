@@ -1,5 +1,5 @@
-insert into portfolios (name, base_currency, timezone)
-values ('Valore365 Portfolio', 'EUR', 'Europe/Rome')
+insert into portfolios (name, base_currency, timezone, owner_user_id)
+values ('Valore365 Portfolio', 'EUR', 'Europe/Rome', 'dev-user')
 on conflict do nothing;
 
 insert into assets (symbol, name, asset_type, exchange_code, exchange_name, quote_currency, isin, active)

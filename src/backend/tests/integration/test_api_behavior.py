@@ -4,7 +4,7 @@ import app.main as api_main
 
 
 class _FakeRepo:
-    def list_portfolios(self):
+    def list_portfolios(self, user_id: str):
         return [
             {
                 'id': 2,
@@ -22,7 +22,7 @@ class _FakeRepo:
             },
         ]
 
-    def create_portfolio(self, payload):
+    def create_portfolio(self, payload, user_id: str):
         return {
             'id': 123,
             'name': payload.name.strip(),
@@ -31,10 +31,10 @@ class _FakeRepo:
             'created_at': '2026-02-23T10:00:00Z',
         }
 
-    def get_summary(self, portfolio_id: int):
+    def get_summary(self, portfolio_id: int, user_id: str):
         raise ValueError('Portfolio non trovato')
 
-    def get_idempotency_response(self, *, idempotency_key: str, endpoint: str):
+    def get_idempotency_response(self, *, idempotency_key: str, endpoint: str, user_id: str | None = None):
         return {
             'provider': 'yfinance',
             'requested_assets': 1,
@@ -52,7 +52,7 @@ class _FakeRepo:
             'errors': [],
         }
 
-    def list_transactions(self, portfolio_id: int):
+    def list_transactions(self, portfolio_id: int, user_id: str):
         return [
             {
                 'id': 10,
@@ -71,7 +71,7 @@ class _FakeRepo:
             }
         ]
 
-    def update_transaction(self, transaction_id: int, payload):
+    def update_transaction(self, transaction_id: int, payload, user_id: str):
         if transaction_id == 404:
             raise ValueError('Transazione non trovata')
         if payload.quantity == 999:
@@ -90,14 +90,14 @@ class _FakeRepo:
             'notes': payload.notes,
         }
 
-    def delete_transaction(self, transaction_id: int):
+    def delete_transaction(self, transaction_id: int, user_id: str):
         if transaction_id == 404:
             raise ValueError('Transazione non trovata')
         return None
 
 
 class _FailPricingService:
-    def refresh_prices(self, portfolio_id=None):
+    def refresh_prices(self, portfolio_id=None, asset_scope='target', user_id=None):
         raise AssertionError('non dovrebbe essere chiamato quando c\'e cache idempotente')
 
 
@@ -128,11 +128,11 @@ def test_create_portfolio_route(monkeypatch):
     assert payload['timezone'] == 'Europe/Rome'
 
 
-def test_admin_list_portfolios_route(monkeypatch):
+def test_list_portfolios_route(monkeypatch):
     monkeypatch.setattr(api_main, 'repo', _FakeRepo())
     client = TestClient(api_main.app)
 
-    response = client.get('/api/admin/portfolios')
+    response = client.get('/api/portfolios')
 
     assert response.status_code == 200
     payload = response.json()

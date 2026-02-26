@@ -17,6 +17,7 @@ interface AnalisiTabProps {
 export function AnalisiTab({ data }: AnalisiTabProps) {
   const {
     allocation,
+    portfolioSummary,
     targetPerformance,
     selectedPortfolio,
     chartWindow,
@@ -37,6 +38,7 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
     intradayChartData,
     intradayStats,
     intradayDateLabel,
+    mvpCurrency,
   } = data;
 
   const totalAssignedWeight = allocation.reduce((sum, item) => sum + item.weight_pct, 0);
@@ -91,6 +93,8 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
         targetPerformance={targetPerformance}
         allocation={allocation}
         selectedPortfolio={selectedPortfolio}
+        portfolioSummary={portfolioSummary}
+        currency={mvpCurrency}
       />
 
       <div style={{ marginTop: 16 }}>

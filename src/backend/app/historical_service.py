@@ -14,7 +14,7 @@ class HistoricalIngestionService:
         self.settings = settings
         self.repository = repository
 
-    def backfill_single_asset(self, *, asset_id: int, portfolio_id: int, days: int = 365) -> None:
+    def backfill_single_asset(self, *, asset_id: int, portfolio_id: int, days: int = 365, user_id: str | None = None) -> None:
         """Background backfill for a single asset (prices + FX). Never raises."""
         try:
             provider = self.settings.finance_provider.strip().lower()
@@ -24,7 +24,7 @@ class HistoricalIngestionService:
 
             client = make_finance_client(self.settings)
             pricing_asset = self.repository.get_asset_pricing_symbol(asset_id, provider)
-            base_currency = self.repository.get_portfolio_base_currency(portfolio_id)
+            base_currency = self.repository.get_portfolio_base_currency(portfolio_id, user_id=user_id)
 
             # Price bars
             bars = client.get_daily_bars(
@@ -85,7 +85,7 @@ class HistoricalIngestionService:
         except Exception as exc:
             logger.error('Single-asset backfill failed asset_id=%s error=%s', asset_id, exc)
 
-    def backfill_daily(self, *, portfolio_id: int, days: int = 365, asset_scope: str = 'target') -> DailyBackfillResponse:
+    def backfill_daily(self, *, portfolio_id: int, days: int = 365, asset_scope: str = 'target', user_id: str | None = None) -> DailyBackfillResponse:
         provider = self.settings.finance_provider.strip().lower()
         outputsize = max(30, min(days, 2000))
         end_date = date.today()
@@ -97,8 +97,9 @@ class HistoricalIngestionService:
             provider=provider,
             portfolio_id=portfolio_id,
             asset_scope=asset_scope,
+            user_id=user_id,
         )
-        base_currency = self.repository.get_portfolio_base_currency(portfolio_id)
+        base_currency = self.repository.get_portfolio_base_currency(portfolio_id, user_id=user_id)
 
         asset_items: list[DailyBackfillItem] = []
         fx_items: list[FxBackfillItem] = []

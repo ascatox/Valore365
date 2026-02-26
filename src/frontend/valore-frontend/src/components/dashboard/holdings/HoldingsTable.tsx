@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Group, Progress, Table, Text, UnstyledButton } from '@mantine/core';
+import { Card, Group, Progress, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../../services/api';
 import { formatMoney, formatPct, getVariationColor } from '../formatters';
@@ -88,106 +88,161 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
     return { totalValue, totalPl, totalPlPct };
   }, [positions, summary]);
 
+  if (!sorted.length) {
+    return (
+      <Card withBorder>
+        <Text c="dimmed" ta="center" size="sm">Nessuna posizione disponibile</Text>
+      </Card>
+    );
+  }
+
   return (
-    <Table.ScrollContainer minWidth={500}>
-    <Table striped highlightOnHover>
-      <Table.Thead>
-        <Table.Tr>
-          {columns.map((col) => (
-            <Table.Th
-              key={col.key}
-              style={{ textAlign: col.align }}
-              visibleFrom={col.visibleFrom}
-            >
-              {col.sortable ? (
-                <UnstyledButton onClick={() => handleSort(col.key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                  <Text fw={600} size="xs" component="span">{col.label}</Text>
-                  <SortIcon column={col.key} sortKey={sortKey} sortDir={sortDir} />
-                </UnstyledButton>
-              ) : (
-                <Text fw={600} size="xs" component="span">{col.label}</Text>
-              )}
-            </Table.Th>
-          ))}
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {sorted.length ? (
-          <>
-            {sorted.map((p) => (
-              <Table.Tr key={p.asset_id}>
-                {/* Asset */}
-                <Table.Td>
-                  <Text fw={500} size="sm">{p.symbol}</Text>
-                  <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
-                </Table.Td>
-                {/* Qta */}
-                <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
-                  <Text size="sm">{p.quantity.toFixed(2)}</Text>
-                </Table.Td>
-                {/* Valore */}
-                <Table.Td style={{ textAlign: 'right' }}>
-                  <Text size="sm">{formatMoney(p.market_value, currency)}</Text>
-                </Table.Td>
-                {/* P/L */}
-                <Table.Td style={{ textAlign: 'right' }}>
-                  <Text c={getVariationColor(p.unrealized_pl)} fw={500} size="sm">
-                    {formatMoney(p.unrealized_pl, currency, true)}
-                  </Text>
-                </Table.Td>
-                {/* P/L % */}
-                <Table.Td style={{ textAlign: 'right' }}>
-                  <Text c={getVariationColor(p.unrealized_pl_pct)} fw={500} size="sm">
-                    {formatPct(p.unrealized_pl_pct)}
-                  </Text>
-                </Table.Td>
-                {/* Allocazione */}
-                <Table.Td style={{ textAlign: 'right' }}>
-                  <Group gap="xs" wrap="nowrap" justify="flex-end">
-                    <Progress value={p.weight} size="sm" w={60} color="blue" visibleFrom="sm" />
-                    <Text size="xs">{p.weight.toFixed(1)}%</Text>
-                  </Group>
-                </Table.Td>
-                {/* Prima Op. */}
-                <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">
-                  <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
-                </Table.Td>
-              </Table.Tr>
-            ))}
-            {/* Summary footer row */}
-            <Table.Tr style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
-              <Table.Td>
-                <Text fw={700} size="sm">TOTALE</Text>
-              </Table.Td>
-              <Table.Td visibleFrom="sm" />
-              <Table.Td style={{ textAlign: 'right' }}>
-                <Text fw={700} size="sm">{formatMoney(totals.totalValue, currency)}</Text>
-              </Table.Td>
-              <Table.Td style={{ textAlign: 'right' }}>
-                <Text fw={700} size="sm" c={getVariationColor(totals.totalPl)}>
-                  {formatMoney(totals.totalPl, currency, true)}
-                </Text>
-              </Table.Td>
-              <Table.Td style={{ textAlign: 'right' }}>
-                <Text fw={700} size="sm" c={getVariationColor(totals.totalPlPct)}>
-                  {formatPct(totals.totalPlPct)}
-                </Text>
-              </Table.Td>
-              <Table.Td style={{ textAlign: 'right' }}>
-                <Text fw={700} size="xs">100%</Text>
-              </Table.Td>
-              <Table.Td visibleFrom="md" />
+    <>
+      <Stack gap="sm" hiddenFrom="sm">
+        {sorted.map((p) => (
+          <Card key={p.asset_id} withBorder>
+            <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+              <div>
+                <Text fw={600} size="sm">{p.symbol}</Text>
+                <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
+              </div>
+              <Text fw={700} size="sm">{formatMoney(p.market_value, currency)}</Text>
+            </Group>
+
+            <Group justify="space-between" mt="sm" gap="xs">
+              <Text size="sm" c="dimmed">Quantita</Text>
+              <Text size="sm">{p.quantity.toFixed(2)}</Text>
+            </Group>
+            <Group justify="space-between" gap="xs">
+              <Text size="sm" c="dimmed">P/L</Text>
+              <Text size="sm" fw={600} c={getVariationColor(p.unrealized_pl)}>
+                {formatMoney(p.unrealized_pl, currency, true)}
+              </Text>
+            </Group>
+            <Group justify="space-between" gap="xs">
+              <Text size="sm" c="dimmed">P/L %</Text>
+              <Text size="sm" fw={600} c={getVariationColor(p.unrealized_pl_pct)}>
+                {formatPct(p.unrealized_pl_pct)}
+              </Text>
+            </Group>
+            <Group justify="space-between" align="center" gap="xs" mt={4}>
+              <Text size="sm" c="dimmed">Allocazione</Text>
+              <Group gap="xs" wrap="nowrap">
+                <Progress value={p.weight} size="sm" w={80} color="blue" />
+                <Text size="xs">{p.weight.toFixed(1)}%</Text>
+              </Group>
+            </Group>
+            <Group justify="space-between" gap="xs" mt={4}>
+              <Text size="sm" c="dimmed">Prima operazione</Text>
+              <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
+            </Group>
+          </Card>
+        ))}
+
+        <Card withBorder>
+          <Group justify="space-between" gap="xs">
+            <Text fw={700}>Totale</Text>
+            <Text fw={700}>{formatMoney(totals.totalValue, currency)}</Text>
+          </Group>
+          <Group justify="space-between" gap="xs" mt={4}>
+            <Text size="sm" c="dimmed">P/L</Text>
+            <Text size="sm" fw={700} c={getVariationColor(totals.totalPl)}>
+              {formatMoney(totals.totalPl, currency, true)}
+            </Text>
+          </Group>
+          <Group justify="space-between" gap="xs">
+            <Text size="sm" c="dimmed">P/L %</Text>
+            <Text size="sm" fw={700} c={getVariationColor(totals.totalPlPct)}>
+              {formatPct(totals.totalPlPct)}
+            </Text>
+          </Group>
+        </Card>
+      </Stack>
+
+      <Table.ScrollContainer minWidth={500} visibleFrom="sm">
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              {columns.map((col) => (
+                <Table.Th
+                  key={col.key}
+                  style={{ textAlign: col.align }}
+                  visibleFrom={col.visibleFrom}
+                >
+                  {col.sortable ? (
+                    <UnstyledButton onClick={() => handleSort(col.key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <Text fw={600} size="xs" component="span">{col.label}</Text>
+                      <SortIcon column={col.key} sortKey={sortKey} sortDir={sortDir} />
+                    </UnstyledButton>
+                  ) : (
+                    <Text fw={600} size="xs" component="span">{col.label}</Text>
+                  )}
+                </Table.Th>
+              ))}
             </Table.Tr>
-          </>
-        ) : (
-          <Table.Tr>
-            <Table.Td colSpan={7}>
-              <Text c="dimmed" ta="center" size="sm">Nessuna posizione disponibile</Text>
-            </Table.Td>
-          </Table.Tr>
-        )}
-      </Table.Tbody>
-    </Table>
-    </Table.ScrollContainer>
+          </Table.Thead>
+          <Table.Tbody>
+            <>
+              {sorted.map((p) => (
+                <Table.Tr key={p.asset_id}>
+                  <Table.Td>
+                    <Text fw={500} size="sm">{p.symbol}</Text>
+                    <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
+                    <Text size="sm">{p.quantity.toFixed(2)}</Text>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }}>
+                    <Text size="sm">{formatMoney(p.market_value, currency)}</Text>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }}>
+                    <Text c={getVariationColor(p.unrealized_pl)} fw={500} size="sm">
+                      {formatMoney(p.unrealized_pl, currency, true)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }}>
+                    <Text c={getVariationColor(p.unrealized_pl_pct)} fw={500} size="sm">
+                      {formatPct(p.unrealized_pl_pct)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }}>
+                    <Group gap="xs" wrap="nowrap" justify="flex-end">
+                      <Progress value={p.weight} size="sm" w={60} color="blue" visibleFrom="sm" />
+                      <Text size="xs">{p.weight.toFixed(1)}%</Text>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">
+                    <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+              <Table.Tr style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
+                <Table.Td>
+                  <Text fw={700} size="sm">TOTALE</Text>
+                </Table.Td>
+                <Table.Td visibleFrom="sm" />
+                <Table.Td style={{ textAlign: 'right' }}>
+                  <Text fw={700} size="sm">{formatMoney(totals.totalValue, currency)}</Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'right' }}>
+                  <Text fw={700} size="sm" c={getVariationColor(totals.totalPl)}>
+                    {formatMoney(totals.totalPl, currency, true)}
+                  </Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'right' }}>
+                  <Text fw={700} size="sm" c={getVariationColor(totals.totalPlPct)}>
+                    {formatPct(totals.totalPlPct)}
+                  </Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'right' }}>
+                  <Text fw={700} size="xs">100%</Text>
+                </Table.Td>
+                <Table.Td visibleFrom="md" />
+              </Table.Tr>
+            </>
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
+    </>
   );
 }

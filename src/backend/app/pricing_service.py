@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import date
 
 import httpx
 
@@ -16,7 +17,7 @@ class PriceIngestionService:
         self.settings = settings
         self.repository = repository
 
-    def refresh_prices(self, portfolio_id: int | None = None, asset_scope: str = 'target') -> PriceRefreshResponse:
+    def refresh_prices(self, portfolio_id: int | None = None, asset_scope: str = 'target', user_id: str | None = None) -> PriceRefreshResponse:
         provider = self.settings.finance_provider.strip().lower()
         client = make_finance_client(self.settings)
 
@@ -24,6 +25,7 @@ class PriceIngestionService:
             provider=provider,
             portfolio_id=portfolio_id,
             asset_scope=asset_scope,
+            user_id=user_id,
         )
 
         logger.info(
@@ -49,6 +51,22 @@ class PriceIngestionService:
                     bid=quote.bid,
                     ask=quote.ask,
                     volume=quote.volume,
+                )
+                # Also upsert today's daily bar so that P/L and
+                # summary calculations (which read from price_bars_1d)
+                # reflect the latest live price immediately.
+                today_str = date.today().isoformat()
+                self.repository.batch_upsert_price_bars_1d(
+                    asset_id=asset.asset_id,
+                    provider=provider,
+                    rows=[{
+                        "price_date": today_str,
+                        "open": quote.price,
+                        "high": quote.price,
+                        "low": quote.price,
+                        "close": quote.price,
+                        "volume": quote.volume or 0,
+                    }],
                 )
                 items.append(
                     PriceRefreshItem(

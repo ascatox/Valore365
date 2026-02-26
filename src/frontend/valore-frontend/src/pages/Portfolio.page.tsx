@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMediaQuery } from '@mantine/hooks';
 import {
   Table,
+  Card,
   Button,
   Text,
   Group,
@@ -20,13 +21,14 @@ import {
   Tooltip,
   Checkbox,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget, IconCopy } from '@tabler/icons-react';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
 import {
   createTransaction,
   deleteTransaction,
   createPortfolio,
+  clonePortfolio,
   deletePortfolio,
   deletePortfolioTargetAllocation,
   discoverAssets,
@@ -91,6 +93,10 @@ export function PortfolioPage() {
   const [portfolioModalOpened, setPortfolioModalOpened] = useState(false);
   const [portfolioModalMode, setPortfolioModalMode] = useState<'create' | 'edit'>('create');
   const [portfolioDeleteOpened, setPortfolioDeleteOpened] = useState(false);
+  const [portfolioCloneOpened, setPortfolioCloneOpened] = useState(false);
+  const [portfolioCloneName, setPortfolioCloneName] = useState('');
+  const [portfolioCloneError, setPortfolioCloneError] = useState<string | null>(null);
+  const [portfolioCloning, setPortfolioCloning] = useState(false);
   const [portfolioSaving, setPortfolioSaving] = useState(false);
   const [portfolioDeleting, setPortfolioDeleting] = useState(false);
   const [portfolioFormError, setPortfolioFormError] = useState<string | null>(null);
@@ -464,6 +470,13 @@ export function PortfolioPage() {
     setPortfolioModalOpened(true);
   };
 
+  const openClonePortfolioModal = () => {
+    if (!selectedPortfolio) return;
+    setPortfolioCloneName(`${selectedPortfolio.name} (Copia)`);
+    setPortfolioCloneError(null);
+    setPortfolioCloneOpened(true);
+  };
+
   const handleSavePortfolio = async () => {
     setPortfolioFormError(null);
     const name = portfolioFormName.trim();
@@ -547,6 +560,30 @@ export function PortfolioPage() {
       setError(err instanceof Error ? err.message : 'Errore eliminazione portfolio');
     } finally {
       setPortfolioDeleting(false);
+    }
+  };
+
+  const handleClonePortfolio = async () => {
+    const portfolioId = Number(selectedPortfolioId);
+    if (!Number.isFinite(portfolioId)) return;
+
+    const cloneName = portfolioCloneName.trim();
+    if (!cloneName) {
+      setPortfolioCloneError('Nome portfolio clone obbligatorio');
+      return;
+    }
+
+    try {
+      setPortfolioCloneError(null);
+      setPortfolioCloning(true);
+      const result = await clonePortfolio(portfolioId, { name: cloneName });
+      await loadPortfolios(String(result.portfolio.id));
+      setPortfolioCloneOpened(false);
+      setFormSuccess(`Portfolio "${result.portfolio.name}" clonato (${result.target_allocations_copied} allocazioni target)`);
+    } catch (err) {
+      setPortfolioCloneError(err instanceof Error ? err.message : 'Errore clonazione portfolio');
+    } finally {
+      setPortfolioCloning(false);
     }
   };
 
@@ -983,6 +1020,28 @@ export function PortfolioPage() {
     </Table.Tr>
   ));
 
+  const allocationMobileCards = allocations.map((item) => {
+    const targetValue = portfolioTargetNotional != null
+      ? formatMoney((portfolioTargetNotional * item.weight_pct) / 100, selectedPortfolio?.base_currency)
+      : 'N/D';
+
+    return (
+      <Card key={`allocation-mobile-${item.asset_id}`} withBorder>
+        <Group justify="space-between" align="flex-start" wrap="nowrap">
+          <div>
+            <Text fw={600}>{item.symbol}</Text>
+            <Text size="xs" c="dimmed">{item.name}</Text>
+          </div>
+          <Text fw={700}>{item.weight_pct.toFixed(2)}%</Text>
+        </Group>
+        <Group justify="space-between" mt="sm" gap="xs">
+          <Text size="sm" c="dimmed">Controvalore target</Text>
+          <Text size="sm" fw={600}>{targetValue}</Text>
+        </Group>
+      </Card>
+    );
+  });
+
   const discoverOptions = discoverItems.map((item) => ({
     value: item.key,
     label:
@@ -1111,6 +1170,51 @@ export function PortfolioPage() {
     );
   });
 
+  const transactionMobileCards = sortedTransactions.map((tx) => {
+    const gross = tx.quantity * tx.price;
+    const total = tx.side === 'buy'
+      ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
+      : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+
+    return (
+      <Card key={`tx-mobile-${tx.id}`} withBorder>
+        <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
+          <div>
+            <Text fw={600}>{tx.symbol}</Text>
+            {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
+          </div>
+          <Text fw={700} c={tx.side === 'buy' ? 'teal' : 'orange'}>
+            {formatTransactionSideLabel(tx.side)}
+          </Text>
+        </Group>
+
+        <Text size="xs" c="dimmed" mt={6}>{formatDateTime(tx.trade_at)}</Text>
+
+        <Group justify="space-between" mt="sm" gap="xs">
+          <Text size="sm" c="dimmed">Quantita</Text>
+          <Text size="sm">{tx.quantity}</Text>
+        </Group>
+        <Group justify="space-between" gap="xs">
+          <Text size="sm" c="dimmed">Prezzo</Text>
+          <Text size="sm">{formatMoney(tx.price, tx.trade_currency)}</Text>
+        </Group>
+        <Group justify="space-between" gap="xs">
+          <Text size="sm" c="dimmed">Fee</Text>
+          <Text size="sm">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Text>
+        </Group>
+        <Group justify="space-between" gap="xs">
+          <Text size="sm" c="dimmed">Valore</Text>
+          <Text size="sm" fw={700}>{formatMoney(total, tx.trade_currency)}</Text>
+        </Group>
+        {!!tx.notes && (
+          <Text size="xs" c="dimmed" mt="sm">
+            Note: {tx.notes}
+          </Text>
+        )}
+      </Card>
+    );
+  });
+
   if (sortedTransactions.length > 0) {
     transactionRows.push(
       <Table.Tr key="transactions-total" style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
@@ -1133,6 +1237,21 @@ export function PortfolioPage() {
         </Table.Td>
         {!isMobile && <Table.Td />}
       </Table.Tr>,
+    );
+
+    transactionMobileCards.push(
+      <Card key="tx-mobile-total" withBorder>
+        <Group justify="space-between" gap="xs">
+          <Text fw={700}>Totale</Text>
+          {transactionTotals.mixedCurrencies ? (
+            <Text fw={700} c="dimmed">Valute miste</Text>
+          ) : (
+            <Text fw={700}>
+              {formatMoney(transactionTotals.totalValue, transactionTotals.currency ?? selectedPortfolio?.base_currency)}
+            </Text>
+          )}
+        </Group>
+      </Card>,
     );
   }
 
@@ -1178,6 +1297,9 @@ export function PortfolioPage() {
               <Menu.Dropdown>
                 <Menu.Item leftSection={<IconEdit size={14} />} onClick={openEditPortfolioModal}>
                   Modifica portfolio
+                </Menu.Item>
+                <Menu.Item leftSection={<IconCopy size={14} />} onClick={openClonePortfolioModal}>
+                  Clona portfolio
                 </Menu.Item>
                 <Menu.Divider />
                 <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => setPortfolioDeleteOpened(true)}>
@@ -1271,27 +1393,31 @@ export function PortfolioPage() {
           }
           selectedPortfolioId={selectedPortfolioId}
           rows={rows}
-          hasRows={rows.length > 0}
+          mobileCards={allocationMobileCards}
+          hasRows={allocations.length > 0}
           onOpenAddAssetWeight={openDrawer}
           showActions={!isMobile}
         />
       )}
 
-      <TransactionsSection
-        loading={loadingTransactions}
-        filterQuery={transactionFilterQuery}
-        onFilterQueryChange={setTransactionFilterQuery}
-        filterSide={transactionFilterSide}
-        onFilterSideChange={setTransactionFilterSide}
-        sortKey={transactionSortKey}
-        onSortKeyChange={(value) => setTransactionSortKey((value as 'trade_at' | 'symbol' | 'side' | 'value') ?? 'trade_at')}
-        sortDir={transactionSortDir}
-        onSortDirChange={(value) => setTransactionSortDir((value as 'asc' | 'desc') ?? 'desc')}
-        rows={transactionRows}
-        hasRows={transactionRows.length > 0}
-        selectedPortfolioId={selectedPortfolioId}
-        showActions={!isMobile}
-      />
+      {(!isMobile || portfolioView !== 'target') && (
+        <TransactionsSection
+          loading={loadingTransactions}
+          filterQuery={transactionFilterQuery}
+          onFilterQueryChange={setTransactionFilterQuery}
+          filterSide={transactionFilterSide}
+          onFilterSideChange={setTransactionFilterSide}
+          sortKey={transactionSortKey}
+          onSortKeyChange={(value) => setTransactionSortKey((value as 'trade_at' | 'symbol' | 'side' | 'value') ?? 'trade_at')}
+          sortDir={transactionSortDir}
+          onSortDirChange={(value) => setTransactionSortDir((value as 'asc' | 'desc') ?? 'desc')}
+          rows={transactionRows}
+          mobileCards={transactionMobileCards}
+          hasRows={sortedTransactions.length > 0}
+          selectedPortfolioId={selectedPortfolioId}
+          showActions={!isMobile}
+        />
+      )}
 
       <Modal
         opened={portfolioModalOpened}
@@ -1341,6 +1467,34 @@ export function PortfolioPage() {
           <Button onClick={handleSavePortfolio} loading={portfolioSaving}>
             {portfolioModalMode === 'create' ? 'Crea Portfolio' : 'Salva Modifiche'}
           </Button>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={portfolioCloneOpened}
+        onClose={() => setPortfolioCloneOpened(false)}
+        title="Clona portfolio"
+        centered
+      >
+        <Stack>
+          {portfolioCloneError && <Alert color="red">{portfolioCloneError}</Alert>}
+          <Text size="sm">
+            Verranno copiate solo le impostazioni del portfolio e l&apos;allocazione target. Le transazioni non saranno copiate.
+          </Text>
+          <TextInput
+            label="Nome nuovo portfolio"
+            value={portfolioCloneName}
+            onChange={(event) => setPortfolioCloneName(event.currentTarget.value)}
+            placeholder="Es. Portafoglio ETF (Copia)"
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setPortfolioCloneOpened(false)} disabled={portfolioCloning}>
+              Annulla
+            </Button>
+            <Button leftSection={<IconCopy size={16} />} onClick={handleClonePortfolio} loading={portfolioCloning}>
+              Clona
+            </Button>
+          </Group>
         </Stack>
       </Modal>
 
