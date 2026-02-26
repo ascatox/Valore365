@@ -106,3 +106,9 @@ create table api_idempotency_keys (
   created_at timestamptz not null default now(),
   primary key (idempotency_key, endpoint)
 );
+
+create table app_user_settings (
+  user_id varchar(255) primary key,
+  broker_default_fee numeric(28,10) not null default 0,
+  updated_at timestamptz not null default now()
+);

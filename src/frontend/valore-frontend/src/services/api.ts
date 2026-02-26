@@ -13,6 +13,15 @@ export interface ApiErrorPayload {
   };
 }
 
+export interface UserSettings {
+  user_id: string;
+  broker_default_fee: number;
+}
+
+export interface UserSettingsUpdateInput {
+  broker_default_fee: number;
+}
+
 export interface Portfolio {
   id: number;
   name: string;
@@ -288,6 +297,104 @@ export interface TransactionUpdateInput {
   notes?: string | null;
 }
 
+export interface AssetCoverageItem {
+  asset_id: number;
+  symbol: string;
+  name: string;
+  bar_count: number;
+  first_bar: string | null;
+  last_bar: string | null;
+  expected_bars: number;
+  coverage_pct: number;
+}
+
+export interface DataCoverageResponse {
+  portfolio_id: number;
+  days: number;
+  sufficient: boolean;
+  threshold_pct: number;
+  assets: AssetCoverageItem[];
+}
+
+export interface RebalancePreviewInput {
+  mode: 'buy_only' | 'rebalance' | 'sell_only';
+  max_transactions: number;
+  cash_to_allocate?: number | null;
+  min_order_value?: number;
+  trade_at?: string | null;
+  rounding: 'fractional' | 'integer';
+  selection_strategy?: 'largest_drift';
+  use_latest_prices?: boolean;
+}
+
+export interface RebalancePreviewItem {
+  asset_id: number;
+  symbol: string;
+  name: string;
+  target_weight_pct: number;
+  current_weight_pct: number;
+  drift_pct: number;
+  current_quantity: number;
+  side: 'buy' | 'sell';
+  trade_currency: string;
+  price: number;
+  quantity: number;
+  gross_total: number;
+  tradable: boolean;
+  skip_reason: string | null;
+}
+
+export interface RebalancePreviewSummary {
+  proposed_buy_total: number;
+  proposed_sell_total: number;
+  cash_input: number;
+  estimated_cash_residual: number;
+  generated_count: number;
+  skipped_count: number;
+}
+
+export interface RebalancePreviewResponse {
+  portfolio_id: number;
+  base_currency: string;
+  mode: 'buy_only' | 'rebalance' | 'sell_only';
+  trade_at: string | null;
+  summary: RebalancePreviewSummary;
+  items: RebalancePreviewItem[];
+  warnings: string[];
+}
+
+export interface RebalanceCommitItemInput {
+  asset_id: number;
+  side: 'buy' | 'sell';
+  quantity: number;
+  price: number;
+  fees?: number;
+  taxes?: number;
+  notes?: string | null;
+}
+
+export interface RebalanceCommitInput {
+  trade_at: string;
+  items: RebalanceCommitItemInput[];
+}
+
+export interface RebalanceCommitCreatedItem {
+  transaction_id: number;
+  asset_id: number;
+  side: 'buy' | 'sell';
+  quantity: number;
+  price: number;
+}
+
+export interface RebalanceCommitResponse {
+  portfolio_id: number;
+  requested: number;
+  created: number;
+  failed: number;
+  items: RebalanceCommitCreatedItem[];
+  errors: string[];
+}
+
 export interface MarketQuoteItem {
   symbol: string;
   name: string;
@@ -342,6 +449,17 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const getAdminPortfolios = async (): Promise<Portfolio[]> => {
   return apiFetch<Portfolio[]>('/admin/portfolios');
+};
+
+export const getUserSettings = async (): Promise<UserSettings> => {
+  return apiFetch<UserSettings>('/settings/user');
+};
+
+export const updateUserSettings = async (payload: UserSettingsUpdateInput): Promise<UserSettings> => {
+  return apiFetch<UserSettings>('/settings/user', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
 };
 
 export const createPortfolio = async (payload: PortfolioCreateInput): Promise<Portfolio> => {
@@ -529,4 +647,34 @@ export const deleteTransaction = async (transactionId: number): Promise<{ status
 
 export const getMarketQuotes = async (): Promise<MarketQuotesResponse> => {
   return apiFetch<MarketQuotesResponse>('/markets/quotes');
+};
+
+export const getPortfolioDataCoverage = async (
+  portfolioId: number,
+  days = 365,
+  thresholdPct = 80,
+): Promise<DataCoverageResponse> => {
+  return apiFetch<DataCoverageResponse>(
+    `/portfolios/${portfolioId}/data-coverage?days=${days}&threshold_pct=${thresholdPct}`,
+  );
+};
+
+export const getPortfolioRebalancePreview = async (
+  portfolioId: number,
+  payload: RebalancePreviewInput,
+): Promise<RebalancePreviewResponse> => {
+  return apiFetch<RebalancePreviewResponse>(`/portfolios/${portfolioId}/rebalance/preview`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const commitPortfolioRebalance = async (
+  portfolioId: number,
+  payload: RebalanceCommitInput,
+): Promise<RebalanceCommitResponse> => {
+  return apiFetch<RebalanceCommitResponse>(`/portfolios/${portfolioId}/rebalance/commit`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 };

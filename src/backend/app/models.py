@@ -13,6 +13,15 @@ class ErrorResponse(BaseModel):
     error: ApiError
 
 
+class UserSettingsRead(BaseModel):
+    user_id: str
+    broker_default_fee: float = Field(default=0, ge=0)
+
+
+class UserSettingsUpdate(BaseModel):
+    broker_default_fee: float = Field(ge=0)
+
+
 class PortfolioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     base_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')
@@ -295,6 +304,104 @@ class DailyBackfillResponse(BaseModel):
     fx_pairs_refreshed: int
     asset_items: list[DailyBackfillItem]
     fx_items: list[FxBackfillItem]
+    errors: list[str]
+
+
+class AssetCoverageItem(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    bar_count: int
+    first_bar: date | None
+    last_bar: date | None
+    expected_bars: int
+    coverage_pct: float
+
+
+class DataCoverageResponse(BaseModel):
+    portfolio_id: int
+    days: int
+    sufficient: bool
+    threshold_pct: float
+    assets: list[AssetCoverageItem]
+
+
+class RebalancePreviewRequest(BaseModel):
+    mode: Literal['buy_only', 'rebalance', 'sell_only'] = 'buy_only'
+    max_transactions: int = Field(default=5, ge=1, le=100)
+    cash_to_allocate: float | None = Field(default=None, ge=0)
+    min_order_value: float = Field(default=0, ge=0)
+    trade_at: datetime | None = None
+    rounding: Literal['fractional', 'integer'] = 'fractional'
+    selection_strategy: Literal['largest_drift'] = 'largest_drift'
+    use_latest_prices: bool = True
+
+
+class RebalancePreviewItem(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    target_weight_pct: float
+    current_weight_pct: float
+    drift_pct: float
+    current_quantity: float
+    side: Literal['buy', 'sell']
+    trade_currency: str
+    price: float
+    quantity: float
+    gross_total: float
+    tradable: bool = True
+    skip_reason: str | None = None
+
+
+class RebalancePreviewSummary(BaseModel):
+    proposed_buy_total: float
+    proposed_sell_total: float
+    cash_input: float
+    estimated_cash_residual: float
+    generated_count: int
+    skipped_count: int
+
+
+class RebalancePreviewResponse(BaseModel):
+    portfolio_id: int
+    base_currency: str
+    mode: Literal['buy_only', 'rebalance', 'sell_only']
+    trade_at: datetime | None = None
+    summary: RebalancePreviewSummary
+    items: list[RebalancePreviewItem]
+    warnings: list[str]
+
+
+class RebalanceCommitItemInput(BaseModel):
+    asset_id: int = Field(ge=1)
+    side: Literal['buy', 'sell']
+    quantity: float = Field(gt=0)
+    price: float = Field(ge=0)
+    fees: float = Field(default=0, ge=0)
+    taxes: float = Field(default=0, ge=0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class RebalanceCommitRequest(BaseModel):
+    trade_at: datetime
+    items: list[RebalanceCommitItemInput] = Field(min_length=1, max_length=200)
+
+
+class RebalanceCommitCreatedItem(BaseModel):
+    transaction_id: int
+    asset_id: int
+    side: Literal['buy', 'sell']
+    quantity: float
+    price: float
+
+
+class RebalanceCommitResponse(BaseModel):
+    portfolio_id: int
+    requested: int
+    created: int
+    failed: int
+    items: list[RebalanceCommitCreatedItem]
     errors: list[str]
 
 

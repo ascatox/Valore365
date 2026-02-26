@@ -144,8 +144,8 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                 {/* Allocazione */}
                 <Table.Td style={{ textAlign: 'right' }}>
                   <Group gap="xs" wrap="nowrap" justify="flex-end">
-                    <Progress value={p.weight * 100} size="sm" w={60} color="blue" visibleFrom="sm" />
-                    <Text size="xs">{(p.weight * 100).toFixed(1)}%</Text>
+                    <Progress value={p.weight} size="sm" w={60} color="blue" visibleFrom="sm" />
+                    <Text size="xs">{p.weight.toFixed(1)}%</Text>
                   </Group>
                 </Table.Td>
                 {/* Prima Op. */}

@@ -15,4 +15,5 @@ export const STORAGE_KEYS = {
   selectedPortfolioId: 'valore365.dashboard.selectedPortfolioId',
   chartWindow: 'valore365.dashboard.chartWindow',
   activeTab: 'valore365.dashboard.activeTab',
+  brokerDefaultFee: 'valore365.settings.brokerDefaultFee',
 } as const;

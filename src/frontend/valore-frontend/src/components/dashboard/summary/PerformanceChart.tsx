@@ -1,5 +1,6 @@
 import { Badge, Card, Group, Loader, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
 
@@ -39,6 +40,7 @@ export function PerformanceChart({
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 
@@ -48,7 +50,20 @@ export function PerformanceChart({
         <Group gap="xs">
           <Text fw={600} size="sm">{title}</Text>
           {stats?.map((s) => (
-            <Badge key={s.label} variant="light" color={s.color ?? 'blue'} size="sm">
+            <Badge
+              key={s.label}
+              variant="light"
+              color={s.color ?? 'blue'}
+              size={isMobile ? 'lg' : 'md'}
+              styles={{
+                root: {
+                  fontSize: isMobile ? 14 : 13,
+                  fontWeight: 600,
+                  paddingInline: isMobile ? 12 : 10,
+                  height: isMobile ? 32 : 28,
+                },
+              }}
+            >
               {s.label} {s.value}
             </Badge>
           ))}

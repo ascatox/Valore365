@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { MantineProvider } from '@mantine/core';
+import { MantineProvider, NumberInput, createTheme } from '@mantine/core';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
 import App from './App.tsx';
@@ -9,13 +9,23 @@ import App from './App.tsx';
 import '@mantine/core/styles.css';
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
+const theme = createTheme({
+  components: {
+    NumberInput: NumberInput.extend({
+      defaultProps: {
+        thousandSeparator: '.',
+        decimalSeparator: ',',
+      },
+    }),
+  },
+});
 
 function Root() {
   if (clerkPubKey) {
     return (
       <ClerkProvider publishableKey={clerkPubKey}>
         <ClerkTokenBridge />
-        <MantineProvider>
+        <MantineProvider theme={theme}>
           <App />
         </MantineProvider>
       </ClerkProvider>
@@ -23,7 +33,7 @@ function Root() {
   }
 
   return (
-    <MantineProvider>
+    <MantineProvider theme={theme}>
       <App />
     </MantineProvider>
   );

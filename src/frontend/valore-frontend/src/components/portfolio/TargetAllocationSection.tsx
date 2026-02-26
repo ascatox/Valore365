@@ -11,6 +11,7 @@ interface TargetAllocationSectionProps {
   rows: ReactNode;
   hasRows: boolean;
   onOpenAddAssetWeight: () => void;
+  showActions?: boolean;
 }
 
 export function TargetAllocationSection({
@@ -22,6 +23,7 @@ export function TargetAllocationSection({
   rows,
   hasRows,
   onOpenAddAssetWeight,
+  showActions = true,
 }: TargetAllocationSectionProps) {
   return (
     <>
@@ -54,9 +56,11 @@ export function TargetAllocationSection({
       <Card withBorder mb="lg">
         <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
           <Title order={4}>Allocazione target</Title>
-          <Button leftSection={<IconPlus size={16} />} variant="light" onClick={onOpenAddAssetWeight} disabled={!selectedPortfolioId}>
-            Aggiungi Asset / Peso
-          </Button>
+          {showActions && (
+            <Button leftSection={<IconPlus size={16} />} variant="light" onClick={onOpenAddAssetWeight} disabled={!selectedPortfolioId}>
+              Aggiungi Asset / Peso
+            </Button>
+          )}
         </Group>
         <Table.ScrollContainer minWidth={450}>
           <Table striped highlightOnHover>
@@ -65,7 +69,7 @@ export function TargetAllocationSection({
                 <Table.Th>Asset</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Peso Target</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Controvalore Target</Table.Th>
-                <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>
+                {showActions && <Table.Th style={{ textAlign: 'right' }}>Azioni</Table.Th>}
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -73,7 +77,7 @@ export function TargetAllocationSection({
                 rows
               ) : (
                 <Table.Tr>
-                  <Table.Td colSpan={4}>
+                  <Table.Td colSpan={showActions ? 4 : 3}>
                     <Text c="dimmed" ta="center">
                       {selectedPortfolioId ? 'Nessun asset assegnato al portafoglio' : 'Nessun portafoglio disponibile'}
                     </Text>

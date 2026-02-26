@@ -14,6 +14,77 @@ class HistoricalIngestionService:
         self.settings = settings
         self.repository = repository
 
+    def backfill_single_asset(self, *, asset_id: int, portfolio_id: int, days: int = 365) -> None:
+        """Background backfill for a single asset (prices + FX). Never raises."""
+        try:
+            provider = self.settings.finance_provider.strip().lower()
+            outputsize = max(30, min(days, 2000))
+            end_date = date.today()
+            start_date = end_date - timedelta(days=outputsize - 1)
+
+            client = make_finance_client(self.settings)
+            pricing_asset = self.repository.get_asset_pricing_symbol(asset_id, provider)
+            base_currency = self.repository.get_portfolio_base_currency(portfolio_id)
+
+            # Price bars
+            bars = client.get_daily_bars(
+                pricing_asset.provider_symbol,
+                outputsize=outputsize,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+            rows = [
+                {
+                    "price_date": bar.day,
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume,
+                }
+                for bar in bars
+                if start_date <= bar.day <= end_date
+            ]
+            self.repository.batch_upsert_price_bars_1d(
+                asset_id=asset_id,
+                provider=provider,
+                rows=rows,
+            )
+            logger.info(
+                'Single-asset backfill asset=%s bars=%s',
+                pricing_asset.provider_symbol,
+                len(rows),
+            )
+
+            # FX rates if needed
+            quote_ccys = self.repository.get_quote_currencies_for_assets([asset_id])
+            quote_ccy = quote_ccys.get(asset_id, '')
+            if quote_ccy and quote_ccy.upper() != base_currency.upper():
+                rates = client.get_daily_fx_rates(
+                    quote_ccy,
+                    base_currency,
+                    outputsize=outputsize,
+                    start_date=start_date.isoformat(),
+                    end_date=end_date.isoformat(),
+                )
+                fx_rows = [
+                    {"price_date": fx.day, "rate": fx.rate}
+                    for fx in rates
+                    if start_date <= fx.day <= end_date
+                ]
+                self.repository.batch_upsert_fx_rates_1d(
+                    from_ccy=quote_ccy,
+                    to_ccy=base_currency,
+                    provider=provider,
+                    rows=fx_rows,
+                )
+                logger.info(
+                    'Single-asset FX backfill pair=%s/%s rates=%s',
+                    quote_ccy, base_currency, len(fx_rows),
+                )
+        except Exception as exc:
+            logger.error('Single-asset backfill failed asset_id=%s error=%s', asset_id, exc)
+
     def backfill_daily(self, *, portfolio_id: int, days: int = 365, asset_scope: str = 'target') -> DailyBackfillResponse:
         provider = self.settings.finance_provider.strip().lower()
         outputsize = max(30, min(days, 2000))

@@ -3,6 +3,7 @@ import {
   backfillPortfolioDailyPrices,
   getAdminPortfolios,
   getPortfolioAllocation,
+  getPortfolioDataCoverage,
   getPortfolioPositions,
   getPortfolioSummary,
   getPortfolioTimeseries,
@@ -15,6 +16,7 @@ import {
 } from '../../../services/api';
 import type {
   AllocationItem,
+  DataCoverageResponse,
   Portfolio,
   PortfolioSummary,
   PortfolioTargetAllocationItem,
@@ -62,6 +64,7 @@ export function useDashboardData(): DashboardData {
   const [assetIntradayPerformance, setAssetIntradayPerformance] =
     useState<PortfolioTargetAssetIntradayPerformanceResponse | null>(null);
   const [assetIntradayLoading, setAssetIntradayLoading] = useState(false);
+  const [dataCoverage, setDataCoverage] = useState<DataCoverageResponse | null>(null);
 
   // Load portfolios on mount
   useEffect(() => {
@@ -104,7 +107,7 @@ export function useDashboardData(): DashboardData {
   }, [chartWindow]);
 
   const loadDashboardData = async (portfolioId: number) => {
-    const [allocationData, perfData, assetPerfData, summaryData, positionsData, portfolioAllocationData, timeseriesData] =
+    const [allocationData, perfData, assetPerfData, summaryData, positionsData, portfolioAllocationData, timeseriesData, coverageData] =
       await Promise.all([
         getPortfolioTargetAllocation(portfolioId),
         getPortfolioTargetPerformance(portfolioId),
@@ -113,6 +116,7 @@ export function useDashboardData(): DashboardData {
         getPortfolioPositions(portfolioId),
         getPortfolioAllocation(portfolioId),
         getPortfolioTimeseries(portfolioId),
+        getPortfolioDataCoverage(portfolioId),
       ]);
     setAllocation(allocationData);
     setTargetPerformance(perfData);
@@ -121,6 +125,7 @@ export function useDashboardData(): DashboardData {
     setPortfolioPositions(positionsData);
     setPortfolioAllocation(portfolioAllocationData);
     setPortfolioTimeseries(timeseriesData);
+    setDataCoverage(coverageData);
   };
 
   const loadMainIntradayChart = async (portfolioId: number) => {
@@ -354,13 +359,13 @@ export function useDashboardData(): DashboardData {
     () =>
       portfolioTimeseries
         .filter((point) => Number.isFinite(point.market_value))
-        .slice(-90)
+        .slice(-(chartWindow === '1' ? 1 : chartWindowDays))
         .map((point) => ({
           rawDate: point.date,
           date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
           value: point.market_value,
         })),
-    [portfolioTimeseries],
+    [portfolioTimeseries, chartWindow, chartWindowDays],
   );
 
   const mvpTimeseriesStats = useMemo(() => {
@@ -412,5 +417,6 @@ export function useDashboardData(): DashboardData {
     intradayDateLabel,
     indexCardStats,
     mainChartStats,
+    dataCoverage,
   };
 }

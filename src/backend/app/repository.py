@@ -36,6 +36,8 @@ from .models import (
     TransactionListItem,
     TransactionRead,
     TransactionUpdate,
+    UserSettingsRead,
+    UserSettingsUpdate,
 )
 
 
@@ -69,6 +71,51 @@ class PositionDelta:
 class PortfolioRepository:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
+
+    def get_user_settings(self, user_id: str) -> UserSettingsRead:
+        normalized_user_id = (user_id or "").strip()
+        if not normalized_user_id:
+            raise ValueError("user_id non valido")
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select user_id, broker_default_fee::float8 as broker_default_fee
+                    from app_user_settings
+                    where user_id = :user_id
+                    """
+                ),
+                {"user_id": normalized_user_id},
+            ).mappings().fetchone()
+        if row is None:
+            return UserSettingsRead(user_id=normalized_user_id, broker_default_fee=0.0)
+        return UserSettingsRead(
+            user_id=str(row["user_id"]),
+            broker_default_fee=float(row["broker_default_fee"] or 0.0),
+        )
+
+    def upsert_user_settings(self, user_id: str, payload: UserSettingsUpdate) -> UserSettingsRead:
+        normalized_user_id = (user_id or "").strip()
+        if not normalized_user_id:
+            raise ValueError("user_id non valido")
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    insert into app_user_settings (user_id, broker_default_fee, updated_at)
+                    values (:user_id, :broker_default_fee, now())
+                    on conflict (user_id)
+                    do update set
+                      broker_default_fee = excluded.broker_default_fee,
+                      updated_at = now()
+                    """
+                ),
+                {
+                    "user_id": normalized_user_id,
+                    "broker_default_fee": payload.broker_default_fee,
+                },
+            )
+        return self.get_user_settings(normalized_user_id)
 
     def list_portfolio_target_allocations(self, portfolio_id: int) -> list[PortfolioTargetAllocationItem]:
         with self.engine.begin() as conn:
@@ -1084,6 +1131,7 @@ class PortfolioRepository:
                     """
                     select asset_id,
                            side,
+                           trade_at,
                            trade_at::date as trade_date,
                            quantity::float8 as quantity,
                            price::float8 as price,
@@ -1135,6 +1183,7 @@ class PortfolioRepository:
                 ).mappings().all()
 
             grouped: dict[int, dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0})
+            first_trade_at_by_asset: dict[int, datetime] = {}
             fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
             for row in fx_rows:
                 fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
@@ -1158,6 +1207,11 @@ class PortfolioRepository:
             for tx in tx_rows:
                 aid = int(tx["asset_id"])
                 lot = grouped[aid]
+                trade_at_ts = tx.get("trade_at")
+                if isinstance(trade_at_ts, datetime):
+                    prev_first = first_trade_at_by_asset.get(aid)
+                    if prev_first is None or trade_at_ts < prev_first:
+                        first_trade_at_by_asset[aid] = trade_at_ts
                 qty = float(tx["quantity"])
                 price = float(tx["price"])
                 fees = float(tx["fees"])
@@ -1214,6 +1268,7 @@ class PortfolioRepository:
                         unrealized_pl=round(pl, 2),
                         unrealized_pl_pct=round(pl_pct, 2),
                         weight=0,  # Placeholder, will be calculated next
+                        first_trade_at=first_trade_at_by_asset.get(aid),
                     )
                 )
 
@@ -1736,6 +1791,53 @@ class PortfolioRepository:
                 {"asset_ids": asset_ids},
             ).mappings().all()
         return {int(r["id"]): str(r["quote_currency"]) for r in rows}
+
+    def get_price_coverage(self, portfolio_id: int, days: int = 365) -> list[dict]:
+        """Return price bar coverage stats for each asset in the portfolio target allocation."""
+        with self.engine.begin() as conn:
+            if self._get_portfolio(conn, portfolio_id) is None:
+                raise ValueError("Portfolio non trovato")
+            rows = conn.execute(
+                text(
+                    """
+                    select
+                        pta.asset_id,
+                        a.symbol,
+                        coalesce(a.name, a.symbol) as name,
+                        count(pb.price_date) as bar_count,
+                        min(pb.price_date) as first_bar,
+                        max(pb.price_date) as last_bar
+                    from portfolio_target_allocations pta
+                    join assets a on a.id = pta.asset_id
+                    left join price_bars_1d pb
+                        on pb.asset_id = pta.asset_id
+                        and pb.price_date >= current_date - :days
+                    where pta.portfolio_id = :portfolio_id
+                    group by pta.asset_id, a.symbol, a.name
+                    order by a.symbol
+                    """
+                ),
+                {"portfolio_id": portfolio_id, "days": days},
+            ).mappings().all()
+
+        # ~252 trading days per 365 calendar days
+        expected_bars = int(days * 252 / 365)
+
+        result = []
+        for r in rows:
+            bar_count = int(r["bar_count"])
+            coverage_pct = round(bar_count / expected_bars * 100, 1) if expected_bars > 0 else 0.0
+            result.append({
+                "asset_id": int(r["asset_id"]),
+                "symbol": str(r["symbol"]),
+                "name": str(r["name"]),
+                "bar_count": bar_count,
+                "first_bar": r["first_bar"],
+                "last_bar": r["last_bar"],
+                "expected_bars": expected_bars,
+                "coverage_pct": min(coverage_pct, 100.0),
+            })
+        return result
 
     def _get_portfolio(self, conn, portfolio_id: int) -> PortfolioData | None:
         row = conn.execute(

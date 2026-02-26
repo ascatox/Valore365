@@ -1,6 +1,7 @@
 import type { IconProps } from '@tabler/icons-react';
 import type {
   AllocationItem,
+  DataCoverageResponse,
   Portfolio,
   PortfolioSummary,
   PortfolioTargetAllocationItem,
@@ -98,4 +99,5 @@ export interface DashboardData {
   intradayDateLabel: string | null;
   indexCardStats: { index: number; diffPts: number; diffPct: number } | null;
   mainChartStats: { last: number; periodPct: number } | null;
+  dataCoverage: DataCoverageResponse | null;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   Table,
   Button,
@@ -17,8 +18,9 @@ import {
   SegmentedControl,
   Menu,
   Tooltip,
+  Checkbox,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconDotsVertical } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget } from '@tabler/icons-react';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
 import {
@@ -32,16 +34,26 @@ import {
   getAdminPortfolios,
   getAssetLatestQuote,
   getPortfolioTargetAllocation,
+  commitPortfolioRebalance,
+  getPortfolioRebalancePreview,
   getPortfolioTransactions,
   updateTransaction,
   updatePortfolio,
   upsertPortfolioTargetAllocation,
 } from '../services/api';
-import type { AssetDiscoverItem, Portfolio, PortfolioTargetAllocationItem, TransactionListItem } from '../services/api';
+import type {
+  AssetDiscoverItem,
+  Portfolio,
+  PortfolioTargetAllocationItem,
+  RebalancePreviewResponse,
+  RebalanceCommitResponse,
+  TransactionListItem,
+} from '../services/api';
 
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 
 export function PortfolioPage() {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<PortfolioTargetAllocationItem[]>([]);
@@ -57,6 +69,8 @@ export function PortfolioPage() {
   const [transactionLabelToDelete, setTransactionLabelToDelete] = useState<string | null>(null);
   const [transactionFilterQuery, setTransactionFilterQuery] = useState('');
   const [transactionFilterSide, setTransactionFilterSide] = useState<string>('all');
+  const [transactionSortKey, setTransactionSortKey] = useState<'trade_at' | 'symbol' | 'side' | 'value'>('trade_at');
+  const [transactionSortDir, setTransactionSortDir] = useState<'asc' | 'desc'>('desc');
   const [editTransactionOpened, setEditTransactionOpened] = useState(false);
   const [editingTransactionId, setEditingTransactionId] = useState<number | null>(null);
   const [editTransactionLabel, setEditTransactionLabel] = useState<string | null>(null);
@@ -114,6 +128,19 @@ export function PortfolioPage() {
   const [txResolvedAssetLabel, setTxResolvedAssetLabel] = useState<string | null>(null);
   const [txEnsuringAsset, setTxEnsuringAsset] = useState(false);
   const [txPriceLoading, setTxPriceLoading] = useState(false);
+  const [rebalancePreviewOpened, setRebalancePreviewOpened] = useState(false);
+  const [rebalancePreviewLoading, setRebalancePreviewLoading] = useState(false);
+  const [rebalancePreviewError, setRebalancePreviewError] = useState<string | null>(null);
+  const [rebalancePreviewData, setRebalancePreviewData] = useState<RebalancePreviewResponse | null>(null);
+  const [rebalanceCommitResult, setRebalanceCommitResult] = useState<RebalanceCommitResponse | null>(null);
+  const [rebalanceCommitLoading, setRebalanceCommitLoading] = useState(false);
+  const [rebalanceSelectedRows, setRebalanceSelectedRows] = useState<Record<string, boolean>>({});
+  const [rebalanceMode, setRebalanceMode] = useState<'buy_only' | 'rebalance' | 'sell_only'>('buy_only');
+  const [rebalanceMaxTransactions, setRebalanceMaxTransactions] = useState<number | string>(5);
+  const [rebalanceCashToAllocate, setRebalanceCashToAllocate] = useState<number | string>(1000);
+  const [rebalanceMinOrderValue, setRebalanceMinOrderValue] = useState<number | string>(100);
+  const [rebalanceRounding, setRebalanceRounding] = useState<'fractional' | 'integer'>('fractional');
+  const [rebalanceTradeAt, setRebalanceTradeAt] = useState('');
 
   const selectedPortfolio = useMemo(
     () => portfolios.find((p) => String(p.id) === selectedPortfolioId) ?? null,
@@ -142,6 +169,36 @@ export function PortfolioPage() {
   };
 
   const formatTransactionSideLabel = (side: 'buy' | 'sell') => (side === 'buy' ? 'Acquisto' : 'Vendita');
+
+  const getDefaultBrokerFee = (): number => {
+    if (typeof window === 'undefined') return 0;
+    const raw = window.localStorage.getItem(STORAGE_KEYS.brokerDefaultFee);
+    if (raw == null || raw === '') return 0;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  };
+
+  const toNumericInputValue = (value: number | string | null | undefined): number | null => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (!trimmed) return null;
+      const parsed = Number(trimmed.replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+
+  const formatGrossTotal = (quantity: number | string, price: number | string): string => {
+    const q = toNumericInputValue(quantity);
+    const p = toNumericInputValue(price);
+    if (q == null || p == null) return '';
+    const total = q * p;
+    return new Intl.NumberFormat('it-IT', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(total);
+  };
 
   const currentDateTimeLocalValue = () => {
     const now = new Date();
@@ -201,7 +258,7 @@ export function PortfolioPage() {
     setTxTradeAt(currentDateTimeLocalValue());
     setTxQuantity('');
     setTxPrice('');
-    setTxFees(0);
+    setTxFees(getDefaultBrokerFee());
     setTxTaxes(0);
     setTxNotes('');
     setTxDiscoverQuery('');
@@ -234,6 +291,12 @@ export function PortfolioPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isMobile && rebalancePreviewOpened) {
+      setRebalancePreviewOpened(false);
+    }
+  }, [isMobile, rebalancePreviewOpened]);
 
   useEffect(() => {
     if (!selectedPortfolioId) {
@@ -366,6 +429,16 @@ export function PortfolioPage() {
   const openTransactionDrawer = () => {
     resetTransactionForm();
     setTransactionDrawerOpened(true);
+  };
+
+  const openRebalancePreviewModal = () => {
+    if (isMobile) return;
+    setRebalancePreviewError(null);
+    setRebalancePreviewData(null);
+    setRebalanceCommitResult(null);
+    setRebalanceSelectedRows({});
+    setRebalanceTradeAt(currentDateTimeLocalValue());
+    setRebalancePreviewOpened(true);
   };
 
   const openCreatePortfolioModal = () => {
@@ -549,7 +622,7 @@ export function PortfolioPage() {
       await loadTargetAllocation(portfolioId);
       setDrawerOpened(false);
       resetForm();
-      setFormSuccess('Peso salvato correttamente');
+      setFormSuccess('Peso salvato. Caricamento storico prezzi in corso...');
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Errore salvataggio peso');
     } finally {
@@ -678,7 +751,7 @@ export function PortfolioPage() {
         notes: txNotes.trim() || null,
       });
       await loadTransactions(portfolioId);
-      setTxFormSuccess('Transazione salvata');
+      setTxFormSuccess('Transazione salvata. Caricamento storico prezzi in corso...');
       setTransactionDrawerOpened(false);
       resetTransactionForm();
     } catch (err) {
@@ -702,6 +775,109 @@ export function PortfolioPage() {
       setTransactionsError(err instanceof Error ? err.message : 'Errore eliminazione transazione');
     } finally {
       setDeletingTransactionId(null);
+    }
+  };
+
+  const handleLoadRebalancePreview = async () => {
+    const portfolioId = Number(selectedPortfolioId);
+    const maxTransactions =
+      typeof rebalanceMaxTransactions === 'number' ? rebalanceMaxTransactions : Number(rebalanceMaxTransactions);
+    const cashToAllocate =
+      typeof rebalanceCashToAllocate === 'number' ? rebalanceCashToAllocate : Number(rebalanceCashToAllocate);
+    const minOrderValue =
+      typeof rebalanceMinOrderValue === 'number' ? rebalanceMinOrderValue : Number(rebalanceMinOrderValue || 0);
+
+    setRebalancePreviewError(null);
+    setRebalancePreviewData(null);
+    setRebalanceCommitResult(null);
+
+    if (!Number.isFinite(portfolioId)) {
+      setRebalancePreviewError('Seleziona un portfolio valido');
+      return;
+    }
+    if (!Number.isFinite(maxTransactions) || maxTransactions < 1) {
+      setRebalancePreviewError('Numero massimo transazioni non valido');
+      return;
+    }
+    if (!Number.isFinite(minOrderValue) || minOrderValue < 0) {
+      setRebalancePreviewError('Soglia minima ordine non valida');
+      return;
+    }
+    if (rebalanceMode === 'buy_only' && (!Number.isFinite(cashToAllocate) || cashToAllocate <= 0)) {
+      setRebalancePreviewError('Importo da allocare obbligatorio e > 0 in modalità acquisto');
+      return;
+    }
+
+    try {
+      setRebalancePreviewLoading(true);
+      const response = await getPortfolioRebalancePreview(portfolioId, {
+        mode: rebalanceMode,
+        max_transactions: Math.min(100, Math.max(1, Math.trunc(maxTransactions))),
+        cash_to_allocate: rebalanceMode === 'buy_only' ? cashToAllocate : null,
+        min_order_value: minOrderValue,
+        trade_at: rebalanceTradeAt ? new Date(rebalanceTradeAt).toISOString() : null,
+        rounding: rebalanceRounding,
+        selection_strategy: 'largest_drift',
+        use_latest_prices: true,
+      });
+      setRebalancePreviewData(response);
+      setRebalanceSelectedRows(
+        Object.fromEntries(response.items.map((item) => [`${item.asset_id}-${item.side}`, true])),
+      );
+    } catch (err) {
+      setRebalancePreviewError(err instanceof Error ? err.message : 'Errore generazione preview');
+    } finally {
+      setRebalancePreviewLoading(false);
+    }
+  };
+
+  const handleCommitRebalancePreview = async () => {
+    const portfolioId = Number(selectedPortfolioId);
+    if (!Number.isFinite(portfolioId)) {
+      setRebalancePreviewError('Seleziona un portfolio valido');
+      return;
+    }
+    if (!rebalancePreviewData) {
+      setRebalancePreviewError('Genera prima una preview');
+      return;
+    }
+    if (!rebalanceTradeAt) {
+      setRebalancePreviewError('Data/ora operazioni obbligatoria');
+      return;
+    }
+
+    const selectedItems = rebalancePreviewData.items.filter((item) => rebalanceSelectedRows[`${item.asset_id}-${item.side}`]);
+    if (selectedItems.length === 0) {
+      setRebalancePreviewError('Seleziona almeno una riga da creare');
+      return;
+    }
+
+    setRebalancePreviewError(null);
+    setRebalanceCommitResult(null);
+
+    try {
+      setRebalanceCommitLoading(true);
+      const result = await commitPortfolioRebalance(portfolioId, {
+        trade_at: new Date(rebalanceTradeAt).toISOString(),
+        items: selectedItems.map((item) => ({
+          asset_id: item.asset_id,
+          side: item.side,
+          quantity: item.quantity,
+          price: item.price,
+          fees: getDefaultBrokerFee(),
+          taxes: 0,
+          notes: 'Generata da target allocation',
+        })),
+      });
+      setRebalanceCommitResult(result);
+      await loadTransactions(portfolioId);
+      setFormSuccess(
+        `Ribilanciamento: create ${result.created} transazioni${result.failed ? `, fallite ${result.failed}` : ''}.`,
+      );
+    } catch (err) {
+      setRebalancePreviewError(err instanceof Error ? err.message : 'Errore creazione transazioni da preview');
+    } finally {
+      setRebalanceCommitLoading(false);
     }
   };
 
@@ -797,11 +973,13 @@ export function PortfolioPage() {
           ? formatMoney((portfolioTargetNotional * item.weight_pct) / 100, selectedPortfolio?.base_currency)
           : 'N/D'}
       </Table.Td>
-      <Table.Td style={{ textAlign: 'right' }}>
-        <ActionIcon color="red" variant="light" onClick={() => handleDeleteAllocation(item.asset_id)} aria-label={`Rimuovi ${item.symbol}`}>
-          <IconTrash size={16} />
-        </ActionIcon>
-      </Table.Td>
+      {!isMobile && (
+        <Table.Td style={{ textAlign: 'right' }}>
+          <ActionIcon color="red" variant="light" onClick={() => handleDeleteAllocation(item.asset_id)} aria-label={`Rimuovi ${item.symbol}`}>
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Table.Td>
+      )}
     </Table.Tr>
   ));
 
@@ -833,7 +1011,61 @@ export function PortfolioPage() {
     });
   }, [transactions, transactionFilterQuery, transactionFilterSide]);
 
-  const transactionRows = filteredTransactions.map((tx) => {
+  const sortedTransactions = useMemo(() => {
+    const getDisplayedValue = (tx: TransactionListItem) => {
+      const gross = tx.quantity * tx.price;
+      return tx.side === 'buy'
+        ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
+        : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+    };
+
+    const copy = [...filteredTransactions];
+    copy.sort((a, b) => {
+      let av: string | number;
+      let bv: string | number;
+      switch (transactionSortKey) {
+        case 'symbol':
+          av = a.symbol.toLowerCase();
+          bv = b.symbol.toLowerCase();
+          break;
+        case 'side':
+          av = a.side;
+          bv = b.side;
+          break;
+        case 'value':
+          av = getDisplayedValue(a);
+          bv = getDisplayedValue(b);
+          break;
+        case 'trade_at':
+        default:
+          av = new Date(a.trade_at).getTime();
+          bv = new Date(b.trade_at).getTime();
+          break;
+      }
+      if (av < bv) return transactionSortDir === 'asc' ? -1 : 1;
+      if (av > bv) return transactionSortDir === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return copy;
+  }, [filteredTransactions, transactionSortKey, transactionSortDir]);
+
+  const transactionTotals = useMemo(() => {
+    const totalValue = sortedTransactions.reduce((sum, tx) => {
+      const gross = tx.quantity * tx.price;
+      const displayed = tx.side === 'buy'
+        ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
+        : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+      return sum + displayed;
+    }, 0);
+    const currencies = Array.from(new Set(sortedTransactions.map((tx) => tx.trade_currency).filter(Boolean)));
+    return {
+      totalValue,
+      currency: currencies.length === 1 ? currencies[0] : null,
+      mixedCurrencies: currencies.length > 1,
+    };
+  }, [sortedTransactions]);
+
+  const transactionRows = sortedTransactions.map((tx) => {
     const gross = tx.quantity * tx.price;
     const total = tx.side === 'buy' ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0) : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
     return (
@@ -852,38 +1084,71 @@ export function PortfolioPage() {
         <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{formatMoney(tx.price, tx.trade_currency)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }}>{formatMoney(total, tx.trade_currency)}</Table.Td>
-        <Table.Td style={{ textAlign: 'right' }}>
-          <ActionIcon
-            color="blue"
-            variant="light"
-            onClick={() => openEditTransactionModal(tx)}
-            aria-label={`Modifica transazione ${tx.id}`}
-            mr={6}
-          >
-            <IconEdit size={16} />
-          </ActionIcon>
-          <ActionIcon
-            color="red"
-            variant="light"
-            onClick={() => openDeleteTransactionModal(tx)}
-            loading={deletingTransactionId === tx.id}
-            aria-label={`Elimina transazione ${tx.id}`}
-          >
-            <IconTrash size={16} />
-          </ActionIcon>
-        </Table.Td>
+        {!isMobile && (
+          <Table.Td style={{ textAlign: 'right' }}>
+            <Group gap={6} justify="flex-end" wrap="nowrap" style={{ minWidth: 74 }}>
+              <ActionIcon
+                color="blue"
+                variant="light"
+                onClick={() => openEditTransactionModal(tx)}
+                aria-label={`Modifica transazione ${tx.id}`}
+              >
+                <IconEdit size={16} />
+              </ActionIcon>
+              <ActionIcon
+                color="red"
+                variant="light"
+                onClick={() => openDeleteTransactionModal(tx)}
+                loading={deletingTransactionId === tx.id}
+                aria-label={`Elimina transazione ${tx.id}`}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </Group>
+          </Table.Td>
+        )}
       </Table.Tr>
     );
   });
+
+  if (sortedTransactions.length > 0) {
+    transactionRows.push(
+      <Table.Tr key="transactions-total" style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
+        <Table.Td>
+          <Text fw={700} size="sm">TOTALE</Text>
+        </Table.Td>
+        <Table.Td />
+        <Table.Td />
+        <Table.Td visibleFrom="sm" />
+        <Table.Td visibleFrom="sm" />
+        <Table.Td visibleFrom="md" />
+        <Table.Td style={{ textAlign: 'right' }}>
+          {transactionTotals.mixedCurrencies ? (
+            <Text fw={700} size="sm" c="dimmed">Valute miste</Text>
+          ) : (
+            <Text fw={700} size="sm">
+              {formatMoney(transactionTotals.totalValue, transactionTotals.currency ?? selectedPortfolio?.base_currency)}
+            </Text>
+          )}
+        </Table.Td>
+        {!isMobile && <Table.Td />}
+      </Table.Tr>,
+    );
+  }
+
+  const txGrossTotal = formatGrossTotal(txQuantity, txPrice);
+  const editGrossTotal = formatGrossTotal(editQuantity, editPrice);
 
   return (
     <>
       {/* Header */}
       <Group justify="space-between" mb="md" wrap="wrap" gap="xs">
         <Title order={2} fw={700}>Il Mio Portafoglio</Title>
-        <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openCreatePortfolioModal}>
-          Nuovo Portfolio
-        </Button>
+        {!isMobile && (
+          <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openCreatePortfolioModal}>
+            Nuovo Portfolio
+          </Button>
+        )}
       </Group>
 
       {/* Selezione portfolio + menu azioni */}
@@ -897,29 +1162,31 @@ export function PortfolioPage() {
           disabled={loadingPortfolios || portfolios.length === 0}
           style={{ flex: 1, maxWidth: 420 }}
         />
-        <Tooltip label="Azioni portfolio" disabled={!selectedPortfolioId}>
-          <Menu shadow="md" width={200} position="bottom-end" disabled={!selectedPortfolioId}>
-            <Menu.Target>
-              <ActionIcon
-                variant="default"
-                size="lg"
-                disabled={!selectedPortfolioId}
-                aria-label="Azioni portfolio"
-              >
-                <IconDotsVertical size={18} />
-              </ActionIcon>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item leftSection={<IconEdit size={14} />} onClick={openEditPortfolioModal}>
-                Modifica portfolio
-              </Menu.Item>
-              <Menu.Divider />
-              <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => setPortfolioDeleteOpened(true)}>
-                Elimina portfolio
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        </Tooltip>
+        {!isMobile && (
+          <Tooltip label="Azioni portfolio" disabled={!selectedPortfolioId}>
+            <Menu shadow="md" width={200} position="bottom-end" disabled={!selectedPortfolioId}>
+              <Menu.Target>
+                <ActionIcon
+                  variant="default"
+                  size="lg"
+                  disabled={!selectedPortfolioId}
+                  aria-label="Azioni portfolio"
+                >
+                  <IconDotsVertical size={18} />
+                </ActionIcon>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item leftSection={<IconEdit size={14} />} onClick={openEditPortfolioModal}>
+                  Modifica portfolio
+                </Menu.Item>
+                <Menu.Divider />
+                <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => setPortfolioDeleteOpened(true)}>
+                  Elimina portfolio
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Tooltip>
+        )}
         {(loadingPortfolios || loadingData) && (
           <Group gap="xs">
             <Loader size="sm" />
@@ -929,18 +1196,63 @@ export function PortfolioPage() {
       </Group>
 
       {/* Vista + azione contestuale */}
-      <Group mb="md" justify="space-between">
+      <Group mb="md" justify="space-between" wrap="wrap" gap="xs">
         <SegmentedControl
           value={portfolioView}
           onChange={(value) => setPortfolioView((value as 'transactions' | 'target') ?? 'transactions')}
+          size={isMobile ? 'md' : 'sm'}
+          radius="xl"
+          fullWidth={isMobile}
+          style={isMobile ? { width: '100%' } : undefined}
+          styles={isMobile ? {
+            root: {
+              padding: 4,
+              background: 'var(--mantine-color-gray-1)',
+            },
+            control: {
+              minWidth: 0,
+              flex: 1,
+            },
+            label: {
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              minHeight: 36,
+              paddingInline: 0,
+            },
+            indicator: {
+              borderRadius: 999,
+            },
+          } : undefined}
           data={[
-            { value: 'transactions', label: 'Transazioni' },
-            { value: 'target', label: 'Allocazione target' },
+            {
+              value: 'transactions',
+              label: (
+                <Group gap={0} wrap="nowrap" justify="center">
+                  <IconArrowsExchange size={isMobile ? 20 : 14} />
+                  {!isMobile && <span>Transazioni</span>}
+                </Group>
+              ),
+            },
+            {
+              value: 'target',
+              label: (
+                <Group gap={0} wrap="nowrap" justify="center">
+                  <IconTarget size={isMobile ? 20 : 14} />
+                  {!isMobile && <span>Allocazione target</span>}
+                </Group>
+              ),
+            },
           ]}
         />
-        {portfolioView === 'transactions' && (
+        {portfolioView === 'transactions' && !isMobile && (
           <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
             Nuova Transazione
+          </Button>
+        )}
+        {portfolioView === 'target' && !isMobile && (
+          <Button variant="light" leftSection={<IconTarget size={16} />} onClick={openRebalancePreviewModal} disabled={!selectedPortfolioId}>
+            Genera da target
           </Button>
         )}
       </Group>
@@ -961,6 +1273,7 @@ export function PortfolioPage() {
           rows={rows}
           hasRows={rows.length > 0}
           onOpenAddAssetWeight={openDrawer}
+          showActions={!isMobile}
         />
       )}
 
@@ -970,9 +1283,14 @@ export function PortfolioPage() {
         onFilterQueryChange={setTransactionFilterQuery}
         filterSide={transactionFilterSide}
         onFilterSideChange={setTransactionFilterSide}
+        sortKey={transactionSortKey}
+        onSortKeyChange={(value) => setTransactionSortKey((value as 'trade_at' | 'symbol' | 'side' | 'value') ?? 'trade_at')}
+        sortDir={transactionSortDir}
+        onSortDirChange={(value) => setTransactionSortDir((value as 'asc' | 'desc') ?? 'desc')}
         rows={transactionRows}
         hasRows={transactionRows.length > 0}
         selectedPortfolioId={selectedPortfolioId}
+        showActions={!isMobile}
       />
 
       <Modal
@@ -1047,6 +1365,217 @@ export function PortfolioPage() {
               Elimina Portfolio
             </Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={rebalancePreviewOpened}
+        onClose={() => setRebalancePreviewOpened(false)}
+        title="Genera transazioni da target (Preview)"
+        size="min(1100px, 95vw)"
+        centered
+      >
+        <Stack>
+          {rebalancePreviewError && <Alert color="red">{rebalancePreviewError}</Alert>}
+
+          <Select
+            label="Modalita"
+            value={rebalanceMode}
+            onChange={(value) => setRebalanceMode((value as 'buy_only' | 'rebalance' | 'sell_only') ?? 'buy_only')}
+            data={[
+              { value: 'buy_only', label: 'Solo acquisti (nuova liquidita)' },
+              { value: 'rebalance', label: 'Ribilanciamento (buy + sell)' },
+              { value: 'sell_only', label: 'Solo vendite' },
+            ]}
+          />
+
+          <Group grow>
+            <NumberInput
+              label="N. max transazioni"
+              value={rebalanceMaxTransactions}
+              onChange={setRebalanceMaxTransactions}
+              min={1}
+              max={100}
+            />
+            <NumberInput
+              label="Soglia minima ordine"
+              value={rebalanceMinOrderValue}
+              onChange={setRebalanceMinOrderValue}
+              min={0}
+              decimalScale={2}
+            />
+          </Group>
+
+          {rebalanceMode === 'buy_only' && (
+            <NumberInput
+              label={`Importo da allocare (${selectedPortfolio?.base_currency ?? 'EUR'})`}
+              value={rebalanceCashToAllocate}
+              onChange={setRebalanceCashToAllocate}
+              min={0}
+              decimalScale={2}
+            />
+          )}
+
+          <TextInput
+            label="Data / ora operazioni (preview)"
+            type="datetime-local"
+            value={rebalanceTradeAt}
+            onChange={(event) => setRebalanceTradeAt(event.currentTarget.value)}
+          />
+
+          <SegmentedControl
+            value={rebalanceRounding}
+            onChange={(value) => setRebalanceRounding((value as 'fractional' | 'integer') ?? 'fractional')}
+            data={[
+              { value: 'fractional', label: 'Quantita decimali' },
+              { value: 'integer', label: 'Quantita intere' },
+            ]}
+          />
+
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">
+              Preview senza salvataggio. Le transazioni non vengono ancora create.
+            </Text>
+            <Button onClick={() => void handleLoadRebalancePreview()} loading={rebalancePreviewLoading}>
+              Genera Preview
+            </Button>
+          </Group>
+
+          {rebalancePreviewData && (
+            <>
+              {rebalancePreviewData.warnings.length > 0 && (
+                <Alert color="yellow" title="Warning preview">
+                  {rebalancePreviewData.warnings.slice(0, 10).map((w, index) => (
+                    <Text key={`${w}-${index}`} size="sm">{w}</Text>
+                  ))}
+                </Alert>
+              )}
+
+              <Group grow>
+                <Alert color="blue" variant="light" title="Riepilogo">
+                  <Text size="sm">Generate: {rebalancePreviewData.summary.generated_count}</Text>
+                  <Text size="sm">Saltate: {rebalancePreviewData.summary.skipped_count}</Text>
+                </Alert>
+                <Alert color="teal" variant="light" title="Totali">
+                  <Text size="sm">
+                    Buy: {formatMoney(rebalancePreviewData.summary.proposed_buy_total, rebalancePreviewData.base_currency)}
+                  </Text>
+                  <Text size="sm">
+                    Sell: {formatMoney(rebalancePreviewData.summary.proposed_sell_total, rebalancePreviewData.base_currency)}
+                  </Text>
+                  <Text size="sm">
+                    Residuo stimato: {formatMoney(rebalancePreviewData.summary.estimated_cash_residual, rebalancePreviewData.base_currency)}
+                  </Text>
+                </Alert>
+              </Group>
+
+              <Table.ScrollContainer minWidth={860}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th style={{ width: 44 }}>
+                        <Checkbox
+                          aria-label="Seleziona tutte le proposte"
+                          checked={rebalancePreviewData.items.length > 0 && rebalancePreviewData.items.every((item) => rebalanceSelectedRows[`${item.asset_id}-${item.side}`])}
+                          indeterminate={
+                            rebalancePreviewData.items.some((item) => rebalanceSelectedRows[`${item.asset_id}-${item.side}`]) &&
+                            !rebalancePreviewData.items.every((item) => rebalanceSelectedRows[`${item.asset_id}-${item.side}`])
+                          }
+                          onChange={(event) => {
+                            const checked = event.currentTarget.checked;
+                            setRebalanceSelectedRows(
+                              Object.fromEntries(rebalancePreviewData.items.map((item) => [`${item.asset_id}-${item.side}`, checked])),
+                            );
+                          }}
+                        />
+                      </Table.Th>
+                      <Table.Th>Asset</Table.Th>
+                      <Table.Th>Side</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Target %</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Attuale %</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Drift %</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Prezzo</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Qta</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Totale</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {rebalancePreviewData.items.length > 0 ? (
+                      rebalancePreviewData.items.map((item) => (
+                        <Table.Tr key={`${item.asset_id}-${item.side}`}>
+                          <Table.Td>
+                            <Checkbox
+                              aria-label={`Seleziona ${item.symbol} ${item.side}`}
+                              checked={Boolean(rebalanceSelectedRows[`${item.asset_id}-${item.side}`])}
+                              onChange={(event) => {
+                                const key = `${item.asset_id}-${item.side}`;
+                                const checked = event.currentTarget.checked;
+                                setRebalanceSelectedRows((prev) => ({ ...prev, [key]: checked }));
+                              }}
+                            />
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fw={600}>{item.symbol}</Text>
+                            <Text size="xs" c="dimmed">{item.name}</Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text fw={600} c={item.side === 'buy' ? 'teal' : 'orange'}>
+                              {item.side.toUpperCase()}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>{item.target_weight_pct.toFixed(2)}%</Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>{item.current_weight_pct.toFixed(2)}%</Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>
+                            <Text c={item.drift_pct >= 0 ? 'orange' : 'teal'} fw={600} span>
+                              {item.drift_pct > 0 ? '+' : ''}{item.drift_pct.toFixed(2)}%
+                            </Text>
+                          </Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>
+                            {formatMoney(item.price, item.trade_currency)}
+                          </Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>{item.quantity}</Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>
+                            {formatMoney(item.gross_total, item.trade_currency)}
+                          </Table.Td>
+                        </Table.Tr>
+                      ))
+                    ) : (
+                      <Table.Tr>
+                        <Table.Td colSpan={9}>
+                          <Text ta="center" c="dimmed">Nessuna proposta generata con i parametri selezionati</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+
+              <Group justify="space-between" align="flex-start">
+                <Text size="sm" c="dimmed">
+                  Seleziona le righe da creare e conferma. Le transazioni verranno salvate con fee/tasse = 0.
+                </Text>
+                <Button
+                  color="teal"
+                  onClick={() => void handleCommitRebalancePreview()}
+                  loading={rebalanceCommitLoading}
+                  disabled={!rebalancePreviewData.items.some((item) => rebalanceSelectedRows[`${item.asset_id}-${item.side}`])}
+                >
+                  Crea transazioni selezionate
+                </Button>
+              </Group>
+
+              {rebalanceCommitResult && (
+                <Alert color={rebalanceCommitResult.failed > 0 ? 'yellow' : 'teal'} title="Esito creazione transazioni">
+                  <Text size="sm">
+                    Richieste: {rebalanceCommitResult.requested} • Create: {rebalanceCommitResult.created} • Fallite: {rebalanceCommitResult.failed}
+                  </Text>
+                  {rebalanceCommitResult.errors.slice(0, 10).map((err, index) => (
+                    <Text key={`${err}-${index}`} size="sm">{err}</Text>
+                  ))}
+                </Alert>
+              )}
+            </>
+          )}
         </Stack>
       </Modal>
 
@@ -1152,6 +1681,12 @@ export function PortfolioPage() {
             rightSection={txPriceLoading ? <Loader size="xs" /> : null}
             description={txPriceLoading ? 'Caricamento prezzo...' : undefined}
           />
+          <TextInput
+            label="Totale (Prezzo x Quantita)"
+            value={txGrossTotal}
+            readOnly
+            placeholder="Calcolato automaticamente"
+          />
           <NumberInput label="Fee" value={txFees} onChange={setTxFees} min={0} decimalScale={4} />
           <NumberInput label="Tasse" value={txTaxes} onChange={setTxTaxes} min={0} decimalScale={4} />
           <TextInput label="Note" value={txNotes} onChange={(event) => setTxNotes(event.currentTarget.value)} />
@@ -1178,6 +1713,12 @@ export function PortfolioPage() {
           />
           <NumberInput label="Quantita" value={editQuantity} onChange={setEditQuantity} min={0} decimalScale={8} />
           <NumberInput label="Prezzo" value={editPrice} onChange={setEditPrice} min={0} decimalScale={6} />
+          <TextInput
+            label="Totale (Prezzo x Quantita)"
+            value={editGrossTotal}
+            readOnly
+            placeholder="Calcolato automaticamente"
+          />
           <NumberInput label="Fee" value={editFees} onChange={setEditFees} min={0} decimalScale={4} />
           <NumberInput label="Tasse" value={editTaxes} onChange={setEditTaxes} min={0} decimalScale={4} />
           <TextInput label="Note" value={editNotes} onChange={(event) => setEditNotes(event.currentTarget.value)} />

@@ -6,9 +6,20 @@ import type { PerformerItem } from '../types';
 interface BestWorstCardsProps {
   best: PerformerItem[];
   worst: PerformerItem[];
+  periodLabel?: string;
 }
 
-function PerformerList({ items, title, type }: { items: PerformerItem[]; title: string; type: 'best' | 'worst' }) {
+function PerformerList({
+  items,
+  title,
+  type,
+  periodLabel,
+}: {
+  items: PerformerItem[];
+  title: string;
+  type: 'best' | 'worst';
+  periodLabel?: string;
+}) {
   const Icon = type === 'best' ? IconArrowUpRight : IconArrowDownRight;
   const headerColor = type === 'best' ? 'green' : 'red';
 
@@ -18,6 +29,9 @@ function PerformerList({ items, title, type }: { items: PerformerItem[]; title: 
         <Icon size={20} color={headerColor === 'green' ? '#16a34a' : '#dc2626'} />
         <Text fw={700} size="md">{title}</Text>
       </Group>
+      {periodLabel && (
+        <Text size="xs" c="dimmed" mb="sm">Intervallo: {periodLabel}</Text>
+      )}
       {items.length === 0 ? (
         <Text c="dimmed" size="sm">Nessun dato</Text>
       ) : (
@@ -42,14 +56,14 @@ function PerformerList({ items, title, type }: { items: PerformerItem[]; title: 
   );
 }
 
-export function BestWorstCards({ best, worst }: BestWorstCardsProps) {
+export function BestWorstCards({ best, worst, periodLabel }: BestWorstCardsProps) {
   return (
     <Grid gutter="md">
       <Grid.Col span={{ base: 12, sm: 6 }}>
-        <PerformerList items={best} title="Migliori" type="best" />
+        <PerformerList items={best} title="Migliori" type="best" periodLabel={periodLabel} />
       </Grid.Col>
       <Grid.Col span={{ base: 12, sm: 6 }}>
-        <PerformerList items={worst} title="Peggiori" type="worst" />
+        <PerformerList items={worst} title="Peggiori" type="worst" periodLabel={periodLabel} />
       </Grid.Col>
     </Grid>
   );

@@ -1,5 +1,6 @@
 import { Badge, Grid, Group, Loader, Paper, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatPct, formatDateTime, getVariationColor } from '../formatters';
 import type { AssetMiniChartData } from '../types';
@@ -30,6 +31,7 @@ export function AssetMiniChartsGrid({ assets, chartWindow, assetIntradayLoading 
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 
@@ -50,7 +52,19 @@ export function AssetMiniChartsGrid({ assets, chartWindow, assetIntradayLoading 
                   Peso {asset.weight_pct.toFixed(2)}% • {formatDateTime(asset.as_of)}
                 </Text>
               </div>
-              <Badge color={getVariationColor(asset.return_pct)} variant="light">
+              <Badge
+                color={getVariationColor(asset.return_pct)}
+                variant="light"
+                size={isMobile ? 'lg' : 'md'}
+                styles={{
+                  root: {
+                    fontSize: isMobile ? 14 : 13,
+                    fontWeight: 700,
+                    paddingInline: isMobile ? 12 : 10,
+                    height: isMobile ? 32 : 28,
+                  },
+                }}
+              >
                 {formatPct(asset.return_pct)}
               </Badge>
             </Group>
