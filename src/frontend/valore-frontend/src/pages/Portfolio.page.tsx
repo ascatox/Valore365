@@ -1285,7 +1285,7 @@ export function PortfolioPage() {
           value={selectedPortfolioId}
           onChange={setSelectedPortfolioId}
           disabled={loadingPortfolios || portfolios.length === 0}
-          style={{ flex: 1, maxWidth: 420 }}
+          style={isMobile ? { width: '100%' } : { flex: 1, maxWidth: 420 }}
         />
         {!isMobile && (
           <Tooltip label="Azioni portfolio" disabled={!selectedPortfolioId}>
@@ -1335,7 +1335,8 @@ export function PortfolioPage() {
           styles={isMobile ? {
             root: {
               padding: 4,
-              background: 'var(--mantine-color-gray-1)',
+              background: 'var(--mantine-color-default)',
+              border: '1px solid var(--mantine-color-default-border)',
             },
             control: {
               minWidth: 0,

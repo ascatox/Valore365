@@ -1373,6 +1373,105 @@ class PortfolioRepository:
         cost_basis = sum(p.quantity * p.avg_cost for p in positions)
         pl = market_value - cost_basis
         pl_pct = (pl / cost_basis * 100.0) if cost_basis else 0.0
+        day_change = 0.0
+        day_change_pct = 0.0
+
+        if positions:
+            asset_ids = [p.asset_id for p in positions]
+            qty_by_asset = {p.asset_id: p.quantity for p in positions}
+            market_price_by_asset = {p.asset_id: p.market_price for p in positions}
+
+            with self.engine.begin() as conn:
+                asset_meta = self._get_asset_meta(conn, asset_ids)
+                rows = conn.execute(
+                    text(
+                        """
+                        with ranked_daily as (
+                            select
+                                asset_id,
+                                price_date,
+                                close::float8 as close,
+                                row_number() over (partition by asset_id order by price_date desc) as rn
+                            from price_bars_1d
+                            where asset_id = any(:asset_ids)
+                        )
+                        select asset_id, price_date, close, rn
+                        from ranked_daily
+                        where rn <= 2
+                        order by asset_id asc, rn asc
+                        """
+                    ),
+                    {"asset_ids": asset_ids},
+                ).mappings().all()
+
+                daily_by_asset: dict[int, list[tuple[date, float]]] = defaultdict(list)
+                for row in rows:
+                    daily_by_asset[int(row["asset_id"])].append((row["price_date"], float(row["close"])))
+
+                fx_currencies = sorted(
+                    {
+                        meta.quote_currency
+                        for meta in asset_meta.values()
+                        if meta.quote_currency != portfolio.base_currency
+                    }
+                )
+                fx_rows = []
+                if fx_currencies:
+                    fx_rows = conn.execute(
+                        text(
+                            """
+                            select from_ccy, price_date, rate::float8 as rate
+                            from fx_rates_1d
+                            where from_ccy = any(:from_ccy)
+                              and to_ccy = :to_ccy
+                            order by from_ccy asc, price_date asc
+                            """
+                        ),
+                        {"from_ccy": fx_currencies, "to_ccy": portfolio.base_currency},
+                    ).mappings().all()
+
+            fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
+            for row in fx_rows:
+                fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
+            fx_dates = {ccy: [d for d, _ in series] for ccy, series in fx_series.items()}
+
+            def fx_rate_on_or_before(currency: str, day: date | None) -> float | None:
+                if currency == portfolio.base_currency:
+                    return 1.0
+                if day is None:
+                    return None
+                series = fx_series.get(currency)
+                dates = fx_dates.get(currency)
+                if not series or not dates:
+                    return None
+                idx = bisect_right(dates, day) - 1
+                if idx < 0:
+                    return None
+                return series[idx][1]
+
+            previous_market_value = 0.0
+            for asset_id, quantity in qty_by_asset.items():
+                series = daily_by_asset.get(asset_id, [])
+                if len(series) < 2:
+                    continue
+                latest_day, _latest_close = series[0]
+                prev_day, prev_close = series[1]
+                if latest_day == prev_day:
+                    continue
+                meta = asset_meta.get(asset_id)
+                if meta is None:
+                    continue
+                prev_fx = fx_rate_on_or_before(meta.quote_currency, prev_day)
+                if prev_fx is None:
+                    continue
+                current_price_base = market_price_by_asset.get(asset_id, 0.0)
+                previous_price_base = prev_close * prev_fx
+                day_change += quantity * (current_price_base - previous_price_base)
+                previous_market_value += quantity * previous_price_base
+
+            denominator = previous_market_value + portfolio.cash_balance
+            if denominator > 0:
+                day_change_pct = (day_change / denominator) * 100.0
 
         return PortfolioSummary(
             portfolio_id=portfolio_id,
@@ -1381,6 +1480,8 @@ class PortfolioRepository:
             cost_basis=round(cost_basis, 2),
             unrealized_pl=round(pl, 2),
             unrealized_pl_pct=round(pl_pct, 2),
+            day_change=round(day_change, 2),
+            day_change_pct=round(day_change_pct, 2),
             cash_balance=portfolio.cash_balance,
         )
 

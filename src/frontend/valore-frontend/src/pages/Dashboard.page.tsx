@@ -85,7 +85,7 @@ export function DashboardPage() {
           value={selectedPortfolioId}
           onChange={setSelectedPortfolioId}
           disabled={loading || portfolios.length === 0}
-          style={{ width: '100%', maxWidth: 280 }}
+          style={{ width: '100%', maxWidth: isMobile ? undefined : 280 }}
         />
       </Group>
 
@@ -114,7 +114,8 @@ export function DashboardPage() {
             overflowX: 'hidden',
             padding: 4,
             gap: '0.25rem',
-            background: 'var(--mantine-color-gray-1)',
+            background: 'var(--mantine-color-default)',
+            border: '1px solid var(--mantine-color-default-border)',
             borderRadius: 999,
           } : {
             flexWrap: 'nowrap',
