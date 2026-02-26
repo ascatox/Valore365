@@ -11,6 +11,12 @@
 -- - Run only after owner_user_id migrations (20260226_02/03/04)
 -- - Ensure old_user_id != new_user_id
 -- - This script moves ownership of portfolios and related rows
+--
+-- CI / bootstrap safety:
+-- - If psql variables old_user_id/new_user_id are not provided, this migration is a no-op.
+
+\if :{?old_user_id}
+\if :{?new_user_id}
 
 begin;
 
@@ -68,3 +74,10 @@ delete from app_user_settings
 where user_id = :'old_user_id';
 
 commit;
+
+\else
+\echo 'SKIP 20260226_06_reassign_user_owned_data.sql: missing psql variable new_user_id'
+\endif
+\else
+\echo 'SKIP 20260226_06_reassign_user_owned_data.sql: missing psql variable old_user_id'
+\endif

@@ -154,6 +154,9 @@ export function PortfolioPage() {
   );
 
   const formatMoney = (value: number | null | undefined, currency?: string | null) => {
+    if (typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true') {
+      return '******';
+    }
     if (value == null || !Number.isFinite(value)) return 'N/D';
     return new Intl.NumberFormat('it-IT', {
       style: 'currency',
@@ -196,6 +199,9 @@ export function PortfolioPage() {
   };
 
   const formatGrossTotal = (quantity: number | string, price: number | string): string => {
+    if (typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true') {
+      return '******';
+    }
     const q = toNumericInputValue(quantity);
     const p = toNumericInputValue(price);
     if (q == null || p == null) return '';

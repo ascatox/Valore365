@@ -1,8 +1,18 @@
+import { STORAGE_KEYS } from './constants';
+
+const PRIVACY_MASK = '******';
+
+const isPrivacyModeEnabled = () => {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true';
+};
+
 export const formatPct = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 
 export const getVariationColor = (value: number) => (value > 0 ? 'green' : value < 0 ? 'red' : 'gray');
 
 export const formatMoney = (value: number, currency = 'EUR', withSign = false) => {
+  if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   const formatted = new Intl.NumberFormat('it-IT', {
     style: 'currency',
     currency,
