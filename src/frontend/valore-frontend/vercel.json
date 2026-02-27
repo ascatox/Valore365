@@ -3,6 +3,6 @@
   "outputDirectory": "dist",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://<RENDER_BACKEND_URL>/api/:path*" }
+    { "source": "/api/:path*", "destination": "https://valore365.onrender.com/api/:path*" }
   ]
 }
