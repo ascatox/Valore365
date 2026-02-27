@@ -96,7 +96,7 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
                 logger.warning("azp rejected: azp=%s allowed=%s", azp, azp_list)
                 raise AppError(
                     code="auth_error",
-                    message=f"Token authorized party not allowed: {azp}",
+                    message="Token authorized party not allowed",
                     status_code=401,
                 )
 

@@ -28,11 +28,11 @@ class Settings(BaseSettings):
     finance_retry_backoff_seconds: float = 0.5
     finance_symbol_request_delay_seconds: float = 0.0
 
-    price_scheduler_enabled: bool = True
+    price_scheduler_enabled: bool = False
     price_scheduler_interval_seconds: int = 60
     price_scheduler_portfolio_id: int | None = None
 
-    clerk_auth_enabled: bool = True
+    clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""
 
