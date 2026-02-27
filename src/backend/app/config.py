@@ -10,6 +10,16 @@ class Settings(BaseSettings):
     app_env: str = 'dev'
     database_url: str = 'postgresql+psycopg://postgres:postgres@localhost:5432/valore365'
 
+    @property
+    def database_url_resolved(self) -> str:
+        """Normalize DATABASE_URL to always use the psycopg3 driver."""
+        url = self.database_url
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+        elif url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql+psycopg://", 1)
+        return url
+
     finance_provider: str = 'yfinance'
     finance_api_base_url: str = ''
     finance_api_key: str = ''
