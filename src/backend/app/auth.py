@@ -82,10 +82,17 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
         azp_list = settings.clerk_authorized_parties_list
         if azp_list and "azp" in claims:
             azp = claims["azp"]
-            if not any(
-                (party == azp) or (party.startswith("*.") and azp.endswith(party[1:]))
-                for party in azp_list
-            ):
+            def _azp_matches(azp_value: str, pattern: str) -> bool:
+                if pattern == azp_value:
+                    return True
+                # Support wildcard: https://*.vercel.app matches https://foo.vercel.app
+                wildcard = "://*."
+                if wildcard in pattern:
+                    scheme, suffix = pattern.split(wildcard, 1)
+                    return azp_value.startswith(scheme + "://") and azp_value.endswith("." + suffix)
+                return False
+
+            if not any(_azp_matches(azp, party) for party in azp_list):
                 raise AppError(
                     code="auth_error",
                     message="Token authorized party not allowed",
