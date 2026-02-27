@@ -13,8 +13,22 @@ services:
         sync: false
       - key: FINANCE_PROVIDER
         value: yfinance
+      - key: FINANCE_API_BASE_URL
+        value: ""
+      - key: FINANCE_API_KEY
+        value: ""
+      - key: FINANCE_REQUEST_TIMEOUT_SECONDS
+        value: "10"
+      - key: FINANCE_MAX_RETRIES
+        value: "3"
+      - key: FINANCE_RETRY_BACKOFF_SECONDS
+        value: "0.5"
+      - key: FINANCE_SYMBOL_REQUEST_DELAY_SECONDS
+        value: "0"
       - key: PRICE_SCHEDULER_ENABLED
         value: "false"
+      - key: PRICE_SCHEDULER_INTERVAL_SECONDS
+        value: "60"
       - key: CLERK_AUTH_ENABLED
         value: "false"
       - key: CORS_ALLOWED_ORIGINS
