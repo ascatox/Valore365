@@ -73,19 +73,19 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
         decode_options: dict[str, Any] = {
             "algorithms": ["RS256"],
             "key": signing_key.key,
-            "options": {"require": ["exp", "iat", "sub"]},
+            "options": {"require": ["exp", "iat", "sub"], "verify_aud": False},
         }
-
-        azp_list = settings.clerk_authorized_parties_list
-        if azp_list:
-            decode_options["audience"] = azp_list
 
         claims = jwt.decode(token, **decode_options)
 
-        # If azp validation is via audience, PyJWT handles it.
-        # Also validate azp claim explicitly if present and authorized_parties configured.
+        # Validate azp claim against authorized parties (supports wildcard patterns).
+        azp_list = settings.clerk_authorized_parties_list
         if azp_list and "azp" in claims:
-            if claims["azp"] not in azp_list:
+            azp = claims["azp"]
+            if not any(
+                (party == azp) or (party.startswith("*.") and azp.endswith(party[1:]))
+                for party in azp_list
+            ):
                 raise AppError(
                     code="auth_error",
                     message="Token authorized party not allowed",
