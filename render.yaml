@@ -26,14 +26,14 @@ services:
       - key: FINANCE_SYMBOL_REQUEST_DELAY_SECONDS
         value: "0"
       - key: PRICE_SCHEDULER_ENABLED
-        value: "false"
+        value: "true"
       - key: PRICE_SCHEDULER_INTERVAL_SECONDS
         value: "60"
       - key: CLERK_AUTH_ENABLED
-        value: "false"
+        value: "true"
       - key: CORS_ALLOWED_ORIGINS
-        sync: false
+        value: "https://valore365.vercel.app"
       - key: CLERK_JWKS_URL
-        sync: false
+        value: "https://ruling-coral-6.clerk.accounts.dev/.well-known/jwks.json"
       - key: CLERK_AUTHORIZED_PARTIES
-        sync: false
+        value: "https://valore365.vercel.app"
