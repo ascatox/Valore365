@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: valore365-api
+    runtime: python
+    region: frankfurt
+    rootDir: src/backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: DATABASE_URL
+        sync: false
+      - key: FINANCE_PROVIDER
+        value: yfinance
+      - key: PRICE_SCHEDULER_ENABLED
+        value: "false"
+      - key: CLERK_AUTH_ENABLED
+        value: "false"
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      - key: CLERK_AUTHORIZED_PARTIES
+        sync: false

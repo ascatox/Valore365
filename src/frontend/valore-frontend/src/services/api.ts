@@ -1,4 +1,4 @@
-const API_URL = '/api';
+const API_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 type TokenGetter = () => Promise<string | null>;
 let _getToken: TokenGetter = async () => null;
