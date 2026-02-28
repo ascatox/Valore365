@@ -14,4 +14,4 @@ engine = create_engine(
 @event.listens_for(engine, "connect")
 def _set_connection_options(dbapi_connection, connection_record):
     """Disable prepared statements for PgBouncer/Supabase compatibility."""
-    dbapi_connection.prepare_threshold = 0
+    dbapi_connection.prepare_threshold = None
