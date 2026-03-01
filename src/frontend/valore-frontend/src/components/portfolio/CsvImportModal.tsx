@@ -83,10 +83,10 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
         {step === 'upload' && (
           <>
             <Text size="sm" c="dimmed">
-              Formato CSV atteso: trade_at, symbol, side, quantity, price, fees, taxes, trade_currency, notes
+              Formato CSV atteso: Operazione, Data valuta, Descrizione, Titolo, Isin, Segno, Quantita, Divisa, Prezzo, Cambio, Controvalore, Commissioni Fondi Sw/Ingr/Uscita, Commissioni Fondi Banca Corrispondente, Spese Fondi Sgr, Commissioni amministrato
             </Text>
             <Text size="xs" c="dimmed">
-              Side ammessi: buy, sell, deposit, withdrawal, dividend, fee, interest
+              Segno: A = acquisto, V = vendita. Numeri in formato italiano (1.234,56).
             </Text>
             <input
               type="file"
@@ -119,8 +119,9 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
                     <Table.Th>#</Table.Th>
                     <Table.Th>Stato</Table.Th>
                     <Table.Th>Data</Table.Th>
-                    <Table.Th>Symbol</Table.Th>
-                    <Table.Th>Side</Table.Th>
+                    <Table.Th>ISIN</Table.Th>
+                    <Table.Th>Titolo</Table.Th>
+                    <Table.Th>Operazione</Table.Th>
                     <Table.Th style={{ textAlign: 'right' }}>Qta</Table.Th>
                     <Table.Th style={{ textAlign: 'right' }}>Prezzo</Table.Th>
                     <Table.Th>Errori</Table.Th>
@@ -137,7 +138,8 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
                         }
                       </Table.Td>
                       <Table.Td>{row.trade_at ? new Date(row.trade_at).toLocaleDateString('it-IT') : '-'}</Table.Td>
-                      <Table.Td>{row.symbol || '-'}</Table.Td>
+                      <Table.Td>{row.isin || '-'}</Table.Td>
+                      <Table.Td>{row.titolo || row.asset_name || '-'}</Table.Td>
                       <Table.Td>{row.side || '-'}</Table.Td>
                       <Table.Td style={{ textAlign: 'right' }}>{row.quantity?.toFixed(4) ?? '-'}</Table.Td>
                       <Table.Td style={{ textAlign: 'right' }}>{row.price?.toFixed(4) ?? '-'}</Table.Td>

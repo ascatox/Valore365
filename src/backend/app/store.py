@@ -142,8 +142,9 @@ class InMemoryStore:
             return []
         results: list[dict[str, str]] = []
         for asset in self.assets.values():
-            if q in asset.symbol.lower() or q in asset.name.lower():
-                results.append({"id": str(asset.id), "symbol": asset.symbol, "name": asset.name})
+            isin = getattr(asset, 'isin', '') or ''
+            if q in asset.symbol.lower() or q in asset.name.lower() or q in isin.lower():
+                results.append({"id": str(asset.id), "symbol": asset.symbol, "name": asset.name, "isin": isin})
         return results
 
     def _current_quantity(self, portfolio_id: int, asset_id: int) -> float:

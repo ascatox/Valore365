@@ -1971,7 +1971,7 @@ class PortfolioRepository:
             rows = conn.execute(
                 text(
                     """
-                    select id, symbol, coalesce(name, '') as name
+                    select id, symbol, coalesce(name, '') as name, coalesce(isin, '') as isin
                     from assets
                     where lower(symbol) like :q
                        or lower(coalesce(name, '')) like :q
@@ -1983,7 +1983,7 @@ class PortfolioRepository:
                 {"q": q},
             ).mappings().all()
 
-        return [{"id": str(r["id"]), "symbol": r["symbol"], "name": r["name"]} for r in rows]
+        return [{"id": str(r["id"]), "symbol": r["symbol"], "name": r["name"], "isin": r["isin"]} for r in rows]
 
     def get_assets_for_price_refresh(
         self,

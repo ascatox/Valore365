@@ -824,7 +824,8 @@ export interface CsvImportPreviewRow {
   valid: boolean;
   errors: string[];
   trade_at: string | null;
-  symbol: string | null;
+  isin: string | null;
+  titolo: string | null;
   side: string | null;
   quantity: number | null;
   price: number | null;

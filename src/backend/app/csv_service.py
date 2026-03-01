@@ -1,6 +1,7 @@
 import csv
 import io
 import logging
+import re
 from datetime import datetime
 
 from .models import (
@@ -15,8 +16,24 @@ from .repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_COLUMNS = ["trade_at", "symbol", "side", "quantity", "price", "fees", "taxes", "trade_currency", "notes"]
-VALID_SIDES = {"buy", "sell", "deposit", "withdrawal", "dividend", "fee", "interest"}
+REQUIRED_COLUMNS = ["operazione", "isin", "segno", "quantita", "prezzo"]
+SEGNO_MAP = {"A": "buy", "V": "sell"}
+FEE_COLUMNS = [
+    "commissioni fondi sw/ingr/uscita",
+    "commissioni fondi banca corrispondente",
+    "spese fondi sgr",
+    "commissioni amministrato",
+]
+
+
+def _parse_italian_number(s: str) -> float | None:
+    """Parse Italian formatted number: 1.159,77 → 1159.77"""
+    s = s.strip()
+    if not s:
+        return None
+    # Remove thousands separators (dots) and replace decimal comma with dot
+    s = s.replace(".", "").replace(",", ".")
+    return float(s)
 
 
 class CsvImportService:
@@ -31,7 +48,7 @@ class CsvImportService:
             raise ValueError("File CSV vuoto o intestazioni mancanti")
 
         normalized_fields = [f.strip().lower() for f in reader.fieldnames]
-        missing = [c for c in ["trade_at", "symbol", "side", "quantity", "price"] if c not in normalized_fields]
+        missing = [c for c in REQUIRED_COLUMNS if c not in normalized_fields]
         if missing:
             raise ValueError(f"Colonne obbligatorie mancanti: {', '.join(missing)}")
 
@@ -43,88 +60,110 @@ class CsvImportService:
             row_data = {k.strip().lower(): (v.strip() if v else "") for k, v in raw_row.items()}
             errors: list[str] = []
 
-            # Parse trade_at
-            trade_at_str = row_data.get("trade_at", "")
+            # Parse operazione (date dd/mm/yyyy)
+            operazione_str = row_data.get("operazione", "")
             parsed_trade_at: str | None = None
-            if not trade_at_str:
-                errors.append("trade_at obbligatorio")
+            if not operazione_str:
+                errors.append("operazione obbligatorio")
             else:
                 try:
-                    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y"):
+                    for fmt in ("%d/%m/%Y", "%d/%m/%Y %H:%M:%S", "%Y-%m-%d", "%Y-%m-%d %H:%M:%S"):
                         try:
-                            dt = datetime.strptime(trade_at_str, fmt)
+                            dt = datetime.strptime(operazione_str, fmt)
                             parsed_trade_at = dt.isoformat()
                             break
                         except ValueError:
                             continue
                     if parsed_trade_at is None:
-                        errors.append(f"Formato data non riconosciuto: {trade_at_str}")
+                        errors.append(f"Formato data non riconosciuto: {operazione_str}")
                 except Exception:
-                    errors.append(f"Formato data non valido: {trade_at_str}")
+                    errors.append(f"Formato data non valido: {operazione_str}")
 
-            # Parse symbol
-            symbol = row_data.get("symbol", "").strip().upper()
-            if not symbol:
-                errors.append("symbol obbligatorio")
+            # Parse ISIN
+            isin = row_data.get("isin", "").strip().upper()
+            if not isin:
+                errors.append("isin obbligatorio")
 
-            # Parse side
-            side = row_data.get("side", "").strip().lower()
-            if side not in VALID_SIDES:
-                errors.append(f"side non valido: {side}. Valori ammessi: {', '.join(sorted(VALID_SIDES))}")
+            # Parse segno → side
+            segno = row_data.get("segno", "").strip().upper()
+            side = SEGNO_MAP.get(segno)
+            if side is None:
+                errors.append(f"segno non valido: '{segno}'. Valori ammessi: A (acquisto), V (vendita)")
 
-            # Parse quantity
+            # Parse quantita (Italian number format)
             quantity: float | None = None
-            quantity_str = row_data.get("quantity", "")
-            if not quantity_str:
-                errors.append("quantity obbligatorio")
+            quantita_str = row_data.get("quantita", "")
+            if not quantita_str:
+                errors.append("quantita obbligatorio")
             else:
                 try:
-                    quantity = float(quantity_str.replace(",", "."))
-                    if quantity <= 0:
-                        errors.append("quantity deve essere > 0")
+                    quantity = _parse_italian_number(quantita_str)
+                    if quantity is not None and quantity <= 0:
+                        errors.append("quantita deve essere > 0")
                 except ValueError:
-                    errors.append(f"quantity non numerico: {quantity_str}")
+                    errors.append(f"quantita non numerico: {quantita_str}")
 
-            # Parse price
+            # Parse prezzo (Italian number format)
             price: float | None = None
-            price_str = row_data.get("price", "")
-            if not price_str:
-                errors.append("price obbligatorio")
+            prezzo_str = row_data.get("prezzo", "")
+            if not prezzo_str:
+                errors.append("prezzo obbligatorio")
             else:
                 try:
-                    price = float(price_str.replace(",", "."))
-                    if price < 0:
-                        errors.append("price deve essere >= 0")
+                    price = _parse_italian_number(prezzo_str)
+                    if price is not None and price < 0:
+                        errors.append("prezzo deve essere >= 0")
                 except ValueError:
-                    errors.append(f"price non numerico: {price_str}")
+                    errors.append(f"prezzo non numerico: {prezzo_str}")
 
-            # Parse optional fields
-            fees: float | None = None
-            fees_str = row_data.get("fees", "")
-            if fees_str:
+            # Parse divisa → trade_currency
+            trade_currency = row_data.get("divisa", "").strip().upper() or None
+
+            # Parse cambio (exchange rate) - stored in notes for reference
+            cambio: float | None = None
+            cambio_str = row_data.get("cambio", "")
+            if cambio_str:
                 try:
-                    fees = float(fees_str.replace(",", "."))
+                    cambio = _parse_italian_number(cambio_str)
                 except ValueError:
-                    errors.append(f"fees non numerico: {fees_str}")
+                    pass  # cambio is optional, skip if unparseable
 
-            taxes: float | None = None
-            taxes_str = row_data.get("taxes", "")
-            if taxes_str:
-                try:
-                    taxes = float(taxes_str.replace(",", "."))
-                except ValueError:
-                    errors.append(f"taxes non numerico: {taxes_str}")
+            # Sum all fee columns
+            fees: float = 0.0
+            for fee_col in FEE_COLUMNS:
+                fee_str = row_data.get(fee_col, "")
+                if fee_str:
+                    try:
+                        fee_val = _parse_italian_number(fee_str)
+                        if fee_val is not None:
+                            fees += abs(fee_val)
+                    except ValueError:
+                        errors.append(f"commissione non numerica ({fee_col}): {fee_str}")
+            fees_result = fees if fees > 0 else None
 
-            trade_currency = row_data.get("trade_currency", "").strip().upper() or None
-            notes = row_data.get("notes", "").strip() or None
+            # Build notes from descrizione + titolo + cambio
+            titolo = row_data.get("titolo", "").strip() or None
+            descrizione = row_data.get("descrizione", "").strip() or None
+            notes_parts: list[str] = []
+            if descrizione:
+                notes_parts.append(descrizione)
+            if titolo:
+                notes_parts.append(f"Titolo: {titolo}")
+            if cambio is not None and cambio != 1.0:
+                notes_parts.append(f"Cambio: {cambio}")
+            notes = "; ".join(notes_parts) if notes_parts else None
 
-            # Try to resolve asset
+            # Try to resolve asset by ISIN
             asset_id: int | None = None
             asset_name: str | None = None
-            if symbol and not errors:
+            if isin and not errors:
                 try:
-                    matches = self.repo.search_assets(symbol)
-                    exact = next((m for m in matches if str(m.get("symbol", "")).upper() == symbol), None)
+                    matches = self.repo.search_assets(isin)
+                    # Match by ISIN field
+                    exact = next(
+                        (m for m in matches if str(m.get("isin", "")).upper() == isin),
+                        None,
+                    )
                     if exact:
                         asset_id = int(exact["id"])
                         asset_name = exact.get("name")
@@ -142,12 +181,13 @@ class CsvImportService:
                 valid=is_valid,
                 errors=errors,
                 trade_at=parsed_trade_at,
-                symbol=symbol or None,
-                side=side or None,
+                isin=isin or None,
+                titolo=titolo,
+                side=side,
                 quantity=quantity,
                 price=price,
-                fees=fees,
-                taxes=taxes,
+                fees=fees_result,
+                taxes=None,
                 trade_currency=trade_currency,
                 notes=notes,
                 asset_id=asset_id,
@@ -195,31 +235,45 @@ class CsvImportService:
                 continue
 
             try:
-                # Ensure asset exists
-                symbol = str(row_data.get("symbol", "")).strip().upper()
+                # Resolve asset by ISIN
+                isin = str(row_data.get("isin", "")).strip().upper()
                 asset_id = row_data.get("asset_id")
                 side = str(row_data.get("side", "")).lower()
-                is_cash = side in {"deposit", "withdrawal", "dividend", "fee", "interest"}
 
-                if asset_id is None and not is_cash and symbol:
-                    # Auto-create asset
-                    base_ccy = self.repo.get_portfolio_base_currency(portfolio_id)
-                    try:
-                        asset = self.repo.create_asset(AssetCreate(
-                            symbol=symbol,
-                            name=symbol,
-                            asset_type="stock",
-                            quote_currency=base_ccy,
-                        ))
-                        asset_id = asset.id
-                    except ValueError:
-                        matches = self.repo.search_assets(symbol)
-                        exact = next((m for m in matches if str(m.get("symbol", "")).upper() == symbol), None)
-                        if exact:
-                            asset_id = int(exact["id"])
-                        else:
-                            errors.append(f"Riga {row_data.get('row_number')}: impossibile risolvere asset {symbol}")
-                            continue
+                if asset_id is None and isin:
+                    # Try to find asset by ISIN
+                    matches = self.repo.search_assets(isin)
+                    exact = next(
+                        (m for m in matches if str(m.get("isin", "")).upper() == isin),
+                        None,
+                    )
+                    if exact:
+                        asset_id = int(exact["id"])
+                    else:
+                        # Auto-create asset with ISIN
+                        base_ccy = self.repo.get_portfolio_base_currency(portfolio_id)
+                        titolo = row_data.get("titolo") or isin
+                        try:
+                            asset = self.repo.create_asset(AssetCreate(
+                                symbol=isin,
+                                name=titolo,
+                                asset_type="stock",
+                                quote_currency=base_ccy,
+                                isin=isin,
+                            ))
+                            asset_id = asset.id
+                        except ValueError:
+                            # Asset may have been created by a previous row
+                            matches = self.repo.search_assets(isin)
+                            exact = next(
+                                (m for m in matches if str(m.get("isin", "")).upper() == isin),
+                                None,
+                            )
+                            if exact:
+                                asset_id = int(exact["id"])
+                            else:
+                                errors.append(f"Riga {row_data.get('row_number')}: impossibile risolvere asset ISIN {isin}")
+                                continue
 
                 trade_at_str = row_data.get("trade_at", "")
                 trade_at = datetime.fromisoformat(trade_at_str)
@@ -228,7 +282,7 @@ class CsvImportService:
                 self.repo.create_transaction(
                     TransactionCreate(
                         portfolio_id=portfolio_id,
-                        asset_id=asset_id if not is_cash else (asset_id or None),
+                        asset_id=asset_id,
                         side=side,
                         trade_at=trade_at,
                         quantity=float(row_data["quantity"]),

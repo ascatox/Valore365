@@ -528,7 +528,8 @@ class CsvImportPreviewRow(BaseModel):
     valid: bool
     errors: list[str]
     trade_at: str | None = None
-    symbol: str | None = None
+    isin: str | None = None
+    titolo: str | None = None
     side: str | None = None
     quantity: float | None = None
     price: float | None = None
