@@ -9,18 +9,19 @@ import {
   Title,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconChartPie, IconList, IconChartBar, IconWorld } from '@tabler/icons-react';
+import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage } from '@tabler/icons-react';
 import { useDashboardData } from '../components/dashboard/hooks/useDashboardData';
 import { useMarketData } from '../components/dashboard/hooks/useMarketData';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
 import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
 import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
+import { PerformanceMetrics } from '../components/dashboard/analysis/PerformanceMetrics';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 
 export function DashboardPage() {
-  const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati'] as const;
+  const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const;
   const data = useDashboardData();
   const marketData = useMarketData();
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -155,6 +156,13 @@ export function DashboardPage() {
           >
             {isMobile ? <IconWorld size={20} /> : <Text span>Mercati</Text>}
           </Tabs.Tab>
+          <Tabs.Tab
+            value="performance"
+            leftSection={isMobile ? undefined : <IconPercentage size={16} />}
+            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+          >
+            {isMobile ? <IconPercentage size={20} /> : <Text span>Performance</Text>}
+          </Tabs.Tab>
         </Tabs.List>
 
         <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -172,6 +180,10 @@ export function DashboardPage() {
 
           <Tabs.Panel value="mercati">
             <MercatiTab marketData={marketData} isActive={activeTab === 'mercati'} />
+          </Tabs.Panel>
+
+          <Tabs.Panel value="performance">
+            <PerformanceMetrics portfolioId={selectedPortfolioId ? Number(selectedPortfolioId) : null} />
           </Tabs.Panel>
         </div>
       </Tabs>
