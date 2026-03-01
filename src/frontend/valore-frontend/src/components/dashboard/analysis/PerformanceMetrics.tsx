@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Group, Loader, SegmentedControl, SimpleGrid, Text, Tooltip } from '@mantine/core';
+import { Alert, Card, Group, Loader, SegmentedControl, SimpleGrid, Text } from '@mantine/core';
 import { getPerformanceSummary, type PerformanceSummary } from '../../../services/api';
 
 type PeriodKey = '1m' | '3m' | '6m' | 'ytd' | '1y' | '3y' | 'all';
@@ -25,11 +25,6 @@ function formatMoney(value: number, currency = 'EUR'): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
-}
-
-function formatPct(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return 'N/D';
-  return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
 }
 
 function kpiColor(value: number | null | undefined): string {
@@ -81,7 +76,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   return (
     <Card withBorder radius="md" p="md" shadow="sm" mb="md">
       <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
-        <Text fw={600}>Performance (TWR / MWR)</Text>
+        <Text fw={600}>Performance</Text>
         <SegmentedControl
           size="xs"
           value={period}
@@ -100,32 +95,6 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
       )}
 
       <SimpleGrid cols={{ base: 2, md: 3 }} spacing="sm">
-        <Card withBorder radius="md" p="sm">
-          <Group gap={6}>
-            <Text size="sm" c="dimmed">TWR</Text>
-            <Tooltip label="Rendimento del portafoglio neutralizzando il timing dei versamenti.">
-              <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>?</Text>
-            </Tooltip>
-          </Group>
-          <Text fw={700} style={{ color: kpiColor(summary?.twr.twr_pct) }}>{formatPct(summary?.twr.twr_pct)}</Text>
-          <Text size="xs" c="dimmed">
-            Ann.: {summary?.twr.twr_annualized_pct == null ? 'N/D' : formatPct(summary.twr.twr_annualized_pct)}
-          </Text>
-        </Card>
-
-        <Card withBorder radius="md" p="sm">
-          <Group gap={6}>
-            <Text size="sm" c="dimmed">MWR</Text>
-            <Tooltip label="Rendimento effettivo dell'investitore, includendo il timing dei flussi di cassa.">
-              <Text size="xs" c="dimmed" style={{ cursor: 'help' }}>?</Text>
-            </Tooltip>
-          </Group>
-          <Text fw={700} style={{ color: kpiColor(summary?.mwr.mwr_pct) }}>
-            {summary?.mwr.converged ? formatPct(summary?.mwr.mwr_pct) : 'N/D'}
-          </Text>
-          <Text size="xs" c="dimmed">Annualizzato</Text>
-        </Card>
-
         <Card withBorder radius="md" p="sm">
           <Text size="sm" c="dimmed">Netto Investito</Text>
           <Text fw={700}>{summary ? formatMoney(summary.net_invested, currency) : 'N/D'}</Text>
