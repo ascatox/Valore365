@@ -184,6 +184,49 @@ class TimeSeriesPoint(BaseModel):
     market_value: float
 
 
+class CashFlowEntry(BaseModel):
+    date: str
+    side: TransactionSide
+    amount: float
+
+
+class TWRResult(BaseModel):
+    twr_pct: float
+    twr_annualized_pct: float | None
+    period_days: int
+    start_date: str
+    end_date: str
+
+
+class MWRResult(BaseModel):
+    mwr_pct: float | None
+    period_days: int
+    start_date: str
+    end_date: str
+    converged: bool
+
+
+class PerformanceSummary(BaseModel):
+    period: str
+    period_label: str
+    start_date: str
+    end_date: str
+    period_days: int
+    twr: TWRResult
+    mwr: MWRResult
+    total_deposits: float
+    total_withdrawals: float
+    net_invested: float
+    current_value: float
+    absolute_gain: float
+
+
+class TWRTimeseriesPoint(BaseModel):
+    date: str
+    cumulative_twr_pct: float
+    portfolio_value: float
+
+
 class AllocationItem(BaseModel):
     asset_id: int
     symbol: str

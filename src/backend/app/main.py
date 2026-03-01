@@ -49,6 +49,7 @@ from .models import (
     PacRuleCreate,
     PacRuleRead,
     PacRuleUpdate,
+    PerformanceSummary,
     PortfolioCreate,
     PortfolioCloneRequest,
     PortfolioCloneResponse,
@@ -72,14 +73,18 @@ from .models import (
     RebalancePreviewResponse,
     RebalancePreviewSummary,
     TimeSeriesPoint,
+    TWRResult,
+    TWRTimeseriesPoint,
     TransactionCreate,
     TransactionListItem,
     TransactionRead,
     TransactionUpdate,
     UserSettingsRead,
     UserSettingsUpdate,
+    MWRResult,
 )
 from .pac_service import PacExecutionService
+from .performance_service import PerformanceService
 from .pricing_service import PriceIngestionService
 from .repository import PortfolioRepository
 from .scheduler import PriceRefreshScheduler
@@ -93,6 +98,7 @@ pricing_service = PriceIngestionService(settings, repo)
 historical_service = HistoricalIngestionService(settings, repo)
 csv_import_service = CsvImportService(repo)
 pac_service = PacExecutionService(engine)
+performance_service = PerformanceService(repo)
 scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service)
 finance_client = make_finance_client(settings)
 
@@ -512,6 +518,85 @@ def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -
         return repo.get_summary(portfolio_id, _auth.user_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/performance/summary",
+    response_model=PerformanceSummary,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_performance_summary(
+    portfolio_id: int,
+    period: str = Query(default="1y", pattern="^(1m|3m|6m|ytd|1y|3y|all)$"),
+    _auth: AuthContext = Depends(require_auth),
+) -> PerformanceSummary:
+    try:
+        return performance_service.get_performance_summary(portfolio_id, _auth.user_id, period)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/performance/twr",
+    response_model=TWRResult,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_performance_twr(
+    portfolio_id: int,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> TWRResult:
+    try:
+        return performance_service.calculate_twr(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/performance/twr/timeseries",
+    response_model=list[TWRTimeseriesPoint],
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_performance_twr_timeseries(
+    portfolio_id: int,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> list[TWRTimeseriesPoint]:
+    try:
+        return performance_service.get_twr_timeseries(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/performance/mwr",
+    response_model=MWRResult,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_performance_mwr(
+    portfolio_id: int,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> MWRResult:
+    try:
+        return performance_service.calculate_mwr(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
 
 
 @router.get(

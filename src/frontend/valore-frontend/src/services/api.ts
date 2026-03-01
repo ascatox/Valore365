@@ -69,6 +69,43 @@ export interface PortfolioSummary {
   cash_balance: number;
 }
 
+export interface TWRResult {
+  twr_pct: number;
+  twr_annualized_pct: number | null;
+  period_days: number;
+  start_date: string;
+  end_date: string;
+}
+
+export interface MWRResult {
+  mwr_pct: number | null;
+  period_days: number;
+  start_date: string;
+  end_date: string;
+  converged: boolean;
+}
+
+export interface PerformanceSummary {
+  period: string;
+  period_label: string;
+  start_date: string;
+  end_date: string;
+  period_days: number;
+  twr: TWRResult;
+  mwr: MWRResult;
+  total_deposits: number;
+  total_withdrawals: number;
+  net_invested: number;
+  current_value: number;
+  absolute_gain: number;
+}
+
+export interface TWRTimeseriesPoint {
+  date: string;
+  cumulative_twr_pct: number;
+  portfolio_value: number;
+}
+
 export interface Position {
   asset_id: number;
   symbol: string;
@@ -508,6 +545,29 @@ export const clonePortfolio = async (portfolioId: number, payload: PortfolioClon
 
 export const getPortfolioSummary = async (portfolioId: number): Promise<PortfolioSummary> => {
   return apiFetch<PortfolioSummary>(`/portfolios/${portfolioId}/summary`);
+};
+
+export const getPerformanceSummary = async (
+  portfolioId: number,
+  period: '1m' | '3m' | '6m' | 'ytd' | '1y' | '3y' | 'all',
+): Promise<PerformanceSummary> => {
+  return apiFetch<PerformanceSummary>(
+    `/portfolios/${portfolioId}/performance/summary?period=${encodeURIComponent(period)}`,
+  );
+};
+
+export const getTWRTimeseries = async (
+  portfolioId: number,
+  startDate?: string,
+  endDate?: string,
+): Promise<TWRTimeseriesPoint[]> => {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  const query = params.toString();
+  return apiFetch<TWRTimeseriesPoint[]>(
+    `/portfolios/${portfolioId}/performance/twr/timeseries${query ? `?${query}` : ''}`,
+  );
 };
 
 export const getPortfolioPositions = async (portfolioId: number): Promise<Position[]> => {

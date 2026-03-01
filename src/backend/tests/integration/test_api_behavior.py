@@ -101,6 +101,36 @@ class _FailPricingService:
         raise AssertionError('non dovrebbe essere chiamato quando c\'e cache idempotente')
 
 
+class _FakePerformanceService:
+    def get_performance_summary(self, portfolio_id: int, user_id: str, period: str):
+        return {
+            'period': period,
+            'period_label': '1 anno',
+            'start_date': '2025-01-01',
+            'end_date': '2026-01-01',
+            'period_days': 365,
+            'twr': {
+                'twr_pct': 12.34,
+                'twr_annualized_pct': 12.34,
+                'period_days': 365,
+                'start_date': '2025-01-01',
+                'end_date': '2026-01-01',
+            },
+            'mwr': {
+                'mwr_pct': 10.01,
+                'period_days': 365,
+                'start_date': '2025-01-01',
+                'end_date': '2026-01-01',
+                'converged': True,
+            },
+            'total_deposits': 10000,
+            'total_withdrawals': 2000,
+            'net_invested': 8000,
+            'current_value': 9000,
+            'absolute_gain': 1000,
+        }
+
+
 def test_error_model_uniform(monkeypatch):
     monkeypatch.setattr(api_main, 'repo', _FakeRepo())
     client = TestClient(api_main.app)
@@ -207,3 +237,16 @@ def test_delete_transaction_route_ok(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {'status': 'ok'}
+
+
+def test_performance_summary_route(monkeypatch):
+    monkeypatch.setattr(api_main, 'performance_service', _FakePerformanceService())
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/portfolios/1/performance/summary?period=1y')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['period'] == '1y'
+    assert payload['twr']['twr_pct'] == 12.34
+    assert payload['mwr']['converged'] is True
