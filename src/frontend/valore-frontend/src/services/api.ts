@@ -237,10 +237,12 @@ export interface AssetCreateInput {
   quote_currency: string;
   isin?: string | null;
   active?: boolean;
+  supports_fractions?: boolean;
 }
 
 export interface AssetRead extends AssetCreateInput {
   id: number;
+  supports_fractions: boolean;
 }
 
 export interface AssetProviderSymbolCreateInput {
@@ -275,10 +277,12 @@ export interface AssetLatestQuoteResponse {
   ts: string;
 }
 
+export type TransactionSide = 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'dividend' | 'fee' | 'interest';
+
 export interface TransactionCreateInput {
   portfolio_id: number;
-  asset_id: number;
-  side: 'buy' | 'sell';
+  asset_id?: number | null;
+  side: TransactionSide;
   trade_at: string;
   quantity: number;
   price: number;
@@ -293,7 +297,7 @@ export interface TransactionRead extends TransactionCreateInput {
 }
 
 export interface TransactionListItem extends TransactionRead {
-  symbol: string;
+  symbol?: string | null;
   asset_name?: string | null;
 }
 
@@ -696,5 +700,250 @@ export const commitPortfolioRebalance = async (
   return apiFetch<RebalanceCommitResponse>(`/portfolios/${portfolioId}/rebalance/commit`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+};
+
+// ---- Feature 2: Cash Movements ----
+
+export interface CashMovementCreateInput {
+  portfolio_id: number;
+  side: 'deposit' | 'withdrawal' | 'dividend' | 'fee' | 'interest';
+  trade_at: string;
+  quantity: number;
+  trade_currency: string;
+  asset_id?: number | null;
+  notes?: string | null;
+}
+
+export interface CashCurrencyBreakdown {
+  currency: string;
+  balance: number;
+}
+
+export interface CashBalanceResponse {
+  portfolio_id: number;
+  total_cash: number;
+  currency_breakdown: CashCurrencyBreakdown[];
+  recent_movements: TransactionListItem[];
+}
+
+export interface CashFlowTimelinePoint {
+  date: string;
+  cumulative_cash: number;
+  deposits: number;
+  withdrawals: number;
+  dividends: number;
+  fees: number;
+  interest: number;
+}
+
+export interface CashFlowTimelineResponse {
+  portfolio_id: number;
+  points: CashFlowTimelinePoint[];
+}
+
+export const createCashMovement = async (payload: CashMovementCreateInput): Promise<TransactionRead> => {
+  return apiFetch<TransactionRead>('/cash-movements', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const getPortfolioCashBalance = async (portfolioId: number): Promise<CashBalanceResponse> => {
+  return apiFetch<CashBalanceResponse>(`/portfolios/${portfolioId}/cash-balance`);
+};
+
+export const getPortfolioCashFlowTimeline = async (portfolioId: number): Promise<CashFlowTimelineResponse> => {
+  return apiFetch<CashFlowTimelineResponse>(`/portfolios/${portfolioId}/cash-flow-timeline`);
+};
+
+// ---- Feature 3: CSV Import ----
+
+export interface CsvImportPreviewRow {
+  row_number: number;
+  valid: boolean;
+  errors: string[];
+  trade_at: string | null;
+  symbol: string | null;
+  side: string | null;
+  quantity: number | null;
+  price: number | null;
+  fees: number | null;
+  taxes: number | null;
+  trade_currency: string | null;
+  notes: string | null;
+  asset_id: number | null;
+  asset_name: string | null;
+}
+
+export interface CsvImportPreviewResponse {
+  batch_id: number;
+  filename: string | null;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  rows: CsvImportPreviewRow[];
+}
+
+export interface CsvImportCommitResponse {
+  batch_id: number;
+  committed_transactions: number;
+  errors: string[];
+}
+
+export const uploadCsvImportPreview = async (
+  portfolioId: number,
+  file: File,
+): Promise<CsvImportPreviewResponse> => {
+  const token = await _getToken();
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  const formData = new FormData();
+  formData.append('file', file);
+  const response = await fetch(`${API_URL}/portfolios/${portfolioId}/csv-import/preview`, {
+    method: 'POST',
+    headers: { ...authHeaders },
+    body: formData,
+  });
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as ApiErrorPayload;
+      if (body?.error?.message) message = body.error.message;
+    } catch { /* ignore */ }
+    throw new Error(message);
+  }
+  return response.json() as Promise<CsvImportPreviewResponse>;
+};
+
+export const commitCsvImport = async (batchId: number): Promise<CsvImportCommitResponse> => {
+  return apiFetch<CsvImportCommitResponse>(`/csv-import/${batchId}/commit`, {
+    method: 'POST',
+  });
+};
+
+export const cancelCsvImport = async (batchId: number): Promise<{ status: string }> => {
+  return apiFetch<{ status: string }>(`/csv-import/${batchId}`, {
+    method: 'DELETE',
+  });
+};
+
+// ---- Feature 4: PAC ----
+
+export interface PacRuleCreateInput {
+  portfolio_id: number;
+  asset_id: number;
+  mode: 'amount' | 'quantity';
+  amount?: number | null;
+  quantity?: number | null;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  day_of_month?: number | null;
+  day_of_week?: number | null;
+  start_date: string;
+  end_date?: string | null;
+  auto_execute?: boolean;
+}
+
+export interface PacRuleRead {
+  id: number;
+  portfolio_id: number;
+  asset_id: number;
+  symbol: string | null;
+  asset_name: string | null;
+  mode: 'amount' | 'quantity';
+  amount: number | null;
+  quantity: number | null;
+  frequency: 'weekly' | 'biweekly' | 'monthly';
+  day_of_month: number | null;
+  day_of_week: number | null;
+  start_date: string;
+  end_date: string | null;
+  auto_execute: boolean;
+  active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PacRuleUpdateInput {
+  mode?: 'amount' | 'quantity';
+  amount?: number | null;
+  quantity?: number | null;
+  frequency?: 'weekly' | 'biweekly' | 'monthly';
+  day_of_month?: number | null;
+  day_of_week?: number | null;
+  end_date?: string | null;
+  auto_execute?: boolean;
+  active?: boolean;
+}
+
+export interface PacExecutionRead {
+  id: number;
+  pac_rule_id: number;
+  scheduled_date: string;
+  status: 'pending' | 'executed' | 'skipped' | 'failed';
+  transaction_id: number | null;
+  executed_price: number | null;
+  executed_quantity: number | null;
+  error_message: string | null;
+  created_at: string;
+  executed_at: string | null;
+}
+
+export interface PacExecutionConfirmInput {
+  price: number;
+  trade_currency: string;
+  fees?: number;
+  taxes?: number;
+  notes?: string | null;
+}
+
+export const createPacRule = async (portfolioId: number, payload: PacRuleCreateInput): Promise<PacRuleRead> => {
+  return apiFetch<PacRuleRead>(`/portfolios/${portfolioId}/pac-rules`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const getPortfolioPacRules = async (portfolioId: number): Promise<PacRuleRead[]> => {
+  return apiFetch<PacRuleRead[]>(`/portfolios/${portfolioId}/pac-rules`);
+};
+
+export const getPacRule = async (ruleId: number): Promise<PacRuleRead> => {
+  return apiFetch<PacRuleRead>(`/pac-rules/${ruleId}`);
+};
+
+export const updatePacRule = async (ruleId: number, payload: PacRuleUpdateInput): Promise<PacRuleRead> => {
+  return apiFetch<PacRuleRead>(`/pac-rules/${ruleId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const deletePacRule = async (ruleId: number): Promise<{ status: string }> => {
+  return apiFetch<{ status: string }>(`/pac-rules/${ruleId}`, {
+    method: 'DELETE',
+  });
+};
+
+export const getPacRuleExecutions = async (ruleId: number): Promise<PacExecutionRead[]> => {
+  return apiFetch<PacExecutionRead[]>(`/pac-rules/${ruleId}/executions`);
+};
+
+export const getPendingPacExecutions = async (portfolioId: number): Promise<PacExecutionRead[]> => {
+  return apiFetch<PacExecutionRead[]>(`/portfolios/${portfolioId}/pac-executions/pending`);
+};
+
+export const confirmPacExecution = async (
+  executionId: number,
+  payload: PacExecutionConfirmInput,
+): Promise<{ status: string }> => {
+  return apiFetch<{ status: string }>(`/pac-executions/${executionId}/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+};
+
+export const skipPacExecution = async (executionId: number): Promise<{ status: string }> => {
+  return apiFetch<{ status: string }>(`/pac-executions/${executionId}/skip`, {
+    method: 'POST',
   });
 };

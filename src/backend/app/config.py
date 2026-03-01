@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""
 
+    pac_scheduler_enabled: bool = False
+    pac_execution_hour: int = 8
+
     cors_allowed_origins: str = "http://localhost:5173"
 
     @property

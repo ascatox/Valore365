@@ -21,7 +21,11 @@ import {
   Tooltip,
   Checkbox,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget, IconCopy } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget, IconCopy, IconFileImport } from '@tabler/icons-react';
+import { CashSection } from '../components/portfolio/CashSection.tsx';
+import { CsvImportModal } from '../components/portfolio/CsvImportModal.tsx';
+import { PacRuleDrawer } from '../components/portfolio/PacRuleDrawer.tsx';
+import { PacSection } from '../components/portfolio/PacSection.tsx';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
 import {
@@ -45,6 +49,7 @@ import {
 } from '../services/api';
 import type {
   AssetDiscoverItem,
+  PacRuleRead,
   Portfolio,
   PortfolioTargetAllocationItem,
   RebalancePreviewResponse,
@@ -147,6 +152,11 @@ export function PortfolioPage() {
   const [rebalanceMinOrderValue, setRebalanceMinOrderValue] = useState<number | string>(100);
   const [rebalanceRounding, setRebalanceRounding] = useState<'fractional' | 'integer'>('fractional');
   const [rebalanceTradeAt, setRebalanceTradeAt] = useState('');
+
+  const [csvImportOpened, setCsvImportOpened] = useState(false);
+  const [pacDrawerOpened, setPacDrawerOpened] = useState(false);
+  const [editingPacRule, setEditingPacRule] = useState<PacRuleRead | null>(null);
+  const [pacRefreshTrigger, setPacRefreshTrigger] = useState(0);
 
   const selectedPortfolio = useMemo(
     () => portfolios.find((p) => String(p.id) === selectedPortfolioId) ?? null,
@@ -1375,9 +1385,14 @@ export function PortfolioPage() {
           ]}
         />
         {portfolioView === 'transactions' && !isMobile && (
-          <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
-            Nuova Transazione
-          </Button>
+          <Group gap="xs">
+            <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
+              Nuova Transazione
+            </Button>
+            <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => setCsvImportOpened(true)} disabled={!selectedPortfolioId}>
+              Importa CSV
+            </Button>
+          </Group>
         )}
         {portfolioView === 'target' && !isMobile && (
           <Button variant="light" leftSection={<IconTarget size={16} />} onClick={openRebalancePreviewModal} disabled={!selectedPortfolioId}>
@@ -1423,6 +1438,29 @@ export function PortfolioPage() {
           hasRows={sortedTransactions.length > 0}
           selectedPortfolioId={selectedPortfolioId}
           showActions={!isMobile}
+        />
+      )}
+
+      {portfolioView === 'transactions' && selectedPortfolioId && (
+        <CashSection
+          selectedPortfolioId={selectedPortfolioId}
+          baseCurrency={selectedPortfolio?.base_currency ?? 'EUR'}
+        />
+      )}
+
+      {portfolioView === 'transactions' && selectedPortfolioId && (
+        <PacSection
+          selectedPortfolioId={selectedPortfolioId}
+          baseCurrency={selectedPortfolio?.base_currency ?? 'EUR'}
+          onOpenPacDrawer={() => {
+            setEditingPacRule(null);
+            setPacDrawerOpened(true);
+          }}
+          onEditPacRule={(rule) => {
+            setEditingPacRule(rule);
+            setPacDrawerOpened(true);
+          }}
+          refreshTrigger={pacRefreshTrigger}
         />
       )}
 
@@ -1920,6 +1958,35 @@ export function PortfolioPage() {
           </Group>
         </Stack>
       </Modal>
+
+      {selectedPortfolioId && (
+        <CsvImportModal
+          opened={csvImportOpened}
+          onClose={() => setCsvImportOpened(false)}
+          portfolioId={Number(selectedPortfolioId)}
+          onImportComplete={() => {
+            if (selectedPortfolioId) {
+              void loadTransactions(Number(selectedPortfolioId));
+            }
+          }}
+        />
+      )}
+
+      {selectedPortfolioId && (
+        <PacRuleDrawer
+          opened={pacDrawerOpened}
+          onClose={() => {
+            setPacDrawerOpened(false);
+            setEditingPacRule(null);
+          }}
+          portfolioId={Number(selectedPortfolioId)}
+          baseCurrency={selectedPortfolio?.base_currency ?? 'EUR'}
+          editingRule={editingPacRule}
+          selectedAssetId={txResolvedAssetId}
+          selectedAssetSymbol={txResolvedAssetLabel}
+          onSaved={() => setPacRefreshTrigger((n) => n + 1)}
+        />
+      )}
     </>
   );
 }

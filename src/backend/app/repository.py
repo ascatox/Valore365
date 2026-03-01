@@ -13,6 +13,17 @@ from .models import (
     AssetProviderSymbolCreate,
     AssetProviderSymbolRead,
     AssetRead,
+    CashBalanceResponse,
+    CashCurrencyBreakdown,
+    CashFlowTimelinePoint,
+    CashFlowTimelineResponse,
+    CashMovementCreate,
+    CsvImportPreviewRow,
+    CsvImportPreviewResponse,
+    PacExecutionRead,
+    PacRuleCreate,
+    PacRuleRead,
+    PacRuleUpdate,
     PortfolioCreate,
     PortfolioCloneRequest,
     PortfolioCloneResponse,
@@ -914,8 +925,8 @@ class PortfolioRepository:
                 row = conn.execute(
                     text(
                         """
-                        insert into assets (symbol, name, asset_type, exchange_code, exchange_name, quote_currency, isin, active)
-                        values (:symbol, :name, :asset_type, :exchange_code, :exchange_name, :quote_currency, :isin, :active)
+                        insert into assets (symbol, name, asset_type, exchange_code, exchange_name, quote_currency, isin, active, supports_fractions)
+                        values (:symbol, :name, :asset_type, :exchange_code, :exchange_name, :quote_currency, :isin, :active, :supports_fractions)
                         returning id
                         """
                     ),
@@ -928,6 +939,7 @@ class PortfolioRepository:
                         "quote_currency": quote_currency,
                         "isin": isin,
                         "active": payload.active,
+                        "supports_fractions": payload.supports_fractions,
                     },
                 ).fetchone()
             except Exception as exc:
@@ -942,7 +954,7 @@ class PortfolioRepository:
             row = conn.execute(
                 text(
                     """
-                    select id, symbol, name, asset_type, exchange_code, exchange_name, quote_currency, isin, active
+                    select id, symbol, name, asset_type, exchange_code, exchange_name, quote_currency, isin, active, supports_fractions
                     from assets
                     where id = :id
                     """
@@ -961,6 +973,7 @@ class PortfolioRepository:
             quote_currency=str(row["quote_currency"]),
             isin=row["isin"],
             active=bool(row["active"]),
+            supports_fractions=bool(row["supports_fractions"]),
         )
 
     def get_asset_pricing_symbol(self, asset_id: int, provider: str = "yfinance") -> PricingAsset:
@@ -1020,17 +1033,33 @@ class PortfolioRepository:
     def create_transaction(self, payload: TransactionCreate, user_id: str) -> TransactionRead:
         side = payload.side.lower().strip()
         currency = payload.trade_currency.upper().strip()
-        if side not in {"buy", "sell"}:
-            raise ValueError("side deve essere buy o sell")
+        valid_sides = {"buy", "sell", "deposit", "withdrawal", "dividend", "fee", "interest"}
+        if side not in valid_sides:
+            raise ValueError(f"side deve essere uno tra: {', '.join(sorted(valid_sides))}")
+
+        is_cash_movement = side in {"deposit", "withdrawal", "dividend", "fee", "interest"}
 
         with self.engine.begin() as conn:
             portfolio = self._get_portfolio_for_user(conn, payload.portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
-            if not self._asset_exists(conn, payload.asset_id):
-                raise ValueError("Asset non trovato")
 
-            if side == "sell":
+            if payload.asset_id is not None:
+                if not self._asset_exists(conn, payload.asset_id):
+                    raise ValueError("Asset non trovato")
+                # Validate fraction support
+                if side in {"buy", "sell"}:
+                    asset_row = conn.execute(
+                        text("select supports_fractions from assets where id = :id"),
+                        {"id": payload.asset_id},
+                    ).mappings().fetchone()
+                    if asset_row and not asset_row["supports_fractions"]:
+                        if payload.quantity != int(payload.quantity):
+                            raise ValueError("Questo asset non supporta quote frazionate")
+            elif not is_cash_movement:
+                raise ValueError("asset_id obbligatorio per transazioni buy/sell")
+
+            if side == "sell" and payload.asset_id is not None:
                 self._assert_non_negative_inventory_timeline(
                     conn,
                     payload.portfolio_id,
@@ -1108,7 +1137,7 @@ class PortfolioRepository:
                            a.symbol,
                            a.name as asset_name
                     from transactions t
-                    join assets a on a.id = t.asset_id
+                    left join assets a on a.id = t.asset_id
                     where t.portfolio_id = :portfolio_id
                     order by t.trade_at desc, t.id desc
                     """
@@ -1120,7 +1149,7 @@ class PortfolioRepository:
             TransactionListItem(
                 id=int(row["id"]),
                 portfolio_id=int(row["portfolio_id"]),
-                asset_id=int(row["asset_id"]),
+                asset_id=int(row["asset_id"]) if row["asset_id"] is not None else None,
                 side=str(row["side"]),
                 trade_at=row["trade_at"],
                 quantity=float(row["quantity"]),
@@ -1129,7 +1158,7 @@ class PortfolioRepository:
                 taxes=float(row["taxes"]),
                 trade_currency=str(row["trade_currency"]),
                 notes=row["notes"],
-                symbol=str(row["symbol"]),
+                symbol=row["symbol"],
                 asset_name=row["asset_name"],
             )
             for row in rows
@@ -1221,6 +1250,8 @@ class PortfolioRepository:
                            trade_currency
                     from transactions
                     where portfolio_id = :portfolio_id
+                      and side in ('buy', 'sell')
+                      and asset_id is not null
                     order by trade_at asc, id asc
                     """
                 ),
@@ -1504,6 +1535,8 @@ class PortfolioRepository:
                     select trade_at::date as trade_date, asset_id, side, quantity::float8 as quantity
                     from transactions
                     where portfolio_id = :portfolio_id and trade_at::date <= :end_date
+                      and side in ('buy', 'sell')
+                      and asset_id is not null
                     order by trade_at asc, id asc
                     """
                 ),
@@ -2035,6 +2068,582 @@ class PortfolioRepository:
                 "coverage_pct": min(coverage_pct, 100.0),
             })
         return result
+
+    # ---- Feature 2: Cash Movements ----
+
+    def create_cash_movement(self, payload: CashMovementCreate, user_id: str) -> TransactionRead:
+        return self.create_transaction(
+            TransactionCreate(
+                portfolio_id=payload.portfolio_id,
+                asset_id=payload.asset_id,
+                side=payload.side,
+                trade_at=payload.trade_at,
+                quantity=payload.quantity,
+                price=1.0,
+                fees=0,
+                taxes=0,
+                trade_currency=payload.trade_currency,
+                notes=payload.notes,
+            ),
+            user_id,
+        )
+
+    def get_computed_cash_balance(self, portfolio_id: int, user_id: str) -> CashBalanceResponse:
+        with self.engine.begin() as conn:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
+                raise ValueError("Portfolio non trovato")
+
+            # Compute total from all cash-impacting transactions
+            rows = conn.execute(
+                text(
+                    """
+                    select trade_currency,
+                           coalesce(sum(case
+                             when side in ('deposit', 'interest', 'sell', 'dividend') then quantity * price
+                             when side in ('withdrawal', 'fee') then -quantity * price
+                             when side = 'buy' then -quantity * price - fees - taxes
+                             else 0
+                           end), 0)::float8 as balance
+                    from transactions
+                    where portfolio_id = :portfolio_id
+                    group by trade_currency
+                    order by trade_currency
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+            breakdown = [
+                CashCurrencyBreakdown(currency=str(r["trade_currency"]), balance=round(float(r["balance"]), 2))
+                for r in rows
+            ]
+            total_cash = round(sum(b.balance for b in breakdown), 2)
+
+            # Recent cash movements (last 20)
+            recent_rows = conn.execute(
+                text(
+                    """
+                    select t.id, t.portfolio_id, t.asset_id, t.side, t.trade_at,
+                           t.quantity::float8 as quantity, t.price::float8 as price,
+                           t.fees::float8 as fees, t.taxes::float8 as taxes,
+                           t.trade_currency, t.notes,
+                           a.symbol, a.name as asset_name
+                    from transactions t
+                    left join assets a on a.id = t.asset_id
+                    where t.portfolio_id = :portfolio_id
+                      and t.side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
+                    order by t.trade_at desc, t.id desc
+                    limit 20
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+        recent = [
+            TransactionListItem(
+                id=int(r["id"]),
+                portfolio_id=int(r["portfolio_id"]),
+                asset_id=int(r["asset_id"]) if r["asset_id"] is not None else None,
+                side=str(r["side"]),
+                trade_at=r["trade_at"],
+                quantity=float(r["quantity"]),
+                price=float(r["price"]),
+                fees=float(r["fees"]),
+                taxes=float(r["taxes"]),
+                trade_currency=str(r["trade_currency"]),
+                notes=r["notes"],
+                symbol=r["symbol"],
+                asset_name=r["asset_name"],
+            )
+            for r in recent_rows
+        ]
+
+        return CashBalanceResponse(
+            portfolio_id=portfolio_id,
+            total_cash=total_cash,
+            currency_breakdown=breakdown,
+            recent_movements=recent,
+        )
+
+    def get_cash_flow_timeline(self, portfolio_id: int, user_id: str) -> CashFlowTimelineResponse:
+        with self.engine.begin() as conn:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
+                raise ValueError("Portfolio non trovato")
+
+            rows = conn.execute(
+                text(
+                    """
+                    select trade_at::date as trade_date,
+                           side,
+                           sum(quantity * price)::float8 as total
+                    from transactions
+                    where portfolio_id = :portfolio_id
+                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
+                    group by trade_at::date, side
+                    order by trade_date asc
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+        daily: dict[str, dict[str, float]] = {}
+        for r in rows:
+            d = r["trade_date"].isoformat()
+            if d not in daily:
+                daily[d] = {"deposits": 0.0, "withdrawals": 0.0, "dividends": 0.0, "fees": 0.0, "interest": 0.0}
+            side = str(r["side"])
+            amount = float(r["total"])
+            if side == "deposit":
+                daily[d]["deposits"] += amount
+            elif side == "withdrawal":
+                daily[d]["withdrawals"] += amount
+            elif side == "dividend":
+                daily[d]["dividends"] += amount
+            elif side == "fee":
+                daily[d]["fees"] += amount
+            elif side == "interest":
+                daily[d]["interest"] += amount
+
+        points: list[CashFlowTimelinePoint] = []
+        cumulative = 0.0
+        for d in sorted(daily.keys()):
+            entry = daily[d]
+            cumulative += entry["deposits"] + entry["dividends"] + entry["interest"] - entry["withdrawals"] - entry["fees"]
+            points.append(CashFlowTimelinePoint(
+                date=d,
+                cumulative_cash=round(cumulative, 2),
+                deposits=round(entry["deposits"], 2),
+                withdrawals=round(entry["withdrawals"], 2),
+                dividends=round(entry["dividends"], 2),
+                fees=round(entry["fees"], 2),
+                interest=round(entry["interest"], 2),
+            ))
+
+        return CashFlowTimelineResponse(portfolio_id=portfolio_id, points=points)
+
+    # ---- Feature 3: CSV Import ----
+
+    def create_csv_import_batch(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        filename: str | None,
+        total_rows: int,
+        valid_rows: int,
+        error_rows: int,
+        preview_data: list[dict],
+    ) -> int:
+        with self.engine.begin() as conn:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
+                raise ValueError("Portfolio non trovato")
+            row = conn.execute(
+                text(
+                    """
+                    insert into csv_import_batches (portfolio_id, owner_user_id, original_filename, total_rows, valid_rows, error_rows, preview_data)
+                    values (:portfolio_id, :user_id, :filename, :total_rows, :valid_rows, :error_rows, cast(:preview_data as jsonb))
+                    returning id
+                    """
+                ),
+                {
+                    "portfolio_id": portfolio_id,
+                    "user_id": user_id,
+                    "filename": filename,
+                    "total_rows": total_rows,
+                    "valid_rows": valid_rows,
+                    "error_rows": error_rows,
+                    "preview_data": json.dumps(preview_data),
+                },
+            ).fetchone()
+        if row is None:
+            raise ValueError("Impossibile creare batch CSV")
+        return int(row.id)
+
+    def get_csv_import_batch(self, batch_id: int, user_id: str) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select id, portfolio_id, status, original_filename, total_rows, valid_rows, error_rows, preview_data, created_at, committed_at
+                    from csv_import_batches
+                    where id = :batch_id and owner_user_id = :user_id
+                    """
+                ),
+                {"batch_id": batch_id, "user_id": user_id},
+            ).mappings().fetchone()
+        if row is None:
+            return None
+        return dict(row)
+
+    def commit_csv_import_batch(self, batch_id: int, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    update csv_import_batches
+                    set status = 'committed', committed_at = now()
+                    where id = :batch_id and owner_user_id = :user_id and status = 'pending'
+                    """
+                ),
+                {"batch_id": batch_id, "user_id": user_id},
+            )
+
+    def cancel_csv_import_batch(self, batch_id: int, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    update csv_import_batches
+                    set status = 'cancelled'
+                    where id = :batch_id and owner_user_id = :user_id and status = 'pending'
+                    """
+                ),
+                {"batch_id": batch_id, "user_id": user_id},
+            )
+
+    # ---- Feature 4: PAC Rules ----
+
+    def create_pac_rule(self, payload: PacRuleCreate, user_id: str) -> PacRuleRead:
+        with self.engine.begin() as conn:
+            if self._get_portfolio_for_user(conn, payload.portfolio_id, user_id) is None:
+                raise ValueError("Portfolio non trovato")
+            if not self._asset_exists(conn, payload.asset_id):
+                raise ValueError("Asset non trovato")
+
+            row = conn.execute(
+                text(
+                    """
+                    insert into pac_rules (portfolio_id, asset_id, mode, amount, quantity, frequency,
+                        day_of_month, day_of_week, start_date, end_date, auto_execute, owner_user_id)
+                    values (:portfolio_id, :asset_id, :mode, :amount, :quantity, :frequency,
+                        :day_of_month, :day_of_week, :start_date, :end_date, :auto_execute, :owner_user_id)
+                    returning id, created_at, updated_at
+                    """
+                ),
+                {
+                    "portfolio_id": payload.portfolio_id,
+                    "asset_id": payload.asset_id,
+                    "mode": payload.mode,
+                    "amount": payload.amount,
+                    "quantity": payload.quantity,
+                    "frequency": payload.frequency,
+                    "day_of_month": payload.day_of_month,
+                    "day_of_week": payload.day_of_week,
+                    "start_date": payload.start_date,
+                    "end_date": payload.end_date,
+                    "auto_execute": payload.auto_execute,
+                    "owner_user_id": user_id,
+                },
+            ).mappings().fetchone()
+
+        if row is None:
+            raise ValueError("Impossibile creare regola PAC")
+        return self.get_pac_rule(int(row["id"]), user_id)
+
+    def get_pac_rule(self, rule_id: int, user_id: str) -> PacRuleRead:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select r.id, r.portfolio_id, r.asset_id, r.mode,
+                           r.amount::float8, r.quantity::float8,
+                           r.frequency, r.day_of_month, r.day_of_week,
+                           r.start_date, r.end_date, r.auto_execute, r.active,
+                           r.created_at, r.updated_at,
+                           a.symbol, a.name as asset_name
+                    from pac_rules r
+                    join assets a on a.id = r.asset_id
+                    where r.id = :rule_id and r.owner_user_id = :user_id
+                    """
+                ),
+                {"rule_id": rule_id, "user_id": user_id},
+            ).mappings().fetchone()
+        if row is None:
+            raise ValueError("Regola PAC non trovata")
+        return PacRuleRead(
+            id=int(row["id"]),
+            portfolio_id=int(row["portfolio_id"]),
+            asset_id=int(row["asset_id"]),
+            symbol=row["symbol"],
+            asset_name=row["asset_name"],
+            mode=str(row["mode"]),
+            amount=float(row["amount"]) if row["amount"] is not None else None,
+            quantity=float(row["quantity"]) if row["quantity"] is not None else None,
+            frequency=str(row["frequency"]),
+            day_of_month=int(row["day_of_month"]) if row["day_of_month"] is not None else None,
+            day_of_week=int(row["day_of_week"]) if row["day_of_week"] is not None else None,
+            start_date=row["start_date"],
+            end_date=row["end_date"],
+            auto_execute=bool(row["auto_execute"]),
+            active=bool(row["active"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
+
+    def list_pac_rules(self, portfolio_id: int, user_id: str) -> list[PacRuleRead]:
+        with self.engine.begin() as conn:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
+                raise ValueError("Portfolio non trovato")
+            rows = conn.execute(
+                text(
+                    """
+                    select r.id, r.portfolio_id, r.asset_id, r.mode,
+                           r.amount::float8, r.quantity::float8,
+                           r.frequency, r.day_of_month, r.day_of_week,
+                           r.start_date, r.end_date, r.auto_execute, r.active,
+                           r.created_at, r.updated_at,
+                           a.symbol, a.name as asset_name
+                    from pac_rules r
+                    join assets a on a.id = r.asset_id
+                    where r.portfolio_id = :portfolio_id and r.owner_user_id = :user_id
+                    order by r.active desc, r.created_at desc
+                    """
+                ),
+                {"portfolio_id": portfolio_id, "user_id": user_id},
+            ).mappings().all()
+
+        return [
+            PacRuleRead(
+                id=int(r["id"]),
+                portfolio_id=int(r["portfolio_id"]),
+                asset_id=int(r["asset_id"]),
+                symbol=r["symbol"],
+                asset_name=r["asset_name"],
+                mode=str(r["mode"]),
+                amount=float(r["amount"]) if r["amount"] is not None else None,
+                quantity=float(r["quantity"]) if r["quantity"] is not None else None,
+                frequency=str(r["frequency"]),
+                day_of_month=int(r["day_of_month"]) if r["day_of_month"] is not None else None,
+                day_of_week=int(r["day_of_week"]) if r["day_of_week"] is not None else None,
+                start_date=r["start_date"],
+                end_date=r["end_date"],
+                auto_execute=bool(r["auto_execute"]),
+                active=bool(r["active"]),
+                created_at=r["created_at"],
+                updated_at=r["updated_at"],
+            )
+            for r in rows
+        ]
+
+    def update_pac_rule(self, rule_id: int, payload: PacRuleUpdate, user_id: str) -> PacRuleRead:
+        updates = payload.model_dump(exclude_unset=True)
+        if not updates:
+            raise ValueError("Nessun campo da aggiornare")
+
+        set_clauses = ["updated_at = now()"]
+        params: dict[str, object] = {"rule_id": rule_id, "user_id": user_id}
+        for field, value in updates.items():
+            params[field] = value
+            set_clauses.append(f"{field} = :{field}")
+
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    f"""
+                    update pac_rules
+                    set {", ".join(set_clauses)}
+                    where id = :rule_id and owner_user_id = :user_id
+                    returning id
+                    """
+                ),
+                params,
+            ).fetchone()
+        if result is None:
+            raise ValueError("Regola PAC non trovata")
+        return self.get_pac_rule(rule_id, user_id)
+
+    def delete_pac_rule(self, rule_id: int, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text("delete from pac_rules where id = :rule_id and owner_user_id = :user_id returning id"),
+                {"rule_id": rule_id, "user_id": user_id},
+            ).fetchone()
+        if result is None:
+            raise ValueError("Regola PAC non trovata")
+
+    def list_pac_executions(self, rule_id: int, user_id: str) -> list[PacExecutionRead]:
+        with self.engine.begin() as conn:
+            # Verify ownership
+            rule = conn.execute(
+                text("select id from pac_rules where id = :rule_id and owner_user_id = :user_id"),
+                {"rule_id": rule_id, "user_id": user_id},
+            ).fetchone()
+            if rule is None:
+                raise ValueError("Regola PAC non trovata")
+
+            rows = conn.execute(
+                text(
+                    """
+                    select id, pac_rule_id, scheduled_date, status, transaction_id,
+                           executed_price::float8, executed_quantity::float8,
+                           error_message, created_at, executed_at
+                    from pac_executions
+                    where pac_rule_id = :rule_id
+                    order by scheduled_date desc
+                    """
+                ),
+                {"rule_id": rule_id},
+            ).mappings().all()
+
+        return [
+            PacExecutionRead(
+                id=int(r["id"]),
+                pac_rule_id=int(r["pac_rule_id"]),
+                scheduled_date=r["scheduled_date"],
+                status=str(r["status"]),
+                transaction_id=int(r["transaction_id"]) if r["transaction_id"] is not None else None,
+                executed_price=float(r["executed_price"]) if r["executed_price"] is not None else None,
+                executed_quantity=float(r["executed_quantity"]) if r["executed_quantity"] is not None else None,
+                error_message=r["error_message"],
+                created_at=r["created_at"],
+                executed_at=r["executed_at"],
+            )
+            for r in rows
+        ]
+
+    def list_pending_pac_executions(self, portfolio_id: int, user_id: str) -> list[PacExecutionRead]:
+        with self.engine.begin() as conn:
+            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
+                raise ValueError("Portfolio non trovato")
+
+            rows = conn.execute(
+                text(
+                    """
+                    select e.id, e.pac_rule_id, e.scheduled_date, e.status, e.transaction_id,
+                           e.executed_price::float8, e.executed_quantity::float8,
+                           e.error_message, e.created_at, e.executed_at
+                    from pac_executions e
+                    join pac_rules r on r.id = e.pac_rule_id
+                    where r.portfolio_id = :portfolio_id
+                      and r.owner_user_id = :user_id
+                      and e.status = 'pending'
+                    order by e.scheduled_date asc
+                    """
+                ),
+                {"portfolio_id": portfolio_id, "user_id": user_id},
+            ).mappings().all()
+
+        return [
+            PacExecutionRead(
+                id=int(r["id"]),
+                pac_rule_id=int(r["pac_rule_id"]),
+                scheduled_date=r["scheduled_date"],
+                status=str(r["status"]),
+                transaction_id=int(r["transaction_id"]) if r["transaction_id"] is not None else None,
+                executed_price=float(r["executed_price"]) if r["executed_price"] is not None else None,
+                executed_quantity=float(r["executed_quantity"]) if r["executed_quantity"] is not None else None,
+                error_message=r["error_message"],
+                created_at=r["created_at"],
+                executed_at=r["executed_at"],
+            )
+            for r in rows
+        ]
+
+    def confirm_pac_execution(self, execution_id: int, transaction_id: int, price: float, quantity: float, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    update pac_executions
+                    set status = 'executed', transaction_id = :transaction_id,
+                        executed_price = :price, executed_quantity = :quantity,
+                        executed_at = now()
+                    where id = :execution_id and status = 'pending'
+                      and pac_rule_id in (select id from pac_rules where owner_user_id = :user_id)
+                    returning id
+                    """
+                ),
+                {
+                    "execution_id": execution_id,
+                    "transaction_id": transaction_id,
+                    "price": price,
+                    "quantity": quantity,
+                    "user_id": user_id,
+                },
+            ).fetchone()
+        if result is None:
+            raise ValueError("Esecuzione PAC non trovata o gia processata")
+
+    def skip_pac_execution(self, execution_id: int, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    update pac_executions
+                    set status = 'skipped', executed_at = now()
+                    where id = :execution_id and status = 'pending'
+                      and pac_rule_id in (select id from pac_rules where owner_user_id = :user_id)
+                    returning id
+                    """
+                ),
+                {"execution_id": execution_id, "user_id": user_id},
+            ).fetchone()
+        if result is None:
+            raise ValueError("Esecuzione PAC non trovata o gia processata")
+
+    def generate_pending_executions(self, rule_id: int) -> int:
+        """Generate pending executions for a PAC rule up to today. Returns count of new executions."""
+        with self.engine.begin() as conn:
+            rule = conn.execute(
+                text(
+                    """
+                    select id, frequency, day_of_month, day_of_week, start_date, end_date, active
+                    from pac_rules
+                    where id = :rule_id
+                    """
+                ),
+                {"rule_id": rule_id},
+            ).mappings().fetchone()
+
+            if rule is None or not rule["active"]:
+                return 0
+
+            today = date.today()
+            start = rule["start_date"]
+            end = rule["end_date"] or today
+            if end > today:
+                end = today
+
+            existing = conn.execute(
+                text("select scheduled_date from pac_executions where pac_rule_id = :rule_id"),
+                {"rule_id": rule_id},
+            ).mappings().all()
+            existing_dates = {r["scheduled_date"] for r in existing}
+
+            dates_to_create: list[date] = []
+            freq = str(rule["frequency"])
+            cursor = start
+            while cursor <= end:
+                should_add = False
+                if freq == "monthly" and rule["day_of_month"] is not None:
+                    if cursor.day == int(rule["day_of_month"]):
+                        should_add = True
+                elif freq == "weekly" and rule["day_of_week"] is not None:
+                    if cursor.weekday() == int(rule["day_of_week"]):
+                        should_add = True
+                elif freq == "biweekly" and rule["day_of_week"] is not None:
+                    if cursor.weekday() == int(rule["day_of_week"]):
+                        weeks_since_start = (cursor - start).days // 7
+                        if weeks_since_start % 2 == 0:
+                            should_add = True
+
+                if should_add and cursor not in existing_dates:
+                    dates_to_create.append(cursor)
+
+                cursor += timedelta(days=1)
+
+            for d in dates_to_create:
+                conn.execute(
+                    text(
+                        """
+                        insert into pac_executions (pac_rule_id, scheduled_date)
+                        values (:rule_id, :scheduled_date)
+                        on conflict (pac_rule_id, scheduled_date) do nothing
+                        """
+                    ),
+                    {"rule_id": rule_id, "scheduled_date": d},
+                )
+
+            return len(dates_to_create)
 
     def _get_portfolio_for_user(self, conn, portfolio_id: int, user_id: str) -> PortfolioData | None:
         row = conn.execute(

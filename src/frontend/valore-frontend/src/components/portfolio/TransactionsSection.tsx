@@ -74,6 +74,11 @@ export function TransactionsSection({
             { value: 'all', label: 'Tutti' },
             { value: 'buy', label: 'Acquisto' },
             { value: 'sell', label: 'Vendita' },
+            { value: 'deposit', label: 'Deposito' },
+            { value: 'withdrawal', label: 'Prelievo' },
+            { value: 'dividend', label: 'Dividendo' },
+            { value: 'fee', label: 'Commissione' },
+            { value: 'interest', label: 'Interesse' },
           ]}
           value={filterSide}
           onChange={(value) => onFilterSideChange(value ?? 'all')}

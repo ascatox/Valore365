@@ -7,12 +7,16 @@ from dataclasses import asdict
 from datetime import date, datetime
 
 from fastapi import Depends, FastAPI, Header, Query, Request, APIRouter
+from sqlalchemy import text
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from fastapi import UploadFile, File
+
 from .auth import AuthContext, require_auth
 from .config import get_settings
+from .csv_service import CsvImportService
 from .db import engine
 from .errors import AppError
 from .finance_client import make_finance_client
@@ -29,12 +33,22 @@ from .models import (
     AssetProviderSymbolCreate,
     AssetProviderSymbolRead,
     AssetRead,
+    CashBalanceResponse,
+    CashFlowTimelineResponse,
+    CashMovementCreate,
+    CsvImportCommitResponse,
+    CsvImportPreviewResponse,
     DailyBackfillResponse,
     DataCoverageResponse,
     ErrorResponse,
     MarketCategory,
     MarketQuoteItem,
     MarketQuotesResponse,
+    PacExecutionConfirm,
+    PacExecutionRead,
+    PacRuleCreate,
+    PacRuleRead,
+    PacRuleUpdate,
     PortfolioCreate,
     PortfolioCloneRequest,
     PortfolioCloneResponse,
@@ -65,6 +79,7 @@ from .models import (
     UserSettingsRead,
     UserSettingsUpdate,
 )
+from .pac_service import PacExecutionService
 from .pricing_service import PriceIngestionService
 from .repository import PortfolioRepository
 from .scheduler import PriceRefreshScheduler
@@ -76,7 +91,9 @@ if not logging.getLogger().handlers:
 repo = PortfolioRepository(engine)
 pricing_service = PriceIngestionService(settings, repo)
 historical_service = HistoricalIngestionService(settings, repo)
-scheduler = PriceRefreshScheduler(settings, pricing_service)
+csv_import_service = CsvImportService(repo)
+pac_service = PacExecutionService(engine)
+scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service)
 finance_client = make_finance_client(settings)
 
 
@@ -1067,6 +1084,278 @@ def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuote
         categories.append(MarketCategory(category=cat_key, label=cat_info["label"], items=items))
 
     return MarketQuotesResponse(categories=categories)
+
+
+
+# ---- Feature 2: Cash Movements ----
+
+@router.post("/cash-movements", response_model=TransactionRead, responses={400: {"model": ErrorResponse}})
+def create_cash_movement(payload: CashMovementCreate, _auth: AuthContext = Depends(require_auth)) -> TransactionRead:
+    try:
+        return repo.create_cash_movement(payload, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/cash-balance",
+    response_model=CashBalanceResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+def get_cash_balance(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> CashBalanceResponse:
+    try:
+        return repo.get_computed_cash_balance(portfolio_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/cash-flow-timeline",
+    response_model=CashFlowTimelineResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+def get_cash_flow_timeline(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> CashFlowTimelineResponse:
+    try:
+        return repo.get_cash_flow_timeline(portfolio_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+# ---- Feature 3: CSV Import ----
+
+@router.post(
+    "/portfolios/{portfolio_id}/csv-import/preview",
+    response_model=CsvImportPreviewResponse,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+async def csv_import_preview(
+    portfolio_id: int,
+    file: UploadFile = File(...),
+    _auth: AuthContext = Depends(require_auth),
+) -> CsvImportPreviewResponse:
+    try:
+        content = await file.read()
+        file_content = content.decode("utf-8-sig")
+        return csv_import_service.parse_and_validate(
+            portfolio_id=portfolio_id,
+            user_id=_auth.user_id,
+            file_content=file_content,
+            filename=file.filename,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.post(
+    "/csv-import/{batch_id}/commit",
+    response_model=CsvImportCommitResponse,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def csv_import_commit(batch_id: int, _auth: AuthContext = Depends(require_auth)) -> CsvImportCommitResponse:
+    try:
+        return csv_import_service.commit_batch(batch_id, _auth.user_id)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.delete("/csv-import/{batch_id}", responses={404: {"model": ErrorResponse}})
+def csv_import_cancel(batch_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+    try:
+        repo.cancel_csv_import_batch(batch_id, _auth.user_id)
+        return {"status": "ok"}
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+# ---- Feature 4: PAC Rules ----
+
+@router.post(
+    "/portfolios/{portfolio_id}/pac-rules",
+    response_model=PacRuleRead,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def create_pac_rule(
+    portfolio_id: int,
+    payload: PacRuleCreate,
+    _auth: AuthContext = Depends(require_auth),
+) -> PacRuleRead:
+    if payload.portfolio_id != portfolio_id:
+        raise AppError(code="bad_request", message="portfolio_id nel path e nel body non corrispondono", status_code=400)
+    try:
+        rule = repo.create_pac_rule(payload, _auth.user_id)
+        repo.generate_pending_executions(rule.id)
+        return rule
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/pac-rules",
+    response_model=list[PacRuleRead],
+    responses={404: {"model": ErrorResponse}},
+)
+def list_pac_rules(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PacRuleRead]:
+    try:
+        return repo.list_pac_rules(portfolio_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.get(
+    "/pac-rules/{rule_id}",
+    response_model=PacRuleRead,
+    responses={404: {"model": ErrorResponse}},
+)
+def get_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> PacRuleRead:
+    try:
+        return repo.get_pac_rule(rule_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.patch(
+    "/pac-rules/{rule_id}",
+    response_model=PacRuleRead,
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def update_pac_rule(
+    rule_id: int,
+    payload: PacRuleUpdate,
+    _auth: AuthContext = Depends(require_auth),
+) -> PacRuleRead:
+    try:
+        rule = repo.update_pac_rule(rule_id, payload, _auth.user_id)
+        repo.generate_pending_executions(rule.id)
+        return rule
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovata" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.delete("/pac-rules/{rule_id}", responses={404: {"model": ErrorResponse}})
+def delete_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+    try:
+        repo.delete_pac_rule(rule_id, _auth.user_id)
+        return {"status": "ok"}
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.get(
+    "/pac-rules/{rule_id}/executions",
+    response_model=list[PacExecutionRead],
+    responses={404: {"model": ErrorResponse}},
+)
+def list_pac_executions(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PacExecutionRead]:
+    try:
+        return repo.list_pac_executions(rule_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/pac-executions/pending",
+    response_model=list[PacExecutionRead],
+    responses={404: {"model": ErrorResponse}},
+)
+def list_pending_pac_executions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PacExecutionRead]:
+    try:
+        return repo.list_pending_pac_executions(portfolio_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.post(
+    "/pac-executions/{execution_id}/confirm",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def confirm_pac_execution(
+    execution_id: int,
+    payload: PacExecutionConfirm,
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, str]:
+    try:
+        # Get execution details
+        with engine.begin() as conn:
+            exec_row = conn.execute(
+                text(
+                    """
+                    select e.id, e.pac_rule_id, e.scheduled_date,
+                           r.portfolio_id, r.asset_id, r.mode, r.amount::float8, r.quantity::float8
+                    from pac_executions e
+                    join pac_rules r on r.id = e.pac_rule_id
+                    where e.id = :execution_id and e.status = 'pending' and r.owner_user_id = :user_id
+                    """
+                ),
+                {"execution_id": execution_id, "user_id": _auth.user_id},
+            ).mappings().fetchone()
+
+        if exec_row is None:
+            raise ValueError("Esecuzione PAC non trovata o gia processata")
+
+        # Determine quantity based on mode
+        if str(exec_row["mode"]) == "amount":
+            quantity = float(exec_row["amount"]) / payload.price if payload.price > 0 else 0.0
+        else:
+            quantity = float(exec_row["quantity"]) if exec_row["quantity"] else 0.0
+
+        if quantity <= 0:
+            raise ValueError("Quantita calcolata non valida")
+
+        from datetime import datetime as dt
+        tx = repo.create_transaction(
+            TransactionCreate(
+                portfolio_id=int(exec_row["portfolio_id"]),
+                asset_id=int(exec_row["asset_id"]),
+                side="buy",
+                trade_at=dt.combine(exec_row["scheduled_date"], dt.min.time()),
+                quantity=round(quantity, 8),
+                price=payload.price,
+                fees=payload.fees,
+                taxes=payload.taxes,
+                trade_currency=payload.trade_currency,
+                notes=payload.notes or f"PAC esecuzione #{execution_id}",
+            ),
+            _auth.user_id,
+        )
+
+        repo.confirm_pac_execution(execution_id, tx.id, payload.price, round(quantity, 8), _auth.user_id)
+        return {"status": "ok", "transaction_id": str(tx.id)}
+
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovata" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.post(
+    "/pac-executions/{execution_id}/skip",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def skip_pac_execution(
+    execution_id: int,
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, str]:
+    try:
+        repo.skip_pac_execution(execution_id, _auth.user_id)
+        return {"status": "ok"}
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovata" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
 
 
 app.include_router(router, prefix="/api")

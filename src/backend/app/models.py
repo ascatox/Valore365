@@ -1,7 +1,10 @@
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+
+TransactionSide = Literal['buy', 'sell', 'deposit', 'withdrawal', 'dividend', 'fee', 'interest']
 
 
 class ApiError(BaseModel):
@@ -54,8 +57,8 @@ class PortfolioCloneResponse(BaseModel):
 
 class TransactionCreate(BaseModel):
     portfolio_id: int = Field(ge=1)
-    asset_id: int = Field(ge=1)
-    side: Literal['buy', 'sell']
+    asset_id: int | None = Field(default=None, ge=1)
+    side: TransactionSide
     trade_at: datetime
     quantity: float = Field(gt=0)
     price: float = Field(ge=0)
@@ -79,7 +82,7 @@ class TransactionUpdate(BaseModel):
 
 
 class TransactionListItem(TransactionRead):
-    symbol: str
+    symbol: str | None = None
     asset_name: str | None = None
 
 
@@ -101,6 +104,7 @@ class AssetCreate(BaseModel):
     quote_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')
     isin: str | None = Field(default=None, min_length=12, max_length=12)
     active: bool = True
+    supports_fractions: bool = True
 
 
 class AssetRead(AssetCreate):
@@ -433,3 +437,145 @@ class MarketCategory(BaseModel):
 
 class MarketQuotesResponse(BaseModel):
     categories: list[MarketCategory]
+
+
+# --- Feature 2: Cash Movements ---
+
+class CashMovementCreate(BaseModel):
+    portfolio_id: int = Field(ge=1)
+    side: Literal['deposit', 'withdrawal', 'dividend', 'fee', 'interest']
+    trade_at: datetime
+    quantity: float = Field(gt=0)
+    trade_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')
+    asset_id: int | None = Field(default=None, ge=1)
+    notes: str | None = None
+
+
+class CashCurrencyBreakdown(BaseModel):
+    currency: str
+    balance: float
+
+
+class CashBalanceResponse(BaseModel):
+    portfolio_id: int
+    total_cash: float
+    currency_breakdown: list[CashCurrencyBreakdown]
+    recent_movements: list[TransactionListItem]
+
+
+class CashFlowTimelinePoint(BaseModel):
+    date: str
+    cumulative_cash: float
+    deposits: float = 0.0
+    withdrawals: float = 0.0
+    dividends: float = 0.0
+    fees: float = 0.0
+    interest: float = 0.0
+
+
+class CashFlowTimelineResponse(BaseModel):
+    portfolio_id: int
+    points: list[CashFlowTimelinePoint]
+
+
+# --- Feature 3: CSV Import ---
+
+class CsvImportPreviewRow(BaseModel):
+    row_number: int
+    valid: bool
+    errors: list[str]
+    trade_at: str | None = None
+    symbol: str | None = None
+    side: str | None = None
+    quantity: float | None = None
+    price: float | None = None
+    fees: float | None = None
+    taxes: float | None = None
+    trade_currency: str | None = None
+    notes: str | None = None
+    asset_id: int | None = None
+    asset_name: str | None = None
+
+
+class CsvImportPreviewResponse(BaseModel):
+    batch_id: int
+    filename: str | None = None
+    total_rows: int
+    valid_rows: int
+    error_rows: int
+    rows: list[CsvImportPreviewRow]
+
+
+class CsvImportCommitResponse(BaseModel):
+    batch_id: int
+    committed_transactions: int
+    errors: list[str]
+
+
+# --- Feature 4: PAC ---
+
+class PacRuleCreate(BaseModel):
+    portfolio_id: int = Field(ge=1)
+    asset_id: int = Field(ge=1)
+    mode: Literal['amount', 'quantity'] = 'amount'
+    amount: float | None = Field(default=None, gt=0)
+    quantity: float | None = Field(default=None, gt=0)
+    frequency: Literal['weekly', 'biweekly', 'monthly']
+    day_of_month: int | None = Field(default=None, ge=1, le=28)
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    start_date: date
+    end_date: date | None = None
+    auto_execute: bool = False
+
+
+class PacRuleRead(BaseModel):
+    id: int
+    portfolio_id: int
+    asset_id: int
+    symbol: str | None = None
+    asset_name: str | None = None
+    mode: Literal['amount', 'quantity']
+    amount: float | None = None
+    quantity: float | None = None
+    frequency: Literal['weekly', 'biweekly', 'monthly']
+    day_of_month: int | None = None
+    day_of_week: int | None = None
+    start_date: date
+    end_date: date | None = None
+    auto_execute: bool
+    active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class PacRuleUpdate(BaseModel):
+    mode: Literal['amount', 'quantity'] | None = None
+    amount: float | None = Field(default=None, gt=0)
+    quantity: float | None = Field(default=None, gt=0)
+    frequency: Literal['weekly', 'biweekly', 'monthly'] | None = None
+    day_of_month: int | None = Field(default=None, ge=1, le=28)
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    end_date: date | None = None
+    auto_execute: bool | None = None
+    active: bool | None = None
+
+
+class PacExecutionRead(BaseModel):
+    id: int
+    pac_rule_id: int
+    scheduled_date: date
+    status: Literal['pending', 'executed', 'skipped', 'failed']
+    transaction_id: int | None = None
+    executed_price: float | None = None
+    executed_quantity: float | None = None
+    error_message: str | None = None
+    created_at: datetime
+    executed_at: datetime | None = None
+
+
+class PacExecutionConfirm(BaseModel):
+    price: float = Field(gt=0)
+    trade_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')
+    fees: float = Field(default=0, ge=0)
+    taxes: float = Field(default=0, ge=0)
+    notes: str | None = None
