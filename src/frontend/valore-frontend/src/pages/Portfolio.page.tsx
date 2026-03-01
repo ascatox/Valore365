@@ -20,6 +20,7 @@ import {
   Menu,
   Tooltip,
   Checkbox,
+  Tabs,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget, IconCopy, IconFileImport } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
@@ -1337,55 +1338,48 @@ export function PortfolioPage() {
 
       {/* Vista + azione contestuale */}
       <Group mb="md" justify="space-between" wrap="wrap" gap="xs">
-        <SegmentedControl
+        <Tabs
           value={portfolioView}
           onChange={(value) => setPortfolioView((value as 'transactions' | 'target') ?? 'transactions')}
-          size={isMobile ? 'md' : 'sm'}
+          variant="pills"
           radius="xl"
-          fullWidth={isMobile}
           style={isMobile ? { width: '100%' } : undefined}
-          styles={isMobile ? {
-            root: {
+        >
+          <Tabs.List
+            style={isMobile ? {
+              flexWrap: 'nowrap',
+              overflowX: 'hidden',
               padding: 4,
+              gap: '0.25rem',
               background: 'var(--mantine-color-default)',
               border: '1px solid var(--mantine-color-default-border)',
-            },
-            control: {
-              minWidth: 0,
-              flex: 1,
-            },
-            label: {
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              minHeight: 36,
-              paddingInline: 0,
-            },
-            indicator: {
               borderRadius: 999,
-            },
-          } : undefined}
-          data={[
-            {
-              value: 'transactions',
-              label: (
-                <Group gap={0} wrap="nowrap" justify="center">
-                  <IconArrowsExchange size={isMobile ? 20 : 14} />
-                  {!isMobile && <span>Transazioni</span>}
-                </Group>
-              ),
-            },
-            {
-              value: 'target',
-              label: (
-                <Group gap={0} wrap="nowrap" justify="center">
-                  <IconTarget size={isMobile ? 20 : 14} />
-                  {!isMobile && <span>Allocazione target</span>}
-                </Group>
-              ),
-            },
-          ]}
-        />
+            } : {
+              flexWrap: 'nowrap',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+              paddingBottom: 4,
+              gap: '0.25rem',
+            }}
+          >
+            <Tabs.Tab
+              value="transactions"
+              leftSection={isMobile ? undefined : <IconArrowsExchange size={16} />}
+              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            >
+              {isMobile ? <IconArrowsExchange size={20} /> : <Text span>Transazioni</Text>}
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="target"
+              leftSection={isMobile ? undefined : <IconTarget size={16} />}
+              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            >
+              {isMobile ? <IconTarget size={20} /> : <Text span>Allocazione target</Text>}
+            </Tabs.Tab>
+          </Tabs.List>
+        </Tabs>
         {portfolioView === 'transactions' && !isMobile && (
           <Group gap="xs">
             <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
