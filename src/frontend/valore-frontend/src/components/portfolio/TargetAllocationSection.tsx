@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
-import { IconPlus } from '@tabler/icons-react';
+import { IconFileImport, IconPlus } from '@tabler/icons-react';
 
 interface TargetAllocationSectionProps {
   allocationsCount: number;
@@ -12,6 +12,7 @@ interface TargetAllocationSectionProps {
   mobileCards?: ReactNode;
   hasRows: boolean;
   onOpenAddAssetWeight: () => void;
+  onOpenCsvImport?: () => void;
   showActions?: boolean;
 }
 
@@ -25,6 +26,7 @@ export function TargetAllocationSection({
   mobileCards,
   hasRows,
   onOpenAddAssetWeight,
+  onOpenCsvImport,
   showActions = true,
 }: TargetAllocationSectionProps) {
   return (
@@ -59,9 +61,16 @@ export function TargetAllocationSection({
         <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
           <Title order={4}>Allocazione target</Title>
           {showActions && (
-            <Button leftSection={<IconPlus size={16} />} variant="light" onClick={onOpenAddAssetWeight} disabled={!selectedPortfolioId}>
-              Aggiungi Asset / Peso
-            </Button>
+            <Group gap="xs">
+              <Button leftSection={<IconPlus size={16} />} variant="light" onClick={onOpenAddAssetWeight} disabled={!selectedPortfolioId}>
+                Aggiungi Asset / Peso
+              </Button>
+              {onOpenCsvImport && (
+                <Button leftSection={<IconFileImport size={16} />} variant="light" onClick={onOpenCsvImport} disabled={!selectedPortfolioId} visibleFrom="sm">
+                  Importa CSV
+                </Button>
+              )}
+            </Group>
           )}
         </Group>
         <Stack gap="sm" hiddenFrom="sm">

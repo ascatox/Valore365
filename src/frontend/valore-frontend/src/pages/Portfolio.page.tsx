@@ -24,6 +24,7 @@ import {
 import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget, IconCopy, IconFileImport } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/CsvImportModal.tsx';
+import { TargetAllocationCsvImportModal } from '../components/portfolio/TargetAllocationCsvImportModal.tsx';
 import { PacRuleDrawer } from '../components/portfolio/PacRuleDrawer.tsx';
 import { PacSection } from '../components/portfolio/PacSection.tsx';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
@@ -154,6 +155,7 @@ export function PortfolioPage() {
   const [rebalanceTradeAt, setRebalanceTradeAt] = useState('');
 
   const [csvImportOpened, setCsvImportOpened] = useState(false);
+  const [targetCsvImportOpened, setTargetCsvImportOpened] = useState(false);
   const [pacDrawerOpened, setPacDrawerOpened] = useState(false);
   const [editingPacRule, setEditingPacRule] = useState<PacRuleRead | null>(null);
   const [pacRefreshTrigger, setPacRefreshTrigger] = useState(0);
@@ -1418,6 +1420,7 @@ export function PortfolioPage() {
           mobileCards={allocationMobileCards}
           hasRows={allocations.length > 0}
           onOpenAddAssetWeight={openDrawer}
+          onOpenCsvImport={() => setTargetCsvImportOpened(true)}
           showActions={!isMobile}
         />
       )}
@@ -1967,6 +1970,19 @@ export function PortfolioPage() {
           onImportComplete={() => {
             if (selectedPortfolioId) {
               void loadTransactions(Number(selectedPortfolioId));
+            }
+          }}
+        />
+      )}
+
+      {selectedPortfolioId && (
+        <TargetAllocationCsvImportModal
+          opened={targetCsvImportOpened}
+          onClose={() => setTargetCsvImportOpened(false)}
+          portfolioId={Number(selectedPortfolioId)}
+          onImportComplete={() => {
+            if (selectedPortfolioId) {
+              void loadTargetAllocation(Number(selectedPortfolioId));
             }
           }}
         />
