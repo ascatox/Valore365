@@ -16,10 +16,10 @@ class _FakeRepo:
         self.bars_rows = []
         self.fx_rows = []
 
-    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target'):
+    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target', user_id: str | None = None):
         return [_FakeAsset(1, 'AAPL', 'AAPL')]
 
-    def get_portfolio_base_currency(self, portfolio_id: int):
+    def get_portfolio_base_currency(self, portfolio_id: int, user_id: str | None = None):
         return 'EUR'
 
     def get_quote_currencies_for_assets(self, asset_ids: list[int]):

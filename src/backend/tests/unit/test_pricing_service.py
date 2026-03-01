@@ -14,12 +14,16 @@ class _FakeAsset:
 class _FakeRepo:
     def __init__(self) -> None:
         self.saved = []
+        self.bars_rows = []
 
-    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target'):
+    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target', user_id: str | None = None):
         return [_FakeAsset(1, 'AAPL', 'AAPL')]
 
     def save_price_tick(self, **kwargs):
         self.saved.append(kwargs)
+
+    def batch_upsert_price_bars_1d(self, **kwargs):
+        self.bars_rows.extend(kwargs.get('rows', []))
 
 
 class _FakeSettings:
