@@ -19,9 +19,12 @@ import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
 import { PerformanceMetrics } from '../components/dashboard/analysis/PerformanceMetrics';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
+import { ENABLE_TARGET_ALLOCATION } from '../features';
 
 export function DashboardPage() {
-  const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const;
+  const DASHBOARD_TABS = ENABLE_TARGET_ALLOCATION
+    ? (['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const)
+    : (['panoramica', 'posizioni', 'mercati', 'performance'] as const);
   const data = useDashboardData();
   const marketData = useMarketData();
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -40,7 +43,8 @@ export function DashboardPage() {
 
   const [activeTab, setActiveTab] = useState<string | null>(() => {
     if (typeof window === 'undefined') return 'panoramica';
-    return window.localStorage.getItem(STORAGE_KEYS.activeTab) ?? 'panoramica';
+    const stored = window.localStorage.getItem(STORAGE_KEYS.activeTab);
+    return stored && DASHBOARD_TABS.includes(stored as (typeof DASHBOARD_TABS)[number]) ? stored : 'panoramica';
   });
 
   const handleTabChange = (tab: string | null) => {
@@ -92,7 +96,7 @@ export function DashboardPage() {
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
       {refreshMessage && <Alert color="teal" mb="md">{refreshMessage}</Alert>}
-      {!error && targetPerformance?.last_updated_at && (
+      {!error && ENABLE_TARGET_ALLOCATION && targetPerformance?.last_updated_at && (
         <Text size="sm" c="dimmed" mb="md">
           Ultimo aggiornamento dati: {formatDateTime(targetPerformance.last_updated_at)}
         </Text>
@@ -142,13 +146,15 @@ export function DashboardPage() {
           >
             {isMobile ? <IconList size={20} /> : <Text span>Posizioni</Text>}
           </Tabs.Tab>
-          <Tabs.Tab
-            value="analisi"
-            leftSection={isMobile ? undefined : <IconChartBar size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
-          >
-            {isMobile ? <IconChartBar size={20} /> : <Text span>Analisi</Text>}
-          </Tabs.Tab>
+          {ENABLE_TARGET_ALLOCATION && (
+            <Tabs.Tab
+              value="analisi"
+              leftSection={isMobile ? undefined : <IconChartBar size={16} />}
+              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            >
+              {isMobile ? <IconChartBar size={20} /> : <Text span>Analisi</Text>}
+            </Tabs.Tab>
+          )}
           <Tabs.Tab
             value="mercati"
             leftSection={isMobile ? undefined : <IconWorld size={16} />}
@@ -174,9 +180,11 @@ export function DashboardPage() {
             <PosizioniTab data={data} />
           </Tabs.Panel>
 
-          <Tabs.Panel value="analisi">
-            <AnalisiTab data={data} />
-          </Tabs.Panel>
+          {ENABLE_TARGET_ALLOCATION && (
+            <Tabs.Panel value="analisi">
+              <AnalisiTab data={data} />
+            </Tabs.Panel>
+          )}
 
           <Tabs.Panel value="mercati">
             <MercatiTab marketData={marketData} isActive={activeTab === 'mercati'} />

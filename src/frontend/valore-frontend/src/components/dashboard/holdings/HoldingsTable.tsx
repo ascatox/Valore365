@@ -4,7 +4,7 @@ import { IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-reac
 import type { Position, PortfolioSummary } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
-type SortKey = 'symbol' | 'quantity' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'weight' | 'first_trade_at';
+type SortKey = 'symbol' | 'quantity' | 'market_price' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'weight' | 'first_trade_at';
 
 interface HoldingsTableProps {
   positions: Position[];
@@ -23,6 +23,7 @@ interface ColumnDef {
 const columns: ColumnDef[] = [
   { label: 'Asset', key: 'symbol', align: 'left', sortable: true },
   { label: 'Qta', key: 'quantity', align: 'right', visibleFrom: 'sm', sortable: true },
+  { label: 'Prezzo Mkt', key: 'market_price', align: 'right', visibleFrom: 'sm', sortable: true },
   { label: 'Valore', key: 'market_value', align: 'right', sortable: true },
   { label: 'P/L', key: 'unrealized_pl', align: 'right', sortable: true },
   { label: 'P/L %', key: 'unrealized_pl_pct', align: 'right', sortable: true },
@@ -39,6 +40,7 @@ function getSortValue(p: Position, key: SortKey): number | string {
   switch (key) {
     case 'symbol': return p.symbol.toLowerCase();
     case 'quantity': return p.quantity;
+    case 'market_price': return p.market_price;
     case 'market_value': return p.market_value;
     case 'unrealized_pl': return p.unrealized_pl;
     case 'unrealized_pl_pct': return p.unrealized_pl_pct;
@@ -120,6 +122,10 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
               </Text>
             </Group>
             <Group justify="space-between" gap="xs">
+              <Text size="sm" c="dimmed">Prezzo Mkt</Text>
+              <Text size="sm">{formatMoney(p.market_price, currency)}</Text>
+            </Group>
+            <Group justify="space-between" gap="xs">
               <Text size="sm" c="dimmed">P/L %</Text>
               <Text size="sm" fw={600} c={getVariationColor(p.unrealized_pl_pct)}>
                 {formatPct(p.unrealized_pl_pct)}
@@ -192,6 +198,9 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
                     <Text size="sm">{formatNum(p.quantity)}</Text>
                   </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
+                    <Text size="sm">{formatMoney(p.market_price, currency)}</Text>
+                  </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }}>
                     <Text size="sm">{formatMoney(p.market_value, currency)}</Text>
                   </Table.Td>
@@ -220,6 +229,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                 <Table.Td>
                   <Text fw={700} size="sm">TOTALE</Text>
                 </Table.Td>
+                <Table.Td visibleFrom="sm" />
                 <Table.Td visibleFrom="sm" />
                 <Table.Td style={{ textAlign: 'right' }}>
                   <Text fw={700} size="sm">{formatMoney(totals.totalValue, currency)}</Text>

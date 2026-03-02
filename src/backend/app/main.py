@@ -151,6 +151,16 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def ensure_target_allocation_enabled() -> None:
+    # Feature-flag guard for code paths exclusively tied to Target Allocation.
+    if not settings.enable_target_allocation:
+        raise AppError(
+            code="feature_disabled",
+            message="Feature Target Allocation disabilitata",
+            status_code=404,
+        )
+
+
 @router.get("/settings/user", response_model=UserSettingsRead)
 def get_user_settings(_auth: AuthContext = Depends(require_auth)) -> UserSettingsRead:
     try:
@@ -462,6 +472,8 @@ def refresh_prices(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     _auth: AuthContext = Depends(require_auth),
 ) -> PriceRefreshResponse:
+    if asset_scope == "target":
+        ensure_target_allocation_enabled()
     endpoint = f"prices_refresh:{portfolio_id}:{asset_scope}"
     if idempotency_key:
         cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint, user_id=_auth.user_id)
@@ -486,6 +498,8 @@ def backfill_daily_prices(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     _auth: AuthContext = Depends(require_auth),
 ) -> DailyBackfillResponse:
+    if asset_scope == "target":
+        ensure_target_allocation_enabled()
     endpoint = f"prices_backfill_daily:{portfolio_id}:{days}:{asset_scope}"
     if idempotency_key:
         cached = repo.get_idempotency_response(idempotency_key=idempotency_key, endpoint=endpoint, user_id=_auth.user_id)
@@ -605,6 +619,7 @@ def get_performance_mwr(
     responses={404: {"model": ErrorResponse}},
 )
 def get_target_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PortfolioTargetAllocationItem]:
+    ensure_target_allocation_enabled()
     try:
         return repo.list_portfolio_target_allocations(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -619,6 +634,7 @@ def get_target_allocation(portfolio_id: int, _auth: AuthContext = Depends(requir
 def get_target_performance(
     portfolio_id: int, _auth: AuthContext = Depends(require_auth)
 ) -> PortfolioTargetPerformanceResponse:
+    ensure_target_allocation_enabled()
     try:
         return repo.get_portfolio_target_performance(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -635,6 +651,7 @@ def get_target_performance_intraday(
     date: date,
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetIntradayResponse:
+    ensure_target_allocation_enabled()
     try:
         return repo.get_portfolio_target_intraday_performance(portfolio_id, date, _auth.user_id)
     except ValueError as exc:
@@ -650,6 +667,7 @@ def get_target_asset_performance(
     portfolio_id: int,
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetAssetPerformanceResponse:
+    ensure_target_allocation_enabled()
     try:
         return repo.get_portfolio_target_asset_performance(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -666,6 +684,7 @@ def get_target_asset_intraday_performance(
     date: date,
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetAssetIntradayPerformanceResponse:
+    ensure_target_allocation_enabled()
     try:
         return repo.get_portfolio_target_asset_intraday_performance(portfolio_id, date, _auth.user_id)
     except ValueError as exc:
@@ -682,6 +701,7 @@ def upsert_target_allocation(
     payload: PortfolioTargetAllocationUpsert,
     _auth: AuthContext = Depends(require_auth),
 ) -> PortfolioTargetAllocationItem:
+    ensure_target_allocation_enabled()
     try:
         result = repo.upsert_portfolio_target_allocation(portfolio_id, payload, _auth.user_id)
         threading.Thread(
@@ -702,6 +722,7 @@ def upsert_target_allocation(
     responses={404: {"model": ErrorResponse}},
 )
 def delete_target_allocation(portfolio_id: int, asset_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+    ensure_target_allocation_enabled()
     try:
         repo.delete_portfolio_target_allocation(portfolio_id, asset_id, _auth.user_id)
         return {"status": "ok"}
@@ -720,6 +741,7 @@ def get_data_coverage(
     threshold_pct: float = Query(default=80, ge=0, le=100),
     _auth: AuthContext = Depends(require_auth),
 ) -> DataCoverageResponse:
+    ensure_target_allocation_enabled()
     try:
         rows = repo.get_price_coverage(portfolio_id, days=days, user_id=_auth.user_id)
         assets = [AssetCoverageItem(**r) for r in rows]
@@ -745,6 +767,7 @@ def rebalance_preview(
     payload: RebalancePreviewRequest,
     _auth: AuthContext = Depends(require_auth),
 ) -> RebalancePreviewResponse:
+    ensure_target_allocation_enabled()
     try:
         target_alloc = repo.list_portfolio_target_allocations(portfolio_id, _auth.user_id)
         summary = repo.get_summary(portfolio_id, _auth.user_id)
@@ -975,6 +998,7 @@ def rebalance_commit(
     payload: RebalanceCommitRequest,
     _auth: AuthContext = Depends(require_auth),
 ) -> RebalanceCommitResponse:
+    ensure_target_allocation_enabled()
     try:
         portfolio_summary = repo.get_summary(portfolio_id, _auth.user_id)
     except ValueError as exc:

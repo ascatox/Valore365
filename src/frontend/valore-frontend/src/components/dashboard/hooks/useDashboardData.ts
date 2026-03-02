@@ -29,6 +29,7 @@ import type {
 } from '../../../services/api';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../constants';
 import type { ChartPoint, DashboardData, IntradayChartPoint } from '../types';
+import { ENABLE_TARGET_ALLOCATION } from '../../../features';
 
 export function useDashboardData(): DashboardData {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
@@ -107,28 +108,51 @@ export function useDashboardData(): DashboardData {
   }, [chartWindow]);
 
   const loadDashboardData = async (portfolioId: number) => {
-    const [allocationData, perfData, assetPerfData, summaryData, positionsData, portfolioAllocationData, timeseriesData, coverageData] =
+    if (ENABLE_TARGET_ALLOCATION) {
+      const [allocationData, perfData, assetPerfData, summaryData, positionsData, portfolioAllocationData, timeseriesData, coverageData] =
+        await Promise.all([
+          getPortfolioTargetAllocation(portfolioId),
+          getPortfolioTargetPerformance(portfolioId),
+          getPortfolioTargetAssetPerformance(portfolioId),
+          getPortfolioSummary(portfolioId),
+          getPortfolioPositions(portfolioId),
+          getPortfolioAllocation(portfolioId),
+          getPortfolioTimeseries(portfolioId),
+          getPortfolioDataCoverage(portfolioId),
+        ]);
+      setAllocation(allocationData);
+      setTargetPerformance(perfData);
+      setAssetPerformance(assetPerfData);
+      setPortfolioSummary(summaryData);
+      setPortfolioPositions(positionsData);
+      setPortfolioAllocation(portfolioAllocationData);
+      setPortfolioTimeseries(timeseriesData);
+      setDataCoverage(coverageData);
+      return;
+    }
+
+    const [summaryData, positionsData, portfolioAllocationData, timeseriesData] =
       await Promise.all([
-        getPortfolioTargetAllocation(portfolioId),
-        getPortfolioTargetPerformance(portfolioId),
-        getPortfolioTargetAssetPerformance(portfolioId),
         getPortfolioSummary(portfolioId),
         getPortfolioPositions(portfolioId),
         getPortfolioAllocation(portfolioId),
         getPortfolioTimeseries(portfolioId),
-        getPortfolioDataCoverage(portfolioId),
       ]);
-    setAllocation(allocationData);
-    setTargetPerformance(perfData);
-    setAssetPerformance(assetPerfData);
+    setAllocation([]);
+    setTargetPerformance(null);
+    setAssetPerformance(null);
     setPortfolioSummary(summaryData);
     setPortfolioPositions(positionsData);
     setPortfolioAllocation(portfolioAllocationData);
     setPortfolioTimeseries(timeseriesData);
-    setDataCoverage(coverageData);
+    setDataCoverage(null);
   };
 
   const loadMainIntradayChart = async (portfolioId: number) => {
+    if (!ENABLE_TARGET_ALLOCATION) {
+      setMainIntradayData(null);
+      return;
+    }
     const now = new Date();
     const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const data = await getPortfolioTargetIntradayPerformance(portfolioId, localDate);
@@ -136,6 +160,10 @@ export function useDashboardData(): DashboardData {
   };
 
   const loadAssetIntradayCharts = async (portfolioId: number) => {
+    if (!ENABLE_TARGET_ALLOCATION) {
+      setAssetIntradayPerformance(null);
+      return;
+    }
     const now = new Date();
     const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
     const data = await getPortfolioTargetAssetIntradayPerformance(portfolioId, localDate);
@@ -174,6 +202,13 @@ export function useDashboardData(): DashboardData {
 
   // Load intraday data when window is '1'
   useEffect(() => {
+    if (!ENABLE_TARGET_ALLOCATION) {
+      setMainIntradayData(null);
+      setAssetIntradayPerformance(null);
+      setMainIntradayLoading(false);
+      setAssetIntradayLoading(false);
+      return;
+    }
     const portfolioId = Number(selectedPortfolioId);
     if (chartWindow !== '1' || !Number.isFinite(portfolioId)) {
       setMainIntradayData(null);
@@ -238,16 +273,30 @@ export function useDashboardData(): DashboardData {
   );
 
   const chartData = useMemo<ChartPoint[]>(
-    () =>
-      (targetPerformance?.points ?? [])
-        .filter((point) => point.weighted_index > 0)
-        .slice(-chartWindowDays)
-        .map((point) => ({
-          rawDate: point.date,
-          date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
-          value: point.weighted_index,
-        })),
-    [targetPerformance, chartWindowDays],
+    () => {
+      if (ENABLE_TARGET_ALLOCATION) {
+        return (targetPerformance?.points ?? [])
+          .filter((point) => point.weighted_index > 0)
+          .slice(-chartWindowDays)
+          .map((point) => ({
+            rawDate: point.date,
+            date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+            value: point.weighted_index,
+          }));
+      }
+
+      const points = portfolioTimeseries
+        .filter((point) => Number.isFinite(point.market_value) && point.market_value > 0)
+        .slice(-chartWindowDays);
+      const base = points[0]?.market_value ?? 0;
+      if (!Number.isFinite(base) || base <= 0) return [];
+      return points.map((point) => ({
+        rawDate: point.date,
+        date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+        value: (point.market_value / base) * 100,
+      }));
+    },
+    [targetPerformance, chartWindowDays, portfolioTimeseries],
   );
 
   const selectedPortfolio = useMemo(
@@ -334,6 +383,7 @@ export function useDashboardData(): DashboardData {
   }, [chartWindow, assetIntradayPerformance, assetPerformance, chartData]);
 
   const handleDailyChartClick = async (state: any) => {
+    if (!ENABLE_TARGET_ALLOCATION) return;
     const payload = state?.activePayload?.[0]?.payload;
     const rawDate = payload?.rawDate as string | undefined;
     const portfolioId = Number(selectedPortfolioId);
@@ -359,7 +409,7 @@ export function useDashboardData(): DashboardData {
     () =>
       portfolioTimeseries
         .filter((point) => Number.isFinite(point.market_value))
-        .slice(-(chartWindow === '1' ? 2 : chartWindowDays))
+        .slice(-(chartWindow === '1' ? (ENABLE_TARGET_ALLOCATION ? 2 : 1) : chartWindowDays))
         .map((point) => ({
           rawDate: point.date,
           date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),

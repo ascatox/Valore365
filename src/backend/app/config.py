@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     pac_scheduler_enabled: bool = False
     pac_execution_hour: int = 8
 
+    # Feature flag: disable all target-allocation-only APIs/flows when False.
+    enable_target_allocation: bool = False
+
     cors_allowed_origins: str = "http://localhost:5173"
 
     @property

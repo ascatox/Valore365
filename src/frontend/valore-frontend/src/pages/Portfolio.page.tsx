@@ -61,6 +61,7 @@ import type {
 
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { formatNum } from '../components/dashboard/formatters';
+import { ENABLE_TARGET_ALLOCATION } from '../features';
 
 export function PortfolioPage() {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -233,6 +234,10 @@ export function PortfolioPage() {
   };
 
   const loadTargetAllocation = async (portfolioId: number) => {
+    if (!ENABLE_TARGET_ALLOCATION) {
+      setAllocations([]);
+      return [];
+    }
     const rows = await getPortfolioTargetAllocation(portfolioId);
     setAllocations(rows);
     return rows;
@@ -325,6 +330,10 @@ export function PortfolioPage() {
   }, [isMobile, rebalancePreviewOpened]);
 
   useEffect(() => {
+    if (!ENABLE_TARGET_ALLOCATION) {
+      setAllocations([]);
+      return;
+    }
     if (!selectedPortfolioId) {
       setAllocations([]);
       return;
@@ -349,6 +358,12 @@ export function PortfolioPage() {
       active = false;
     };
   }, [selectedPortfolioId]);
+
+  useEffect(() => {
+    if (!ENABLE_TARGET_ALLOCATION && portfolioView === 'target') {
+      setPortfolioView('transactions');
+    }
+  }, [portfolioView]);
 
   useEffect(() => {
     if (!selectedPortfolioId) {
@@ -1341,7 +1356,10 @@ export function PortfolioPage() {
       <Group mb="md" justify="space-between" wrap="wrap" gap="xs">
         <Tabs
           value={portfolioView}
-          onChange={(value) => setPortfolioView((value as 'transactions' | 'target') ?? 'transactions')}
+          onChange={(value) => {
+            const next = (value as 'transactions' | 'target') ?? 'transactions';
+            setPortfolioView(!ENABLE_TARGET_ALLOCATION && next === 'target' ? 'transactions' : next);
+          }}
           variant="pills"
           radius="xl"
           style={isMobile ? { width: '100%' } : undefined}
@@ -1372,13 +1390,15 @@ export function PortfolioPage() {
             >
               {isMobile ? <IconArrowsExchange size={20} /> : <Text span>Transazioni</Text>}
             </Tabs.Tab>
-            <Tabs.Tab
-              value="target"
-              leftSection={isMobile ? undefined : <IconTarget size={16} />}
-              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
-            >
-              {isMobile ? <IconTarget size={20} /> : <Text span>Allocazione target</Text>}
-            </Tabs.Tab>
+            {ENABLE_TARGET_ALLOCATION && (
+              <Tabs.Tab
+                value="target"
+                leftSection={isMobile ? undefined : <IconTarget size={16} />}
+                style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+              >
+                {isMobile ? <IconTarget size={20} /> : <Text span>Allocazione target</Text>}
+              </Tabs.Tab>
+            )}
           </Tabs.List>
         </Tabs>
         {portfolioView === 'transactions' && !isMobile && (
@@ -1391,7 +1411,7 @@ export function PortfolioPage() {
             </Button>
           </Group>
         )}
-        {portfolioView === 'target' && !isMobile && (
+        {ENABLE_TARGET_ALLOCATION && portfolioView === 'target' && !isMobile && (
           <Button variant="light" leftSection={<IconTarget size={16} />} onClick={openRebalancePreviewModal} disabled={!selectedPortfolioId}>
             Genera da target
           </Button>
@@ -1402,7 +1422,7 @@ export function PortfolioPage() {
       {transactionsError && <Alert color="red" mb="md">{transactionsError}</Alert>}
       {formSuccess && <Alert color="teal" mb="md">{formSuccess}</Alert>}
 
-      {portfolioView === 'target' && (
+      {ENABLE_TARGET_ALLOCATION && portfolioView === 'target' && (
         <TargetAllocationSection
           allocationsCount={allocations.length}
           totalWeight={totalWeight}
@@ -1970,7 +1990,7 @@ export function PortfolioPage() {
         />
       )}
 
-      {selectedPortfolioId && (
+      {ENABLE_TARGET_ALLOCATION && selectedPortfolioId && (
         <TargetAllocationCsvImportModal
           opened={targetCsvImportOpened}
           onClose={() => setTargetCsvImportOpened(false)}

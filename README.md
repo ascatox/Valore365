@@ -80,3 +80,13 @@ Importante:
 ## Test
 - Backend unit/integration: vedi `src/backend/README.md`
 - Smoke REST script: `scripts/e2e/rest_be_smoke.sh` (adatta URL/token al tuo ambiente)
+
+## Feature Flag Target Allocation (ripristino rapido)
+La logica esclusivamente legata a Target Allocation puo essere disattivata/riattivata senza patchare il codice:
+
+- Backend: `ENABLE_TARGET_ALLOCATION=false|true`
+- Frontend: `VITE_ENABLE_TARGET_ALLOCATION=false|true`
+
+Valori consigliati:
+- `false`: disattiva API/UI target-only (allocazione target, performance target, rebalance target).
+- `true`: ripristina tutte le funzionalita target.

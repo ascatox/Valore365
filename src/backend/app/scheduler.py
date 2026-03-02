@@ -65,9 +65,15 @@ class PriceRefreshScheduler:
 
     def _run_refresh(self) -> None:
         try:
-            response = self.pricing_service.refresh_prices(portfolio_id=self.settings.price_scheduler_portfolio_id)
+            # When target allocation feature is disabled, scheduler refreshes transaction assets instead.
+            asset_scope = 'target' if self.settings.enable_target_allocation else 'transactions'
+            response = self.pricing_service.refresh_prices(
+                portfolio_id=self.settings.price_scheduler_portfolio_id,
+                asset_scope=asset_scope,
+            )
             logger.info(
-                'Scheduled refresh completed requested=%s refreshed=%s failed=%s',
+                'Scheduled refresh completed scope=%s requested=%s refreshed=%s failed=%s',
+                asset_scope,
                 response.requested_assets,
                 response.refreshed_assets,
                 response.failed_assets,
