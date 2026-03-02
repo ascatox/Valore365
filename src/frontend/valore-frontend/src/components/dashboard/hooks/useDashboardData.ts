@@ -212,8 +212,8 @@ export function useDashboardData(): DashboardData {
       setRefreshMessage(null);
       setRefreshing(true);
       try {
-        const refreshResult = await refreshPortfolioPrices(portfolioId, 'target');
-        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'target');
+        const refreshResult = await refreshPortfolioPrices(portfolioId, 'transactions');
+        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'transactions');
         await loadDashboardData(portfolioId);
         if (chartWindow === '1') {
           await Promise.all([loadMainIntradayChart(portfolioId), loadAssetIntradayCharts(portfolioId)]);
@@ -359,7 +359,7 @@ export function useDashboardData(): DashboardData {
     () =>
       portfolioTimeseries
         .filter((point) => Number.isFinite(point.market_value))
-        .slice(-(chartWindow === '1' ? 1 : chartWindowDays))
+        .slice(-(chartWindow === '1' ? 2 : chartWindowDays))
         .map((point) => ({
           rawDate: point.date,
           date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),

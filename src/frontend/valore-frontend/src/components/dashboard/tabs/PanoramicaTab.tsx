@@ -18,6 +18,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const {
     portfolioSummary,
+    portfolioPositions,
     portfolioAllocation,
     mvpCurrency,
     mvpTimeseriesData,
@@ -25,10 +26,6 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     chartWindow,
     setChartWindow,
     chartWindowDays,
-    mainIntradayChartData,
-    mainIntradayLoading,
-    assetPerformance,
-    targetPerformance,
     dataCoverage,
   } = data;
 
@@ -77,20 +74,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
       ]
     : undefined;
 
-  const isPortfolioIntraday = chartWindow === '1';
-
-  const portfolioChartData = useMemo(() => {
-    if (!isPortfolioIntraday) return mvpTimeseriesData;
-    const currentValue = Number(portfolioSummary?.market_value ?? 0);
-    const points = mainIntradayChartData;
-    if (!Number.isFinite(currentValue) || currentValue <= 0 || !points.length) return [];
-    const lastIndex = Number(points[points.length - 1]?.value ?? 0);
-    if (!Number.isFinite(lastIndex) || lastIndex <= 0) return [];
-    return points.map((p) => ({
-      ...p,
-      value: currentValue * (Number(p.value) / lastIndex),
-    }));
-  }, [isPortfolioIntraday, mvpTimeseriesData, portfolioSummary?.market_value, mainIntradayChartData]);
+  const portfolioChartData = mvpTimeseriesData;
 
   const portfolioChartStats = useMemo(() => {
     const series = portfolioChartData;
@@ -111,24 +95,25 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
   );
 
   const { best, worst } = useMemo(() => {
-    const assets = assetPerformance?.assets ?? [];
-    if (assets.length) {
-      const sorted = [...assets].sort((a, b) => b.return_pct - a.return_pct);
-      const bestItems: PerformerItem[] = sorted.slice(0, 3).map((a) => ({
-        symbol: a.symbol, name: a.name, return_pct: a.return_pct, as_of: a.as_of, asset_id: a.asset_id,
-      }));
-      const worstItems: PerformerItem[] = sorted.slice(-3).reverse().map((a) => ({
-        symbol: a.symbol, name: a.name, return_pct: a.return_pct, as_of: a.as_of, asset_id: a.asset_id,
-      }));
-      return { best: bestItems, worst: worstItems };
-    }
-    const b = targetPerformance?.best;
-    const w = targetPerformance?.worst;
-    return {
-      best: b ? [{ symbol: b.symbol, name: b.name, return_pct: b.return_pct, as_of: b.as_of, asset_id: b.asset_id }] : [],
-      worst: w ? [{ symbol: w.symbol, name: w.name, return_pct: w.return_pct, as_of: w.as_of, asset_id: w.asset_id }] : [],
-    };
-  }, [assetPerformance, targetPerformance]);
+    const sorted = [...portfolioPositions]
+      .filter((p) => Number.isFinite(p.unrealized_pl_pct))
+      .sort((a, b) => b.unrealized_pl_pct - a.unrealized_pl_pct);
+    const bestItems: PerformerItem[] = sorted.slice(0, 3).map((p) => ({
+      symbol: p.symbol,
+      name: p.name,
+      return_pct: p.unrealized_pl_pct,
+      as_of: p.first_trade_at ?? null,
+      asset_id: p.asset_id,
+    }));
+    const worstItems: PerformerItem[] = sorted.slice(-3).reverse().map((p) => ({
+      symbol: p.symbol,
+      name: p.name,
+      return_pct: p.unrealized_pl_pct,
+      as_of: p.first_trade_at ?? null,
+      asset_id: p.asset_id,
+    }));
+    return { best: bestItems, worst: worstItems };
+  }, [portfolioPositions]);
 
   const totalAllocationPct = portfolioAllocation.reduce((sum, item) => sum + item.weight_pct, 0);
   const bestWorstPeriodLabel = chartWindow === '1' ? '1g' : `${chartWindowDays}g`;
@@ -159,15 +144,13 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
         <PerformanceChart
           title={`Andamento Portafoglio (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
           data={portfolioChartData}
-          xKey={isPortfolioIntraday ? 'time' : 'date'}
+          xKey="date"
           gradientId="mvpTimeseriesGradient"
           color="#16a34a"
           stats={portfolioChartStats ?? chartStats}
-          loading={isPortfolioIntraday ? mainIntradayLoading : false}
-          emptyMessage={isPortfolioIntraday ? 'Nessun dato intraday disponibile per oggi' : 'Nessun dato disponibile'}
-          subtitle={isPortfolioIntraday
-            ? 'Stima intraday del controvalore (scalata su indice target intraday)'
-            : 'Calcolato da transazioni + storico prezzi'}
+          loading={false}
+          emptyMessage="Nessun dato disponibile"
+          subtitle="Calcolato da transazioni + storico prezzi"
           headerRight={
             <SegmentedControl
               size="xs"
@@ -182,7 +165,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
             if (!Number.isFinite(value)) return null;
             return (
               <Paper withBorder p="xs" radius="sm" shadow="xs">
-                <Text size="xs" c="dimmed">{isPortfolioIntraday ? `Ora ${label}` : `Data ${label}`}</Text>
+                <Text size="xs" c="dimmed">{`Data ${label}`}</Text>
                 <Text size="sm" fw={600}>{formatMoney(value, mvpCurrency)}</Text>
               </Paper>
             );
