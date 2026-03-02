@@ -25,6 +25,25 @@ FEE_COLUMNS = [
     "commissioni amministrato",
 ]
 
+# Positional column mapping for headerless bank export CSVs (semicolon-separated)
+BANK_EXPORT_COLUMNS = [
+    "operazione",           # 0  - trade date
+    "data_valuta",          # 1  - settlement date
+    "descrizione",          # 2  - operation type
+    "titolo",               # 3  - instrument name
+    "isin",                 # 4  - ISIN code
+    "segno",                # 5  - A (buy) / V (sell)
+    "quantita",             # 6  - quantity
+    "divisa",               # 7  - currency
+    "prezzo",               # 8  - price
+    "cambio",               # 9  - exchange rate
+    "controvalore",         # 10 - total amount
+    "commissioni fondi sw/ingr/uscita",          # 11
+    "commissioni fondi banca corrispondente",    # 12
+    "spese fondi sgr",                           # 13
+    "commissioni amministrato",                  # 14
+]
+
 
 def _parse_italian_number(s: str) -> float | None:
     """Parse Italian formatted number: 1.159,77 → 1159.77"""
@@ -40,10 +59,23 @@ class CsvImportService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
 
+    @staticmethod
+    def _detect_and_normalize(file_content: str) -> str:
+        """Detect headerless semicolon-delimited bank exports and prepend a header row."""
+        first_line = file_content.split("\n", 1)[0]
+        # Heuristic: if the first field looks like a date (dd/mm/yyyy) and the
+        # delimiter is semicolon, this is a headerless bank export.
+        if ";" in first_line and re.match(r"\d{2}/\d{2}/\d{4}", first_line.strip()):
+            header = ";".join(BANK_EXPORT_COLUMNS)
+            return header + "\n" + file_content
+        return file_content
+
     def parse_and_validate(
         self, portfolio_id: int, user_id: str, file_content: str, filename: str | None = None
     ) -> CsvImportPreviewResponse:
-        reader = csv.DictReader(io.StringIO(file_content))
+        file_content = self._detect_and_normalize(file_content)
+        delimiter = ";" if ";" in file_content.split("\n", 1)[0] else ","
+        reader = csv.DictReader(io.StringIO(file_content), delimiter=delimiter)
         if reader.fieldnames is None:
             raise ValueError("File CSV vuoto o intestazioni mancanti")
 
@@ -86,7 +118,12 @@ class CsvImportService:
 
             # Parse segno → side
             segno = row_data.get("segno", "").strip().upper()
-            side = SEGNO_MAP.get(segno)
+            descrizione_lower = row_data.get("descrizione", "").strip().lower()
+            # Detect dividends: blank segno + "dividendo" in description
+            if not segno and "dividendo" in descrizione_lower:
+                side = "dividend"
+            else:
+                side = SEGNO_MAP.get(segno)
             if side is None:
                 errors.append(f"segno non valido: '{segno}'. Valori ammessi: A (acquisto), V (vendita)")
 
@@ -115,6 +152,20 @@ class CsvImportService:
                         errors.append("prezzo deve essere >= 0")
                 except ValueError:
                     errors.append(f"prezzo non numerico: {prezzo_str}")
+
+            # For dividends, the bank export has price=0 and the real amount
+            # in controvalore.  Remap to quantity=1, price=controvalore so that
+            # quantity*price gives the correct dividend amount.
+            if side == "dividend":
+                controvalore_str = row_data.get("controvalore", "")
+                if controvalore_str:
+                    try:
+                        controvalore = _parse_italian_number(controvalore_str)
+                        if controvalore is not None and controvalore > 0:
+                            quantity = 1.0
+                            price = controvalore
+                    except ValueError:
+                        errors.append(f"controvalore non numerico: {controvalore_str}")
 
             # Parse divisa → trade_currency
             trade_currency = row_data.get("divisa", "").strip().upper() or None
