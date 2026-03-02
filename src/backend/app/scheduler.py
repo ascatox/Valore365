@@ -70,6 +70,8 @@ class PriceRefreshScheduler:
             response = self.pricing_service.refresh_prices(
                 portfolio_id=self.settings.price_scheduler_portfolio_id,
                 asset_scope=asset_scope,
+                # Scheduler policy requested: use asset symbol, fallback to ISIN.
+                prefer_symbol_then_isin=True,
             )
             logger.info(
                 'Scheduled refresh completed scope=%s requested=%s refreshed=%s failed=%s',

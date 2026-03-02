@@ -17,16 +17,32 @@ class PriceIngestionService:
         self.settings = settings
         self.repository = repository
 
-    def refresh_prices(self, portfolio_id: int | None = None, asset_scope: str = 'target', user_id: str | None = None) -> PriceRefreshResponse:
+    def refresh_prices(
+        self,
+        portfolio_id: int | None = None,
+        asset_scope: str = 'target',
+        user_id: str | None = None,
+        prefer_symbol_then_isin: bool = False,
+    ) -> PriceRefreshResponse:
         provider = self.settings.finance_provider.strip().lower()
         client = make_finance_client(self.settings)
 
-        pricing_assets = self.repository.get_assets_for_price_refresh(
-            provider=provider,
-            portfolio_id=portfolio_id,
-            asset_scope=asset_scope,
-            user_id=user_id,
-        )
+        try:
+            pricing_assets = self.repository.get_assets_for_price_refresh(
+                provider=provider,
+                portfolio_id=portfolio_id,
+                asset_scope=asset_scope,
+                user_id=user_id,
+                prefer_symbol_then_isin=prefer_symbol_then_isin,
+            )
+        except TypeError:
+            # Backward compatibility for test doubles/older repository signatures.
+            pricing_assets = self.repository.get_assets_for_price_refresh(
+                provider=provider,
+                portfolio_id=portfolio_id,
+                asset_scope=asset_scope,
+                user_id=user_id,
+            )
 
         logger.info(
             'Start price refresh provider=%s portfolio_id=%s asset_scope=%s assets=%s',

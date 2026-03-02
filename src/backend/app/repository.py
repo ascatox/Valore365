@@ -1991,19 +1991,25 @@ class PortfolioRepository:
         portfolio_id: int | None = None,
         asset_scope: str = "target",
         user_id: str | None = None,
+        prefer_symbol_then_isin: bool = False,
     ) -> list[PricingAsset]:
         provider_value = provider.strip().lower()
         scope = (asset_scope or "target").strip().lower()
         if scope not in {"target", "transactions", "all"}:
             raise ValueError("asset_scope non supportato")
+        provider_symbol_expr = (
+            "coalesce(nullif(a.symbol, ''), nullif(a.isin, ''), coalesce(aps.provider_symbol, a.symbol))"
+            if prefer_symbol_then_isin
+            else "coalesce(aps.provider_symbol, a.symbol)"
+        )
         with self.engine.begin() as conn:
             if portfolio_id is None:
                 rows = conn.execute(
                     text(
-                        """
+                        f"""
                         select a.id as asset_id,
                                a.symbol,
-                               coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                               {provider_symbol_expr} as provider_symbol
                         from assets a
                         left join asset_provider_symbols aps
                           on aps.asset_id = a.id and aps.provider = :provider
@@ -2019,10 +2025,10 @@ class PortfolioRepository:
                 if scope == "all":
                     rows = conn.execute(
                         text(
-                            """
+                            f"""
                             select a.id as asset_id,
                                    a.symbol,
-                                   coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                                   {provider_symbol_expr} as provider_symbol
                             from assets a
                             left join asset_provider_symbols aps
                               on aps.asset_id = a.id and aps.provider = :provider
@@ -2035,10 +2041,10 @@ class PortfolioRepository:
                 elif scope == "transactions":
                     rows = conn.execute(
                         text(
-                            """
+                            f"""
                             select distinct a.id as asset_id,
                                    a.symbol,
-                                   coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                                   {provider_symbol_expr} as provider_symbol
                             from transactions t
                             join assets a on a.id = t.asset_id
                             left join asset_provider_symbols aps
@@ -2052,10 +2058,10 @@ class PortfolioRepository:
                 else:  # target
                     rows = conn.execute(
                         text(
-                            """
+                            f"""
                             select distinct a.id as asset_id,
                                    a.symbol,
-                                   coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                                   {provider_symbol_expr} as provider_symbol
                             from portfolio_target_allocations pta
                             join assets a on a.id = pta.asset_id
                             left join asset_provider_symbols aps
