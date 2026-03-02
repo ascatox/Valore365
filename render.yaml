@@ -36,4 +36,4 @@ services:
       - key: CLERK_JWKS_URL
         value: "https://ruling-coral-6.clerk.accounts.dev/.well-known/jwks.json"
       - key: CLERK_AUTHORIZED_PARTIES
-        value: "https://valore365.vercel.app"
+        value: "https://valore365.vercel.app,https://*.vercel.app"
