@@ -58,6 +58,7 @@ def _parse_italian_number(s: str) -> float | None:
     exactly 3 digits at the end are thousands separators; otherwise the
     separator is the decimal mark.
     """
+    raw = s
     s = s.strip()
     if not s:
         return None
@@ -82,7 +83,9 @@ def _parse_italian_number(s: str) -> float | None:
             s = s.replace(".", "")
         # else: treat dot as decimal (e.g. 1.0000 → 1.0000)
 
-    return float(s)
+    result = float(s)
+    logger.info("_parse_italian_number: raw=%r → normalized=%r → %s", raw.strip(), s, result)
+    return result
 
 
 class CsvImportService:
@@ -165,6 +168,7 @@ class CsvImportService:
             else:
                 try:
                     quantity = _parse_italian_number(quantita_str)
+                    logger.info("Row %d quantita: raw=%r parsed=%s", idx, quantita_str, quantity)
                     if quantity is not None and quantity <= 0:
                         errors.append("quantita deve essere > 0")
                 except ValueError:
@@ -178,6 +182,7 @@ class CsvImportService:
             else:
                 try:
                     price = _parse_italian_number(prezzo_str)
+                    logger.info("Row %d prezzo: raw=%r parsed=%s", idx, prezzo_str, price)
                     if price is not None and price < 0:
                         errors.append("prezzo deve essere >= 0")
                 except ValueError:
