@@ -188,10 +188,11 @@ class CsvImportService:
                 except ValueError:
                     errors.append(f"prezzo non numerico: {prezzo_str}")
 
-            # Use controvalore from CSV to derive the real unit price so that
-            # quantity * price always equals the correct total value.
-            # This handles bonds priced as a percentage (e.g. BOT/BTP where
-            # prezzo=97.60 is 97.60% of nominal) and dividends (prezzo=0).
+            # Use controvalore from CSV to make quantity * price consistent
+            # with market price conventions (e.g. bonds quoted as % of nominal).
+            # We keep the original quoted price and derive quantity so that
+            # quantity * quoted_price = controvalore.  This ensures that
+            # quantity * yfinance_close also gives the correct market value.
             controvalore: float | None = None
             controvalore_str = row_data.get("controvalore", "")
             if controvalore_str:
@@ -205,10 +206,24 @@ class CsvImportService:
                 if controvalore is not None and controvalore > 0:
                     quantity = 1.0
                     price = controvalore
-            elif controvalore is not None and quantity is not None and quantity > 0 and controvalore > 0:
-                # Derive real unit price from controvalore so that
-                # quantity * price = controvalore (e.g. for bonds quoted as %)
-                price = controvalore / quantity
+            elif (
+                controvalore is not None
+                and price is not None
+                and price > 0
+                and controvalore > 0
+            ):
+                # Derive quantity = controvalore / price so that
+                # quantity * price = controvalore.  For normal stocks this
+                # is the same as the CSV quantity; for bonds quoted as %
+                # (e.g. BOT price=97.60, nominal=10000, cv=9760.75)
+                # it becomes 100 instead of 10000, making the math work
+                # with market prices from yfinance.
+                derived_qty = controvalore / price
+                logger.info(
+                    "Row %d: controvalore=%s, price=%s → derived_qty=%s (csv_qty=%s)",
+                    idx, controvalore, price, derived_qty, quantity,
+                )
+                quantity = derived_qty
 
             # Parse divisa → trade_currency
             trade_currency = row_data.get("divisa", "").strip().upper() or None
