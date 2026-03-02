@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { MantineProvider, NumberInput, createTheme } from '@mantine/core';
+import { Drawer, MantineProvider, Modal, NumberInput, createTheme } from '@mantine/core';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
 import App from './App.tsx';
@@ -16,6 +16,38 @@ const theme = createTheme({
         thousandSeparator: '.',
         decimalSeparator: ',',
       },
+    }),
+    Modal: Modal.extend({
+      styles: (theme) => ({
+        title: {
+          color: theme.colors[theme.primaryColor][6],
+          fontWeight: 700,
+        },
+        close: {
+          color: theme.colors[theme.primaryColor][7],
+          border: `1px solid ${theme.colors[theme.primaryColor][3]}`,
+          backgroundColor: theme.white,
+          '&:hover': {
+            backgroundColor: theme.colors[theme.primaryColor][0],
+          },
+        },
+      }),
+    }),
+    Drawer: Drawer.extend({
+      styles: (theme) => ({
+        title: {
+          color: theme.colors[theme.primaryColor][6],
+          fontWeight: 700,
+        },
+        close: {
+          color: theme.colors[theme.primaryColor][7],
+          border: `1px solid ${theme.colors[theme.primaryColor][3]}`,
+          backgroundColor: theme.white,
+          '&:hover': {
+            backgroundColor: theme.colors[theme.primaryColor][0],
+          },
+        },
+      }),
     }),
   },
 });
