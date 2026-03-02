@@ -125,7 +125,6 @@ if settings.app_env == "dev":
 else:
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_origins=settings.cors_allowed_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
