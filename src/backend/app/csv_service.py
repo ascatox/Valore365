@@ -188,19 +188,27 @@ class CsvImportService:
                 except ValueError:
                     errors.append(f"prezzo non numerico: {prezzo_str}")
 
-            # For dividends, the bank export has price=0 and the real amount
-            # in controvalore.  Remap to quantity=1, price=controvalore so that
-            # quantity*price gives the correct dividend amount.
+            # Use controvalore from CSV to derive the real unit price so that
+            # quantity * price always equals the correct total value.
+            # This handles bonds priced as a percentage (e.g. BOT/BTP where
+            # prezzo=97.60 is 97.60% of nominal) and dividends (prezzo=0).
+            controvalore: float | None = None
+            controvalore_str = row_data.get("controvalore", "")
+            if controvalore_str:
+                try:
+                    controvalore = _parse_italian_number(controvalore_str)
+                except ValueError:
+                    errors.append(f"controvalore non numerico: {controvalore_str}")
+
             if side == "dividend":
-                controvalore_str = row_data.get("controvalore", "")
-                if controvalore_str:
-                    try:
-                        controvalore = _parse_italian_number(controvalore_str)
-                        if controvalore is not None and controvalore > 0:
-                            quantity = 1.0
-                            price = controvalore
-                    except ValueError:
-                        errors.append(f"controvalore non numerico: {controvalore_str}")
+                # Dividends: bank export has price=0, real amount in controvalore
+                if controvalore is not None and controvalore > 0:
+                    quantity = 1.0
+                    price = controvalore
+            elif controvalore is not None and quantity is not None and quantity > 0 and controvalore > 0:
+                # Derive real unit price from controvalore so that
+                # quantity * price = controvalore (e.g. for bonds quoted as %)
+                price = controvalore / quantity
 
             # Parse divisa → trade_currency
             trade_currency = row_data.get("divisa", "").strip().upper() or None
