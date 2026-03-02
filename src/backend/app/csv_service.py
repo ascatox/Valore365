@@ -7,11 +7,14 @@ from datetime import datetime
 from .models import (
     AssetCreate,
     AssetEnsureRequest,
+    AssetProviderSymbolCreate,
     CsvImportCommitResponse,
     CsvImportPreviewResponse,
     CsvImportPreviewRow,
     TransactionCreate,
 )
+from .config import get_settings
+from .finance_client import make_finance_client
 from .repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
@@ -91,6 +94,43 @@ def _parse_italian_number(s: str) -> float | None:
 class CsvImportService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
+        self.settings = get_settings()
+        self.finance_client = make_finance_client(self.settings)
+
+    def _resolve_provider_symbol_from_isin(self, isin: str) -> str | None:
+        code = (isin or "").strip().upper()
+        if not code:
+            return None
+        try:
+            results = self.finance_client.search_symbols(code)
+        except Exception:
+            return None
+        for item in results:
+            symbol = (item.symbol or "").strip().upper()
+            # Prefer a real ticker over another ISIN-like identifier.
+            if symbol and symbol != code and not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{10}", symbol):
+                return symbol
+        for item in results:
+            symbol = (item.symbol or "").strip().upper()
+            if symbol and symbol != code:
+                return symbol
+        return None
+
+    def _ensure_provider_symbol_mapping(self, asset_id: int, provider_symbol: str) -> None:
+        value = (provider_symbol or "").strip().upper()
+        if not value:
+            return
+        try:
+            self.repo.create_asset_provider_symbol(
+                AssetProviderSymbolCreate(
+                    asset_id=asset_id,
+                    provider=self.settings.finance_provider,
+                    provider_symbol=value,
+                )
+            )
+        except ValueError:
+            # Mapping may already exist or conflict; don't block import commit.
+            return
 
     @staticmethod
     def _detect_and_normalize(file_content: str) -> str:
@@ -358,19 +398,26 @@ class CsvImportService:
                     )
                     if exact:
                         asset_id = int(exact["id"])
+                        provider_symbol = self._resolve_provider_symbol_from_isin(isin)
+                        if provider_symbol:
+                            self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
                     else:
-                        # Auto-create asset with ISIN
+                        # Auto-create asset. Prefer resolved provider ticker; fallback to ISIN.
                         base_ccy = self.repo.get_portfolio_base_currency(portfolio_id)
                         titolo = row_data.get("titolo") or isin
+                        provider_symbol = self._resolve_provider_symbol_from_isin(isin)
+                        symbol_for_asset = provider_symbol or isin
                         try:
                             asset = self.repo.create_asset(AssetCreate(
-                                symbol=isin,
+                                symbol=symbol_for_asset,
                                 name=titolo,
                                 asset_type="stock",
                                 quote_currency=base_ccy,
                                 isin=isin,
                             ))
                             asset_id = asset.id
+                            if provider_symbol:
+                                self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
                         except ValueError:
                             # Asset may have been created by a previous row
                             matches = self.repo.search_assets(isin)
@@ -380,6 +427,8 @@ class CsvImportService:
                             )
                             if exact:
                                 asset_id = int(exact["id"])
+                                if provider_symbol:
+                                    self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
                             else:
                                 errors.append(f"Riga {row_data.get('row_number')}: impossibile risolvere asset ISIN {isin}")
                                 continue
