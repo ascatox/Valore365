@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { IconFileImport, IconPlus } from '@tabler/icons-react';
+import { formatNum } from '../dashboard/formatters';
 
 interface TargetAllocationSectionProps {
   allocationsCount: number;
@@ -38,12 +39,12 @@ export function TargetAllocationSection({
         </Card>
         <Card withBorder>
           <Text size="sm" c="dimmed">Peso totale assegnato</Text>
-          <Text fw={700} size="xl">{totalWeight.toFixed(2)}%</Text>
+          <Text fw={700} size="xl">{formatNum(totalWeight)}%</Text>
         </Card>
         <Card withBorder>
           <Text size="sm" c="dimmed">Peso residuo</Text>
           <Text fw={700} size="xl" c={totalWeight > 100 ? 'red' : 'teal'}>
-            {(100 - totalWeight).toFixed(2)}%
+            {formatNum(100 - totalWeight)}%
           </Text>
         </Card>
         <Card withBorder>

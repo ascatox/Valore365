@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Card, Group, Loader, SegmentedControl, SimpleGrid, Text } from '@mantine/core';
 import { getPerformanceSummary, type PerformanceSummary } from '../../../services/api';
+import { formatMoney } from '../formatters';
 
 type PeriodKey = '1m' | '3m' | '6m' | 'ytd' | '1y' | '3y' | 'all';
 
@@ -17,15 +18,6 @@ const PERIOD_OPTIONS: Array<{ label: string; value: PeriodKey }> = [
   { label: '3Y', value: '3y' },
   { label: 'ALL', value: 'all' },
 ];
-
-function formatMoney(value: number, currency = 'EUR'): string {
-  return new Intl.NumberFormat('it-IT', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
-}
 
 function kpiColor(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return 'var(--mantine-color-dimmed)';

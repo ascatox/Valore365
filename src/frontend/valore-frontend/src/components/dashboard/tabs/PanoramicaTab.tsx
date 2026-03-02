@@ -7,7 +7,7 @@ import { PerformanceChart } from '../summary/PerformanceChart';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { BestWorstCards } from '../summary/BestWorstCards';
 import { DASHBOARD_WINDOWS } from '../constants';
-import { formatMoney, formatPct, getVariationColor } from '../formatters';
+import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 import type { DashboardData, PerformerItem, AllocationDoughnutItem } from '../types';
 
 interface PanoramicaTabProps {
@@ -148,7 +148,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
           mb="md"
         >
           Alcuni asset hanno una copertura dati insufficiente per i grafici:{' '}
-          {insufficientAssets.map((a) => `${a.symbol} (${a.coverage_pct.toFixed(0)}%)`).join(', ')}.
+          {insufficientAssets.map((a) => `${a.symbol} (${formatNum(a.coverage_pct, 0)}%)`).join(', ')}.
           Premi il pulsante &quot;Aggiorna&quot; per scaricare lo storico prezzi.
         </Alert>
       )}
@@ -198,7 +198,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
           <AllocationDoughnut
             title="Allocazione Portafoglio"
             data={allocationDoughnutData}
-            centerLabel={totalAllocationPct > 0 ? `${totalAllocationPct.toFixed(0)}%` : '0%'}
+            centerLabel={totalAllocationPct > 0 ? `${formatNum(totalAllocationPct, 0)}%` : '0%'}
           />
         </Grid.Col>
       </Grid>

@@ -120,6 +120,7 @@ export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreat
             <Button
               size="xs"
               leftSection={<IconPlus size={14} />}
+              visibleFrom="sm"
               onClick={() => setDrawerOpened(true)}
             >
               Registra Movimento
@@ -208,7 +209,7 @@ export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreat
           />
           <NumberInput
             label="Importo"
-            placeholder="0.00"
+            placeholder="0,00"
             min={0.01}
             decimalScale={2}
             value={quantity}

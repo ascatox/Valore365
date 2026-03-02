@@ -15,6 +15,7 @@ import {
   Title,
 } from '@mantine/core';
 import { IconDotsVertical, IconPlus, IconCheck, IconPlayerSkipForward, IconTrash } from '@tabler/icons-react';
+import { formatNum } from '../dashboard/formatters';
 import {
   confirmPacExecution,
   deletePacRule,
@@ -137,7 +138,7 @@ export function PacSection({
         <Title order={4}>Piani di Accumulo (PAC)</Title>
         <Group gap="xs">
           {loading && <Loader size="xs" />}
-          <Button size="xs" leftSection={<IconPlus size={14} />} onClick={onOpenPacDrawer}>
+          <Button size="xs" leftSection={<IconPlus size={14} />} onClick={onOpenPacDrawer} visibleFrom="sm">
             Nuovo PAC
           </Button>
         </Group>
@@ -168,7 +169,7 @@ export function PacSection({
                   <Table.Td>
                     {rule.mode === 'amount'
                       ? `${rule.amount?.toLocaleString('it-IT', { minimumFractionDigits: 2 })} ${baseCurrency}`
-                      : rule.quantity?.toFixed(4)
+                      : rule.quantity != null ? formatNum(rule.quantity, 4) : undefined
                     }
                   </Table.Td>
                   <Table.Td>
@@ -223,7 +224,7 @@ export function PacSection({
                       <Text fw={500}>{rule?.symbol || `PAC #${exec.pac_rule_id}`}</Text>
                       <Text size="sm" c="dimmed">
                         Scadenza: {new Date(exec.scheduled_date).toLocaleDateString('it-IT')}
-                        {rule && ` — ${rule.mode === 'amount' ? `${rule.amount?.toFixed(2)} ${baseCurrency}` : `${rule.quantity?.toFixed(4)} quote`}`}
+                        {rule && ` — ${rule.mode === 'amount' ? `${rule.amount != null ? formatNum(rule.amount) : ''} ${baseCurrency}` : `${rule.quantity != null ? formatNum(rule.quantity, 4) : ''} quote`}`}
                       </Text>
                     </div>
                     <Group gap="xs">

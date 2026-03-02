@@ -3,6 +3,7 @@ import { useComputedColorScheme } from '@mantine/core';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
 import { ALLOCATION_COLORS } from '../constants';
+import { formatNum } from '../formatters';
 import type { AllocationDoughnutItem } from '../types';
 
 interface AllocationDoughnutProps {
@@ -54,7 +55,7 @@ export function AllocationDoughnut({ title, data, height = 240, centerLabel }: A
                 return (
                   <Paper withBorder p="xs" radius="sm" shadow="xs">
                     <Text size="xs" fw={600}>{entry.name}</Text>
-                    <Text size="xs" c="dimmed">{Number(entry.value).toFixed(2)}%</Text>
+                    <Text size="xs" c="dimmed">{formatNum(Number(entry.value))}%</Text>
                   </Paper>
                 );
               }}

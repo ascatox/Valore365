@@ -8,7 +8,7 @@ import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { PerformersTable } from '../analysis/PerformersTable';
 import { IntradayModal } from '../analysis/IntradayModal';
 import { DASHBOARD_WINDOWS } from '../constants';
-import { formatPct, getVariationColor } from '../formatters';
+import { formatNum, formatPct, getVariationColor } from '../formatters';
 import type { DashboardData, AllocationDoughnutItem, PerformerItem } from '../types';
 
 interface AnalisiTabProps {
@@ -87,7 +87,7 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
 
   const chartStats = mainChartStats
     ? [
-        { label: 'Indice', value: mainChartStats.last.toFixed(2), color: 'blue' },
+        { label: 'Indice', value: formatNum(mainChartStats.last), color: 'blue' },
         { label: 'Var', value: formatPct(mainChartStats.periodPct), color: getVariationColor(mainChartStats.periodPct) },
       ]
     : undefined;
@@ -100,7 +100,7 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
     return (
       <Paper withBorder p="xs" radius="sm" shadow="xs">
         <Text size="xs" c="dimmed">{isIntraday ? `Ora ${label}` : `Data ${label}`}</Text>
-        <Text size="sm" fw={600}>Indice: {rawValue.toFixed(2)}</Text>
+        <Text size="sm" fw={600}>Indice: {formatNum(rawValue)}</Text>
         <Text size="sm" c={getVariationColor(pct)} fw={500}>Variazione: {formatPct(pct)}</Text>
       </Paper>
     );

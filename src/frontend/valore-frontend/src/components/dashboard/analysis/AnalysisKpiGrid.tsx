@@ -1,6 +1,6 @@
 import { IconCoin, IconActivity, IconArrowUpRight, IconChartPie } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
-import { formatMoney, formatPct, formatShortDate, getVariationColor } from '../formatters';
+import { formatMoney, formatNum, formatPct, formatShortDate, getVariationColor } from '../formatters';
 import type { PortfolioTargetAllocationItem, Portfolio, PortfolioSummary } from '../../../services/api';
 import type { PerformerItem } from '../types';
 
@@ -38,7 +38,7 @@ export function AnalysisKpiGrid({
     },
     {
       label: 'Peso Assegnato',
-      value: `${totalAssignedWeight.toFixed(2)}%`,
+      value: `${formatNum(totalAssignedWeight)}%`,
       icon: IconActivity,
       iconColor: 'teal' as const,
     },

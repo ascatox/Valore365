@@ -2,7 +2,7 @@ import { Alert, Group, Loader, Modal, Paper, SimpleGrid, Text } from '@mantine/c
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatPct, getVariationColor } from '../formatters';
+import { formatNum, formatPct, getVariationColor } from '../formatters';
 import type { IntradayChartPoint } from '../types';
 
 interface IntradayModalProps {
@@ -45,19 +45,19 @@ export function IntradayModal({ opened, onClose, dateLabel, loading, error, char
         <SimpleGrid cols={{ base: 2, sm: 5 }} spacing="sm" mb="md">
           <Paper withBorder p="xs" radius="md">
             <Text size="xs" c="dimmed">Apertura</Text>
-            <Text fw={600} size="sm">{stats.open.toFixed(2)}</Text>
+            <Text fw={600} size="sm">{formatNum(stats.open)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="md">
             <Text size="xs" c="dimmed">Ultimo</Text>
-            <Text fw={600} size="sm">{stats.last.toFixed(2)}</Text>
+            <Text fw={600} size="sm">{formatNum(stats.last)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="md">
             <Text size="xs" c="dimmed">Min</Text>
-            <Text fw={600} size="sm">{stats.min.toFixed(2)}</Text>
+            <Text fw={600} size="sm">{formatNum(stats.min)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="md">
             <Text size="xs" c="dimmed">Max</Text>
-            <Text fw={600} size="sm">{stats.max.toFixed(2)}</Text>
+            <Text fw={600} size="sm">{formatNum(stats.max)}</Text>
           </Paper>
           <Paper withBorder p="xs" radius="md">
             <Text size="xs" c="dimmed">Var % giorno</Text>
@@ -89,7 +89,7 @@ export function IntradayModal({ opened, onClose, dateLabel, loading, error, char
                   return (
                     <Paper withBorder p="xs" radius="sm" shadow="xs">
                       <Text size="xs" c="dimmed">Ora {label}</Text>
-                      <Text size="sm" fw={600}>Indice: {rawValue.toFixed(2)}</Text>
+                      <Text size="sm" fw={600}>Indice: {formatNum(rawValue)}</Text>
                       <Text size="sm" c={getVariationColor(pct)} fw={500}>Variazione: {formatPct(pct)}</Text>
                     </Paper>
                   );

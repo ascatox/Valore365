@@ -3,6 +3,7 @@ import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
+import { formatNum } from '../formatters';
 
 interface PerformanceChartProps {
   title: string;
@@ -104,7 +105,7 @@ export function PerformanceChart({
                     return (
                       <Paper withBorder p="xs" radius="sm" shadow="xs">
                         <Text size="xs" c="dimmed">{label}</Text>
-                        <Text size="sm" fw={600}>{rawValue.toFixed(2)}</Text>
+                        <Text size="sm" fw={600}>{formatNum(rawValue)}</Text>
                       </Paper>
                     );
                   }}

@@ -11,6 +11,7 @@ import {
   Text,
 } from '@mantine/core';
 import { IconCheck, IconFileImport, IconX, IconAlertTriangle } from '@tabler/icons-react';
+import { formatNum } from '../dashboard/formatters';
 import {
   discoverAssets,
   ensureAsset,
@@ -363,7 +364,7 @@ export function TargetAllocationCsvImportModal({
               <Group gap="xs">
                 <IconAlertTriangle size={16} color="orange" />
                 <Text size="sm" c="orange" fw={500}>
-                  Attenzione: il peso totale ({totalWeightSum.toFixed(2)}%) supera il 100%.
+                  Attenzione: il peso totale ({formatNum(totalWeightSum)}%) supera il 100%.
                 </Text>
               </Group>
             )}
@@ -396,7 +397,7 @@ export function TargetAllocationCsvImportModal({
                       <Table.Td>{row.csv.name || '-'}</Table.Td>
                       <Table.Td>{row.csv.isin || '-'}</Table.Td>
                       <Table.Td style={{ textAlign: 'right' }}>
-                        {row.csv.weight.toFixed(2)}%
+                        {formatNum(row.csv.weight)}%
                       </Table.Td>
                       <Table.Td>
                         {row.status === 'resolved' && <IconCheck size={16} color="green" />}

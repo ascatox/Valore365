@@ -2,7 +2,7 @@ import { Badge, Grid, Group, Loader, Paper, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { formatPct, formatDateTime, getVariationColor } from '../formatters';
+import { formatNum, formatPct, formatDateTime, getVariationColor } from '../formatters';
 import type { AssetMiniChartData } from '../types';
 
 interface AssetMiniChartsGridProps {
@@ -20,7 +20,7 @@ function renderIndexTooltip(labelPrefix?: string) {
     return (
       <Paper withBorder p="xs" radius="sm" shadow="xs">
         <Text size="xs" c="dimmed">{labelPrefix ? `${labelPrefix} ${label}` : label}</Text>
-        <Text size="sm" fw={600}>Indice: {rawValue.toFixed(2)}</Text>
+        <Text size="sm" fw={600}>Indice: {formatNum(rawValue)}</Text>
         <Text size="sm" c={getVariationColor(pct)} fw={500}>Variazione: {formatPct(pct)}</Text>
       </Paper>
     );
@@ -49,7 +49,7 @@ export function AssetMiniChartsGrid({ assets, chartWindow, assetIntradayLoading 
                 <Text fw={600} size="sm">{asset.symbol}</Text>
                 <Text size="xs" c="dimmed">{asset.name}</Text>
                 <Text size="xs" c="dimmed">
-                  Peso {asset.weight_pct.toFixed(2)}% • {formatDateTime(asset.as_of)}
+                  Peso {formatNum(asset.weight_pct)}% • {formatDateTime(asset.as_of)}
                 </Text>
               </div>
               <Badge

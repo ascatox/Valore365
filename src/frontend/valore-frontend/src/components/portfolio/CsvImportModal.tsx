@@ -9,6 +9,7 @@ import {
   Text,
 } from '@mantine/core';
 import { IconFileImport, IconCheck, IconX } from '@tabler/icons-react';
+import { formatNum } from '../dashboard/formatters';
 import {
   uploadCsvImportPreview,
   commitCsvImport,
@@ -141,8 +142,8 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
                       <Table.Td>{row.isin || '-'}</Table.Td>
                       <Table.Td>{row.titolo || row.asset_name || '-'}</Table.Td>
                       <Table.Td>{row.side || '-'}</Table.Td>
-                      <Table.Td style={{ textAlign: 'right' }}>{row.quantity?.toFixed(4) ?? '-'}</Table.Td>
-                      <Table.Td style={{ textAlign: 'right' }}>{row.price?.toFixed(4) ?? '-'}</Table.Td>
+                      <Table.Td style={{ textAlign: 'right' }}>{row.quantity != null ? formatNum(row.quantity, 4) : '-'}</Table.Td>
+                      <Table.Td style={{ textAlign: 'right' }}>{row.price != null ? formatNum(row.price, 4) : '-'}</Table.Td>
                       <Table.Td>
                         {row.errors.length > 0 && (
                           <Text size="xs" c="red">{row.errors.join('; ')}</Text>

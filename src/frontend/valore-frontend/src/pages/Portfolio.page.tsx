@@ -60,6 +60,7 @@ import type {
 } from '../services/api';
 
 import { STORAGE_KEYS } from '../components/dashboard/constants';
+import { formatNum } from '../components/dashboard/formatters';
 
 export function PortfolioPage() {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -1023,7 +1024,7 @@ export function PortfolioPage() {
         <Text fw={500}>{item.symbol}</Text>
         <Text size="xs" c="dimmed">{item.name}</Text>
       </Table.Td>
-      <Table.Td style={{ textAlign: 'right' }}>{item.weight_pct.toFixed(2)}%</Table.Td>
+      <Table.Td style={{ textAlign: 'right' }}>{formatNum(item.weight_pct)}%</Table.Td>
       <Table.Td style={{ textAlign: 'right' }}>
         {portfolioTargetNotional != null
           ? formatMoney((portfolioTargetNotional * item.weight_pct) / 100, selectedPortfolio?.base_currency)
@@ -1051,7 +1052,7 @@ export function PortfolioPage() {
             <Text fw={600}>{item.symbol}</Text>
             <Text size="xs" c="dimmed">{item.name}</Text>
           </div>
-          <Text fw={700}>{item.weight_pct.toFixed(2)}%</Text>
+          <Text fw={700}>{formatNum(item.weight_pct)}%</Text>
         </Group>
         <Group justify="space-between" mt="sm" gap="xs">
           <Text size="sm" c="dimmed">Controvalore target</Text>
@@ -1719,11 +1720,11 @@ export function PortfolioPage() {
                               {item.side.toUpperCase()}
                             </Text>
                           </Table.Td>
-                          <Table.Td style={{ textAlign: 'right' }}>{item.target_weight_pct.toFixed(2)}%</Table.Td>
-                          <Table.Td style={{ textAlign: 'right' }}>{item.current_weight_pct.toFixed(2)}%</Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>{formatNum(item.target_weight_pct)}%</Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>{formatNum(item.current_weight_pct)}%</Table.Td>
                           <Table.Td style={{ textAlign: 'right' }}>
                             <Text c={item.drift_pct >= 0 ? 'orange' : 'teal'} fw={600} span>
-                              {item.drift_pct > 0 ? '+' : ''}{item.drift_pct.toFixed(2)}%
+                              {item.drift_pct > 0 ? '+' : ''}{formatNum(item.drift_pct)}%
                             </Text>
                           </Table.Td>
                           <Table.Td style={{ textAlign: 'right' }}>

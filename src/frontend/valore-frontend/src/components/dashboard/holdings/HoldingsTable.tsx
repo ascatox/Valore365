@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { Card, Group, Progress, Stack, Table, Text, UnstyledButton } from '@mantine/core';
 import { IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../../services/api';
-import { formatMoney, formatPct, getVariationColor } from '../formatters';
+import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
 type SortKey = 'symbol' | 'quantity' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'weight' | 'first_trade_at';
 
@@ -111,7 +111,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
 
             <Group justify="space-between" mt="sm" gap="xs">
               <Text size="sm" c="dimmed">Quantita</Text>
-              <Text size="sm">{p.quantity.toFixed(2)}</Text>
+              <Text size="sm">{formatNum(p.quantity)}</Text>
             </Group>
             <Group justify="space-between" gap="xs">
               <Text size="sm" c="dimmed">P/L</Text>
@@ -129,7 +129,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
               <Text size="sm" c="dimmed">Allocazione</Text>
               <Group gap="xs" wrap="nowrap">
                 <Progress value={p.weight} size="sm" w={80} color="blue" />
-                <Text size="xs">{p.weight.toFixed(1)}%</Text>
+                <Text size="xs">{formatNum(p.weight, 1)}%</Text>
               </Group>
             </Group>
             <Group justify="space-between" gap="xs" mt={4}>
@@ -190,7 +190,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                     <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
-                    <Text size="sm">{p.quantity.toFixed(2)}</Text>
+                    <Text size="sm">{formatNum(p.quantity)}</Text>
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }}>
                     <Text size="sm">{formatMoney(p.market_value, currency)}</Text>
@@ -208,7 +208,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                   <Table.Td style={{ textAlign: 'right' }}>
                     <Group gap="xs" wrap="nowrap" justify="flex-end">
                       <Progress value={p.weight} size="sm" w={60} color="blue" visibleFrom="sm" />
-                      <Text size="xs">{p.weight.toFixed(1)}%</Text>
+                      <Text size="xs">{formatNum(p.weight, 1)}%</Text>
                     </Group>
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">

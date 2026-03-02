@@ -7,7 +7,13 @@ const isPrivacyModeEnabled = () => {
   return window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true';
 };
 
-export const formatPct = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+export const formatNum = (value: number, decimals = 2) =>
+  new Intl.NumberFormat('it-IT', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  }).format(value);
+
+export const formatPct = (value: number) => `${value >= 0 ? '+' : ''}${formatNum(value, 2)}%`;
 
 export const getVariationColor = (value: number) => (value > 0 ? 'green' : value < 0 ? 'red' : 'gray');
 
