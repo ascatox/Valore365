@@ -940,7 +940,7 @@ export function PortfolioPage() {
 
   const openDeleteTransactionModal = (tx: TransactionListItem) => {
     setTransactionIdToDelete(tx.id);
-    setTransactionLabelToDelete(`${formatTransactionSideLabel(tx.side)} ${tx.symbol} (${tx.quantity})`);
+    setTransactionLabelToDelete(`${formatTransactionSideLabel(tx.side)} ${tx.symbol} (${formatNum(tx.quantity, 4)})`);
     setTransactionDeleteOpened(true);
   };
 
@@ -1159,7 +1159,7 @@ export function PortfolioPage() {
           <Text fw={500}>{tx.symbol}</Text>
           {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
         </Table.Td>
-        <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{tx.quantity}</Table.Td>
+        <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{formatNum(tx.quantity, 4)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{formatMoney(tx.price, tx.trade_currency)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }}>{formatMoney(total, tx.trade_currency)}</Table.Td>
@@ -1212,7 +1212,7 @@ export function PortfolioPage() {
 
         <Group justify="space-between" mt="sm" gap="xs">
           <Text size="sm" c="dimmed">Quantita</Text>
-          <Text size="sm">{tx.quantity}</Text>
+          <Text size="sm">{formatNum(tx.quantity, 4)}</Text>
         </Group>
         <Group justify="space-between" gap="xs">
           <Text size="sm" c="dimmed">Prezzo</Text>
@@ -1730,7 +1730,7 @@ export function PortfolioPage() {
                           <Table.Td style={{ textAlign: 'right' }}>
                             {formatMoney(item.price, item.trade_currency)}
                           </Table.Td>
-                          <Table.Td style={{ textAlign: 'right' }}>{item.quantity}</Table.Td>
+                          <Table.Td style={{ textAlign: 'right' }}>{formatNum(item.quantity, 4)}</Table.Td>
                           <Table.Td style={{ textAlign: 'right' }}>
                             {formatMoney(item.gross_total, item.trade_currency)}
                           </Table.Td>
