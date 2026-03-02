@@ -46,12 +46,42 @@ BANK_EXPORT_COLUMNS = [
 
 
 def _parse_italian_number(s: str) -> float | None:
-    """Parse Italian formatted number: 1.159,77 → 1159.77"""
+    """Parse number in Italian or English format.
+
+    Italian: 1.159,77  → 1159.77   (dot = thousands, comma = decimal)
+    English: 1,159.77  → 1159.77   (comma = thousands, dot = decimal)
+    Plain:   1159.77   → 1159.77
+    Plain:   1159,77   → 1159.77
+
+    Heuristic: if both dot and comma are present, the *last* separator is the
+    decimal mark.  If only one separator type is present, dots followed by
+    exactly 3 digits at the end are thousands separators; otherwise the
+    separator is the decimal mark.
+    """
     s = s.strip()
     if not s:
         return None
-    # Remove thousands separators (dots) and replace decimal comma with dot
-    s = s.replace(".", "").replace(",", ".")
+
+    last_dot = s.rfind(".")
+    last_comma = s.rfind(",")
+
+    if last_dot >= 0 and last_comma >= 0:
+        if last_comma > last_dot:
+            # Italian: 1.234,56
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            # English: 1,234.56
+            s = s.replace(",", "")
+    elif last_comma >= 0:
+        # Only commas – always treat as decimal separator (e.g. 1,0000 → 1.0000)
+        s = s.replace(",", ".")
+    elif last_dot >= 0:
+        # Only dots – thousands separator only if exactly 3 trailing digits
+        after_dot = s[last_dot + 1:]
+        if len(after_dot) == 3 and after_dot.isdigit() and last_dot != 0:
+            s = s.replace(".", "")
+        # else: treat dot as decimal (e.g. 1.0000 → 1.0000)
+
     return float(s)
 
 
