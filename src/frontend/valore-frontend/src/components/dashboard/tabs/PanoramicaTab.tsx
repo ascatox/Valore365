@@ -76,7 +76,9 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     : undefined;
 
   const isIntradayWindow = chartWindow === '1';
-  const portfolioChartData = isIntradayWindow ? mainIntradayChartData : mvpTimeseriesData;
+  const portfolioChartData = isIntradayWindow && mainIntradayChartData.length > 0
+    ? mainIntradayChartData
+    : mvpTimeseriesData;
 
   const portfolioChartStats = useMemo(() => {
     const series = portfolioChartData;
@@ -165,7 +167,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
         <PerformanceChart
           title={`Andamento Portafoglio (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
           data={portfolioChartData}
-          xKey={isIntradayWindow ? 'time' : 'date'}
+          xKey={isIntradayWindow && mainIntradayChartData.length > 0 ? 'time' : 'date'}
           gradientId="mvpTimeseriesGradient"
           color="#16a34a"
           stats={portfolioChartStats ?? chartStats}
@@ -186,7 +188,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
             if (!Number.isFinite(value)) return null;
             return (
               <Paper withBorder p="xs" radius="sm" shadow="xs">
-                <Text size="xs" c="dimmed">{`${isIntradayWindow ? 'Ora' : 'Data'} ${label}`}</Text>
+                <Text size="xs" c="dimmed">{`${isIntradayWindow && mainIntradayChartData.length > 0 ? 'Ora' : 'Data'} ${label}`}</Text>
                 <Text size="sm" fw={600}>{formatMoney(value, mvpCurrency)}</Text>
               </Paper>
             );

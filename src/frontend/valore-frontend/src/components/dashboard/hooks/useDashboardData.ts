@@ -409,7 +409,7 @@ export function useDashboardData(): DashboardData {
     () =>
       portfolioTimeseries
         .filter((point) => Number.isFinite(point.market_value))
-        .slice(-(chartWindow === '1' ? (ENABLE_TARGET_ALLOCATION ? 2 : 1) : chartWindowDays))
+        .slice(-(chartWindow === '1' ? 2 : chartWindowDays))
         .map((point) => ({
           rawDate: point.date,
           date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
