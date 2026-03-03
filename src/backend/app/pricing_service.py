@@ -7,6 +7,7 @@ import httpx
 from .config import Settings
 from .finance_client import make_finance_client
 from .models import PriceRefreshItem, PriceRefreshResponse
+from .price_validation import validate_quote_price
 from .repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,15 @@ class PriceIngestionService:
         for index, asset in enumerate(pricing_assets):
             try:
                 quote = client.get_quote(asset.provider_symbol)
+                vr = validate_quote_price(
+                    asset_id=asset.asset_id,
+                    symbol=asset.provider_symbol,
+                    price=quote.price,
+                    min_price=self.settings.price_validation_min_price,
+                )
+                if not vr.valid:
+                    errors.append(f"{asset.provider_symbol}: rejected - {vr.rejected_reason}")
+                    continue
                 self.repository.save_price_tick(
                     asset_id=asset.asset_id,
                     provider=provider,

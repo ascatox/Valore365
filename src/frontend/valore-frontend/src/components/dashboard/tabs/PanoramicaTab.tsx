@@ -125,8 +125,27 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     [dataCoverage],
   );
 
+  const stalePositions = useMemo(
+    () => portfolioPositions.filter((p) => p.price_stale),
+    [portfolioPositions],
+  );
+
   return (
     <>
+      {stalePositions.length > 0 && (
+        <Alert
+          color="yellow"
+          icon={<IconAlertTriangle size={18} />}
+          title="Prezzi non aggiornati"
+          mb="md"
+        >
+          {stalePositions.length === 1
+            ? `Il prezzo di ${stalePositions[0].symbol} non è aggiornato.`
+            : `I prezzi di ${stalePositions.map((p) => p.symbol).join(', ')} non sono aggiornati.`}
+          {' '}I valori di P/L potrebbero non essere affidabili. Premi &quot;Aggiorna&quot; per scaricare i prezzi più recenti.
+        </Alert>
+      )}
+
       {dataCoverage && !dataCoverage.sufficient && insufficientAssets.length > 0 && (
         <Alert
           color="yellow"

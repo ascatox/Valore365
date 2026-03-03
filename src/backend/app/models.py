@@ -165,6 +165,8 @@ class Position(BaseModel):
     unrealized_pl_pct: float
     weight: float
     first_trade_at: datetime | None = None
+    price_stale: bool = False
+    price_date: date | None = None
 
 
 class PortfolioSummary(BaseModel):

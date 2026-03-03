@@ -118,6 +118,8 @@ export interface Position {
   unrealized_pl_pct: number;
   weight: number;
   first_trade_at?: string | null;
+  price_stale?: boolean;
+  price_date?: string | null;
 }
 
 export interface AllocationItem {

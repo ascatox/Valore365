@@ -29,19 +29,23 @@ class _FakeRepo:
 class _FakeSettings:
     finance_provider = 'yfinance'
     finance_symbol_request_delay_seconds = 0.0
+    price_validation_min_price = 0.0001
 
 
 class _FakeClient:
-    pass
+    def __init__(self, price=100.5):
+        self._price = price
 
     def get_quote(self, symbol: str):
+        price = self._price
+
         class Q:
             ts = datetime.now(UTC)
-            price = 100.5
             bid = 100.4
             ask = 100.6
             volume = 1000
 
+        Q.price = price
         return Q()
 
 
@@ -59,3 +63,19 @@ def test_refresh_prices_success(monkeypatch):
     assert result.failed_assets == 0
     assert len(repo.saved) == 1
     assert repo.saved[0]['asset_id'] == 1
+
+
+def test_refresh_prices_zero_price_rejected(monkeypatch):
+    import app.pricing_service as mod
+
+    monkeypatch.setattr(mod, 'make_finance_client', lambda _: _FakeClient(price=0.0))
+
+    repo = _FakeRepo()
+    service = PriceIngestionService(_FakeSettings(), repo)
+    result = service.refresh_prices(portfolio_id=1)
+
+    assert isinstance(result, PriceRefreshResponse)
+    assert result.refreshed_assets == 0
+    assert result.failed_assets == 1
+    assert len(repo.saved) == 0
+    assert any("rejected" in e for e in result.errors)

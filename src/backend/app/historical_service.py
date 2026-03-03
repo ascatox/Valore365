@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from .config import Settings
 from .finance_client import make_finance_client
 from .models import DailyBackfillItem, DailyBackfillResponse, FxBackfillItem
+from .price_validation import validate_fx_rate, validate_price_bar
 from .repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
@@ -13,6 +14,56 @@ class HistoricalIngestionService:
     def __init__(self, settings: Settings, repository: PortfolioRepository) -> None:
         self.settings = settings
         self.repository = repository
+
+    def _validate_bars(self, bars, asset_id: int, symbol: str, start_date, end_date) -> list[dict]:
+        sorted_bars = sorted(
+            (b for b in bars if start_date <= b.day <= end_date),
+            key=lambda b: b.day,
+        )
+        rows: list[dict] = []
+        previous_close: float | None = None
+        for bar in sorted_bars:
+            vr = validate_price_bar(
+                asset_id=asset_id,
+                symbol=symbol,
+                price_date=bar.day,
+                open=bar.open,
+                high=bar.high,
+                low=bar.low,
+                close=bar.close,
+                volume=bar.volume,
+                previous_close=previous_close,
+                max_daily_change_pct=self.settings.price_validation_max_daily_change_pct,
+                max_ohlc_spread_pct=self.settings.price_validation_max_ohlc_spread_pct,
+            )
+            if not vr.valid:
+                continue
+            rows.append({
+                "price_date": bar.day,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+            })
+            previous_close = bar.close
+        return rows
+
+    def _validate_fx_rows(self, rates, from_ccy: str, to_ccy: str, start_date, end_date) -> list[dict]:
+        rows: list[dict] = []
+        for fx in sorted((f for f in rates if start_date <= f.day <= end_date), key=lambda f: f.day):
+            vr = validate_fx_rate(
+                from_ccy=from_ccy,
+                to_ccy=to_ccy,
+                price_date=fx.day,
+                rate=fx.rate,
+                min_rate=self.settings.price_validation_fx_min_rate,
+                max_rate=self.settings.price_validation_fx_max_rate,
+            )
+            if not vr.valid:
+                continue
+            rows.append({"price_date": fx.day, "rate": fx.rate})
+        return rows
 
     def backfill_single_asset(self, *, asset_id: int, portfolio_id: int, days: int = 365, user_id: str | None = None) -> None:
         """Background backfill for a single asset (prices + FX). Never raises."""
@@ -33,18 +84,7 @@ class HistoricalIngestionService:
                 start_date=start_date.isoformat(),
                 end_date=end_date.isoformat(),
             )
-            rows = [
-                {
-                    "price_date": bar.day,
-                    "open": bar.open,
-                    "high": bar.high,
-                    "low": bar.low,
-                    "close": bar.close,
-                    "volume": bar.volume,
-                }
-                for bar in bars
-                if start_date <= bar.day <= end_date
-            ]
+            rows = self._validate_bars(bars, asset_id, pricing_asset.provider_symbol, start_date, end_date)
             self.repository.batch_upsert_price_bars_1d(
                 asset_id=asset_id,
                 provider=provider,
@@ -67,11 +107,7 @@ class HistoricalIngestionService:
                     start_date=start_date.isoformat(),
                     end_date=end_date.isoformat(),
                 )
-                fx_rows = [
-                    {"price_date": fx.day, "rate": fx.rate}
-                    for fx in rates
-                    if start_date <= fx.day <= end_date
-                ]
+                fx_rows = self._validate_fx_rows(rates, quote_ccy, base_currency, start_date, end_date)
                 self.repository.batch_upsert_fx_rates_1d(
                     from_ccy=quote_ccy,
                     to_ccy=base_currency,
@@ -115,18 +151,7 @@ class HistoricalIngestionService:
                     start_date=start_date.isoformat(),
                     end_date=end_date.isoformat(),
                 )
-                rows = [
-                    {
-                        "price_date": bar.day,
-                        "open": bar.open,
-                        "high": bar.high,
-                        "low": bar.low,
-                        "close": bar.close,
-                        "volume": bar.volume,
-                    }
-                    for bar in bars
-                    if start_date <= bar.day <= end_date
-                ]
+                rows = self._validate_bars(bars, asset.asset_id, asset.provider_symbol, start_date, end_date)
                 self.repository.batch_upsert_price_bars_1d(
                     asset_id=asset.asset_id,
                     provider=provider,
@@ -157,14 +182,7 @@ class HistoricalIngestionService:
                     start_date=start_date.isoformat(),
                     end_date=end_date.isoformat(),
                 )
-                rows = [
-                    {
-                        "price_date": fx.day,
-                        "rate": fx.rate,
-                    }
-                    for fx in rates
-                    if start_date <= fx.day <= end_date
-                ]
+                rows = self._validate_fx_rows(rates, from_ccy, base_currency, start_date, end_date)
                 self.repository.batch_upsert_fx_rates_1d(
                     from_ccy=from_ccy,
                     to_ccy=base_currency,

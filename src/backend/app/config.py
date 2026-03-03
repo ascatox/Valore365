@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # Keep default=True for backward compatibility; disable explicitly via env.
     enable_target_allocation: bool = True
 
+    # Price validation thresholds
+    price_validation_min_price: float = 0.0001
+    price_validation_max_daily_change_pct: float = 50.0
+    price_validation_max_ohlc_spread_pct: float = 100.0
+    price_validation_stale_days: int = 5
+    price_validation_fx_min_rate: float = 0.0001
+    price_validation_fx_max_rate: float = 10000.0
+
     cors_allowed_origins: str = "http://localhost:5173"
 
     @property

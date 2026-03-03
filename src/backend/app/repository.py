@@ -7,6 +7,8 @@ from bisect import bisect_right
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
+from .price_validation import check_staleness
+
 from .models import (
     AllocationItem,
     AssetCreate,
@@ -1527,7 +1529,7 @@ class PortfolioRepository:
             if deleted.rowcount == 0:
                 raise ValueError("Transazione non trovata")
 
-    def get_positions(self, portfolio_id: int, user_id: str) -> list[Position]:
+    def get_positions(self, portfolio_id: int, user_id: str, stale_days: int = 5) -> list[Position]:
         with self.engine.begin() as conn:
             portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
@@ -1652,8 +1654,10 @@ class PortfolioRepository:
                 price_info = daily_prices.get(aid)
                 meta = asset_meta.get(aid)
                 market_price = avg_cost
+                price_day_val: date | None = None
                 if price_info and meta is not None:
                     price_day, latest_close = price_info
+                    price_day_val = price_day
                     quote_fx = fx_rate_on_or_before(meta.quote_currency, price_day)
                     if quote_fx is not None:
                         market_price = latest_close * quote_fx
@@ -1664,6 +1668,14 @@ class PortfolioRepository:
                 asset_details = assets.get(aid, {})
                 symbol = asset_details.get("symbol", f"ASSET-{aid}")
                 name = asset_details.get("name", "")
+
+                stale = check_staleness(
+                    asset_id=aid,
+                    symbol=symbol,
+                    price_date=price_day_val,
+                    today=date.today(),
+                    stale_days=stale_days,
+                )
 
                 positions.append(
                     Position(
@@ -1678,6 +1690,8 @@ class PortfolioRepository:
                         unrealized_pl_pct=round(pl_pct, 2),
                         weight=0,  # Placeholder, will be calculated next
                         first_trade_at=first_trade_at_by_asset.get(aid),
+                        price_stale=stale,
+                        price_date=price_day_val,
                     )
                 )
 

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Card, Group, Progress, Stack, Table, Text, UnstyledButton } from '@mantine/core';
-import { IconChevronUp, IconChevronDown, IconSelector } from '@tabler/icons-react';
+import { Card, Group, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
@@ -57,6 +57,23 @@ function formatFirstTrade(value?: string | null): string {
   return dt.toLocaleDateString('it-IT', { month: '2-digit', year: '2-digit' });
 }
 
+function formatPriceDate(value?: string | null): string {
+  if (!value) return 'N/D';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return 'N/D';
+  return dt.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
+}
+
+function StaleIcon({ position }: { position: Position }) {
+  if (!position.price_stale) return null;
+  const label = `Prezzo non aggiornato${position.price_date ? ` (ultimo: ${formatPriceDate(position.price_date)})` : ''}`;
+  return (
+    <Tooltip label={label} withArrow>
+      <IconAlertTriangle size={14} color="var(--mantine-color-yellow-6)" style={{ flexShrink: 0 }} />
+    </Tooltip>
+  );
+}
+
 export function HoldingsTable({ positions, currency, summary }: HoldingsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -105,7 +122,10 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
           <Card key={p.asset_id} withBorder>
             <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
               <div>
-                <Text fw={600} size="sm">{p.symbol}</Text>
+                <Group gap={4} wrap="nowrap">
+                  <Text fw={600} size="sm">{p.symbol}</Text>
+                  <StaleIcon position={p} />
+                </Group>
                 <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
               </div>
               <Text fw={700} size="sm">{formatMoney(p.market_value, currency)}</Text>
@@ -192,7 +212,10 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
               {sorted.map((p) => (
                 <Table.Tr key={p.asset_id}>
                   <Table.Td>
-                    <Text fw={500} size="sm">{p.symbol}</Text>
+                    <Group gap={4} wrap="nowrap">
+                      <Text fw={500} size="sm">{p.symbol}</Text>
+                      <StaleIcon position={p} />
+                    </Group>
                     <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
