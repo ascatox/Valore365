@@ -1910,6 +1910,17 @@ class PortfolioRepository:
             fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
 
         holdings: dict[int, float] = defaultdict(float)
+
+        # Pre-compute holdings for transactions before start_date
+        for day in sorted(deltas_by_day.keys()):
+            if day >= start_date:
+                break
+            for delta in deltas_by_day[day]:
+                if delta.side == "buy":
+                    holdings[delta.asset_id] += delta.quantity
+                else:
+                    holdings[delta.asset_id] -= delta.quantity
+
         price_index: dict[int, int] = {aid: -1 for aid in asset_ids}
         current_price: dict[int, float | None] = {aid: None for aid in asset_ids}
 
