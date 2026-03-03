@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Badge, Card, Grid, Group, Loader, Paper, SegmentedControl, Select, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
@@ -177,14 +177,18 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     [portfolioPositions],
   );
 
+  const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
+
   return (
     <>
-      {stalePositions.length > 0 && (
+      {stalePositions.length > 0 && !staleAlertDismissed && (
         <Alert
           color="yellow"
           icon={<IconAlertTriangle size={18} />}
           title="Prezzi non aggiornati"
           mb="md"
+          withCloseButton
+          onClose={() => setStaleAlertDismissed(true)}
         >
           {stalePositions.length === 1
             ? `Il prezzo di ${stalePositions[0].symbol} non è aggiornato.`
