@@ -2010,10 +2010,15 @@ class PortfolioRepository:
         return [{"date": str(r["price_date"]), "close": r["close"]} for r in rows]
 
     def get_asset_by_symbol(self, symbol: str) -> dict | None:
+        base = symbol.split(".")[0].upper()
         with self.engine.begin() as conn:
             row = conn.execute(
-                text("select id, symbol, coalesce(name, '') as name from assets where upper(symbol) = upper(:symbol) limit 1"),
-                {"symbol": symbol},
+                text(
+                    "select id, symbol, coalesce(name, '') as name from assets "
+                    "where upper(symbol) = upper(:symbol) or upper(symbol) = :base or upper(symbol) like :pattern "
+                    "order by id asc limit 1"
+                ),
+                {"symbol": symbol, "base": base, "pattern": f"{base}.%"},
             ).mappings().first()
         if not row:
             return None
