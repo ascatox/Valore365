@@ -2,6 +2,7 @@ import type { IconProps } from '@tabler/icons-react';
 import type {
   AllocationItem,
   DataCoverageResponse,
+  GainTimeseriesPoint,
   Portfolio,
   PortfolioSummary,
   PortfolioTargetAllocationItem,
@@ -27,6 +28,13 @@ export interface ChartPoint {
   rawDate: string;
   date: string;
   value: number;
+}
+
+export interface GainChartPoint {
+  rawDate: string;
+  date: string;
+  portfolioValue: number;
+  netInvested: number;
 }
 
 export interface IntradayChartPoint {
@@ -100,4 +108,6 @@ export interface DashboardData {
   indexCardStats: { index: number; diffPts: number; diffPct: number } | null;
   mainChartStats: { last: number; periodPct: number } | null;
   dataCoverage: DataCoverageResponse | null;
+  gainChartData: GainChartPoint[];
+  gainChartLoading: boolean;
 }

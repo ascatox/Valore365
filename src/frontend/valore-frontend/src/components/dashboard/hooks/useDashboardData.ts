@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   backfillPortfolioDailyPrices,
   getAdminPortfolios,
+  getGainTimeseries,
   getPortfolioAllocation,
   getPortfolioDataCoverage,
   getPortfolioPositions,
@@ -17,6 +18,7 @@ import {
 import type {
   AllocationItem,
   DataCoverageResponse,
+  GainTimeseriesPoint,
   Portfolio,
   PortfolioSummary,
   PortfolioTargetAllocationItem,
@@ -28,7 +30,7 @@ import type {
   TimeSeriesPoint,
 } from '../../../services/api';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../constants';
-import type { ChartPoint, DashboardData, IntradayChartPoint } from '../types';
+import type { ChartPoint, DashboardData, GainChartPoint, IntradayChartPoint } from '../types';
 import { ENABLE_TARGET_ALLOCATION } from '../../../features';
 
 export function useDashboardData(): DashboardData {
@@ -66,6 +68,8 @@ export function useDashboardData(): DashboardData {
     useState<PortfolioTargetAssetIntradayPerformanceResponse | null>(null);
   const [assetIntradayLoading, setAssetIntradayLoading] = useState(false);
   const [dataCoverage, setDataCoverage] = useState<DataCoverageResponse | null>(null);
+  const [gainPoints, setGainPoints] = useState<GainTimeseriesPoint[]>([]);
+  const [gainLoading, setGainLoading] = useState(false);
 
   // Load portfolios on mount
   useEffect(() => {
@@ -196,6 +200,33 @@ export function useDashboardData(): DashboardData {
       })
       .finally(() => {
         if (active) setDataLoading(false);
+      });
+    return () => { active = false; };
+  }, [selectedPortfolioId, chartWindow]);
+
+  // Load gain timeseries for value-vs-invested chart
+  useEffect(() => {
+    const portfolioId = Number(selectedPortfolioId);
+    if (!Number.isFinite(portfolioId)) {
+      setGainPoints([]);
+      return;
+    }
+    const days = DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.days ?? 90;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startStr = startDate.toISOString().slice(0, 10);
+
+    let active = true;
+    setGainLoading(true);
+    getGainTimeseries(portfolioId, startStr)
+      .then((pts) => {
+        if (active) setGainPoints(pts);
+      })
+      .catch(() => {
+        if (active) setGainPoints([]);
+      })
+      .finally(() => {
+        if (active) setGainLoading(false);
       });
     return () => { active = false; };
   }, [selectedPortfolioId, chartWindow]);
@@ -408,7 +439,7 @@ export function useDashboardData(): DashboardData {
   const mvpTimeseriesData = useMemo<ChartPoint[]>(
     () =>
       portfolioTimeseries
-        .filter((point) => Number.isFinite(point.market_value))
+        .filter((point) => Number.isFinite(point.market_value) && point.market_value > 0)
         .slice(-(chartWindow === '1' ? 2 : chartWindowDays))
         .map((point) => ({
           rawDate: point.date,
@@ -416,6 +447,17 @@ export function useDashboardData(): DashboardData {
           value: point.market_value,
         })),
     [portfolioTimeseries, chartWindow, chartWindowDays],
+  );
+
+  const gainChartData = useMemo<GainChartPoint[]>(
+    () =>
+      gainPoints.map((p) => ({
+        rawDate: p.date,
+        date: new Date(p.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+        portfolioValue: p.portfolio_value,
+        netInvested: p.net_invested,
+      })),
+    [gainPoints],
   );
 
   const mvpTimeseriesStats = useMemo(() => {
@@ -468,5 +510,7 @@ export function useDashboardData(): DashboardData {
     indexCardStats,
     mainChartStats,
     dataCoverage,
+    gainChartData,
+    gainChartLoading: gainLoading,
   };
 }

@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
-import { Alert, Grid, Paper, SegmentedControl, Text } from '@mantine/core';
+import { Alert, Badge, Card, Grid, Group, Loader, Paper, SegmentedControl, Text } from '@mantine/core';
+import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
@@ -28,7 +30,12 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     setChartWindow,
     chartWindowDays,
     dataCoverage,
+    gainChartData,
+    gainChartLoading,
   } = data;
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
 
   const kpiItems = useMemo(() => [
     {
@@ -119,6 +126,20 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     return { best: bestItems, worst: worstItems };
   }, [portfolioPositions]);
 
+  const gainChartStats = useMemo(() => {
+    if (!gainChartData.length) return undefined;
+    const last = gainChartData[gainChartData.length - 1];
+    const gain = last.portfolioValue - last.netInvested;
+    const pct = last.netInvested > 0 ? (gain / last.netInvested) * 100 : 0;
+    return [
+      { label: 'Valore', value: formatMoney(last.portfolioValue, mvpCurrency), color: 'blue' },
+      { label: 'P/L', value: `${formatMoney(gain, mvpCurrency, true)} (${formatPct(pct)})`, color: getVariationColor(gain) },
+    ];
+  }, [gainChartData, mvpCurrency]);
+
+  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
+  const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+
   const totalAllocationPct = portfolioAllocation.reduce((sum, item) => sum + item.weight_pct, 0);
   const bestWorstPeriodLabel = chartWindow === '1' ? '1g' : `${chartWindowDays}g`;
 
@@ -195,6 +216,99 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
           }}
         />
       </div>
+
+      <Card withBorder radius="md" p="md" shadow="sm" mt="md">
+        <Group justify="space-between" mb="xs" align="center" wrap="wrap" gap="xs">
+          <Group gap="xs">
+            <Text fw={600} size="sm">
+              {`Valore vs Investito (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
+            </Text>
+            {gainChartStats?.map((s) => (
+              <Badge
+                key={s.label}
+                variant="light"
+                color={s.color ?? 'blue'}
+                size={isMobile ? 'lg' : 'md'}
+                styles={{
+                  root: {
+                    fontSize: isMobile ? 14 : 13,
+                    fontWeight: 600,
+                    paddingInline: isMobile ? 12 : 10,
+                    height: isMobile ? 32 : 28,
+                  },
+                }}
+              >
+                {s.label} {s.value}
+              </Badge>
+            ))}
+          </Group>
+        </Group>
+        <Text size="xs" c="dimmed" mb="sm">Valore di mercato del portafoglio confrontato con il netto investito</Text>
+        <div style={{ height: 220 }}>
+          {gainChartLoading ? (
+            <Group h="100%" justify="center">
+              <Loader size="sm" />
+              <Text c="dimmed" size="sm">Caricamento...</Text>
+            </Group>
+          ) : gainChartData.length === 0 ? (
+            <Group h="100%" justify="center">
+              <Text c="dimmed" size="sm">Nessun dato disponibile</Text>
+            </Group>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={gainChartData}>
+                <defs>
+                  <linearGradient id="gainValueGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.18} />
+                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
+                <YAxis hide domain={['auto', 'auto']} />
+                <Tooltip
+                  content={({ active, payload, label }: any) => {
+                    if (!active || !payload?.length) return null;
+                    const pv = Number(payload.find((p: any) => p.dataKey === 'portfolioValue')?.value ?? 0);
+                    const ni = Number(payload.find((p: any) => p.dataKey === 'netInvested')?.value ?? 0);
+                    const gain = pv - ni;
+                    return (
+                      <Paper withBorder p="xs" radius="sm" shadow="xs">
+                        <Text size="xs" c="dimmed">{`Data ${label}`}</Text>
+                        <Text size="sm" fw={600} c="#16a34a">{`Valore: ${formatMoney(pv, mvpCurrency)}`}</Text>
+                        <Text size="sm" fw={600} c="#868e96">{`Investito: ${formatMoney(ni, mvpCurrency)}`}</Text>
+                        <Text size="sm" fw={600} c={getVariationColor(gain)}>{`P/L: ${formatMoney(gain, mvpCurrency, true)}`}</Text>
+                      </Paper>
+                    );
+                  }}
+                />
+                <Legend
+                  verticalAlign="top"
+                  height={28}
+                  formatter={(value: string) => (value === 'portfolioValue' ? 'Valore Portafoglio' : 'Netto Investito')}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="portfolioValue"
+                  stroke="#16a34a"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#gainValueGradient)"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="netInvested"
+                  stroke="#868e96"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  fillOpacity={0}
+                  fill="transparent"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </Card>
 
       <Grid gutter="md" mt="md">
         <Grid.Col span={{ base: 12, md: 7 }}>
