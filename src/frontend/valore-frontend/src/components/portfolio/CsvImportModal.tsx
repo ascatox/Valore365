@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Badge,
   Button,
@@ -8,7 +9,7 @@ import {
   Table,
   Text,
 } from '@mantine/core';
-import { IconFileImport, IconCheck, IconX } from '@tabler/icons-react';
+import { IconFileImport, IconCheck, IconX, IconChartPie } from '@tabler/icons-react';
 import { formatNum } from '../dashboard/formatters';
 import {
   uploadCsvImportPreview,
@@ -26,6 +27,7 @@ interface CsvImportModalProps {
 }
 
 export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete }: CsvImportModalProps) {
+  const navigate = useNavigate();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [preview, setPreview] = useState<CsvImportPreviewResponse | null>(null);
   const [result, setResult] = useState<CsvImportCommitResponse | null>(null);
@@ -183,7 +185,22 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
                 ))}
               </Stack>
             )}
-            <Button onClick={handleClose}>Chiudi</Button>
+            <Text size="sm" c="dimmed">
+              Vai alla Dashboard per visualizzare le posizioni e il P/L del portafoglio.
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="outline" onClick={handleClose}>Chiudi</Button>
+              <Button
+                leftSection={<IconChartPie size={16} />}
+                onClick={() => {
+                  handleClose();
+                  navigate('/');
+                  window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
+                }}
+              >
+                Vai alla Dashboard
+              </Button>
+            </Group>
           </>
         )}
       </Stack>
