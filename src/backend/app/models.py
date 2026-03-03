@@ -229,6 +229,13 @@ class TWRTimeseriesPoint(BaseModel):
     portfolio_value: float
 
 
+class GainTimeseriesPoint(BaseModel):
+    date: str
+    portfolio_value: float
+    net_invested: float
+    absolute_gain: float
+
+
 class AllocationItem(BaseModel):
     asset_id: int
     symbol: str

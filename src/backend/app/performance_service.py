@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from math import isfinite
 
-from .models import MWRResult, PerformanceSummary, TWRResult, TWRTimeseriesPoint
+from .models import GainTimeseriesPoint, MWRResult, PerformanceSummary, TWRResult, TWRTimeseriesPoint
 from .repository import PortfolioRepository
 
 try:
@@ -242,6 +242,43 @@ class PerformanceService:
                     date=cursor.isoformat(),
                     cumulative_twr_pct=round((cumulative - 1.0) * 100.0, 4),
                     portfolio_value=round(curr_value, 2),
+                )
+            )
+            cursor += timedelta(days=1)
+
+        return points
+
+    def get_gain_timeseries(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[GainTimeseriesPoint]:
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+
+        cf_by_day: dict[date, float] = {}
+        for cf in cashflows:
+            day = date.fromisoformat(cf.date)
+            if cf.side == 'deposit':
+                cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
+            elif cf.side == 'withdrawal':
+                cf_by_day[day] = cf_by_day.get(day, 0.0) - float(cf.amount)
+
+        points: list[GainTimeseriesPoint] = []
+        cumulative_invested = 0.0
+        cursor = start
+        while cursor <= end:
+            cumulative_invested += cf_by_day.get(cursor, 0.0)
+            pv = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+            gain = pv - cumulative_invested
+            points.append(
+                GainTimeseriesPoint(
+                    date=cursor.isoformat(),
+                    portfolio_value=round(pv, 2),
+                    net_invested=round(cumulative_invested, 2),
+                    absolute_gain=round(gain, 2),
                 )
             )
             cursor += timedelta(days=1)

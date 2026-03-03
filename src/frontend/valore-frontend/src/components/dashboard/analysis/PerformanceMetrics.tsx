@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Group, Loader, Paper, SegmentedControl, SimpleGrid, Text } from '@mantine/core';
-import { getPerformanceSummary, getTWRTimeseries, type PerformanceSummary, type TWRTimeseriesPoint } from '../../../services/api';
+import { Alert, Card, Group, Loader, Paper, SegmentedControl, SimpleGrid, Stack, Text } from '@mantine/core';
+import {
+  getGainTimeseries,
+  getPerformanceSummary,
+  getTWRTimeseries,
+  type GainTimeseriesPoint,
+  type PerformanceSummary,
+  type TWRTimeseriesPoint,
+} from '../../../services/api';
 import { formatMoney, formatPct, getVariationColor } from '../formatters';
 import { PerformanceChart } from '../summary/PerformanceChart';
 
@@ -50,15 +57,17 @@ function formatChartDate(isoDate: string): string {
 export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const [period, setPeriod] = useState<PeriodKey>('1y');
   const [loading, setLoading] = useState(false);
+  const [chartsLoading, setChartsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<PerformanceSummary | null>(null);
   const [twrPoints, setTwrPoints] = useState<TWRTimeseriesPoint[]>([]);
-  const [twrLoading, setTwrLoading] = useState(false);
+  const [gainPoints, setGainPoints] = useState<GainTimeseriesPoint[]>([]);
 
   useEffect(() => {
     if (!portfolioId) {
       setSummary(null);
       setTwrPoints([]);
+      setGainPoints([]);
       setError(null);
       setLoading(false);
       return;
@@ -66,7 +75,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
 
     let active = true;
     setLoading(true);
-    setTwrLoading(true);
+    setChartsLoading(true);
     setError(null);
 
     const startDate = periodToStartDate(period);
@@ -74,22 +83,25 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     Promise.all([
       getPerformanceSummary(portfolioId, period),
       getTWRTimeseries(portfolioId, startDate),
+      getGainTimeseries(portfolioId, startDate),
     ])
-      .then(([summaryRes, twrRes]) => {
+      .then(([summaryRes, twrRes, gainRes]) => {
         if (!active) return;
         setSummary(summaryRes);
         setTwrPoints(twrRes);
+        setGainPoints(gainRes);
       })
       .catch((err) => {
         if (!active) return;
         setSummary(null);
         setTwrPoints([]);
+        setGainPoints([]);
         setError(err instanceof Error ? err.message : 'Errore caricamento metriche performance');
       })
       .finally(() => {
         if (active) {
           setLoading(false);
-          setTwrLoading(false);
+          setChartsLoading(false);
         }
       });
 
@@ -102,6 +114,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return 'EUR';
   }, []);
 
+  // TWR chart data
   const twrChartData = useMemo(
     () => twrPoints.map((p) => ({
       rawDate: p.date,
@@ -125,9 +138,33 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return last >= 0 ? '#16a34a' : '#dc2626';
   }, [twrPoints]);
 
+  // Gain chart data
+  const gainChartData = useMemo(
+    () => gainPoints.map((p) => ({
+      rawDate: p.date,
+      date: formatChartDate(p.date),
+      value: p.absolute_gain,
+    })),
+    [gainPoints],
+  );
+
+  const gainStats = useMemo(() => {
+    if (!gainPoints.length) return undefined;
+    const last = gainPoints[gainPoints.length - 1].absolute_gain;
+    return [
+      { label: '', value: formatMoney(last, currency, true), color: getVariationColor(last) },
+    ];
+  }, [gainPoints, currency]);
+
+  const gainColor = useMemo(() => {
+    if (!gainPoints.length) return '#228be6';
+    const last = gainPoints[gainPoints.length - 1].absolute_gain;
+    return last >= 0 ? '#16a34a' : '#dc2626';
+  }, [gainPoints]);
+
   return (
-    <>
-      <Card withBorder radius="md" p="md" shadow="sm" mb="md">
+    <Stack gap="md">
+      <Card withBorder radius="md" p="md" shadow="sm">
         <Group justify="space-between" mb="sm" wrap="wrap" gap="xs">
           <Text fw={600}>Performance</Text>
           <SegmentedControl
@@ -173,12 +210,43 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
       </Card>
 
       <PerformanceChart
+        title="Guadagno Assoluto"
+        data={gainChartData}
+        gradientId="gainPerformanceGradient"
+        color={gainColor}
+        stats={gainStats}
+        loading={chartsLoading}
+        emptyMessage="Nessun dato di guadagno disponibile"
+        subtitle="Valore portafoglio meno netto investito (depositi - prelievi)"
+        tooltipContent={({ active, payload, label }: any) => {
+          if (!active || !payload?.length) return null;
+          const gain = Number(payload[0]?.value ?? 0);
+          if (!Number.isFinite(gain)) return null;
+          const point = gainPoints.find((p) => formatChartDate(p.date) === label);
+          return (
+            <Paper withBorder p="xs" radius="sm" shadow="xs">
+              <Text size="xs" c="dimmed">{label}</Text>
+              <Text size="sm" fw={600} c={getVariationColor(gain)}>
+                {formatMoney(gain, currency, true)}
+              </Text>
+              {point && (
+                <>
+                  <Text size="xs" c="dimmed">Valore: {formatMoney(point.portfolio_value, currency)}</Text>
+                  <Text size="xs" c="dimmed">Investito: {formatMoney(point.net_invested, currency)}</Text>
+                </>
+              )}
+            </Paper>
+          );
+        }}
+      />
+
+      <PerformanceChart
         title="Rendimento TWR (%)"
         data={twrChartData}
         gradientId="twrPerformanceGradient"
         color={twrColor}
         stats={twrStats}
-        loading={twrLoading}
+        loading={chartsLoading}
         emptyMessage="Nessun dato di rendimento disponibile"
         subtitle="Time-Weighted Return — rendimento del portafoglio al netto dei flussi di cassa"
         tooltipContent={({ active, payload, label }: any) => {
@@ -193,6 +261,6 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
           );
         }}
       />
-    </>
+    </Stack>
   );
 }

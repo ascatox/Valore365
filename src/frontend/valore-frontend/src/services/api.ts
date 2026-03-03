@@ -106,6 +106,13 @@ export interface TWRTimeseriesPoint {
   portfolio_value: number;
 }
 
+export interface GainTimeseriesPoint {
+  date: string;
+  portfolio_value: number;
+  net_invested: number;
+  absolute_gain: number;
+}
+
 export interface Position {
   asset_id: number;
   symbol: string;
@@ -569,6 +576,20 @@ export const getTWRTimeseries = async (
   const query = params.toString();
   return apiFetch<TWRTimeseriesPoint[]>(
     `/portfolios/${portfolioId}/performance/twr/timeseries${query ? `?${query}` : ''}`,
+  );
+};
+
+export const getGainTimeseries = async (
+  portfolioId: number,
+  startDate?: string,
+  endDate?: string,
+): Promise<GainTimeseriesPoint[]> => {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  const query = params.toString();
+  return apiFetch<GainTimeseriesPoint[]>(
+    `/portfolios/${portfolioId}/performance/gain/timeseries${query ? `?${query}` : ''}`,
   );
 };
 
