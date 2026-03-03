@@ -1,6 +1,7 @@
 import type { IconProps } from '@tabler/icons-react';
 import type {
   AllocationItem,
+  BenchmarkItem,
   DataCoverageResponse,
   GainTimeseriesPoint,
   Portfolio,
@@ -51,6 +52,13 @@ export interface AssetMiniChartData {
   return_pct: number;
   as_of: string | null;
   chart: Array<{ rawDate?: string; date?: string; time?: string; value: number }>;
+}
+
+export interface ComparisonChartPoint {
+  date: string;
+  rawDate: string;
+  portfolio: number;
+  benchmark: number;
 }
 
 export interface AllocationDoughnutItem {
@@ -110,4 +118,9 @@ export interface DashboardData {
   dataCoverage: DataCoverageResponse | null;
   gainChartData: GainChartPoint[];
   gainChartLoading: boolean;
+  benchmarks: BenchmarkItem[];
+  selectedBenchmarkId: number | null;
+  setSelectedBenchmarkId: (id: number | null) => void;
+  comparisonChartData: ComparisonChartPoint[];
+  benchmarkLoading: boolean;
 }

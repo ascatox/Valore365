@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   backfillPortfolioDailyPrices,
   getAdminPortfolios,
+  getAssetPriceTimeseries,
+  getBenchmarks,
   getGainTimeseries,
   getPortfolioAllocation,
   getPortfolioDataCoverage,
@@ -17,6 +19,8 @@ import {
 } from '../../../services/api';
 import type {
   AllocationItem,
+  AssetPricePoint,
+  BenchmarkItem,
   DataCoverageResponse,
   GainTimeseriesPoint,
   Portfolio,
@@ -30,7 +34,7 @@ import type {
   TimeSeriesPoint,
 } from '../../../services/api';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../constants';
-import type { ChartPoint, DashboardData, GainChartPoint, IntradayChartPoint } from '../types';
+import type { ChartPoint, ComparisonChartPoint, DashboardData, GainChartPoint, IntradayChartPoint } from '../types';
 import { ENABLE_TARGET_ALLOCATION } from '../../../features';
 
 export function useDashboardData(): DashboardData {
@@ -70,6 +74,10 @@ export function useDashboardData(): DashboardData {
   const [dataCoverage, setDataCoverage] = useState<DataCoverageResponse | null>(null);
   const [gainPoints, setGainPoints] = useState<GainTimeseriesPoint[]>([]);
   const [gainLoading, setGainLoading] = useState(false);
+  const [benchmarks, setBenchmarks] = useState<BenchmarkItem[]>([]);
+  const [selectedBenchmarkId, setSelectedBenchmarkId] = useState<number | null>(null);
+  const [benchmarkPrices, setBenchmarkPrices] = useState<AssetPricePoint[]>([]);
+  const [benchmarkLoading, setBenchmarkLoading] = useState(false);
 
   // Load portfolios on mount
   useEffect(() => {
@@ -230,6 +238,35 @@ export function useDashboardData(): DashboardData {
       });
     return () => { active = false; };
   }, [selectedPortfolioId, chartWindow]);
+
+  // Load available benchmarks on mount
+  useEffect(() => {
+    let active = true;
+    getBenchmarks()
+      .then((items) => { if (active) setBenchmarks(items); })
+      .catch(() => { if (active) setBenchmarks([]); });
+    return () => { active = false; };
+  }, []);
+
+  // Load benchmark prices when selection or chart window changes
+  useEffect(() => {
+    if (!selectedBenchmarkId) {
+      setBenchmarkPrices([]);
+      return;
+    }
+    const days = DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.days ?? 90;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startStr = startDate.toISOString().slice(0, 10);
+
+    let active = true;
+    setBenchmarkLoading(true);
+    getAssetPriceTimeseries(selectedBenchmarkId, startStr)
+      .then((pts) => { if (active) setBenchmarkPrices(pts); })
+      .catch(() => { if (active) setBenchmarkPrices([]); })
+      .finally(() => { if (active) setBenchmarkLoading(false); });
+    return () => { active = false; };
+  }, [selectedBenchmarkId, chartWindow]);
 
   // Load intraday data when window is '1'
   useEffect(() => {
@@ -469,6 +506,27 @@ export function useDashboardData(): DashboardData {
     return { last, pct: ((last / first) - 1) * 100 };
   }, [mvpTimeseriesData]);
 
+  const comparisonChartData = useMemo<ComparisonChartPoint[]>(() => {
+    if (!selectedBenchmarkId || !mvpTimeseriesData.length || !benchmarkPrices.length) return [];
+    const benchMap = new Map(benchmarkPrices.map((p) => [p.date, p.close]));
+    const points: ComparisonChartPoint[] = [];
+    let portfolioBase: number | null = null;
+    let benchBase: number | null = null;
+    for (const pt of mvpTimeseriesData) {
+      const benchClose = benchMap.get(pt.rawDate);
+      if (benchClose == null) continue;
+      if (portfolioBase === null) { portfolioBase = pt.value; benchBase = benchClose; }
+      if (!portfolioBase || !benchBase) continue;
+      points.push({
+        rawDate: pt.rawDate,
+        date: pt.date,
+        portfolio: (pt.value / portfolioBase) * 100,
+        benchmark: (benchClose / benchBase) * 100,
+      });
+    }
+    return points;
+  }, [selectedBenchmarkId, mvpTimeseriesData, benchmarkPrices]);
+
   return {
     portfolios,
     selectedPortfolioId,
@@ -512,5 +570,10 @@ export function useDashboardData(): DashboardData {
     dataCoverage,
     gainChartData,
     gainChartLoading: gainLoading,
+    benchmarks,
+    selectedBenchmarkId,
+    setSelectedBenchmarkId,
+    comparisonChartData,
+    benchmarkLoading,
   };
 }

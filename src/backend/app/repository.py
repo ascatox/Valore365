@@ -1990,6 +1990,35 @@ class PortfolioRepository:
             for p in positions
         ]
 
+    def get_asset_price_timeseries(
+        self, asset_id: int, start_date: date | None = None, end_date: date | None = None,
+    ) -> list[dict]:
+        clauses = ["asset_id = :asset_id"]
+        params: dict = {"asset_id": asset_id}
+        if start_date:
+            clauses.append("price_date >= :start_date")
+            params["start_date"] = start_date
+        if end_date:
+            clauses.append("price_date <= :end_date")
+            params["end_date"] = end_date
+        where = " and ".join(clauses)
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(f"select price_date, close::float8 as close from price_bars_1d where {where} order by price_date asc"),
+                params,
+            ).mappings().all()
+        return [{"date": str(r["price_date"]), "close": r["close"]} for r in rows]
+
+    def get_asset_by_symbol(self, symbol: str) -> dict | None:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("select id, symbol, coalesce(name, '') as name from assets where upper(symbol) = upper(:symbol) limit 1"),
+                {"symbol": symbol},
+            ).mappings().first()
+        if not row:
+            return None
+        return {"id": int(row["id"]), "symbol": row["symbol"], "name": row["name"]}
+
     def search_assets(self, query: str) -> list[dict[str, str]]:
         q = f"%{query.lower().strip()}%"
         with self.engine.begin() as conn:

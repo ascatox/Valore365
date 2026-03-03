@@ -1031,3 +1031,34 @@ export const skipPacExecution = async (executionId: number): Promise<{ status: s
     method: 'POST',
   });
 };
+
+// --- Benchmarks ---
+
+export interface BenchmarkItem {
+  asset_id: number;
+  symbol: string;
+  name: string;
+}
+
+export interface AssetPricePoint {
+  date: string;
+  close: number;
+}
+
+export const getBenchmarks = async (): Promise<BenchmarkItem[]> => {
+  return apiFetch<BenchmarkItem[]>('/benchmarks');
+};
+
+export const getAssetPriceTimeseries = async (
+  assetId: number,
+  startDate?: string,
+  endDate?: string,
+): Promise<AssetPricePoint[]> => {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  const query = params.toString();
+  return apiFetch<AssetPricePoint[]>(
+    `/assets/${assetId}/price-timeseries${query ? `?${query}` : ''}`,
+  );
+};

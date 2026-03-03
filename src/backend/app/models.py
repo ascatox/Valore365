@@ -626,6 +626,17 @@ class PacExecutionRead(BaseModel):
     executed_at: datetime | None = None
 
 
+class AssetPricePoint(BaseModel):
+    date: str
+    close: float
+
+
+class BenchmarkItem(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+
+
 class PacExecutionConfirm(BaseModel):
     price: float = Field(gt=0)
     trade_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')

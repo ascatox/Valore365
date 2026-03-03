@@ -26,6 +26,8 @@ from .models import (
     AssetCoverageItem,
     AssetLatestQuoteResponse,
     AssetCreate,
+    AssetPricePoint,
+    BenchmarkItem,
     AssetDiscoverItem,
     AssetDiscoverResponse,
     AssetEnsureRequest,
@@ -255,6 +257,32 @@ def create_asset(payload: AssetCreate, _auth: AuthContext = Depends(require_auth
 @router.get("/assets/search")
 def search_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> dict[str, list[dict[str, str]]]:
     return {"assets": repo.search_assets(q)}
+
+
+@router.get("/assets/{asset_id}/price-timeseries", response_model=list[AssetPricePoint])
+def get_asset_price_timeseries(
+    asset_id: int,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> list[AssetPricePoint]:
+    rows = repo.get_asset_price_timeseries(asset_id, start_date, end_date)
+    return [AssetPricePoint(date=r["date"], close=r["close"]) for r in rows]
+
+
+BENCHMARK_SYMBOLS = [
+    {"symbol": "VWCE.DE", "name": "Vanguard FTSE All-World UCITS ETF"},
+]
+
+
+@router.get("/benchmarks", response_model=list[BenchmarkItem])
+def get_benchmarks(_auth: AuthContext = Depends(require_auth)) -> list[BenchmarkItem]:
+    result: list[BenchmarkItem] = []
+    for bench in BENCHMARK_SYMBOLS:
+        asset = repo.get_asset_by_symbol(bench["symbol"])
+        if asset:
+            result.append(BenchmarkItem(asset_id=asset["id"], symbol=asset["symbol"], name=asset["name"] or bench["name"]))
+    return result
 
 
 @router.get("/assets/discover", response_model=AssetDiscoverResponse)
