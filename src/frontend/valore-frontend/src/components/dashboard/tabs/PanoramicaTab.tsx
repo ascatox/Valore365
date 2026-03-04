@@ -150,7 +150,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     [benchmarks],
   );
 
-  const hasBenchmark = selectedBenchmarkId !== null && comparisonChartData.length > 0;
+  const hasBenchmark = selectedBenchmarkId !== null && (comparisonChartData.length > 0 || benchmarkLoading);
 
   const comparisonStats = useMemo(() => {
     if (!hasBenchmark) return undefined;
@@ -257,6 +257,10 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
                   <Loader size="sm" />
                   <Text c="dimmed" size="sm">Caricamento benchmark...</Text>
                 </Group>
+              ) : comparisonChartData.length === 0 ? (
+                <Group h="100%" justify="center">
+                  <Text c="dimmed" size="sm">Nessun dato di prezzo disponibile per il benchmark. Prova ad aggiornare i prezzi.</Text>
+                </Group>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={comparisonChartData}>
@@ -327,7 +331,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
                   size="xs"
                   w={140}
                   data={benchmarkSelectData}
-                  value=""
+                  value={selectedBenchmarkId != null ? String(selectedBenchmarkId) : ''}
                   onChange={(v) => setSelectedBenchmarkId(v ? Number(v) : null)}
                   allowDeselect={false}
                 />

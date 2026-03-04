@@ -286,6 +286,28 @@ def get_benchmarks(_auth: AuthContext = Depends(require_auth)) -> list[Benchmark
     return result
 
 
+@router.post(
+    "/benchmarks/{asset_id}/backfill",
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def backfill_benchmark_prices(
+    asset_id: int,
+    portfolio_id: int = Query(...),
+    days: int = Query(default=365, ge=30, le=2000),
+    _auth: AuthContext = Depends(require_auth),
+) -> dict:
+    try:
+        historical_service.backfill_single_asset(
+            asset_id=asset_id,
+            portfolio_id=portfolio_id,
+            days=days,
+            user_id=_auth.user_id,
+        )
+        return {"status": "ok"}
+    except ValueError as exc:
+        raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
+
+
 @router.get("/assets/discover", response_model=AssetDiscoverResponse)
 def discover_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> AssetDiscoverResponse:
     db_items = repo.search_assets(q)

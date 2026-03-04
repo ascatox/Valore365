@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  backfillBenchmarkPrices,
   backfillPortfolioDailyPrices,
   getAdminPortfolios,
   getAssetPriceTimeseries,
@@ -254,6 +255,7 @@ export function useDashboardData(): DashboardData {
       setBenchmarkPrices([]);
       return;
     }
+    const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
     const days = DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.days ?? 90;
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
@@ -262,11 +264,21 @@ export function useDashboardData(): DashboardData {
     let active = true;
     setBenchmarkLoading(true);
     getAssetPriceTimeseries(selectedBenchmarkId, startStr)
-      .then((pts) => { if (active) setBenchmarkPrices(pts); })
+      .then(async (pts) => {
+        if (!active) return;
+        if (pts.length === 0 && portfolioId) {
+          // No price data: auto-backfill benchmark prices and retry
+          await backfillBenchmarkPrices(selectedBenchmarkId, portfolioId, 365);
+          const retryPts = await getAssetPriceTimeseries(selectedBenchmarkId, startStr);
+          if (active) setBenchmarkPrices(retryPts);
+        } else {
+          setBenchmarkPrices(pts);
+        }
+      })
       .catch(() => { if (active) setBenchmarkPrices([]); })
       .finally(() => { if (active) setBenchmarkLoading(false); });
     return () => { active = false; };
-  }, [selectedBenchmarkId, chartWindow]);
+  }, [selectedBenchmarkId, chartWindow, selectedPortfolioId]);
 
   // Load intraday data when window is '1'
   useEffect(() => {

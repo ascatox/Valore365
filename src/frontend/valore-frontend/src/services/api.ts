@@ -1068,6 +1068,17 @@ export const getBenchmarks = async (): Promise<BenchmarkItem[]> => {
   return apiFetch<BenchmarkItem[]>('/benchmarks');
 };
 
+export const backfillBenchmarkPrices = async (
+  assetId: number,
+  portfolioId: number,
+  days = 365,
+): Promise<{ status: string }> => {
+  return apiFetch<{ status: string }>(
+    `/benchmarks/${assetId}/backfill?portfolio_id=${portfolioId}&days=${days}`,
+    { method: 'POST' },
+  );
+};
+
 export const getAssetPriceTimeseries = async (
   assetId: number,
   startDate?: string,
