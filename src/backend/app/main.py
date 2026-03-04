@@ -281,6 +281,38 @@ def get_benchmarks(_auth: AuthContext = Depends(require_auth)) -> list[Benchmark
     result: list[BenchmarkItem] = []
     for bench in BENCHMARK_SYMBOLS:
         asset = repo.get_asset_by_symbol(bench["symbol"])
+        if not asset:
+            # Auto-create benchmark asset if missing
+            try:
+                symbol = bench["symbol"]
+                created_asset = repo.create_asset(
+                    AssetCreate(
+                        symbol=symbol,
+                        name=bench["name"],
+                        asset_type="etf",
+                        exchange_code=None,
+                        exchange_name=None,
+                        quote_currency="EUR",
+                        isin=None,
+                        active=True,
+                    )
+                )
+                # Also create provider symbol mapping
+                provider = settings.finance_provider.strip().lower()
+                try:
+                    repo.create_asset_provider_symbol(
+                        AssetProviderSymbolCreate(
+                            asset_id=created_asset.id,
+                            provider=provider,
+                            provider_symbol=symbol,
+                        )
+                    )
+                except ValueError:
+                    pass  # Ignore duplicate mapping
+                asset = {"id": created_asset.id, "symbol": created_asset.symbol, "name": created_asset.name or bench["name"]}
+            except ValueError:
+                # Race condition or other error — try to find it again
+                asset = repo.get_asset_by_symbol(bench["symbol"])
         if asset:
             result.append(BenchmarkItem(asset_id=asset["id"], symbol=asset["symbol"], name=asset["name"] or bench["name"]))
     return result
