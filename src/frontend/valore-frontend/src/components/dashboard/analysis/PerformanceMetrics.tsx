@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Card, Group, Loader, Paper, SegmentedControl, SimpleGrid, Stack, Text } from '@mantine/core';
+import { Alert, Card, Group, Loader, Paper, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core';
 import {
   getGainTimeseries,
   getMWRTimeseries,
@@ -241,7 +241,18 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
           </Card>
 
           <Card withBorder radius="md" p="sm">
-            <Text size="sm" c="dimmed">MWR</Text>
+            <Tooltip label="Time-Weighted Return — rendimento del portafoglio al netto dei flussi di cassa" multiline w={280} withArrow>
+              <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>TWR</Text>
+            </Tooltip>
+            <Text fw={700} style={{ color: kpiColor(summary?.twr?.twr_pct) }}>
+              {summary?.twr?.twr_pct != null ? formatPct(summary.twr.twr_pct) : 'N/D'}
+            </Text>
+          </Card>
+
+          <Card withBorder radius="md" p="sm">
+            <Tooltip label="Money-Weighted Return — rendimento ponderato per i flussi di cassa dell'investitore" multiline w={280} withArrow>
+              <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>MWR</Text>
+            </Tooltip>
             <Text fw={700} style={{ color: kpiColor(summary?.mwr?.mwr_pct) }}>
               {summary?.mwr?.mwr_pct != null ? formatPct(summary.mwr.mwr_pct) : 'N/D'}
             </Text>
