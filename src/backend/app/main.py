@@ -272,7 +272,7 @@ def get_asset_price_timeseries(
 
 
 BENCHMARK_SYMBOLS = [
-    {"symbol": "VWCE.DE", "name": "Vanguard FTSE All-World UCITS ETF"},
+    {"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust"},
 ]
 
 
