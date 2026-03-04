@@ -343,10 +343,17 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
               if (!active || !payload?.length) return null;
               const value = Number(payload[0]?.value ?? 0);
               if (!Number.isFinite(value)) return null;
+              const pointData = payload[0]?.payload;
+              const idx = portfolioChartData.indexOf(pointData);
+              const prevValue = idx > 0 ? Number((portfolioChartData[idx - 1] as any).value ?? 0) : null;
+              const changePct = prevValue && prevValue > 0 ? ((value - prevValue) / prevValue) * 100 : null;
               return (
                 <Paper withBorder p="xs" radius="sm" shadow="xs">
                   <Text size="xs" c="dimmed">{`${isIntradayWindow && mainIntradayChartData.length > 0 ? 'Ora' : 'Data'} ${label}`}</Text>
                   <Text size="sm" fw={600}>{formatMoney(value, mvpCurrency)}</Text>
+                  {changePct != null && Number.isFinite(changePct) && (
+                    <Text size="xs" fw={500} c={getVariationColor(changePct)}>{formatPct(changePct)}</Text>
+                  )}
                 </Paper>
               );
             }}
