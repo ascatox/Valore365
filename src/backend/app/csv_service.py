@@ -163,6 +163,8 @@ class CsvImportService:
 
         for idx, raw_row in enumerate(reader, start=1):
             row_data = {k.strip().lower(): (v.strip() if v else "") for k, v in raw_row.items()}
+            logger.info("Row %d raw_row: %s", idx, dict(raw_row))
+            logger.info("Row %d row_data: %s", idx, row_data)
             errors: list[str] = []
 
             # Parse operazione (date dd/mm/yyyy)
@@ -192,11 +194,14 @@ class CsvImportService:
             # Parse segno → side
             segno = row_data.get("segno", "").strip().upper()
             descrizione_lower = row_data.get("descrizione", "").strip().lower()
-            # Detect dividends: blank segno + "dividendo" in description
+            # Detect dividends/refunds: blank segno + keyword in description
             if not segno and "dividendo" in descrizione_lower:
+                side = "dividend"
+            elif not segno and "rimborso" in descrizione_lower:
                 side = "dividend"
             else:
                 side = SEGNO_MAP.get(segno)
+            logger.info("Row %d: segno=%r, descrizione=%r → side=%s", idx, segno, descrizione_lower, side)
             if side is None:
                 errors.append(f"segno non valido: '{segno}'. Valori ammessi: A (acquisto), V (vendita)")
 

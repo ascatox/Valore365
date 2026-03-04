@@ -192,7 +192,18 @@ export function PortfolioPage() {
     });
   };
 
-  const formatTransactionSideLabel = (side: 'buy' | 'sell') => (side === 'buy' ? 'Acquisto' : 'Vendita');
+  const formatTransactionSideLabel = (side: string) => {
+    switch (side) {
+      case 'buy': return 'Acquisto';
+      case 'sell': return 'Vendita';
+      case 'dividend': return 'Dividendo';
+      case 'deposit': return 'Deposito';
+      case 'withdrawal': return 'Prelievo';
+      case 'fee': return 'Commissione';
+      case 'interest': return 'Interesse';
+      default: return side;
+    }
+  };
 
   const getDefaultBrokerFee = (): number => {
     if (typeof window === 'undefined') return 0;
@@ -1166,7 +1177,7 @@ export function PortfolioPage() {
       <Table.Tr key={tx.id}>
         <Table.Td>{formatDateTime(tx.trade_at)}</Table.Td>
         <Table.Td>
-          <Text fw={600} c={tx.side === 'buy' ? 'teal' : 'orange'}>
+          <Text fw={600} c={tx.side === 'buy' ? 'teal' : tx.side === 'sell' ? 'orange' : tx.side === 'dividend' ? 'blue' : 'gray'}>
             {formatTransactionSideLabel(tx.side)}
           </Text>
         </Table.Td>
