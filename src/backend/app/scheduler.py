@@ -3,10 +3,15 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from .config import Settings
+from .historical_service import HistoricalIngestionService
 from .pac_service import PacExecutionService
 from .pricing_service import PriceIngestionService
+from .repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
+
+
+BENCHMARK_SYMBOLS = ["SPY"]
 
 
 class PriceRefreshScheduler:
@@ -15,10 +20,14 @@ class PriceRefreshScheduler:
         settings: Settings,
         pricing_service: PriceIngestionService,
         pac_service: PacExecutionService | None = None,
+        historical_service: HistoricalIngestionService | None = None,
+        repository: PortfolioRepository | None = None,
     ) -> None:
         self.settings = settings
         self.pricing_service = pricing_service
         self.pac_service = pac_service
+        self.historical_service = historical_service
+        self.repository = repository
         self._scheduler = BackgroundScheduler(timezone='UTC')
 
     def start(self) -> None:
@@ -55,6 +64,19 @@ class PriceRefreshScheduler:
         else:
             logger.info('PAC scheduler disabled')
 
+        if self.settings.price_scheduler_enabled and self.historical_service is not None and self.repository is not None:
+            self._scheduler.add_job(
+                self._run_benchmark_backfill,
+                trigger='cron',
+                hour=6,
+                minute=30,
+                id='benchmark_backfill',
+                max_instances=1,
+                coalesce=True,
+                replace_existing=True,
+            )
+            logger.info('Benchmark backfill scheduler started at 06:30 UTC')
+
         if self._scheduler.get_jobs():
             self._scheduler.start()
 
@@ -82,6 +104,24 @@ class PriceRefreshScheduler:
             )
         except Exception as exc:  # nosec B110
             logger.exception('Scheduled refresh failed: %s', exc)
+
+    def _run_benchmark_backfill(self) -> None:
+        if self.historical_service is None or self.repository is None:
+            return
+        portfolio_id = self.settings.price_scheduler_portfolio_id
+        for symbol in BENCHMARK_SYMBOLS:
+            try:
+                asset = self.repository.get_asset_by_symbol(symbol)
+                if not asset:
+                    continue
+                self.historical_service.backfill_single_asset(
+                    asset_id=asset["id"],
+                    portfolio_id=portfolio_id,
+                    days=30,
+                )
+                logger.info('Benchmark backfill completed symbol=%s', symbol)
+            except Exception as exc:
+                logger.exception('Benchmark backfill failed symbol=%s: %s', symbol, exc)
 
     def _run_pac_processing(self) -> None:
         if self.pac_service is None:

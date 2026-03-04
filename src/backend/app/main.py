@@ -103,7 +103,7 @@ historical_service = HistoricalIngestionService(settings, repo)
 csv_import_service = CsvImportService(repo)
 pac_service = PacExecutionService(engine)
 performance_service = PerformanceService(repo)
-scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service)
+scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service, historical_service, repo)
 finance_client = make_finance_client(settings)
 
 
