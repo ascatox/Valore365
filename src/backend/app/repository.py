@@ -2044,6 +2044,44 @@ class PortfolioRepository:
 
         return [{"id": str(r["id"]), "symbol": r["symbol"], "name": r["name"], "isin": r["isin"]} for r in rows]
 
+    def find_asset_by_symbol(self, symbol: str) -> dict | None:
+        """Exact case-insensitive match on symbol, ignoring exchange_code. Returns first by id or None."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select id, symbol, coalesce(name, '') as name
+                    from assets
+                    where lower(symbol) = lower(:symbol)
+                    order by id asc
+                    limit 1
+                    """
+                ),
+                {"symbol": symbol.strip()},
+            ).mappings().first()
+        if not row:
+            return None
+        return {"id": int(row["id"]), "symbol": row["symbol"], "name": row["name"]}
+
+    def get_latest_close_price(self, asset_id: int) -> float | None:
+        """Return the most recent close price for an asset, or None."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select close
+                    from price_bars_1d
+                    where asset_id = :asset_id
+                    order by price_date desc
+                    limit 1
+                    """
+                ),
+                {"asset_id": asset_id},
+            ).mappings().first()
+        if not row:
+            return None
+        return float(row["close"])
+
     def get_assets_for_price_refresh(
         self,
         provider: str,

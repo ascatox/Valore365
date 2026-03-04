@@ -407,31 +407,43 @@ class CsvImportService:
                         titolo = row_data.get("titolo") or isin
                         provider_symbol = self._resolve_provider_symbol_from_isin(isin)
                         symbol_for_asset = provider_symbol or isin
-                        try:
-                            asset = self.repo.create_asset(AssetCreate(
-                                symbol=symbol_for_asset,
-                                name=titolo,
-                                asset_type="stock",
-                                quote_currency=base_ccy,
-                                isin=isin,
-                            ))
-                            asset_id = asset.id
+                        existing_by_symbol = self.repo.find_asset_by_symbol(symbol_for_asset)
+                        if existing_by_symbol:
+                            asset_id = int(existing_by_symbol["id"])
                             if provider_symbol:
                                 self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                        except ValueError:
-                            # Asset may have been created by a previous row
-                            matches = self.repo.search_assets(isin)
-                            exact = next(
-                                (m for m in matches if str(m.get("isin", "")).upper() == isin),
-                                None,
-                            )
-                            if exact:
-                                asset_id = int(exact["id"])
+                        else:
+                            try:
+                                asset = self.repo.create_asset(AssetCreate(
+                                    symbol=symbol_for_asset,
+                                    name=titolo,
+                                    asset_type="stock",
+                                    quote_currency=base_ccy,
+                                    isin=isin,
+                                ))
+                                asset_id = asset.id
                                 if provider_symbol:
                                     self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                            else:
-                                errors.append(f"Riga {row_data.get('row_number')}: impossibile risolvere asset ISIN {isin}")
-                                continue
+                            except ValueError:
+                                # Asset may have been created by a previous row
+                                matches = self.repo.search_assets(isin)
+                                exact = next(
+                                    (m for m in matches if str(m.get("isin", "")).upper() == isin),
+                                    None,
+                                )
+                                if exact:
+                                    asset_id = int(exact["id"])
+                                    if provider_symbol:
+                                        self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
+                                else:
+                                    existing_by_symbol = self.repo.find_asset_by_symbol(symbol_for_asset)
+                                    if existing_by_symbol:
+                                        asset_id = int(existing_by_symbol["id"])
+                                        if provider_symbol:
+                                            self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
+                                    else:
+                                        errors.append(f"Riga {row_data.get('row_number')}: impossibile risolvere asset ISIN {isin}")
+                                        continue
 
                 trade_at_str = row_data.get("trade_at", "")
                 trade_at = datetime.fromisoformat(trade_at_str)

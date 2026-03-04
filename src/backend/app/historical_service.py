@@ -15,13 +15,21 @@ class HistoricalIngestionService:
         self.settings = settings
         self.repository = repository
 
-    def _validate_bars(self, bars, asset_id: int, symbol: str, start_date, end_date) -> list[dict]:
+    def _validate_bars(
+        self,
+        bars,
+        asset_id: int,
+        symbol: str,
+        start_date,
+        end_date,
+        reference_close: float | None = None,
+    ) -> list[dict]:
         sorted_bars = sorted(
             (b for b in bars if start_date <= b.day <= end_date),
             key=lambda b: b.day,
         )
         rows: list[dict] = []
-        previous_close: float | None = None
+        previous_close: float | None = reference_close
         for bar in sorted_bars:
             vr = validate_price_bar(
                 asset_id=asset_id,
@@ -76,6 +84,7 @@ class HistoricalIngestionService:
             client = make_finance_client(self.settings)
             pricing_asset = self.repository.get_asset_pricing_symbol(asset_id, provider)
             base_currency = self.repository.get_portfolio_base_currency(portfolio_id, user_id=user_id)
+            reference_close = self.repository.get_latest_close_price(asset_id)
 
             # Price bars
             bars = client.get_daily_bars(
@@ -84,7 +93,14 @@ class HistoricalIngestionService:
                 start_date=start_date.isoformat(),
                 end_date=end_date.isoformat(),
             )
-            rows = self._validate_bars(bars, asset_id, pricing_asset.provider_symbol, start_date, end_date)
+            rows = self._validate_bars(
+                bars,
+                asset_id,
+                pricing_asset.provider_symbol,
+                start_date,
+                end_date,
+                reference_close=reference_close,
+            )
             self.repository.batch_upsert_price_bars_1d(
                 asset_id=asset_id,
                 provider=provider,
@@ -151,7 +167,15 @@ class HistoricalIngestionService:
                     start_date=start_date.isoformat(),
                     end_date=end_date.isoformat(),
                 )
-                rows = self._validate_bars(bars, asset.asset_id, asset.provider_symbol, start_date, end_date)
+                reference_close = self.repository.get_latest_close_price(asset.asset_id)
+                rows = self._validate_bars(
+                    bars,
+                    asset.asset_id,
+                    asset.provider_symbol,
+                    start_date,
+                    end_date,
+                    reference_close=reference_close,
+                )
                 self.repository.batch_upsert_price_bars_1d(
                     asset_id=asset.asset_id,
                     provider=provider,

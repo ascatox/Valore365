@@ -505,13 +505,11 @@ class YahooFinanceClient:
         import pandas as pd
         import yfinance as yf
 
-        df = yf.download(
-            symbol,
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(
             start=start_date,
             end=end_date,
             auto_adjust=True,
-            progress=False,
-            multi_level_index=False,
         )
         if df.empty:
             raise ValueError(f"Nessun dato storico per {symbol}")

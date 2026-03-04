@@ -364,29 +364,38 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
 
     created = False
     resolved_asset: AssetRead | None = None
-    try:
-        resolved_asset = repo.create_asset(
-            AssetCreate(
-                symbol=symbol,
-                name=(payload.name or symbol).strip() or symbol,
-                asset_type="stock",
-                exchange_code=None,
-                exchange_name=payload.exchange,
-                quote_currency=base_ccy,
-                isin=None,
-                active=True,
-            )
-        )
-        created = True
-    except ValueError:
-        matches = repo.search_assets(symbol)
-        exact = next((m for m in matches if str(m.get("symbol", "")).upper() == symbol), None)
-        if exact is None:
-            raise AppError(code="conflict", message="Asset esistente ma non risolvibile", status_code=409)
+
+    # Search first, create only if not found
+    existing = repo.find_asset_by_symbol(symbol)
+    if existing:
         try:
-            resolved_asset = repo.get_asset(int(exact["id"]))
+            resolved_asset = repo.get_asset(existing["id"])
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+    else:
+        try:
+            resolved_asset = repo.create_asset(
+                AssetCreate(
+                    symbol=symbol,
+                    name=(payload.name or symbol).strip() or symbol,
+                    asset_type="stock",
+                    exchange_code=None,
+                    exchange_name=payload.exchange,
+                    quote_currency=base_ccy,
+                    isin=None,
+                    active=True,
+                )
+            )
+            created = True
+        except ValueError:
+            # Race condition: another request created it between our check and insert
+            fallback = repo.find_asset_by_symbol(symbol)
+            if fallback is None:
+                raise AppError(code="conflict", message="Asset esistente ma non risolvibile", status_code=409)
+            try:
+                resolved_asset = repo.get_asset(fallback["id"])
+            except ValueError as exc:
+                raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
     if resolved_asset is None:
         raise AppError(code="bad_request", message="Impossibile risolvere asset", status_code=400)
