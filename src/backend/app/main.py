@@ -77,6 +77,7 @@ from .models import (
     RebalancePreviewSummary,
     TimeSeriesPoint,
     TWRResult,
+    MWRTimeseriesPoint,
     TWRTimeseriesPoint,
     TransactionCreate,
     TransactionListItem,
@@ -644,6 +645,26 @@ def get_performance_gain_timeseries(
 ) -> list[GainTimeseriesPoint]:
     try:
         return performance_service.get_gain_timeseries(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
+    except ValueError as exc:
+        message = str(exc)
+        status_code = 404 if "non trovato" in message.lower() else 400
+        code = "not_found" if status_code == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/performance/mwr/timeseries",
+    response_model=list[MWRTimeseriesPoint],
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_performance_mwr_timeseries(
+    portfolio_id: int,
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    _auth: AuthContext = Depends(require_auth),
+) -> list[MWRTimeseriesPoint]:
+    try:
+        return performance_service.get_mwr_timeseries(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
     except ValueError as exc:
         message = str(exc)
         status_code = 404 if "non trovato" in message.lower() else 400

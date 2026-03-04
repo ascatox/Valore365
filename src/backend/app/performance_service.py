@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from math import isfinite
 
-from .models import GainTimeseriesPoint, MWRResult, PerformanceSummary, TWRResult, TWRTimeseriesPoint
+from .models import GainTimeseriesPoint, MWRResult, MWRTimeseriesPoint, PerformanceSummary, TWRResult, TWRTimeseriesPoint
 from .repository import PortfolioRepository
 
 try:
@@ -261,10 +261,8 @@ class PerformanceService:
         cf_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
-            if cf.side == 'deposit':
+            if cf.side in ('deposit', 'withdrawal'):
                 cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
-            elif cf.side == 'withdrawal':
-                cf_by_day[day] = cf_by_day.get(day, 0.0) - float(cf.amount)
 
         points: list[GainTimeseriesPoint] = []
         cumulative_invested = 0.0
@@ -282,6 +280,88 @@ class PerformanceService:
                 )
             )
             cursor += timedelta(days=1)
+
+        return points
+
+    def get_mwr_timeseries(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[MWRTimeseriesPoint]:
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        period_days = (end - start).days
+
+        # Weekly sampling for periods > 365 days to limit IRR solves
+        if period_days > 365:
+            step = 7
+        else:
+            step = 1
+
+        # Pre-fetch all cashflows once
+        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+
+        # Pre-compute cashflow list with day offsets
+        cf_entries: list[tuple[date, float, float]] = []  # (day, days_from_start, amount_investor)
+        for cf in cashflows:
+            day = date.fromisoformat(cf.date)
+            days_offset = float((day - start).days)
+            # Invert sign: repo amount is portfolio perspective, IRR needs investor perspective
+            cf_entries.append((day, days_offset, -float(cf.amount)))
+
+        points: list[MWRTimeseriesPoint] = []
+        points.append(MWRTimeseriesPoint(date=start.isoformat(), cumulative_mwr_pct=0.0))
+
+        cursor = start + timedelta(days=step)
+        while cursor <= end:
+            cursor_days = float((cursor - start).days)
+            cursor_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+
+            # Build flows for start..cursor
+            flows: list[tuple[float, float]] = []
+            if start_value != 0:
+                flows.append((0.0, -float(start_value)))
+            for day, days_offset, inv_amount in cf_entries:
+                if day <= cursor and day > start:
+                    flows.append((days_offset, inv_amount))
+            flows.append((cursor_days, float(cursor_value)))
+
+            mwr_pct: float | None = None
+            if flows:
+                has_pos = any(cf > 0 for _, cf in flows)
+                has_neg = any(cf < 0 for _, cf in flows)
+                if has_pos and has_neg:
+                    rate = self._solve_irr(flows)
+                    if rate is not None and isfinite(rate):
+                        mwr_pct = round(rate * 100.0, 4)
+
+            points.append(MWRTimeseriesPoint(date=cursor.isoformat(), cumulative_mwr_pct=mwr_pct))
+            cursor += timedelta(days=step)
+
+        # Ensure the last point is exactly 'end' if we didn't land on it
+        if points[-1].date != end.isoformat():
+            cursor_days = float((end - start).days)
+            end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
+            flows = []
+            if start_value != 0:
+                flows.append((0.0, -float(start_value)))
+            for day, days_offset, inv_amount in cf_entries:
+                if day <= end and day > start:
+                    flows.append((days_offset, inv_amount))
+            flows.append((cursor_days, float(end_value)))
+
+            mwr_pct = None
+            if flows:
+                has_pos = any(cf > 0 for _, cf in flows)
+                has_neg = any(cf < 0 for _, cf in flows)
+                if has_pos and has_neg:
+                    rate = self._solve_irr(flows)
+                    if rate is not None and isfinite(rate):
+                        mwr_pct = round(rate * 100.0, 4)
+
+            points.append(MWRTimeseriesPoint(date=end.isoformat(), cumulative_mwr_pct=mwr_pct))
 
         return points
 

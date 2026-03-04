@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Card, Group, Loader, Paper, SegmentedControl, SimpleGrid, Stack, Text } from '@mantine/core';
 import {
   getGainTimeseries,
+  getMWRTimeseries,
   getPerformanceSummary,
   getTWRTimeseries,
   type GainTimeseriesPoint,
+  type MWRTimeseriesPoint,
   type PerformanceSummary,
   type TWRTimeseriesPoint,
 } from '../../../services/api';
@@ -62,12 +64,14 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const [summary, setSummary] = useState<PerformanceSummary | null>(null);
   const [twrPoints, setTwrPoints] = useState<TWRTimeseriesPoint[]>([]);
   const [gainPoints, setGainPoints] = useState<GainTimeseriesPoint[]>([]);
+  const [mwrPoints, setMwrPoints] = useState<MWRTimeseriesPoint[]>([]);
 
   useEffect(() => {
     if (!portfolioId) {
       setSummary(null);
       setTwrPoints([]);
       setGainPoints([]);
+      setMwrPoints([]);
       setError(null);
       setLoading(false);
       return;
@@ -84,18 +88,21 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
       getPerformanceSummary(portfolioId, period),
       getTWRTimeseries(portfolioId, startDate),
       getGainTimeseries(portfolioId, startDate),
+      getMWRTimeseries(portfolioId, startDate),
     ])
-      .then(([summaryRes, twrRes, gainRes]) => {
+      .then(([summaryRes, twrRes, gainRes, mwrRes]) => {
         if (!active) return;
         setSummary(summaryRes);
         setTwrPoints(twrRes);
         setGainPoints(gainRes);
+        setMwrPoints(mwrRes);
       })
       .catch((err) => {
         if (!active) return;
         setSummary(null);
         setTwrPoints([]);
         setGainPoints([]);
+        setMwrPoints([]);
         setError(err instanceof Error ? err.message : 'Errore caricamento metriche performance');
       })
       .finally(() => {
@@ -162,6 +169,32 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return last >= 0 ? '#16a34a' : '#dc2626';
   }, [gainPoints]);
 
+  // MWR chart data
+  const mwrChartData = useMemo(
+    () => mwrPoints
+      .filter((p) => p.cumulative_mwr_pct != null)
+      .map((p) => ({
+        rawDate: p.date,
+        date: formatChartDate(p.date),
+        value: p.cumulative_mwr_pct as number,
+      })),
+    [mwrPoints],
+  );
+
+  const mwrStats = useMemo(() => {
+    if (!mwrChartData.length) return undefined;
+    const last = mwrChartData[mwrChartData.length - 1].value;
+    return [
+      { label: 'MWR', value: formatPct(last), color: getVariationColor(last) },
+    ];
+  }, [mwrChartData]);
+
+  const mwrColor = useMemo(() => {
+    if (!mwrChartData.length) return '#228be6';
+    const last = mwrChartData[mwrChartData.length - 1].value;
+    return last >= 0 ? '#16a34a' : '#dc2626';
+  }, [mwrChartData]);
+
   return (
     <Stack gap="md">
       <Card withBorder radius="md" p="md" shadow="sm">
@@ -204,6 +237,13 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
             <Text size="sm" c="dimmed">Guadagno Assoluto</Text>
             <Text fw={700} style={{ color: kpiColor(summary?.absolute_gain) }}>
               {summary ? formatMoney(summary.absolute_gain, currency) : 'N/D'}
+            </Text>
+          </Card>
+
+          <Card withBorder radius="md" p="sm">
+            <Text size="sm" c="dimmed">MWR</Text>
+            <Text fw={700} style={{ color: kpiColor(summary?.mwr?.mwr_pct) }}>
+              {summary?.mwr?.mwr_pct != null ? formatPct(summary.mwr.mwr_pct) : 'N/D'}
             </Text>
           </Card>
         </SimpleGrid>
@@ -249,6 +289,28 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
         loading={chartsLoading}
         emptyMessage="Nessun dato di rendimento disponibile"
         subtitle="Time-Weighted Return — rendimento del portafoglio al netto dei flussi di cassa"
+        tooltipContent={({ active, payload, label }: any) => {
+          if (!active || !payload?.length) return null;
+          const pct = Number(payload[0]?.value ?? 0);
+          if (!Number.isFinite(pct)) return null;
+          return (
+            <Paper withBorder p="xs" radius="sm" shadow="xs">
+              <Text size="xs" c="dimmed">{label}</Text>
+              <Text size="sm" fw={600} c={getVariationColor(pct)}>{formatPct(pct)}</Text>
+            </Paper>
+          );
+        }}
+      />
+
+      <PerformanceChart
+        title="Rendimento MWR (%)"
+        data={mwrChartData}
+        gradientId="mwrPerformanceGradient"
+        color={mwrColor}
+        stats={mwrStats}
+        loading={chartsLoading}
+        emptyMessage="Nessun dato MWR disponibile"
+        subtitle="Money-Weighted Return — rendimento ponderato per i flussi di cassa dell'investitore"
         tooltipContent={({ active, payload, label }: any) => {
           if (!active || !payload?.length) return null;
           const pct = Number(payload[0]?.value ?? 0);

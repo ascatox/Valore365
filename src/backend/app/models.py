@@ -236,6 +236,11 @@ class GainTimeseriesPoint(BaseModel):
     absolute_gain: float
 
 
+class MWRTimeseriesPoint(BaseModel):
+    date: str
+    cumulative_mwr_pct: float | None
+
+
 class AllocationItem(BaseModel):
     asset_id: int
     symbol: str

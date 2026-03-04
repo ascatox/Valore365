@@ -113,6 +113,11 @@ export interface GainTimeseriesPoint {
   absolute_gain: number;
 }
 
+export interface MWRTimeseriesPoint {
+  date: string;
+  cumulative_mwr_pct: number | null;
+}
+
 export interface Position {
   asset_id: number;
   symbol: string;
@@ -590,6 +595,20 @@ export const getGainTimeseries = async (
   const query = params.toString();
   return apiFetch<GainTimeseriesPoint[]>(
     `/portfolios/${portfolioId}/performance/gain/timeseries${query ? `?${query}` : ''}`,
+  );
+};
+
+export const getMWRTimeseries = async (
+  portfolioId: number,
+  startDate?: string,
+  endDate?: string,
+): Promise<MWRTimeseriesPoint[]> => {
+  const params = new URLSearchParams();
+  if (startDate) params.set('start_date', startDate);
+  if (endDate) params.set('end_date', endDate);
+  const query = params.toString();
+  return apiFetch<MWRTimeseriesPoint[]>(
+    `/portfolios/${portfolioId}/performance/mwr/timeseries${query ? `?${query}` : ''}`,
   );
 };
 
