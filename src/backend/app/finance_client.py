@@ -60,6 +60,25 @@ class ProviderMarketQuote:
     ts: datetime
 
 
+@dataclass
+class ProviderAssetInfo:
+    symbol: str
+    name: str | None
+    sector: str | None
+    industry: str | None
+    country: str | None
+    market_cap: float | None
+    trailing_pe: float | None
+    forward_pe: float | None
+    dividend_yield: float | None
+    beta: float | None
+    fifty_two_week_high: float | None
+    fifty_two_week_low: float | None
+    avg_volume: float | None
+    currency: str | None
+    description: str | None
+
+
 class TwelveDataClient:
     def __init__(
         self,
@@ -532,6 +551,42 @@ class YahooFinanceClient:
         if order == 'desc':
             bars.reverse()
         return bars
+
+    def get_asset_info(self, symbol: str) -> ProviderAssetInfo:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        try:
+            info = ticker.info
+        except Exception:
+            info = {}
+
+        def _num(key: str) -> float | None:
+            v = info.get(key)
+            if v is None:
+                return None
+            try:
+                f = float(v)
+                return f if math.isfinite(f) else None
+            except (TypeError, ValueError):
+                return None
+
+        return ProviderAssetInfo(
+            symbol=symbol,
+            name=info.get('longName') or info.get('shortName'),
+            sector=info.get('sector'),
+            industry=info.get('industry'),
+            country=info.get('country'),
+            market_cap=_num('marketCap'),
+            trailing_pe=_num('trailingPE'),
+            forward_pe=_num('forwardPE'),
+            dividend_yield=_num('dividendYield'),
+            beta=_num('beta'),
+            fifty_two_week_high=_num('fiftyTwoWeekHigh'),
+            fifty_two_week_low=_num('fiftyTwoWeekLow'),
+            avg_volume=_num('averageVolume'),
+            currency=info.get('currency'),
+            description=info.get('longBusinessSummary'),
+        )
 
     def get_daily_fx_rates(
         self,

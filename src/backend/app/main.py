@@ -26,6 +26,7 @@ from .models import (
     AssetCoverageItem,
     AssetLatestQuoteResponse,
     AssetCreate,
+    AssetInfoResponse,
     AssetPricePoint,
     BenchmarkItem,
     AssetDiscoverItem,
@@ -478,6 +479,36 @@ def get_asset(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> Asse
         return repo.get_asset(asset_id)
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+
+@router.get("/assets/{asset_id}/info", response_model=AssetInfoResponse, responses={404: {"model": ErrorResponse}})
+def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetInfoResponse:
+    try:
+        pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+    try:
+        info = finance_client.get_asset_info(pricing_asset.provider_symbol)
+    except Exception as exc:
+        raise AppError(code="provider_error", message=f"Impossibile ottenere info: {exc}", status_code=502) from exc
+    return AssetInfoResponse(
+        asset_id=asset_id,
+        symbol=pricing_asset.symbol,
+        name=info.name,
+        sector=info.sector,
+        industry=info.industry,
+        country=info.country,
+        market_cap=info.market_cap,
+        trailing_pe=info.trailing_pe,
+        forward_pe=info.forward_pe,
+        dividend_yield=info.dividend_yield,
+        beta=info.beta,
+        fifty_two_week_high=info.fifty_two_week_high,
+        fifty_two_week_low=info.fifty_two_week_low,
+        avg_volume=info.avg_volume,
+        currency=info.currency,
+        description=info.description,
+    )
 
 
 @router.post(

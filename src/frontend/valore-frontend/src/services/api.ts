@@ -134,6 +134,25 @@ export interface Position {
   price_date?: string | null;
 }
 
+export interface AssetInfo {
+  asset_id: number;
+  symbol: string;
+  name: string | null;
+  sector: string | null;
+  industry: string | null;
+  country: string | null;
+  market_cap: number | null;
+  trailing_pe: number | null;
+  forward_pe: number | null;
+  dividend_yield: number | null;
+  beta: number | null;
+  fifty_two_week_high: number | null;
+  fifty_two_week_low: number | null;
+  avg_volume: number | null;
+  currency: string | null;
+  description: string | null;
+}
+
 export interface AllocationItem {
   asset_id: number;
   symbol: string;
@@ -742,6 +761,10 @@ export const ensureAsset = async (payload: AssetEnsureInput): Promise<AssetEnsur
 
 export const getAssetLatestQuote = async (assetId: number): Promise<AssetLatestQuoteResponse> => {
   return apiFetch<AssetLatestQuoteResponse>(`/assets/${assetId}/latest-quote`);
+};
+
+export const getAssetInfo = async (assetId: number): Promise<AssetInfo> => {
+  return apiFetch<AssetInfo>(`/assets/${assetId}/info`);
 };
 
 export const createTransaction = async (payload: TransactionCreateInput): Promise<TransactionRead> => {

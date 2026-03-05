@@ -153,6 +153,25 @@ class AssetEnsureResponse(BaseModel):
     created: bool
 
 
+class AssetInfoResponse(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    country: str | None = None
+    market_cap: float | None = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    dividend_yield: float | None = None
+    beta: float | None = None
+    fifty_two_week_high: float | None = None
+    fifty_two_week_low: float | None = None
+    avg_volume: float | None = None
+    currency: str | None = None
+    description: str | None = None
+
+
 class Position(BaseModel):
     asset_id: int
     symbol: str

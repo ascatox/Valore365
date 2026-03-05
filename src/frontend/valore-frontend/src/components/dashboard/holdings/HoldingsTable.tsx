@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
-import { Card, Group, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle } from '@tabler/icons-react';
-import type { Position, PortfolioSummary } from '../../../services/api';
+import { useEffect, useState, useMemo } from 'react';
+import { Card, Grid, Group, Loader, Modal, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
+import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
+import type { AssetInfo, Position, PortfolioSummary } from '../../../services/api';
+import { getAssetInfo } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
 type SortKey = 'symbol' | 'quantity' | 'market_price' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'weight' | 'first_trade_at';
@@ -74,9 +76,154 @@ function StaleIcon({ position }: { position: Position }) {
   );
 }
 
+function formatMarketCap(value: number | null): string {
+  if (value == null) return 'N/D';
+  if (value >= 1e12) return `${(value / 1e12).toFixed(2)}T`;
+  if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
+  return formatNum(value, 0);
+}
+
+function formatVolume(value: number | null): string {
+  if (value == null) return 'N/D';
+  if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`;
+  if (value >= 1e3) return `${(value / 1e3).toFixed(1)}K`;
+  return formatNum(value, 0);
+}
+
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <Group justify="space-between" gap="xs">
+      <Text size="sm" c="dimmed">{label}</Text>
+      <Text size="sm" fw={500}>{value}</Text>
+    </Group>
+  );
+}
+
+function FiftyTwoWeekBar({ low, high, current }: { low: number; high: number; current: number }) {
+  const range = high - low;
+  const pct = range > 0 ? ((current - low) / range) * 100 : 50;
+  const clampedPct = Math.max(0, Math.min(100, pct));
+  return (
+    <Stack gap={4}>
+      <Group justify="space-between" gap="xs">
+        <Text size="xs" c="dimmed">52W Low</Text>
+        <Text size="xs" c="dimmed">52W High</Text>
+      </Group>
+      <div style={{ position: 'relative', height: 8 }}>
+        <Progress value={100} size="sm" color="gray.3" style={{ position: 'absolute', width: '100%' }} />
+        <Progress value={clampedPct} size="sm" color="blue" style={{ position: 'absolute', width: '100%' }} />
+        <div
+          style={{
+            position: 'absolute',
+            left: `${clampedPct}%`,
+            top: -2,
+            width: 4,
+            height: 12,
+            borderRadius: 2,
+            backgroundColor: 'var(--mantine-color-blue-6)',
+            transform: 'translateX(-50%)',
+          }}
+        />
+      </div>
+      <Group justify="space-between" gap="xs">
+        <Text size="xs" fw={500}>{formatNum(low)}</Text>
+        <Text size="xs" fw={600} c="blue">{formatNum(current)}</Text>
+        <Text size="xs" fw={500}>{formatNum(high)}</Text>
+      </Group>
+    </Stack>
+  );
+}
+
+function AssetInfoModal({ assetId, symbol, marketPrice, opened, onClose }: { assetId: number; symbol: string; marketPrice: number; opened: boolean; onClose: () => void }) {
+  const [info, setInfo] = useState<AssetInfo | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!opened) return;
+    let active = true;
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+    getAssetInfo(assetId)
+      .then((data) => { if (active) setInfo(data); })
+      .catch((err) => { if (active) setError(err instanceof Error ? err.message : 'Errore nel caricamento'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [opened, assetId]);
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={
+        <Group gap="xs">
+          <IconInfoCircle size={20} />
+          <Text fw={600}>Dettaglio {symbol}</Text>
+        </Group>
+      }
+      size="md"
+      centered
+    >
+      {loading && (
+        <Group justify="center" py="xl">
+          <Loader size="sm" />
+          <Text c="dimmed" size="sm">Caricamento informazioni...</Text>
+        </Group>
+      )}
+      {error && (
+        <Text c="red" size="sm" ta="center" py="xl">{error}</Text>
+      )}
+      {info && !loading && (
+        <Stack gap="md">
+          {info.name && <Text fw={600} size="md">{info.name}</Text>}
+
+          <Grid gutter="md">
+            <Grid.Col span={6}>
+              <Stack gap={6}>
+                {info.sector && <InfoRow label="Settore" value={info.sector} />}
+                {info.industry && <InfoRow label="Industria" value={info.industry} />}
+                {info.country && <InfoRow label="Paese" value={info.country} />}
+                {info.currency && <InfoRow label="Valuta" value={info.currency} />}
+              </Stack>
+            </Grid.Col>
+            <Grid.Col span={6}>
+              <Stack gap={6}>
+                <InfoRow label="Market Cap" value={formatMarketCap(info.market_cap)} />
+                {info.trailing_pe != null && <InfoRow label="P/E (TTM)" value={formatNum(info.trailing_pe)} />}
+                {info.forward_pe != null && <InfoRow label="P/E (Fwd)" value={formatNum(info.forward_pe)} />}
+                {info.dividend_yield != null && <InfoRow label="Div. Yield" value={formatPct(info.dividend_yield * 100)} />}
+                {info.beta != null && <InfoRow label="Beta" value={formatNum(info.beta)} />}
+                <InfoRow label="Vol. Medio" value={formatVolume(info.avg_volume)} />
+              </Stack>
+            </Grid.Col>
+          </Grid>
+
+          {info.fifty_two_week_low != null && info.fifty_two_week_high != null && (
+            <FiftyTwoWeekBar
+              low={info.fifty_two_week_low}
+              high={info.fifty_two_week_high}
+              current={marketPrice}
+            />
+          )}
+
+          {info.description && (
+            <Text size="xs" c="dimmed" lineClamp={6} style={{ lineHeight: 1.5 }}>
+              {info.description}
+            </Text>
+          )}
+        </Stack>
+      )}
+    </Modal>
+  );
+}
+
 export function HoldingsTable({ positions, currency, summary }: HoldingsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string; marketPrice: number } | null>(null);
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {
@@ -117,6 +264,16 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
 
   return (
     <>
+      {!isMobile && infoModal && (
+        <AssetInfoModal
+          assetId={infoModal.assetId}
+          symbol={infoModal.symbol}
+          marketPrice={infoModal.marketPrice}
+          opened={!!infoModal}
+          onClose={() => setInfoModal(null)}
+        />
+      )}
+
       <Stack gap="sm" hiddenFrom="sm">
         {sorted.map((p) => (
           <Card key={p.asset_id} withBorder>
@@ -205,6 +362,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                   )}
                 </Table.Th>
               ))}
+              <Table.Th style={{ width: 36 }} />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -246,6 +404,13 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">
                     <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
                   </Table.Td>
+                  <Table.Td style={{ textAlign: 'center' }}>
+                    <Tooltip label="Dettaglio asset" withArrow>
+                      <UnstyledButton onClick={() => setInfoModal({ assetId: p.asset_id, symbol: p.symbol, marketPrice: p.market_price })}>
+                        <IconInfoCircle size={16} stroke={1.5} style={{ opacity: 0.5 }} />
+                      </UnstyledButton>
+                    </Tooltip>
+                  </Table.Td>
                 </Table.Tr>
               ))}
               <Table.Tr style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
@@ -271,6 +436,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                   <Text fw={700} size="xs">100%</Text>
                 </Table.Td>
                 <Table.Td visibleFrom="md" />
+                <Table.Td />
               </Table.Tr>
             </>
           </Table.Tbody>
