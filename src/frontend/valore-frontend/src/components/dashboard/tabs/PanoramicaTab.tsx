@@ -95,15 +95,23 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
   const portfolioChartStats = useMemo(() => {
     const series = portfolioChartData;
     if (!series.length) return undefined;
-    const first = Number(series[0]?.value ?? 0);
     const last = Number(series[series.length - 1]?.value ?? 0);
     if (!Number.isFinite(last)) return undefined;
+    // When on 1-day window, use the backend day_change_pct so it matches the KPI card
+    if (isIntradayWindow && portfolioSummary) {
+      const pct = portfolioSummary.day_change_pct;
+      return [
+        { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+        { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
+      ];
+    }
+    const first = Number(series[0]?.value ?? 0);
     const pct = Number.isFinite(first) && first > 0 ? ((last / first) - 1) * 100 : 0;
     return [
       { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
       { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
     ];
-  }, [portfolioChartData, mvpCurrency]);
+  }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
 
   const allocationDoughnutData = useMemo<AllocationDoughnutItem[]>(
     () => portfolioAllocation.map((item) => ({ name: item.symbol, value: item.weight_pct, asset_id: item.asset_id })),
