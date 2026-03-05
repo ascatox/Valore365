@@ -28,7 +28,16 @@ export function useMarketData(): MarketDataState {
       const response = await getMarketQuotes();
       setData(response);
       setLoaded(true);
-      setLastUpdatedAt(new Date().toISOString());
+      // Use the most recent provider timestamp from the items
+      let latestTs: string | null = null;
+      for (const cat of response.categories) {
+        for (const item of cat.items) {
+          if (item.ts && (!latestTs || item.ts > latestTs)) {
+            latestTs = item.ts;
+          }
+        }
+      }
+      setLastUpdatedAt(latestTs);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Errore caricamento mercati');
     } finally {

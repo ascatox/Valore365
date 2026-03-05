@@ -481,9 +481,19 @@ class YahooFinanceClient:
         ticker = yf.Ticker(symbol)
         price: float | None = None
         previous_close: float | None = None
+        market_ts: datetime | None = None
         try:
             price = ticker.fast_info.last_price
             previous_close = ticker.fast_info.previous_close
+        except Exception:
+            pass
+
+        # Try to get the actual market timestamp from ticker.info
+        try:
+            info = ticker.info
+            raw_ts = info.get('regularMarketTime')
+            if raw_ts is not None:
+                market_ts = datetime.fromtimestamp(int(raw_ts), tz=UTC)
         except Exception:
             pass
 
@@ -496,6 +506,11 @@ class YahooFinanceClient:
                         price = float(close_col.iloc[-1])
                         if len(close_col) >= 2:
                             previous_close = float(close_col.iloc[-2])
+                        # Use the last bar's timestamp if we don't have market_ts
+                        if market_ts is None:
+                            last_idx = close_col.index[-1]
+                            if hasattr(last_idx, 'to_pydatetime'):
+                                market_ts = last_idx.to_pydatetime()
             except Exception:
                 pass
 
@@ -508,7 +523,7 @@ class YahooFinanceClient:
             symbol=symbol,
             price=float(price) if price is not None else None,
             previous_close=float(previous_close) if previous_close is not None else None,
-            ts=datetime.now(UTC),
+            ts=market_ts or datetime.now(UTC),
         )
 
     def get_daily_bars(
