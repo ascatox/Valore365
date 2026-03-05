@@ -63,7 +63,7 @@ function App() {
                 {navbarExpanded ? <IconChevronsLeft size={18} /> : <IconChevronsRight size={18} />}
               </ActionIcon>
               <Title order={3} visibleFrom="sm">Valore365</Title>
-              <Title order={4} hiddenFrom="sm">V365</Title>
+              <Title order={4} hiddenFrom="sm">Valore365</Title>
             </Group>
             <Group>
               <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
