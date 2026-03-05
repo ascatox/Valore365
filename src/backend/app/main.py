@@ -26,6 +26,7 @@ from .models import (
     AssetCoverageItem,
     AssetLatestQuoteResponse,
     AssetCreate,
+    AssetInfoPricePoint,
     AssetInfoResponse,
     AssetPricePoint,
     BenchmarkItem,
@@ -491,6 +492,23 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) ->
         info = finance_client.get_asset_info(pricing_asset.provider_symbol)
     except Exception as exc:
         raise AppError(code="provider_error", message=f"Impossibile ottenere info: {exc}", status_code=502) from exc
+    # Fetch 5-year price history
+    price_history: list[AssetInfoPricePoint] = []
+    try:
+        start_5y = date.today().replace(year=date.today().year - 5).isoformat()
+        bars = finance_client.get_daily_bars(
+            pricing_asset.provider_symbol,
+            start_date=start_5y,
+            end_date=date.today().isoformat(),
+        )
+        # Sample weekly to keep payload small
+        price_history = [
+            AssetInfoPricePoint(date=b.day.isoformat(), close=b.close)
+            for i, b in enumerate(bars)
+            if i % 5 == 0 or i == len(bars) - 1
+        ]
+    except Exception:
+        pass
     return AssetInfoResponse(
         asset_id=asset_id,
         symbol=pricing_asset.symbol,
@@ -508,6 +526,7 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) ->
         avg_volume=info.avg_volume,
         currency=info.currency,
         description=info.description,
+        price_history_5y=price_history,
     )
 
 

@@ -1,6 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Card, Grid, Group, Loader, Modal, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Card, Grid, Group, Loader, Modal, Paper, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import type { AssetInfo, Position, PortfolioSummary } from '../../../services/api';
 import { getAssetInfo } from '../../../services/api';
@@ -100,42 +102,68 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function FiftyTwoWeekBar({ low, high, current }: { low: number; high: number; current: number }) {
-  const range = high - low;
-  const pct = range > 0 ? ((current - low) / range) * 100 : 50;
-  const clampedPct = Math.max(0, Math.min(100, pct));
+function PriceHistoryChart({ data, currency }: { data: { date: string; close: number }[]; currency: string | null }) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
+  const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+
+  const chartData = useMemo(() =>
+    data.map((p) => ({
+      date: new Date(p.date).toLocaleDateString('it-IT', { month: '2-digit', year: '2-digit' }),
+      close: p.close,
+      rawDate: p.date,
+    })),
+    [data],
+  );
+
+  const first = data[0]?.close ?? 0;
+  const last = data[data.length - 1]?.close ?? 0;
+  const changePct = first > 0 ? ((last / first) - 1) * 100 : 0;
+  const color = changePct >= 0 ? '#16a34a' : '#dc2626';
+
   return (
     <Stack gap={4}>
       <Group justify="space-between" gap="xs">
-        <Text size="xs" c="dimmed">52W Low</Text>
-        <Text size="xs" c="dimmed">52W High</Text>
+        <Text size="xs" fw={600}>Storico 5 anni</Text>
+        <Text size="xs" fw={600} c={changePct >= 0 ? 'green' : 'red'}>
+          {changePct >= 0 ? '+' : ''}{formatNum(changePct, 1)}%
+        </Text>
       </Group>
-      <div style={{ position: 'relative', height: 8 }}>
-        <Progress value={100} size="sm" color="gray.3" style={{ position: 'absolute', width: '100%' }} />
-        <Progress value={clampedPct} size="sm" color="blue" style={{ position: 'absolute', width: '100%' }} />
-        <div
-          style={{
-            position: 'absolute',
-            left: `${clampedPct}%`,
-            top: -2,
-            width: 4,
-            height: 12,
-            borderRadius: 2,
-            backgroundColor: 'var(--mantine-color-blue-6)',
-            transform: 'translateX(-50%)',
-          }}
-        />
+      <div style={{ height: 140 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="assetInfoGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={color} stopOpacity={0.15} />
+                <stop offset="95%" stopColor={color} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
+            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 10 }} interval="preserveStartEnd" />
+            <YAxis hide domain={['auto', 'auto']} />
+            <RechartsTooltip
+              content={({ active, payload, label }: any) => {
+                if (!active || !payload?.length) return null;
+                const val = Number(payload[0]?.value ?? 0);
+                return (
+                  <Paper withBorder p="xs" radius="sm" shadow="xs">
+                    <Text size="xs" c="dimmed">{label}</Text>
+                    <Text size="sm" fw={600}>{formatMoney(val, currency ?? 'USD')}</Text>
+                  </Paper>
+                );
+              }}
+            />
+            <Area type="monotone" dataKey="close" stroke={color} strokeWidth={1.5} fillOpacity={1} fill="url(#assetInfoGrad)" dot={false} />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
-      <Group justify="space-between" gap="xs">
-        <Text size="xs" fw={500}>{formatNum(low)}</Text>
-        <Text size="xs" fw={600} c="blue">{formatNum(current)}</Text>
-        <Text size="xs" fw={500}>{formatNum(high)}</Text>
-      </Group>
     </Stack>
   );
 }
 
-function AssetInfoModal({ assetId, symbol, marketPrice, opened, onClose }: { assetId: number; symbol: string; marketPrice: number; opened: boolean; onClose: () => void }) {
+function AssetInfoModal({ assetId, symbol, opened, onClose }: { assetId: number; symbol: string; opened: boolean; onClose: () => void }) {
   const [info, setInfo] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -200,12 +228,8 @@ function AssetInfoModal({ assetId, symbol, marketPrice, opened, onClose }: { ass
             </Grid.Col>
           </Grid>
 
-          {info.fifty_two_week_low != null && info.fifty_two_week_high != null && (
-            <FiftyTwoWeekBar
-              low={info.fifty_two_week_low}
-              high={info.fifty_two_week_high}
-              current={marketPrice}
-            />
+          {info.price_history_5y.length > 0 && (
+            <PriceHistoryChart data={info.price_history_5y} currency={info.currency} />
           )}
 
           {info.description && (
@@ -222,7 +246,7 @@ function AssetInfoModal({ assetId, symbol, marketPrice, opened, onClose }: { ass
 export function HoldingsTable({ positions, currency, summary }: HoldingsTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string; marketPrice: number } | null>(null);
+  const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
   const isMobile = useMediaQuery('(max-width: 48em)');
 
   const handleSort = (key: SortKey) => {
@@ -268,7 +292,6 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
         <AssetInfoModal
           assetId={infoModal.assetId}
           symbol={infoModal.symbol}
-          marketPrice={infoModal.marketPrice}
           opened={!!infoModal}
           onClose={() => setInfoModal(null)}
         />
@@ -406,7 +429,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'center' }}>
                     <Tooltip label="Dettaglio asset" withArrow>
-                      <UnstyledButton onClick={() => setInfoModal({ assetId: p.asset_id, symbol: p.symbol, marketPrice: p.market_price })}>
+                      <UnstyledButton onClick={() => setInfoModal({ assetId: p.asset_id, symbol: p.symbol })}>
                         <IconInfoCircle size={16} stroke={1.5} style={{ opacity: 0.5 }} />
                       </UnstyledButton>
                     </Tooltip>

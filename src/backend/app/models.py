@@ -153,6 +153,11 @@ class AssetEnsureResponse(BaseModel):
     created: bool
 
 
+class AssetInfoPricePoint(BaseModel):
+    date: str
+    close: float
+
+
 class AssetInfoResponse(BaseModel):
     asset_id: int
     symbol: str
@@ -170,6 +175,7 @@ class AssetInfoResponse(BaseModel):
     avg_volume: float | None = None
     currency: str | None = None
     description: str | None = None
+    price_history_5y: list[AssetInfoPricePoint] = []
 
 
 class Position(BaseModel):

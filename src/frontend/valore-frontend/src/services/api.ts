@@ -134,6 +134,11 @@ export interface Position {
   price_date?: string | null;
 }
 
+export interface AssetInfoPricePoint {
+  date: string;
+  close: number;
+}
+
 export interface AssetInfo {
   asset_id: number;
   symbol: string;
@@ -151,6 +156,7 @@ export interface AssetInfo {
   avg_volume: number | null;
   currency: string | null;
   description: string | null;
+  price_history_5y: AssetInfoPricePoint[];
 }
 
 export interface AllocationItem {
