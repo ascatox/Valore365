@@ -192,6 +192,7 @@ class Position(BaseModel):
     unrealized_pl: float
     unrealized_pl_pct: float
     weight: float
+    day_change_pct: float = 0.0
     first_trade_at: datetime | None = None
     price_stale: bool = False
     price_date: date | None = None

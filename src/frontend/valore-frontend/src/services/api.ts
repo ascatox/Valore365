@@ -128,6 +128,7 @@ export interface Position {
   market_value: number;
   unrealized_pl: number;
   unrealized_pl_pct: number;
+  day_change_pct: number;
   weight: number;
   first_trade_at?: string | null;
   price_stale?: boolean;

@@ -120,19 +120,19 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
 
   const { best, worst } = useMemo(() => {
     const sorted = [...portfolioPositions]
-      .filter((p) => Number.isFinite(p.unrealized_pl_pct))
-      .sort((a, b) => b.unrealized_pl_pct - a.unrealized_pl_pct);
+      .filter((p) => Number.isFinite(p.day_change_pct))
+      .sort((a, b) => b.day_change_pct - a.day_change_pct);
     const bestItems: PerformerItem[] = sorted.slice(0, 3).map((p) => ({
       symbol: p.symbol,
       name: p.name,
-      return_pct: p.unrealized_pl_pct,
+      return_pct: p.day_change_pct,
       as_of: p.first_trade_at ?? null,
       asset_id: p.asset_id,
     }));
     const worstItems: PerformerItem[] = sorted.slice(-3).reverse().map((p) => ({
       symbol: p.symbol,
       name: p.name,
-      return_pct: p.unrealized_pl_pct,
+      return_pct: p.day_change_pct,
       as_of: p.first_trade_at ?? null,
       asset_id: p.asset_id,
     }));
@@ -173,7 +173,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 
   const totalAllocationPct = portfolioAllocation.reduce((sum, item) => sum + item.weight_pct, 0);
-  const bestWorstPeriodLabel = chartWindow === '1' ? '1g' : `${chartWindowDays}g`;
+  const bestWorstPeriodLabel = 'oggi';
 
   const insufficientAssets = useMemo(
     () => (dataCoverage?.assets ?? []).filter((a) => a.coverage_pct < (dataCoverage?.threshold_pct ?? 80)),

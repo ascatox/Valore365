@@ -1573,6 +1573,29 @@ class PortfolioRepository:
             daily_prices = self._get_latest_daily_prices(conn, asset_ids)
             base_ccy = portfolio.base_currency
 
+            # Fetch last 2 daily bars per asset for day_change_pct calculation
+            prev_close_rows = conn.execute(
+                text(
+                    """
+                    with ranked as (
+                        select asset_id, close::float8 as close,
+                               row_number() over (partition by asset_id order by price_date desc) as rn
+                        from price_bars_1d
+                        where asset_id = any(:asset_ids)
+                    )
+                    select asset_id, close
+                    from ranked
+                    where rn = 2
+                    """
+                ),
+                {"asset_ids": asset_ids},
+            ).mappings().all()
+            prev_close_by_asset: dict[int, float] = {}
+            for r in prev_close_rows:
+                v = float(r["close"])
+                if math.isfinite(v):
+                    prev_close_by_asset[int(r["asset_id"])] = v
+
             fx_currencies = sorted(
                 {
                     str(r["trade_currency"])
@@ -1684,6 +1707,11 @@ class PortfolioRepository:
                     stale_days=stale_days,
                 )
 
+                prev_close = prev_close_by_asset.get(aid)
+                pos_day_change_pct = 0.0
+                if prev_close is not None and prev_close > 0 and math.isfinite(market_price):
+                    pos_day_change_pct = ((market_price / prev_close) - 1) * 100.0
+
                 positions.append(
                     Position(
                         asset_id=aid,
@@ -1695,6 +1723,7 @@ class PortfolioRepository:
                         market_value=round(_finite(market_value), 2),
                         unrealized_pl=round(_finite(pl), 2),
                         unrealized_pl_pct=round(_finite(pl_pct), 2),
+                        day_change_pct=round(_finite(pos_day_change_pct), 2),
                         weight=0,  # Placeholder, will be calculated next
                         first_trade_at=first_trade_at_by_asset.get(aid),
                         price_stale=stale,
