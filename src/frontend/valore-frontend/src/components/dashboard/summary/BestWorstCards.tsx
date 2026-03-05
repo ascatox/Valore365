@@ -1,7 +1,10 @@
-import { Badge, Card, Grid, Group, Text } from '@mantine/core';
-import { IconArrowUpRight, IconArrowDownRight } from '@tabler/icons-react';
+import { useState } from 'react';
+import { Badge, Card, Grid, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
+import { IconArrowUpRight, IconArrowDownRight, IconInfoCircle } from '@tabler/icons-react';
 import { formatPct, formatShortDate, getVariationColor } from '../formatters';
 import type { PerformerItem } from '../types';
+import { AssetInfoModal } from '../holdings/AssetInfoModal';
 
 interface BestWorstCardsProps {
   best: PerformerItem[];
@@ -14,11 +17,13 @@ function PerformerList({
   title,
   type,
   periodLabel,
+  onInfoClick,
 }: {
   items: PerformerItem[];
   title: string;
   type: 'best' | 'worst';
   periodLabel?: string;
+  onInfoClick?: (assetId: number, symbol: string) => void;
 }) {
   const Icon = type === 'best' ? IconArrowUpRight : IconArrowDownRight;
   const headerColor = type === 'best' ? 'green' : 'red';
@@ -37,10 +42,19 @@ function PerformerList({
       ) : (
         items.map((item) => (
           <Group key={item.asset_id} justify="space-between" mb="xs">
-            <div>
-              <Text size="sm" fw={500}>{item.symbol}</Text>
-              <Text size="sm" c="dimmed" lineClamp={1}>{item.name}</Text>
-            </div>
+            <Group gap={6} wrap="nowrap">
+              <div>
+                <Text size="sm" fw={500}>{item.symbol}</Text>
+                <Text size="sm" c="dimmed" lineClamp={1}>{item.name}</Text>
+              </div>
+              {onInfoClick && (
+                <Tooltip label="Dettaglio asset" withArrow>
+                  <UnstyledButton onClick={() => onInfoClick(item.asset_id, item.symbol)}>
+                    <IconInfoCircle size={16} stroke={1.5} style={{ opacity: 0.5 }} />
+                  </UnstyledButton>
+                </Tooltip>
+              )}
+            </Group>
             <div style={{ textAlign: 'right' }}>
               <Badge color={getVariationColor(item.return_pct)} variant="light" size="sm">
                 {formatPct(item.return_pct)}
@@ -57,14 +71,31 @@ function PerformerList({
 }
 
 export function BestWorstCards({ best, worst, periodLabel }: BestWorstCardsProps) {
+  const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
+  const isMobile = useMediaQuery('(max-width: 48em)');
+
+  const handleInfoClick = isMobile ? undefined : (assetId: number, symbol: string) => {
+    setInfoModal({ assetId, symbol });
+  };
+
   return (
-    <Grid gutter="md">
-      <Grid.Col span={{ base: 12, sm: 6 }}>
-        <PerformerList items={best} title="Migliori" type="best" periodLabel={periodLabel} />
-      </Grid.Col>
-      <Grid.Col span={{ base: 12, sm: 6 }}>
-        <PerformerList items={worst} title="Peggiori" type="worst" periodLabel={periodLabel} />
-      </Grid.Col>
-    </Grid>
+    <>
+      {!isMobile && infoModal && (
+        <AssetInfoModal
+          assetId={infoModal.assetId}
+          symbol={infoModal.symbol}
+          opened={!!infoModal}
+          onClose={() => setInfoModal(null)}
+        />
+      )}
+      <Grid gutter="md">
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <PerformerList items={best} title="Migliori" type="best" periodLabel={periodLabel} onInfoClick={handleInfoClick} />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 6 }}>
+          <PerformerList items={worst} title="Peggiori" type="worst" periodLabel={periodLabel} onInfoClick={handleInfoClick} />
+        </Grid.Col>
+      </Grid>
+    </>
   );
 }
