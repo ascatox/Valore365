@@ -24,7 +24,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     portfolioAllocation,
     mvpCurrency,
     mvpTimeseriesData,
-    mainIntradayChartData,
+    portfolioIntradayData,
     mvpTimeseriesStats,
     chartWindow,
     setChartWindow,
@@ -88,8 +88,8 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     : undefined;
 
   const isIntradayWindow = chartWindow === '1';
-  const portfolioChartData = isIntradayWindow && mainIntradayChartData.length > 0
-    ? mainIntradayChartData
+  const portfolioChartData = isIntradayWindow && portfolioIntradayData.length > 0
+    ? portfolioIntradayData
     : mvpTimeseriesData;
 
   const portfolioChartStats = useMemo(() => {
@@ -326,7 +326,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
           <PerformanceChart
             title={`Andamento Portafoglio (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
             data={portfolioChartData}
-            xKey={isIntradayWindow && mainIntradayChartData.length > 0 ? 'time' : 'date'}
+            xKey={isIntradayWindow && portfolioIntradayData.length > 0 ? 'time' : 'date'}
             gradientId="mvpTimeseriesGradient"
             color="#16a34a"
             stats={portfolioChartStats ?? chartStats}
@@ -361,7 +361,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
               const changePct = prevValue && prevValue > 0 ? ((value - prevValue) / prevValue) * 100 : null;
               return (
                 <Paper withBorder p="xs" radius="sm" shadow="xs">
-                  <Text size="xs" c="dimmed">{`${isIntradayWindow && mainIntradayChartData.length > 0 ? 'Ora' : 'Data'} ${label}`}</Text>
+                  <Text size="xs" c="dimmed">{`${isIntradayWindow && portfolioIntradayData.length > 0 ? 'Ora' : 'Data'} ${label}`}</Text>
                   <Text size="sm" fw={600}>{formatMoney(value, mvpCurrency)}</Text>
                   {changePct != null && Number.isFinite(changePct) && (
                     <Text size="xs" fw={500} c={getVariationColor(changePct)}>{formatPct(changePct)}</Text>

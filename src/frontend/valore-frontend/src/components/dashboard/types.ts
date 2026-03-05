@@ -93,6 +93,7 @@ export interface DashboardData {
   setChartWindow: (w: string) => void;
   chartData: ChartPoint[];
   mainIntradayChartData: IntradayChartPoint[];
+  portfolioIntradayData: IntradayChartPoint[];
   assetMiniCharts: AssetMiniChartData[];
   loading: boolean;
   dataLoading: boolean;

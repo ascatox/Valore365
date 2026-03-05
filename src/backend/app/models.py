@@ -363,6 +363,11 @@ class PortfolioTargetIntradayResponse(BaseModel):
     points: list[PortfolioTargetIntradayPoint]
 
 
+class IntradayTimeseriesPoint(BaseModel):
+    ts: str
+    market_value: float
+
+
 class PriceRefreshItem(BaseModel):
     asset_id: int
     symbol: str

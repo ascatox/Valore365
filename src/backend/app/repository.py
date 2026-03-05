@@ -30,6 +30,7 @@ from .models import (
     CashMovementCreate,
     CsvImportPreviewRow,
     CsvImportPreviewResponse,
+    IntradayTimeseriesPoint,
     PacExecutionRead,
     PacRuleCreate,
     PacRuleRead,
@@ -1872,6 +1873,153 @@ class PortfolioRepository:
             day_change_pct=round(_finite(day_change_pct), 2),
             cash_balance=portfolio.cash_balance,
         )
+
+    def get_intraday_timeseries(self, portfolio_id: int, user_id: str, finance_client) -> list[IntradayTimeseriesPoint]:
+        """Compute portfolio market value at hourly intervals using yFinance intraday bars."""
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        with self.engine.begin() as conn:
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
+            if portfolio is None:
+                raise ValueError("Portfolio non trovato")
+
+            tx_rows = conn.execute(
+                text(
+                    """
+                    select asset_id, side, quantity::float8 as quantity
+                    from transactions
+                    where portfolio_id = :portfolio_id
+                      and side in ('buy', 'sell')
+                      and asset_id is not null
+                    order by trade_at asc, id asc
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+            if not tx_rows:
+                return []
+
+            holdings: dict[int, float] = defaultdict(float)
+            for row in tx_rows:
+                aid = int(row["asset_id"])
+                qty = float(row["quantity"])
+                if str(row["side"]) == "buy":
+                    holdings[aid] += qty
+                else:
+                    holdings[aid] -= qty
+
+            # Only keep assets with positive holdings
+            holdings = {aid: qty for aid, qty in holdings.items() if qty > 1e-9}
+            if not holdings:
+                return []
+
+            asset_ids = sorted(holdings.keys())
+            asset_meta = self._get_asset_meta(conn, asset_ids)
+
+            # Get provider symbols for yFinance calls
+            provider_rows = conn.execute(
+                text(
+                    """
+                    select a.id as asset_id,
+                           coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                    from assets a
+                    left join asset_provider_symbols aps
+                      on aps.asset_id = a.id and aps.provider = 'yfinance'
+                    where a.id = any(:asset_ids)
+                    """
+                ),
+                {"asset_ids": asset_ids},
+            ).mappings().all()
+            provider_by_asset = {int(r["asset_id"]): str(r["provider_symbol"]) for r in provider_rows}
+
+            # Get latest FX rates for currency conversion
+            base_ccy = portfolio.base_currency
+            fx_currencies = sorted(
+                {meta.quote_currency for meta in asset_meta.values() if meta.quote_currency != base_ccy}
+            )
+            fx_rate_map: dict[str, float] = {}
+            if fx_currencies:
+                fx_rows = conn.execute(
+                    text(
+                        """
+                        select distinct on (from_ccy) from_ccy, rate::float8 as rate
+                        from fx_rates_1d
+                        where from_ccy = any(:from_ccy) and to_ccy = :to_ccy
+                        order by from_ccy, price_date desc
+                        """
+                    ),
+                    {"from_ccy": fx_currencies, "to_ccy": base_ccy},
+                ).mappings().all()
+                for r in fx_rows:
+                    fx_rate_map[str(r["from_ccy"])] = float(r["rate"])
+
+        # Fetch intraday bars in parallel
+        _log = logging.getLogger(__name__)
+        bars_by_asset: dict[int, list] = {}
+
+        def fetch_bars(asset_id: int) -> tuple[int, list]:
+            symbol = provider_by_asset.get(asset_id, asset_meta[asset_id].symbol)
+            try:
+                return asset_id, finance_client.get_intraday_bars(symbol, period='1d', interval='1h')
+            except Exception as exc:
+                _log.warning("intraday_timeseries: failed to fetch %s: %s", symbol, exc)
+                return asset_id, []
+
+        with ThreadPoolExecutor(max_workers=min(len(asset_ids), 10)) as executor:
+            futures = [executor.submit(fetch_bars, aid) for aid in asset_ids]
+            for future in as_completed(futures):
+                aid, bars = future.result()
+                if bars:
+                    bars_by_asset[aid] = bars
+
+        if not bars_by_asset:
+            return []
+
+        # Collect all unique timestamps across all assets
+        all_timestamps: set[datetime] = set()
+        for bars in bars_by_asset.values():
+            for bar in bars:
+                all_timestamps.add(bar.ts)
+        sorted_ts = sorted(all_timestamps)
+
+        # For each timestamp, compute portfolio market value
+        # Build price lookup: asset_id -> {ts: close}
+        price_lookup: dict[int, dict[datetime, float]] = defaultdict(dict)
+        for aid, bars in bars_by_asset.items():
+            for bar in bars:
+                price_lookup[aid][bar.ts] = bar.close
+
+        cash = portfolio.cash_balance
+        points: list[IntradayTimeseriesPoint] = []
+
+        for ts in sorted_ts:
+            mv = cash
+            for aid, qty in holdings.items():
+                prices = price_lookup.get(aid)
+                if not prices:
+                    continue
+                # Use this timestamp's price, or the latest available before it
+                close = prices.get(ts)
+                if close is None:
+                    # Find closest earlier timestamp for this asset
+                    earlier = [t for t in sorted(prices.keys()) if t <= ts]
+                    if earlier:
+                        close = prices[earlier[-1]]
+                    else:
+                        continue
+                meta = asset_meta.get(aid)
+                fx = 1.0
+                if meta and meta.quote_currency != base_ccy:
+                    fx = fx_rate_map.get(meta.quote_currency, 1.0)
+                mv += qty * close * fx
+
+            points.append(IntradayTimeseriesPoint(
+                ts=ts.strftime('%Y-%m-%dT%H:%M:%S'),
+                market_value=round(mv, 2),
+            ))
+
+        return points
 
     def get_timeseries(self, portfolio_id: int, range_value: str, interval: str, user_id: str) -> list[TimeSeriesPoint]:
         if range_value != "1y" or interval != "1d":

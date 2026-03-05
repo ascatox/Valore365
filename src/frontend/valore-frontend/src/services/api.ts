@@ -182,6 +182,11 @@ export interface TimeSeriesPoint {
   market_value: number;
 }
 
+export interface IntradayTimeseriesPoint {
+  ts: string;
+  market_value: number;
+}
+
 export interface PortfolioTargetPerformancePoint {
   date: string;
   weighted_index: number;
@@ -657,6 +662,10 @@ export const getPortfolioAllocation = async (portfolioId: number): Promise<Alloc
 
 export const getPortfolioTimeseries = async (portfolioId: number): Promise<TimeSeriesPoint[]> => {
   return apiFetch<TimeSeriesPoint[]>(`/portfolios/${portfolioId}/timeseries?range=1y&interval=1d`);
+};
+
+export const getPortfolioIntradayTimeseries = async (portfolioId: number): Promise<IntradayTimeseriesPoint[]> => {
+  return apiFetch<IntradayTimeseriesPoint[]>(`/portfolios/${portfolioId}/intraday-timeseries`);
 };
 
 export const getPortfolioTargetPerformance = async (portfolioId: number): Promise<PortfolioTargetPerformanceResponse> => {

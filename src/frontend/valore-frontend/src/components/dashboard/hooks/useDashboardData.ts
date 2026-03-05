@@ -7,6 +7,7 @@ import {
   getBenchmarks,
   getGainTimeseries,
   getPortfolioAllocation,
+  getPortfolioIntradayTimeseries,
   getPortfolioDataCoverage,
   getPortfolioPositions,
   getPortfolioSummary,
@@ -24,6 +25,7 @@ import type {
   BenchmarkItem,
   DataCoverageResponse,
   GainTimeseriesPoint,
+  IntradayTimeseriesPoint,
   Portfolio,
   PortfolioSummary,
   PortfolioTargetAllocationItem,
@@ -68,6 +70,7 @@ export function useDashboardData(): DashboardData {
     return isValid ? (stored as string) : '1';
   });
   const [mainIntradayData, setMainIntradayData] = useState<PortfolioTargetIntradayResponse | null>(null);
+  const [portfolioIntradayTimeseries, setPortfolioIntradayTimeseries] = useState<IntradayTimeseriesPoint[]>([]);
   const [mainIntradayLoading, setMainIntradayLoading] = useState(false);
   const [assetIntradayPerformance, setAssetIntradayPerformance] =
     useState<PortfolioTargetAssetIntradayPerformanceResponse | null>(null);
@@ -172,6 +175,11 @@ export function useDashboardData(): DashboardData {
     setMainIntradayData(data);
   };
 
+  const loadPortfolioIntradayTimeseries = async (portfolioId: number) => {
+    const data = await getPortfolioIntradayTimeseries(portfolioId);
+    setPortfolioIntradayTimeseries(data);
+  };
+
   const loadAssetIntradayCharts = async (portfolioId: number) => {
     if (!ENABLE_TARGET_ALLOCATION) {
       setAssetIntradayPerformance(null);
@@ -194,6 +202,7 @@ export function useDashboardData(): DashboardData {
       setTargetPerformance(null);
       setAssetPerformance(null);
       setAssetIntradayPerformance(null);
+      setPortfolioIntradayTimeseries([]);
       return;
     }
     const portfolioId = Number(selectedPortfolioId);
@@ -280,6 +289,21 @@ export function useDashboardData(): DashboardData {
     return () => { active = false; };
   }, [selectedBenchmarkId, chartWindow, selectedPortfolioId]);
 
+  // Load portfolio intraday timeseries when window is '1' (independent from feature flags)
+  useEffect(() => {
+    const portfolioId = Number(selectedPortfolioId);
+    if (chartWindow !== '1' || !Number.isFinite(portfolioId)) {
+      setPortfolioIntradayTimeseries([]);
+      return;
+    }
+    let active = true;
+    loadPortfolioIntradayTimeseries(portfolioId)
+      .catch(() => {
+        if (active) setPortfolioIntradayTimeseries([]);
+      });
+    return () => { active = false; };
+  }, [chartWindow, selectedPortfolioId]);
+
   // Load intraday data when window is '1'
   useEffect(() => {
     if (!ENABLE_TARGET_ALLOCATION) {
@@ -331,7 +355,11 @@ export function useDashboardData(): DashboardData {
         const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'transactions');
         await loadDashboardData(portfolioId);
         if (chartWindow === '1') {
-          await Promise.all([loadMainIntradayChart(portfolioId), loadAssetIntradayCharts(portfolioId)]);
+          await Promise.all([
+            loadMainIntradayChart(portfolioId),
+            loadAssetIntradayCharts(portfolioId),
+            loadPortfolioIntradayTimeseries(portfolioId),
+          ]);
         }
         setRefreshMessage(
           `Aggiornati prezzi: ${refreshResult.refreshed_assets}/${refreshResult.requested_assets}, storico: ${backfillResult.assets_refreshed}/${backfillResult.assets_requested}`,
@@ -415,6 +443,18 @@ export function useDashboardData(): DashboardData {
         value: p.weighted_index,
       })),
     [mainIntradayData],
+  );
+
+  const portfolioIntradayData = useMemo<IntradayChartPoint[]>(
+    () =>
+      portfolioIntradayTimeseries
+        .filter((p) => Number.isFinite(p.market_value) && p.market_value > 0)
+        .map((p) => ({
+          ts: p.ts,
+          time: new Date(p.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+          value: p.market_value,
+        })),
+    [portfolioIntradayTimeseries],
   );
 
   const mainChartStats = useMemo(() => {
@@ -557,6 +597,7 @@ export function useDashboardData(): DashboardData {
     setChartWindow,
     chartData,
     mainIntradayChartData,
+    portfolioIntradayData,
     assetMiniCharts,
     loading,
     dataLoading,

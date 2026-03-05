@@ -110,6 +110,7 @@ from .models import (
     RebalancePreviewRequest,
     RebalancePreviewResponse,
     RebalancePreviewSummary,
+    IntradayTimeseriesPoint,
     TimeSeriesPoint,
     TWRResult,
     MWRTimeseriesPoint,
@@ -1290,6 +1291,24 @@ def get_timeseries(
 ) -> list[TimeSeriesPoint]:
     try:
         return repo.get_timeseries(portfolio_id, range_value=range, interval=interval, user_id=_auth.user_id)
+    except ValueError as exc:
+        message = str(exc)
+        status = 404 if "portfolio non trovato" in message.lower() else 400
+        code = "not_found" if status == 404 else "bad_request"
+        raise AppError(code=code, message=message, status_code=status) from exc
+
+
+@router.get(
+    "/portfolios/{portfolio_id}/intraday-timeseries",
+    response_model=list[IntradayTimeseriesPoint],
+    responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_intraday_timeseries(
+    portfolio_id: int,
+    _auth: AuthContext = Depends(require_auth),
+) -> list[IntradayTimeseriesPoint]:
+    try:
+        return repo.get_intraday_timeseries(portfolio_id, _auth.user_id, finance_client)
     except ValueError as exc:
         message = str(exc)
         status = 404 if "portfolio non trovato" in message.lower() else 400
