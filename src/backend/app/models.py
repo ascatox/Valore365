@@ -174,6 +174,9 @@ class AssetInfoResponse(BaseModel):
     fifty_two_week_low: float | None = None
     avg_volume: float | None = None
     currency: str | None = None
+    current_price: float | None = None
+    previous_close: float | None = None
+    day_change_pct: float | None = None
     description: str | None = None
     price_history_5y: list[AssetInfoPricePoint] = []
 

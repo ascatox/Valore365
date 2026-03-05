@@ -542,6 +542,9 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) ->
         ]
     except Exception:
         pass
+    day_change_pct: float | None = None
+    if info.current_price is not None and info.previous_close is not None and info.previous_close != 0:
+        day_change_pct = round(((info.current_price / info.previous_close) - 1) * 100, 2)
     return AssetInfoResponse(
         asset_id=asset_id,
         symbol=pricing_asset.symbol,
@@ -558,6 +561,9 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) ->
         fifty_two_week_low=info.fifty_two_week_low,
         avg_volume=info.avg_volume,
         currency=info.currency,
+        current_price=info.current_price,
+        previous_close=info.previous_close,
+        day_change_pct=day_change_pct,
         description=info.description,
         price_history_5y=price_history,
     )

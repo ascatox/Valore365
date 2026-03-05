@@ -3,6 +3,7 @@ import { Card, Grid, Group, Loader, Modal, Paper, Progress, Stack, Table, Text, 
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { Badge } from '@mantine/core';
 import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import type { AssetInfo, Position, PortfolioSummary } from '../../../services/api';
 import { getAssetInfo } from '../../../services/api';
@@ -206,6 +207,22 @@ function AssetInfoModal({ assetId, symbol, opened, onClose }: { assetId: number;
       {info && !loading && (
         <Stack gap="md">
           {info.name && <Text fw={600} size="md">{info.name}</Text>}
+
+          {info.current_price != null && (
+            <Group gap="sm" align="center">
+              <Text fw={700} size="lg">{formatMoney(info.current_price, info.currency ?? 'USD')}</Text>
+              {info.day_change_pct != null && (
+                <Badge
+                  variant="light"
+                  color={getVariationColor(info.day_change_pct)}
+                  size="lg"
+                  styles={{ root: { fontSize: 14, fontWeight: 600 } }}
+                >
+                  {info.day_change_pct >= 0 ? '+' : ''}{formatPct(info.day_change_pct)}
+                </Badge>
+              )}
+            </Group>
+          )}
 
           <Grid gutter="md">
             <Grid.Col span={6}>

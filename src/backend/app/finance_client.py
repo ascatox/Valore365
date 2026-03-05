@@ -82,6 +82,8 @@ class ProviderAssetInfo:
     fifty_two_week_low: float | None
     avg_volume: float | None
     currency: str | None
+    current_price: float | None
+    previous_close: float | None
     description: str | None
 
 
@@ -606,6 +608,8 @@ class YahooFinanceClient:
             fifty_two_week_low=_num('fiftyTwoWeekLow'),
             avg_volume=_num('averageVolume'),
             currency=info.get('currency'),
+            current_price=_num('currentPrice') or _num('regularMarketPrice'),
+            previous_close=_num('previousClose') or _num('regularMarketPreviousClose'),
             description=info.get('longBusinessSummary'),
         )
 

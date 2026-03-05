@@ -155,6 +155,9 @@ export interface AssetInfo {
   fifty_two_week_low: number | null;
   avg_volume: number | null;
   currency: string | null;
+  current_price: number | null;
+  previous_close: number | null;
+  day_change_pct: number | null;
   description: string | null;
   price_history_5y: AssetInfoPricePoint[];
 }
