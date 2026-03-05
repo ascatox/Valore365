@@ -1820,6 +1820,9 @@ class PortfolioRepository:
                     continue
                 current_price_base = market_price_by_asset.get(asset_id, 0.0)
                 previous_price_base = prev_close * prev_fx
+                if not math.isfinite(current_price_base) or not math.isfinite(previous_price_base):
+                    _log.warning("day_change: asset %s has NaN/Inf price (curr=%.4f prev=%.4f), skipping", asset_id, current_price_base, previous_price_base)
+                    continue
                 _log.info("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (close=%.4f fx=%.4f) dates=%s→%s",
                           asset_id, quantity, current_price_base, previous_price_base, prev_close, prev_fx, prev_day, latest_day)
                 day_change += quantity * (current_price_base - previous_price_base)
