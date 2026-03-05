@@ -1,16 +1,11 @@
-import { useEffect } from 'react';
-import { Alert, Button, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
+import { useMemo } from 'react';
+import { Alert, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { IconRefresh, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
+import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import { formatDateTime, formatPct, getVariationColor } from '../formatters';
-import type { MarketDataState } from '../hooks/useMarketData';
+import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
-
-interface MercatiTabProps {
-  marketData: MarketDataState;
-  isActive: boolean;
-}
 
 const formatMarketPrice = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return 'N/D';
@@ -26,7 +21,6 @@ function IntradayMiniChart({ item }: { item: MarketQuoteItem }) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 
   const data = item.intraday;
@@ -127,23 +121,23 @@ function MarketItemCard({ item }: { item: MarketQuoteItem }) {
   );
 }
 
-export function MercatiTab({ marketData, isActive }: MercatiTabProps) {
-  const { data, loading, error, loaded, lastUpdatedAt, fetchMarketData } = marketData;
+export function MercatiTab() {
+  const { data, isLoading, error } = useMarketQuotes();
 
-  useEffect(() => {
-    if (!isActive) return;
-    void fetchMarketData();
-  }, [isActive, fetchMarketData]);
+  const lastUpdatedAt = useMemo(() => {
+    if (!data) return null;
+    let latestTs: string | null = null;
+    for (const cat of data.categories) {
+      for (const item of cat.items) {
+        if (item.ts && (!latestTs || item.ts > latestTs)) {
+          latestTs = item.ts;
+        }
+      }
+    }
+    return latestTs;
+  }, [data]);
 
-  useEffect(() => {
-    if (!isActive) return;
-    const timer = window.setInterval(() => {
-      void fetchMarketData(true);
-    }, 60_000);
-    return () => window.clearInterval(timer);
-  }, [isActive, fetchMarketData]);
-
-  if (loading && !loaded) {
+  if (isLoading && !data) {
     return (
       <Group>
         <Loader size="sm" />
@@ -154,30 +148,14 @@ export function MercatiTab({ marketData, isActive }: MercatiTabProps) {
 
   return (
     <Stack gap="md">
-      <Group justify="space-between" wrap="wrap" gap="xs">
-        <Stack gap={0}>
-          <Text size="sm" c="dimmed">
-            Quotazioni live da provider finanziario (nessun dato salvato su DB)
-          </Text>
-          <Text size="xs" c="dimmed">
-            Ultimo aggiornamento: {lastUpdatedAt ? formatDateTime(lastUpdatedAt) : 'N/D'}
-          </Text>
-        </Stack>
-        <Button
-          size="xs"
-          variant="default"
-          leftSection={<IconRefresh size={14} />}
-          onClick={() => void fetchMarketData(true)}
-          loading={loading}
-        >
-          Aggiorna
-        </Button>
-      </Group>
+      <Text size="xs" c="dimmed">
+        Ultimo aggiornamento: {lastUpdatedAt ? formatDateTime(lastUpdatedAt) : 'N/D'}
+      </Text>
 
-      {error && <Alert color="red">{error}</Alert>}
+      {error && <Alert color="red">{error instanceof Error ? error.message : 'Errore caricamento mercati'}</Alert>}
 
-      {!loading && !data && !error && (
-        <Text size="sm" c="dimmed">Apri il tab per caricare i dati di mercato.</Text>
+      {!isLoading && !data && !error && (
+        <Text size="sm" c="dimmed">Nessun dato di mercato disponibile.</Text>
       )}
 
       {data?.categories.map((category) => (

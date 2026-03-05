@@ -1,15 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Card, Group, Loader, Paper, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core';
-import {
-  getGainTimeseries,
-  getMWRTimeseries,
-  getPerformanceSummary,
-  getTWRTimeseries,
-  type GainTimeseriesPoint,
-  type MWRTimeseriesPoint,
-  type PerformanceSummary,
-  type TWRTimeseriesPoint,
-} from '../../../services/api';
+import { usePerformanceSummary, useTWRTimeseries, useGainTimeseries, useMWRTimeseries } from '../hooks/queries';
 import { formatMoney, formatPct, getVariationColor } from '../formatters';
 import { PerformanceChart } from '../summary/PerformanceChart';
 
@@ -58,70 +49,19 @@ function formatChartDate(isoDate: string): string {
 
 export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const [period, setPeriod] = useState<PeriodKey>('1y');
-  const [loading, setLoading] = useState(false);
-  const [chartsLoading, setChartsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [summary, setSummary] = useState<PerformanceSummary | null>(null);
-  const [twrPoints, setTwrPoints] = useState<TWRTimeseriesPoint[]>([]);
-  const [gainPoints, setGainPoints] = useState<GainTimeseriesPoint[]>([]);
-  const [mwrPoints, setMwrPoints] = useState<MWRTimeseriesPoint[]>([]);
+  const startDate = periodToStartDate(period);
 
-  useEffect(() => {
-    if (!portfolioId) {
-      setSummary(null);
-      setTwrPoints([]);
-      setGainPoints([]);
-      setMwrPoints([]);
-      setError(null);
-      setLoading(false);
-      return;
-    }
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = usePerformanceSummary(portfolioId, period);
+  const { data: twrPoints = [], isLoading: twrLoading } = useTWRTimeseries(portfolioId, startDate);
+  const { data: gainPoints = [], isLoading: gainLoading } = useGainTimeseries(portfolioId, startDate);
+  const { data: mwrPoints = [], isLoading: mwrLoading } = useMWRTimeseries(portfolioId, startDate);
 
-    let active = true;
-    setLoading(true);
-    setChartsLoading(true);
-    setError(null);
+  const loading = summaryLoading;
+  const chartsLoading = twrLoading || gainLoading || mwrLoading;
+  const error = summaryError instanceof Error ? summaryError.message : null;
 
-    const startDate = periodToStartDate(period);
+  const currency = 'EUR';
 
-    Promise.all([
-      getPerformanceSummary(portfolioId, period),
-      getTWRTimeseries(portfolioId, startDate),
-      getGainTimeseries(portfolioId, startDate),
-      getMWRTimeseries(portfolioId, startDate),
-    ])
-      .then(([summaryRes, twrRes, gainRes, mwrRes]) => {
-        if (!active) return;
-        setSummary(summaryRes);
-        setTwrPoints(twrRes);
-        setGainPoints(gainRes);
-        setMwrPoints(mwrRes);
-      })
-      .catch((err) => {
-        if (!active) return;
-        setSummary(null);
-        setTwrPoints([]);
-        setGainPoints([]);
-        setMwrPoints([]);
-        setError(err instanceof Error ? err.message : 'Errore caricamento metriche performance');
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-          setChartsLoading(false);
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [portfolioId, period]);
-
-  const currency = useMemo(() => {
-    return 'EUR';
-  }, []);
-
-  // TWR chart data
   const twrChartData = useMemo(
     () => twrPoints.map((p) => ({
       rawDate: p.date,
@@ -134,9 +74,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const twrStats = useMemo(() => {
     if (!twrPoints.length) return undefined;
     const last = twrPoints[twrPoints.length - 1].cumulative_twr_pct;
-    return [
-      { label: 'TWR', value: formatPct(last), color: getVariationColor(last) },
-    ];
+    return [{ label: 'TWR', value: formatPct(last), color: getVariationColor(last) }];
   }, [twrPoints]);
 
   const twrColor = useMemo(() => {
@@ -145,7 +83,6 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return last >= 0 ? '#16a34a' : '#dc2626';
   }, [twrPoints]);
 
-  // Gain chart data
   const gainChartData = useMemo(
     () => gainPoints.map((p) => ({
       rawDate: p.date,
@@ -158,9 +95,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const gainStats = useMemo(() => {
     if (!gainPoints.length) return undefined;
     const last = gainPoints[gainPoints.length - 1].absolute_gain;
-    return [
-      { label: '', value: formatMoney(last, currency, true), color: getVariationColor(last) },
-    ];
+    return [{ label: '', value: formatMoney(last, currency, true), color: getVariationColor(last) }];
   }, [gainPoints, currency]);
 
   const gainColor = useMemo(() => {
@@ -169,7 +104,6 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return last >= 0 ? '#16a34a' : '#dc2626';
   }, [gainPoints]);
 
-  // MWR chart data
   const mwrChartData = useMemo(
     () => mwrPoints
       .filter((p) => p.cumulative_mwr_pct != null)
@@ -184,9 +118,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const mwrStats = useMemo(() => {
     if (!mwrChartData.length) return undefined;
     const last = mwrChartData[mwrChartData.length - 1].value;
-    return [
-      { label: 'MWR', value: formatPct(last), color: getVariationColor(last) },
-    ];
+    return [{ label: 'MWR', value: formatPct(last), color: getVariationColor(last) }];
   }, [mwrChartData]);
 
   const mwrColor = useMemo(() => {

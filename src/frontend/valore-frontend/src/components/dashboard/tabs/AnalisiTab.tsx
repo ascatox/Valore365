@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, Grid, Paper, SegmentedControl, Text } from '@mantine/core';
 import { AnalysisKpiGrid } from '../analysis/AnalysisKpiGrid';
 import { PerformanceMetrics } from '../analysis/PerformanceMetrics';
@@ -9,40 +9,136 @@ import { PerformersTable } from '../analysis/PerformersTable';
 import { IntradayModal } from '../analysis/IntradayModal';
 import { DASHBOARD_WINDOWS } from '../constants';
 import { formatNum, formatPct, getVariationColor } from '../formatters';
-import type { DashboardData, AllocationDoughnutItem, PerformerItem } from '../types';
+import {
+  useTargetAllocation,
+  useTargetPerformance,
+  useTargetAssetPerformance,
+  usePortfolioSummary,
+  usePortfolioTimeseries,
+  useIntradayTargetPerformance,
+  useAssetIntradayTargetPerformance,
+  useIntradayDetail,
+  usePortfolios,
+} from '../hooks/queries';
+import type { AllocationDoughnutItem, ChartPoint, IntradayChartPoint, PerformerItem } from '../types';
+import { ENABLE_TARGET_ALLOCATION } from '../../../features';
 
 interface AnalisiTabProps {
-  data: DashboardData;
+  portfolioId: number | null;
+  chartWindow: string;
+  setChartWindow: (w: string) => void;
 }
 
-export function AnalisiTab({ data }: AnalisiTabProps) {
-  const {
-    allocation,
-    portfolioSummary,
-    targetPerformance,
-    selectedPortfolio,
-    chartWindow,
-    setChartWindow,
-    chartData,
-    mainIntradayChartData,
-    mainIntradayLoading,
-    assetMiniCharts,
-    assetIntradayLoading,
-    chartWindowDays,
-    indexCardStats,
-    mainChartStats,
-    handleDailyChartClick,
-    intradayOpen,
-    setIntradayOpen,
-    intradayLoading,
-    intradayError,
-    intradayChartData,
-    intradayStats,
-    intradayDateLabel,
-    mvpCurrency,
-  } = data;
+export function AnalisiTab({ portfolioId, chartWindow, setChartWindow }: AnalisiTabProps) {
+  const [intradayOpen, setIntradayOpen] = useState(false);
+  const [intradayDate, setIntradayDate] = useState<string | null>(null);
+  const [intradayDateLabel, setIntradayDateLabel] = useState<string | null>(null);
 
+  // --- Queries ---
+  const { data: portfolios = [] } = usePortfolios();
+  const { data: allocation = [] } = useTargetAllocation(portfolioId);
+  const { data: targetPerformance } = useTargetPerformance(portfolioId);
+  const { data: assetPerformance } = useTargetAssetPerformance(portfolioId);
+  const { data: portfolioSummary } = usePortfolioSummary(portfolioId);
+  const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(portfolioId);
+
+  const isIntraday = chartWindow === '1';
+  const chartWindowDays = useMemo(
+    () => DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.days ?? 90,
+    [chartWindow],
+  );
+
+  const { data: mainIntradayData, isLoading: mainIntradayLoading } = useIntradayTargetPerformance(portfolioId, isIntraday);
+  const { data: assetIntradayPerformance, isLoading: assetIntradayLoading } = useAssetIntradayTargetPerformance(portfolioId, isIntraday);
+  const { data: intradayDetailData, isLoading: intradayLoading, error: intradayError } = useIntradayDetail(portfolioId, intradayDate);
+
+  const selectedPortfolio = useMemo(
+    () => portfolios.find((p) => p.id === portfolioId) ?? null,
+    [portfolios, portfolioId],
+  );
+
+  const mvpCurrency = portfolioSummary?.base_currency ?? selectedPortfolio?.base_currency ?? 'EUR';
   const totalAssignedWeight = allocation.reduce((sum, item) => sum + item.weight_pct, 0);
+
+  // --- Computed chart data ---
+  const chartData = useMemo<ChartPoint[]>(() => {
+    if (ENABLE_TARGET_ALLOCATION) {
+      return (targetPerformance?.points ?? [])
+        .filter((point) => point.weighted_index > 0)
+        .slice(-chartWindowDays)
+        .map((point) => ({
+          rawDate: point.date,
+          date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+          value: point.weighted_index,
+        }));
+    }
+    const points = portfolioTimeseries
+      .filter((point) => Number.isFinite(point.market_value) && point.market_value > 0)
+      .slice(-chartWindowDays);
+    const base = points[0]?.market_value ?? 0;
+    if (!Number.isFinite(base) || base <= 0) return [];
+    return points.map((point) => ({
+      rawDate: point.date,
+      date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+      value: (point.market_value / base) * 100,
+    }));
+  }, [targetPerformance, chartWindowDays, portfolioTimeseries]);
+
+  const mainIntradayChartData = useMemo<IntradayChartPoint[]>(
+    () =>
+      (mainIntradayData?.points ?? []).map((p) => ({
+        ts: p.ts,
+        time: new Date(p.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        value: p.weighted_index,
+      })),
+    [mainIntradayData],
+  );
+
+  const indexCardStats = useMemo(() => {
+    if (isIntraday) {
+      const values = (mainIntradayData?.points ?? []).map((p) => p.weighted_index).filter((v) => Number.isFinite(v));
+      if (!values.length || values[0] <= 0) return null;
+      const last = values[values.length - 1];
+      return { index: last, diffPts: last - 100, diffPct: ((last / values[0]) - 1) * 100 };
+    }
+    const values = chartData.map((p) => p.value).filter((v) => Number.isFinite(v));
+    if (!values.length || values[0] <= 0) return null;
+    const last = values[values.length - 1];
+    return { index: last, diffPts: last - 100, diffPct: ((last / values[0]) - 1) * 100 };
+  }, [isIntraday, chartData, mainIntradayData]);
+
+  const mainChartStats = useMemo(() => {
+    const series = isIntraday ? mainIntradayChartData : chartData;
+    if (!series.length) return null;
+    const first = Number(series[0]?.value ?? 0);
+    const last = Number(series[series.length - 1]?.value ?? 0);
+    if (!Number.isFinite(first) || !Number.isFinite(last) || first <= 0) return null;
+    return { last, periodPct: ((last / first) - 1) * 100 };
+  }, [isIntraday, mainIntradayChartData, chartData]);
+
+  const assetMiniCharts = useMemo(() => {
+    if (isIntraday) {
+      return (assetIntradayPerformance?.assets ?? []).map((asset) => ({
+        ...asset,
+        chart: asset.points.map((p) => ({
+          rawDate: p.ts,
+          time: new Date(p.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+          value: p.weighted_index,
+        })),
+      }));
+    }
+    const visibleDates = new Set(chartData.map((p) => p.rawDate));
+    return (assetPerformance?.assets ?? []).map((asset) => ({
+      ...asset,
+      chart: asset.points
+        .filter((p) => visibleDates.has(p.date))
+        .map((p) => ({
+          rawDate: p.date,
+          date: new Date(p.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+          value: p.index_value,
+        })),
+    }));
+  }, [isIntraday, assetIntradayPerformance, assetPerformance, chartData]);
 
   const targetAllocationData = useMemo<AllocationDoughnutItem[]>(
     () => allocation.map((item) => ({ name: item.symbol, value: item.weight_pct, asset_id: item.asset_id })),
@@ -52,9 +148,7 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
   const performerStats = useMemo(() => {
     const computed = assetMiniCharts
       .map((asset) => {
-        const values = asset.chart
-          .map((p) => Number(p.value))
-          .filter((v) => Number.isFinite(v));
+        const values = asset.chart.map((p) => Number(p.value)).filter((v) => Number.isFinite(v));
         if (values.length < 2) return null;
         const first = values[0];
         const last = values[values.length - 1];
@@ -81,7 +175,39 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
     return { best, worst, rows };
   }, [assetMiniCharts]);
 
-  const isIntraday = chartWindow === '1';
+  // --- Intraday modal ---
+  const intradayChartData = useMemo<IntradayChartPoint[]>(
+    () =>
+      (intradayDetailData?.points ?? []).map((p) => ({
+        ts: p.ts,
+        time: new Date(p.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+        value: p.weighted_index,
+      })),
+    [intradayDetailData],
+  );
+
+  const intradayStats = useMemo(() => {
+    if (!intradayChartData.length) return null;
+    const values = intradayChartData.map((p) => p.value).filter((v) => Number.isFinite(v));
+    if (!values.length) return null;
+    const open = values[0];
+    const last = values[values.length - 1];
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const dayPct = open > 0 ? ((last / open) - 1) * 100 : 0;
+    return { open, last, min, max, dayPct };
+  }, [intradayChartData]);
+
+  const handleDailyChartClick = (state: any) => {
+    if (!ENABLE_TARGET_ALLOCATION) return;
+    const payload = state?.activePayload?.[0]?.payload;
+    const rawDate = payload?.rawDate as string | undefined;
+    if (!rawDate || !portfolioId) return;
+    setIntradayDate(rawDate);
+    setIntradayDateLabel(new Date(rawDate).toLocaleDateString('it-IT'));
+    setIntradayOpen(true);
+  };
+
   const activeChartData = isIntraday ? mainIntradayChartData : chartData;
   const chartXKey = isIntraday ? 'time' : 'date';
 
@@ -108,14 +234,14 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
 
   return (
     <>
-      <PerformanceMetrics portfolioId={selectedPortfolio?.id ?? null} />
+      <PerformanceMetrics portfolioId={portfolioId} />
 
       <AnalysisKpiGrid
         indexCardStats={indexCardStats}
         totalAssignedWeight={totalAssignedWeight}
         allocation={allocation}
         selectedPortfolio={selectedPortfolio}
-        portfolioSummary={portfolioSummary}
+        portfolioSummary={portfolioSummary ?? null}
         currency={mvpCurrency}
         bestPerformer={performerStats.best}
         worstPerformer={performerStats.worst}
@@ -173,10 +299,10 @@ export function AnalisiTab({ data }: AnalisiTabProps) {
 
       <IntradayModal
         opened={intradayOpen}
-        onClose={() => setIntradayOpen(false)}
+        onClose={() => { setIntradayOpen(false); setIntradayDate(null); }}
         dateLabel={intradayDateLabel}
         loading={intradayLoading}
-        error={intradayError}
+        error={intradayError instanceof Error ? intradayError.message : intradayError ? String(intradayError) : null}
         chartData={intradayChartData}
         stats={intradayStats}
       />

@@ -10,37 +10,129 @@ import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { BestWorstCards } from '../summary/BestWorstCards';
 import { DASHBOARD_WINDOWS } from '../constants';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
-import type { DashboardData, PerformerItem, AllocationDoughnutItem } from '../types';
+import {
+  usePortfolioSummary,
+  usePortfolioPositions,
+  usePortfolioAllocation,
+  usePortfolioTimeseries,
+  usePortfolioIntradayTimeseries,
+  usePortfolioDataCoverage,
+  useGainTimeseries,
+  useBenchmarks,
+  useBenchmarkPrices,
+} from '../hooks/queries';
+import type { PerformerItem, AllocationDoughnutItem } from '../types';
 
 interface PanoramicaTabProps {
-  data: DashboardData;
+  portfolioId: number | null;
+  chartWindow: string;
+  setChartWindow: (w: string) => void;
 }
 
-export function PanoramicaTab({ data }: PanoramicaTabProps) {
+export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: PanoramicaTabProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const {
-    portfolioSummary,
-    portfolioPositions,
-    portfolioAllocation,
-    mvpCurrency,
-    mvpTimeseriesData,
-    portfolioIntradayData,
-    mvpTimeseriesStats,
-    chartWindow,
-    setChartWindow,
-    chartWindowDays,
-    dataCoverage,
-    gainChartData,
-    gainChartLoading,
-    benchmarks,
-    selectedBenchmarkId,
-    setSelectedBenchmarkId,
-    comparisonChartData,
-    benchmarkLoading,
-  } = data;
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
+  const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+
+  const [selectedBenchmarkId, setSelectedBenchmarkId] = useState<number | null>(null);
+  const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
+
+  // --- Queries ---
+  const { data: portfolioSummary } = usePortfolioSummary(portfolioId);
+  const { data: portfolioPositions = [] } = usePortfolioPositions(portfolioId);
+  const { data: portfolioAllocationData = [] } = usePortfolioAllocation(portfolioId);
+  const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(portfolioId);
+  const { data: dataCoverage } = usePortfolioDataCoverage(portfolioId);
+  const { data: benchmarkList = [] } = useBenchmarks();
+
+  const isIntradayWindow = chartWindow === '1';
+  const chartWindowDays = useMemo(
+    () => DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.days ?? 90,
+    [chartWindow],
+  );
+
+  const gainStartDate = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - chartWindowDays);
+    return d.toISOString().slice(0, 10);
+  }, [chartWindowDays]);
+
+  const benchmarkStartDate = gainStartDate;
+
+  const { data: portfolioIntradayRaw = [], isLoading: _intradayLoading } = usePortfolioIntradayTimeseries(portfolioId, isIntradayWindow);
+  const { data: gainPoints = [], isLoading: gainChartLoading } = useGainTimeseries(portfolioId, gainStartDate);
+  const { data: benchmarkPrices = [], isLoading: benchmarkLoading } = useBenchmarkPrices(selectedBenchmarkId, portfolioId, benchmarkStartDate);
+
+  // --- Computed values ---
+  const mvpCurrency = portfolioSummary?.base_currency ?? 'EUR';
+
+  const mvpTimeseriesData = useMemo(
+    () =>
+      portfolioTimeseries
+        .filter((point) => Number.isFinite(point.market_value) && point.market_value > 0)
+        .slice(-(isIntradayWindow ? 2 : chartWindowDays))
+        .map((point) => ({
+          rawDate: point.date,
+          date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+          value: point.market_value,
+        })),
+    [portfolioTimeseries, isIntradayWindow, chartWindowDays],
+  );
+
+  const portfolioIntradayData = useMemo(
+    () =>
+      portfolioIntradayRaw
+        .filter((p) => Number.isFinite(p.market_value) && p.market_value > 0)
+        .map((p) => ({
+          ts: p.ts,
+          time: new Date(p.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' }),
+          value: p.market_value,
+        })),
+    [portfolioIntradayRaw],
+  );
+
+  const mvpTimeseriesStats = useMemo(() => {
+    if (!mvpTimeseriesData.length) return null;
+    const first = Number(mvpTimeseriesData[0]?.value ?? 0);
+    const last = Number(mvpTimeseriesData[mvpTimeseriesData.length - 1]?.value ?? 0);
+    if (!Number.isFinite(last)) return null;
+    if (!Number.isFinite(first) || first <= 0) return { last, pct: 0 };
+    return { last, pct: ((last / first) - 1) * 100 };
+  }, [mvpTimeseriesData]);
+
+  const portfolioChartData = isIntradayWindow && portfolioIntradayData.length > 0
+    ? portfolioIntradayData
+    : mvpTimeseriesData;
+
+  const portfolioChartStats = useMemo(() => {
+    const series = portfolioChartData;
+    if (!series.length) return undefined;
+    const last = Number(series[series.length - 1]?.value ?? 0);
+    if (!Number.isFinite(last)) return undefined;
+    if (isIntradayWindow && portfolioSummary) {
+      const pct = portfolioSummary.day_change_pct;
+      return [
+        { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+        { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
+      ];
+    }
+    const first = Number(series[0]?.value ?? 0);
+    const pct = Number.isFinite(first) && first > 0 ? ((last / first) - 1) * 100 : 0;
+    return [
+      { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+      { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
+    ];
+  }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
+
+  const chartStats = mvpTimeseriesStats
+    ? [
+        { label: '', value: formatMoney(mvpTimeseriesStats.last, mvpCurrency), color: 'blue' },
+        { label: 'Var', value: formatPct(mvpTimeseriesStats.pct), color: getVariationColor(mvpTimeseriesStats.pct) },
+      ]
+    : undefined;
 
   const kpiItems = useMemo(() => [
     {
@@ -80,42 +172,9 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     },
   ], [portfolioSummary, mvpCurrency, isMobile]);
 
-  const chartStats = mvpTimeseriesStats
-    ? [
-        { label: '', value: formatMoney(mvpTimeseriesStats.last, mvpCurrency), color: 'blue' },
-        { label: 'Var', value: formatPct(mvpTimeseriesStats.pct), color: getVariationColor(mvpTimeseriesStats.pct) },
-      ]
-    : undefined;
-
-  const isIntradayWindow = chartWindow === '1';
-  const portfolioChartData = isIntradayWindow && portfolioIntradayData.length > 0
-    ? portfolioIntradayData
-    : mvpTimeseriesData;
-
-  const portfolioChartStats = useMemo(() => {
-    const series = portfolioChartData;
-    if (!series.length) return undefined;
-    const last = Number(series[series.length - 1]?.value ?? 0);
-    if (!Number.isFinite(last)) return undefined;
-    // When on 1-day window, use the backend day_change_pct so it matches the KPI card
-    if (isIntradayWindow && portfolioSummary) {
-      const pct = portfolioSummary.day_change_pct;
-      return [
-        { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
-        { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
-      ];
-    }
-    const first = Number(series[0]?.value ?? 0);
-    const pct = Number.isFinite(first) && first > 0 ? ((last / first) - 1) * 100 : 0;
-    return [
-      { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
-      { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
-    ];
-  }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
-
   const allocationDoughnutData = useMemo<AllocationDoughnutItem[]>(
-    () => portfolioAllocation.map((item) => ({ name: item.symbol, value: item.weight_pct, asset_id: item.asset_id })),
-    [portfolioAllocation],
+    () => portfolioAllocationData.map((item) => ({ name: item.symbol, value: item.weight_pct, asset_id: item.asset_id })),
+    [portfolioAllocationData],
   );
 
   const { best, worst } = useMemo(() => {
@@ -139,6 +198,17 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     return { best: bestItems, worst: worstItems };
   }, [portfolioPositions]);
 
+  const gainChartData = useMemo(
+    () =>
+      gainPoints.map((p) => ({
+        rawDate: p.date,
+        date: new Date(p.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+        portfolioValue: p.portfolio_value,
+        netInvested: p.net_invested,
+      })),
+    [gainPoints],
+  );
+
   const gainChartStats = useMemo(() => {
     if (!gainChartData.length) return undefined;
     const last = gainChartData[gainChartData.length - 1];
@@ -153,10 +223,31 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
   const benchmarkSelectData = useMemo(
     () => [
       { value: '', label: 'Nessuno' },
-      ...benchmarks.map((b) => ({ value: String(b.asset_id), label: b.symbol })),
+      ...benchmarkList.map((b) => ({ value: String(b.asset_id), label: b.symbol })),
     ],
-    [benchmarks],
+    [benchmarkList],
   );
+
+  const comparisonChartData = useMemo(() => {
+    if (!selectedBenchmarkId || !mvpTimeseriesData.length || !benchmarkPrices.length) return [];
+    const benchMap = new Map(benchmarkPrices.map((p) => [p.date, p.close]));
+    const points: Array<{ rawDate: string; date: string; portfolio: number; benchmark: number }> = [];
+    let portfolioBase: number | null = null;
+    let benchBase: number | null = null;
+    for (const pt of mvpTimeseriesData) {
+      const benchClose = benchMap.get(pt.rawDate);
+      if (benchClose == null) continue;
+      if (portfolioBase === null) { portfolioBase = pt.value; benchBase = benchClose; }
+      if (!portfolioBase || !benchBase) continue;
+      points.push({
+        rawDate: pt.rawDate,
+        date: pt.date,
+        portfolio: (pt.value / portfolioBase) * 100,
+        benchmark: (benchClose / benchBase) * 100,
+      });
+    }
+    return points;
+  }, [selectedBenchmarkId, mvpTimeseriesData, benchmarkPrices]);
 
   const hasBenchmark = selectedBenchmarkId !== null && (comparisonChartData.length > 0 || benchmarkLoading);
 
@@ -165,15 +256,11 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     const last = comparisonChartData[comparisonChartData.length - 1];
     const pPct = last.portfolio - 100;
     const bPct = last.benchmark - 100;
-    const benchLabel = benchmarks.find((b) => b.asset_id === selectedBenchmarkId)?.symbol ?? 'Benchmark';
+    const benchLabel = benchmarkList.find((b) => b.asset_id === selectedBenchmarkId)?.symbol ?? 'Benchmark';
     return { pPct, bPct, benchLabel };
-  }, [hasBenchmark, comparisonChartData, benchmarks, selectedBenchmarkId]);
+  }, [hasBenchmark, comparisonChartData, benchmarkList, selectedBenchmarkId]);
 
-  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
-  const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
-
-  const totalAllocationPct = portfolioAllocation.reduce((sum, item) => sum + item.weight_pct, 0);
-  const bestWorstPeriodLabel = 'oggi';
+  const totalAllocationPct = portfolioAllocationData.reduce((sum, item) => sum + item.weight_pct, 0);
 
   const insufficientAssets = useMemo(
     () => (dataCoverage?.assets ?? []).filter((a) => a.coverage_pct < (dataCoverage?.threshold_pct ?? 80)),
@@ -184,8 +271,6 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
     () => portfolioPositions.filter((p) => p.price_stale),
     [portfolioPositions],
   );
-
-  const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
 
   return (
     <>
@@ -468,7 +553,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
 
       <Grid gutter="md" mt="md">
         <Grid.Col span={{ base: 12, md: 7 }}>
-          <BestWorstCards best={best} worst={worst} periodLabel={bestWorstPeriodLabel} />
+          <BestWorstCards best={best} worst={worst} periodLabel="oggi" />
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 5 }}>
           <AllocationDoughnut

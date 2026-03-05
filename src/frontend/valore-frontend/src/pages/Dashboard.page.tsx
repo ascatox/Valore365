@@ -1,4 +1,4 @@
-import { useRef, useState, type TouchEvent } from 'react';
+import { useEffect, useRef, useState, type TouchEvent } from 'react';
 import {
   Alert,
   Group,
@@ -9,37 +9,40 @@ import {
   Title,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
+import { useQueryClient } from '@tanstack/react-query';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage } from '@tabler/icons-react';
-import { useDashboardData } from '../components/dashboard/hooks/useDashboardData';
-import { useMarketData } from '../components/dashboard/hooks/useMarketData';
+import { usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
 import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
 import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
 import { PerformanceMetrics } from '../components/dashboard/analysis/PerformanceMetrics';
 import { formatDateTime } from '../components/dashboard/formatters';
-import { STORAGE_KEYS } from '../components/dashboard/constants';
+import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constants';
 import { ENABLE_TARGET_ALLOCATION } from '../features';
+import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../services/api';
 
 export function DashboardPage() {
   const DASHBOARD_TABS = ENABLE_TARGET_ALLOCATION
     ? (['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const)
     : (['panoramica', 'posizioni', 'mercati', 'performance'] as const);
-  const data = useDashboardData();
-  const marketData = useMarketData();
+
+  const queryClient = useQueryClient();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
-  const {
-    portfolios,
-    selectedPortfolioId,
-    setSelectedPortfolioId,
-    loading,
-    dataLoading,
-    refreshing,
-    error,
-    refreshMessage,
-    targetPerformance,
-  } = data;
+
+  // --- Shared UI state ---
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
+  });
+
+  const [chartWindow, setChartWindow] = useState<string>(() => {
+    if (typeof window === 'undefined') return '1';
+    const stored = window.localStorage.getItem(STORAGE_KEYS.chartWindow);
+    const isValid = stored ? DASHBOARD_WINDOWS.some((w) => w.value === stored) : false;
+    return isValid ? (stored as string) : '1';
+  });
 
   const [activeTab, setActiveTab] = useState<string | null>(() => {
     if (typeof window === 'undefined') return 'panoramica';
@@ -47,6 +50,67 @@ export function DashboardPage() {
     return stored && DASHBOARD_TABS.includes(stored as (typeof DASHBOARD_TABS)[number]) ? stored : 'panoramica';
   });
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  // --- Queries ---
+  const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
+  const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
+  const { data: targetPerformance } = useTargetPerformance(portfolioId);
+
+  // --- Auto-select portfolio ---
+  useEffect(() => {
+    if (!portfolios.length) return;
+    setSelectedPortfolioId((prev) => {
+      const prevExists = prev ? portfolios.some((p) => String(p.id) === prev) : false;
+      return prevExists ? prev : String(portfolios[0].id);
+    });
+  }, [portfolios]);
+
+  // --- Persist UI state ---
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (selectedPortfolioId) {
+      window.localStorage.setItem(STORAGE_KEYS.selectedPortfolioId, selectedPortfolioId);
+    } else {
+      window.localStorage.removeItem(STORAGE_KEYS.selectedPortfolioId);
+    }
+  }, [selectedPortfolioId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.chartWindow, chartWindow);
+  }, [chartWindow]);
+
+  // --- Global refresh listener ---
+  useEffect(() => {
+    const onRefresh = async () => {
+      if (!portfolioId || !Number.isFinite(portfolioId)) {
+        setRefreshMessage('Seleziona un portfolio prima di aggiornare');
+        return;
+      }
+      setRefreshError(null);
+      setRefreshMessage(null);
+      setRefreshing(true);
+      try {
+        const refreshResult = await refreshPortfolioPrices(portfolioId, 'transactions');
+        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'transactions');
+        await queryClient.invalidateQueries();
+        setRefreshMessage(
+          `Aggiornati prezzi: ${refreshResult.refreshed_assets}/${refreshResult.requested_assets}, storico: ${backfillResult.assets_refreshed}/${backfillResult.assets_requested}`,
+        );
+      } catch (err) {
+        setRefreshError(err instanceof Error ? err.message : 'Errore durante aggiornamento prezzi');
+      } finally {
+        setRefreshing(false);
+      }
+    };
+    window.addEventListener('valore365:refresh-dashboard', onRefresh);
+    return () => { window.removeEventListener('valore365:refresh-dashboard', onRefresh); };
+  }, [portfolioId, queryClient]);
+
+  // --- Tab navigation ---
   const handleTabChange = (tab: string | null) => {
     setActiveTab(tab);
     if (typeof window !== 'undefined' && tab) {
@@ -62,34 +126,30 @@ export function DashboardPage() {
 
   const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
     if (!isMobile || !touchStartRef.current || event.changedTouches.length !== 1 || !activeTab) return;
-
     const touch = event.changedTouches[0];
     const dx = touch.clientX - touchStartRef.current.x;
     const dy = touch.clientY - touchStartRef.current.y;
     touchStartRef.current = null;
-
-    // Only horizontal swipes with limited vertical movement should switch tabs.
     if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy) || Math.abs(dy) > 80) return;
-
     const currentIndex = DASHBOARD_TABS.indexOf(activeTab as (typeof DASHBOARD_TABS)[number]);
     if (currentIndex < 0) return;
-
     const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
     if (nextIndex < 0 || nextIndex >= DASHBOARD_TABS.length) return;
-
     handleTabChange(DASHBOARD_TABS[nextIndex]);
   };
+
+  const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
 
   return (
     <div style={{ padding: 'var(--mantine-spacing-sm)' }}>
       <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
         <Title order={2} fw={700}>Dashboard</Title>
         <Select
-          placeholder={loading ? 'Caricamento portafogli...' : 'Seleziona portfolio'}
+          placeholder={portfoliosLoading ? 'Caricamento portafogli...' : 'Seleziona portfolio'}
           data={portfolios.map((p) => ({ value: String(p.id), label: `${p.name} (#${p.id})` }))}
           value={selectedPortfolioId}
           onChange={setSelectedPortfolioId}
-          disabled={loading || portfolios.length === 0}
+          disabled={portfoliosLoading || portfolios.length === 0}
           style={{ width: '100%', maxWidth: isMobile ? undefined : 280 }}
         />
       </Group>
@@ -102,7 +162,7 @@ export function DashboardPage() {
         </Text>
       )}
 
-      {(loading || dataLoading || refreshing) && (
+      {(portfoliosLoading || refreshing) && (
         <Group mb="md">
           <Loader size="sm" />
           <Text size="sm" c="dimmed">
@@ -173,25 +233,25 @@ export function DashboardPage() {
 
         <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <Tabs.Panel value="panoramica">
-            <PanoramicaTab data={data} />
+            <PanoramicaTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
           </Tabs.Panel>
 
           <Tabs.Panel value="posizioni">
-            <PosizioniTab data={data} />
+            <PosizioniTab portfolioId={portfolioId} />
           </Tabs.Panel>
 
           {ENABLE_TARGET_ALLOCATION && (
             <Tabs.Panel value="analisi">
-              <AnalisiTab data={data} />
+              <AnalisiTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
             </Tabs.Panel>
           )}
 
           <Tabs.Panel value="mercati">
-            <MercatiTab marketData={marketData} isActive={activeTab === 'mercati'} />
+            <MercatiTab />
           </Tabs.Panel>
 
           <Tabs.Panel value="performance">
-            <PerformanceMetrics portfolioId={selectedPortfolioId ? Number(selectedPortfolioId) : null} />
+            <PerformanceMetrics portfolioId={portfolioId} />
           </Tabs.Panel>
         </div>
       </Tabs>

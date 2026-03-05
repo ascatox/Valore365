@@ -1,19 +1,4 @@
 import type { IconProps } from '@tabler/icons-react';
-import type {
-  AllocationItem,
-  BenchmarkItem,
-  DataCoverageResponse,
-  GainTimeseriesPoint,
-  Portfolio,
-  PortfolioSummary,
-  PortfolioTargetAllocationItem,
-  PortfolioTargetAssetPerformanceResponse,
-  PortfolioTargetAssetIntradayPerformanceResponse,
-  PortfolioTargetIntradayResponse,
-  PortfolioTargetPerformanceResponse,
-  Position,
-  TimeSeriesPoint,
-} from '../../services/api';
 
 export interface KpiStatCardProps {
   label: string;
@@ -73,55 +58,4 @@ export interface PerformerItem {
   return_pct: number;
   as_of: string | null;
   asset_id: number;
-}
-
-export interface DashboardData {
-  portfolios: Portfolio[];
-  selectedPortfolioId: string | null;
-  setSelectedPortfolioId: (id: string | null) => void;
-  selectedPortfolio: Portfolio | null;
-  allocation: PortfolioTargetAllocationItem[];
-  portfolioSummary: PortfolioSummary | null;
-  portfolioPositions: Position[];
-  portfolioAllocation: AllocationItem[];
-  portfolioTimeseries: TimeSeriesPoint[];
-  targetPerformance: PortfolioTargetPerformanceResponse | null;
-  assetPerformance: PortfolioTargetAssetPerformanceResponse | null;
-  assetIntradayPerformance: PortfolioTargetAssetIntradayPerformanceResponse | null;
-  mainIntradayData: PortfolioTargetIntradayResponse | null;
-  chartWindow: string;
-  setChartWindow: (w: string) => void;
-  chartData: ChartPoint[];
-  mainIntradayChartData: IntradayChartPoint[];
-  portfolioIntradayData: IntradayChartPoint[];
-  assetMiniCharts: AssetMiniChartData[];
-  loading: boolean;
-  dataLoading: boolean;
-  refreshing: boolean;
-  mainIntradayLoading: boolean;
-  assetIntradayLoading: boolean;
-  error: string | null;
-  refreshMessage: string | null;
-  chartWindowDays: number;
-  mvpCurrency: string;
-  mvpTimeseriesData: ChartPoint[];
-  mvpTimeseriesStats: { last: number; pct: number } | null;
-  handleDailyChartClick: (state: any) => void;
-  intradayOpen: boolean;
-  setIntradayOpen: (open: boolean) => void;
-  intradayLoading: boolean;
-  intradayError: string | null;
-  intradayChartData: IntradayChartPoint[];
-  intradayStats: { open: number; last: number; min: number; max: number; dayPct: number } | null;
-  intradayDateLabel: string | null;
-  indexCardStats: { index: number; diffPts: number; diffPct: number } | null;
-  mainChartStats: { last: number; periodPct: number } | null;
-  dataCoverage: DataCoverageResponse | null;
-  gainChartData: GainChartPoint[];
-  gainChartLoading: boolean;
-  benchmarks: BenchmarkItem[];
-  selectedBenchmarkId: number | null;
-  setSelectedBenchmarkId: (id: number | null) => void;
-  comparisonChartData: ComparisonChartPoint[];
-  benchmarkLoading: boolean;
 }

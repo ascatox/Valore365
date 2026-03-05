@@ -1,12 +1,23 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { Drawer, MantineProvider, Modal, NumberInput, createTheme } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
 import App from './App.tsx';
 
 // Importa gli stili obbligatori di Mantine
 import '@mantine/core/styles.css';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 const theme = createTheme({
@@ -57,17 +68,21 @@ function Root() {
     return (
       <ClerkProvider publishableKey={clerkPubKey}>
         <ClerkTokenBridge />
-        <MantineProvider theme={theme}>
-          <App />
-        </MantineProvider>
+        <QueryClientProvider client={queryClient}>
+          <MantineProvider theme={theme}>
+            <App />
+          </MantineProvider>
+        </QueryClientProvider>
       </ClerkProvider>
     );
   }
 
   return (
-    <MantineProvider theme={theme}>
-      <App />
-    </MantineProvider>
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider theme={theme}>
+        <App />
+      </MantineProvider>
+    </QueryClientProvider>
   );
 }
 
