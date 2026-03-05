@@ -79,6 +79,7 @@ from .models import (
     ErrorResponse,
     GainTimeseriesPoint,
     MarketCategory,
+    MarketIntradayPoint,
     MarketQuoteItem,
     MarketQuotesResponse,
     PacExecutionConfirm,
@@ -1388,6 +1389,19 @@ def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuote
                     change = mq.price - mq.previous_close
                     change_pct = (change / mq.previous_close) * 100
 
+                intraday: list[MarketIntradayPoint] = []
+                try:
+                    bars = finance_client.get_intraday_bars(symbol)
+                    intraday = [
+                        MarketIntradayPoint(
+                            time=b.ts.strftime('%d/%m %H:%M'),
+                            price=b.close,
+                        )
+                        for b in bars
+                    ]
+                except Exception:
+                    pass
+
                 items.append(MarketQuoteItem(
                     symbol=symbol,
                     name=name,
@@ -1397,6 +1411,7 @@ def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuote
                     change_pct=round(change_pct, 4) if change_pct is not None else None,
                     ts=mq.ts,
                     error=None if mq.price is not None else "Prezzo non disponibile",
+                    intraday=intraday,
                 ))
             except Exception as exc:
                 items.append(MarketQuoteItem(

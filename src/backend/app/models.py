@@ -500,6 +500,11 @@ class RebalanceCommitResponse(BaseModel):
     errors: list[str]
 
 
+class MarketIntradayPoint(BaseModel):
+    time: str
+    price: float
+
+
 class MarketQuoteItem(BaseModel):
     symbol: str
     name: str
@@ -509,6 +514,7 @@ class MarketQuoteItem(BaseModel):
     change_pct: float | None = None
     ts: datetime | None = None
     error: str | None = None
+    intraday: list[MarketIntradayPoint] = []
 
 
 class MarketCategory(BaseModel):

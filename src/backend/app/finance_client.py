@@ -61,6 +61,12 @@ class ProviderMarketQuote:
 
 
 @dataclass
+class ProviderIntradayBar:
+    ts: datetime
+    close: float
+
+
+@dataclass
 class ProviderAssetInfo:
     symbol: str
     name: str | None
@@ -602,6 +608,24 @@ class YahooFinanceClient:
             currency=info.get('currency'),
             description=info.get('longBusinessSummary'),
         )
+
+    def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:
+        import yfinance as yf
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period=period, interval=interval)
+        if df.empty:
+            return []
+        bars: list[ProviderIntradayBar] = []
+        for ts, row in df.iterrows():
+            try:
+                close = float(row['Close'])
+                if not math.isfinite(close):
+                    continue
+                dt = ts.to_pydatetime() if hasattr(ts, 'to_pydatetime') else ts
+                bars.append(ProviderIntradayBar(ts=dt, close=close))
+            except Exception:
+                continue
+        return bars
 
     def get_daily_fx_rates(
         self,

@@ -484,6 +484,11 @@ export interface RebalanceCommitResponse {
   errors: string[];
 }
 
+export interface MarketIntradayPoint {
+  time: string;
+  price: number;
+}
+
 export interface MarketQuoteItem {
   symbol: string;
   name: string;
@@ -493,6 +498,7 @@ export interface MarketQuoteItem {
   change_pct: number | null;
   ts: string | null;
   error: string | null;
+  intraday: MarketIntradayPoint[];
 }
 
 export interface MarketCategory {

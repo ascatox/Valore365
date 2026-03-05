@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import { Alert, Button, Card, Group, Loader, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
+import { Alert, Button, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
+import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { IconRefresh, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import { formatDateTime, formatPct, getVariationColor } from '../formatters';
 import type { MarketDataState } from '../hooks/useMarketData';
@@ -19,6 +21,65 @@ const formatMarketPrice = (value: number | null) => {
     maximumFractionDigits: decimals,
   }).format(value);
 };
+
+function IntradayMiniChart({ item }: { item: MarketQuoteItem }) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
+  const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+
+  const data = item.intraday;
+  if (!data || data.length < 2) return null;
+
+  const variation = item.change_pct;
+  const color = variation != null && variation < 0 ? '#dc2626' : '#16a34a';
+
+  return (
+    <div style={{ height: 80, marginTop: 4 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={data}>
+          <defs>
+            <linearGradient id={`mktGrad-${item.symbol}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={color} stopOpacity={0.15} />
+              <stop offset="95%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis
+            dataKey="time"
+            axisLine={false}
+            tickLine={false}
+            tick={{ fill: tickColor, fontSize: 9 }}
+            interval="preserveStartEnd"
+            tickFormatter={(v: string) => v.split(' ')[0]}
+          />
+          <YAxis hide domain={['auto', 'auto']} />
+          <Tooltip
+            content={({ active, payload, label }: any) => {
+              if (!active || !payload?.length) return null;
+              const val = Number(payload[0]?.value ?? 0);
+              return (
+                <Paper withBorder p={4} radius="sm" shadow="xs">
+                  <Text size="xs" c="dimmed">{label}</Text>
+                  <Text size="xs" fw={600}>{formatMarketPrice(val)}</Text>
+                </Paper>
+              );
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="price"
+            stroke={color}
+            strokeWidth={1.5}
+            fillOpacity={1}
+            fill={`url(#mktGrad-${item.symbol})`}
+            dot={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 function MarketItemCard({ item }: { item: MarketQuoteItem }) {
   const variation = item.change_pct;
@@ -53,6 +114,8 @@ function MarketItemCard({ item }: { item: MarketQuoteItem }) {
             {item.ts ? formatDateTime(item.ts) : 'N/D'}
           </Text>
         </Group>
+
+        <IntradayMiniChart item={item} />
 
         {item.error && (
           <Text size="xs" c="red">
