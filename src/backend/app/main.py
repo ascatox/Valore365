@@ -1,16 +1,48 @@
 
+import json
 import logging
+import math
 import threading
 import time as _time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, Query, Request, APIRouter
 from sqlalchemy import text
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
+
+class _SafeEncoder(json.JSONEncoder):
+    """JSON encoder that converts NaN/Inf to None instead of raising."""
+    def default(self, o: Any) -> Any:
+        return super().default(o)
+
+    def iterencode(self, o: Any, _one_shot: bool = False) -> Any:
+        return super().iterencode(self._sanitize(o), _one_shot=_one_shot)
+
+    @staticmethod
+    def _sanitize(obj: Any) -> Any:
+        if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+            return None
+        if isinstance(obj, dict):
+            return {k: _SafeEncoder._sanitize(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [_SafeEncoder._sanitize(v) for v in obj]
+        return obj
+
+
+class SafeJSONResponse(JSONResponse):
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            cls=_SafeEncoder,
+        ).encode("utf-8")
 
 from fastapi import UploadFile, File
 
@@ -118,7 +150,7 @@ async def lifespan(_: FastAPI):
         scheduler.shutdown()
 
 
-app = FastAPI(title="Valore365 API", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="Valore365 API", version="0.6.0", lifespan=lifespan, default_response_class=SafeJSONResponse)
 
 if settings.app_env == "dev":
     app.add_middleware(
