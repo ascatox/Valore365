@@ -1,8 +1,14 @@
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 import json
 from bisect import bisect_right
+
+
+def _finite(v: float, fallback: float = 0.0) -> float:
+    """Return v if finite, else fallback."""
+    return v if math.isfinite(v) else fallback
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -1682,12 +1688,12 @@ class PortfolioRepository:
                         asset_id=aid,
                         symbol=symbol,
                         name=name,
-                        quantity=round(qty, 8),
-                        avg_cost=round(avg_cost, 4),
-                        market_price=round(market_price, 4),
-                        market_value=round(market_value, 2),
-                        unrealized_pl=round(pl, 2),
-                        unrealized_pl_pct=round(pl_pct, 2),
+                        quantity=round(_finite(qty), 8),
+                        avg_cost=round(_finite(avg_cost), 4),
+                        market_price=round(_finite(market_price), 4),
+                        market_value=round(_finite(market_value), 2),
+                        unrealized_pl=round(_finite(pl), 2),
+                        unrealized_pl_pct=round(_finite(pl_pct), 2),
                         weight=0,  # Placeholder, will be calculated next
                         first_trade_at=first_trade_at_by_asset.get(aid),
                         price_stale=stale,
@@ -1818,12 +1824,12 @@ class PortfolioRepository:
         return PortfolioSummary(
             portfolio_id=portfolio_id,
             base_currency=portfolio.base_currency,
-            market_value=round(market_value, 2),
-            cost_basis=round(cost_basis, 2),
-            unrealized_pl=round(pl, 2),
-            unrealized_pl_pct=round(pl_pct, 2),
-            day_change=round(day_change, 2),
-            day_change_pct=round(day_change_pct, 2),
+            market_value=round(_finite(market_value), 2),
+            cost_basis=round(_finite(cost_basis), 2),
+            unrealized_pl=round(_finite(pl), 2),
+            unrealized_pl_pct=round(_finite(pl_pct), 2),
+            day_change=round(_finite(day_change), 2),
+            day_change_pct=round(_finite(day_change_pct), 2),
             cash_balance=portfolio.cash_balance,
         )
 
