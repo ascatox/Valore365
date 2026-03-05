@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type TouchEvent } from 'react';
 import {
   Alert,
+  Badge,
   Group,
   Loader,
   Select,
@@ -138,6 +139,13 @@ export function DashboardPage() {
     handleTabChange(DASHBOARD_TABS[nextIndex]);
   };
 
+  // Auto-dismiss refresh message after 5s
+  useEffect(() => {
+    if (!refreshMessage) return;
+    const timer = window.setTimeout(() => setRefreshMessage(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [refreshMessage]);
+
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
 
   return (
@@ -155,54 +163,60 @@ export function DashboardPage() {
       </Group>
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
-      {refreshMessage && <Alert color="teal" mb="md">{refreshMessage}</Alert>}
-      {!error && ENABLE_TARGET_ALLOCATION && targetPerformance?.last_updated_at && (
-        <Text size="sm" c="dimmed" mb="md">
-          Ultimo aggiornamento dati: {formatDateTime(targetPerformance.last_updated_at)}
-        </Text>
-      )}
 
-      {(portfoliosLoading || refreshing) && (
-        <Group mb="md">
-          <Loader size="sm" />
-          <Text size="sm" c="dimmed">
-            {refreshing ? 'Aggiornamento prezzi e grafico in corso...' : 'Caricamento dati dashboard...'}
-          </Text>
-        </Group>
-      )}
+      <Group mb="md" gap="xs" wrap="wrap">
+        {refreshing && (
+          <Badge variant="light" color="blue" size="lg" leftSection={<Loader size={12} />}>
+            Aggiornamento in corso...
+          </Badge>
+        )}
+        {refreshMessage && (
+          <Badge variant="light" color="teal" size="lg">
+            {refreshMessage}
+          </Badge>
+        )}
+        {!error && ENABLE_TARGET_ALLOCATION && targetPerformance?.last_updated_at && !refreshing && !refreshMessage && (
+          <Badge variant="dot" color="green" size="lg">
+            Aggiornato: {formatDateTime(targetPerformance.last_updated_at)}
+          </Badge>
+        )}
+        {portfoliosLoading && (
+          <Badge variant="light" color="gray" size="lg" leftSection={<Loader size={12} />}>
+            Caricamento portafogli...
+          </Badge>
+        )}
+      </Group>
 
-      <Tabs value={activeTab} onChange={handleTabChange} variant="pills" radius="xl">
+      <Tabs value={activeTab} onChange={handleTabChange} variant="default">
         <Tabs.List
           mb="md"
           style={isMobile ? {
             flexWrap: 'nowrap',
-            overflowX: 'hidden',
-            padding: 4,
-            gap: '0.25rem',
-            background: 'var(--mantine-color-default)',
-            border: '1px solid var(--mantine-color-default-border)',
-            borderRadius: 999,
+            overflowX: 'auto',
+            gap: 0,
+            borderBottom: '2px solid var(--mantine-color-default-border)',
+            scrollbarWidth: 'none',
           } : {
             flexWrap: 'nowrap',
             overflowX: 'auto',
             overflowY: 'hidden',
             WebkitOverflowScrolling: 'touch',
             scrollbarWidth: 'none',
-            paddingBottom: 4,
-            gap: '0.25rem',
+            paddingBottom: 0,
+            gap: 0,
           }}
         >
           <Tabs.Tab
             value="panoramica"
             leftSection={isMobile ? undefined : <IconChartPie size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
           >
             {isMobile ? <IconChartPie size={20} /> : <Text span>Panoramica</Text>}
           </Tabs.Tab>
           <Tabs.Tab
             value="posizioni"
             leftSection={isMobile ? undefined : <IconList size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
           >
             {isMobile ? <IconList size={20} /> : <Text span>Posizioni</Text>}
           </Tabs.Tab>
@@ -210,7 +224,7 @@ export function DashboardPage() {
             <Tabs.Tab
               value="analisi"
               leftSection={isMobile ? undefined : <IconChartBar size={16} />}
-              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
             >
               {isMobile ? <IconChartBar size={20} /> : <Text span>Analisi</Text>}
             </Tabs.Tab>
@@ -218,14 +232,14 @@ export function DashboardPage() {
           <Tabs.Tab
             value="mercati"
             leftSection={isMobile ? undefined : <IconWorld size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
           >
             {isMobile ? <IconWorld size={20} /> : <Text span>Mercati</Text>}
           </Tabs.Tab>
           <Tabs.Tab
             value="performance"
             leftSection={isMobile ? undefined : <IconPercentage size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
           >
             {isMobile ? <IconPercentage size={20} /> : <Text span>Performance</Text>}
           </Tabs.Tab>

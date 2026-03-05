@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Card, Group, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
@@ -12,6 +12,7 @@ interface HoldingsTableProps {
   positions: Position[];
   currency: string;
   summary?: PortfolioSummary | null;
+  targetMap?: Map<number, number>;
 }
 
 interface ColumnDef {
@@ -22,7 +23,7 @@ interface ColumnDef {
   sortable: boolean;
 }
 
-const columns: ColumnDef[] = [
+const BASE_COLUMNS: ColumnDef[] = [
   { label: 'Asset', key: 'symbol', align: 'left', sortable: true },
   { label: 'Qta', key: 'quantity', align: 'right', visibleFrom: 'sm', sortable: true },
   { label: 'Prezzo Mkt', key: 'market_price', align: 'right', visibleFrom: 'sm', sortable: true },
@@ -76,7 +77,8 @@ function StaleIcon({ position }: { position: Position }) {
   );
 }
 
-export function HoldingsTable({ positions, currency, summary }: HoldingsTableProps) {
+export function HoldingsTable({ positions, currency, summary, targetMap }: HoldingsTableProps) {
+  const hasTargets = targetMap && targetMap.size > 0;
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
@@ -171,6 +173,21 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                 <Text size="xs">{formatNum(p.weight, 1)}%</Text>
               </Group>
             </Group>
+            {hasTargets && (() => {
+              const target = targetMap.get(p.asset_id);
+              if (target == null) return null;
+              const delta = p.weight - target;
+              const warn = Math.abs(delta) > 5;
+              return (
+                <Group justify="space-between" align="center" gap="xs" mt={4}>
+                  <Text size="sm" c="dimmed">Target</Text>
+                  <Group gap={4} wrap="nowrap">
+                    <Text size="xs">{formatNum(target, 1)}%</Text>
+                    {warn && <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" />}
+                  </Group>
+                </Group>
+              );
+            })()}
             <Group justify="space-between" gap="xs" mt={4}>
               <Text size="sm" c="dimmed">Prima operazione</Text>
               <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
@@ -202,21 +219,27 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
-              {columns.map((col) => (
-                <Table.Th
-                  key={col.key}
-                  style={{ textAlign: col.align }}
-                  visibleFrom={col.visibleFrom}
-                >
-                  {col.sortable ? (
-                    <UnstyledButton onClick={() => handleSort(col.key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              {BASE_COLUMNS.map((col) => (
+                <React.Fragment key={col.key}>
+                  <Table.Th
+                    style={{ textAlign: col.align }}
+                    visibleFrom={col.visibleFrom}
+                  >
+                    {col.sortable ? (
+                      <UnstyledButton onClick={() => handleSort(col.key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                        <Text fw={600} size="xs" component="span">{col.label}</Text>
+                        <SortIcon column={col.key} sortKey={sortKey} sortDir={sortDir} />
+                      </UnstyledButton>
+                    ) : (
                       <Text fw={600} size="xs" component="span">{col.label}</Text>
-                      <SortIcon column={col.key} sortKey={sortKey} sortDir={sortDir} />
-                    </UnstyledButton>
-                  ) : (
-                    <Text fw={600} size="xs" component="span">{col.label}</Text>
+                    )}
+                  </Table.Th>
+                  {col.key === 'weight' && hasTargets && (
+                    <Table.Th style={{ textAlign: 'right' }}>
+                      <Text fw={600} size="xs" component="span">Target</Text>
+                    </Table.Th>
                   )}
-                </Table.Th>
+                </React.Fragment>
               ))}
               <Table.Th style={{ width: 36 }} />
             </Table.Tr>
@@ -257,6 +280,26 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                       <Text size="xs">{formatNum(p.weight, 1)}%</Text>
                     </Group>
                   </Table.Td>
+                  {hasTargets && (
+                    <Table.Td style={{ textAlign: 'right' }}>
+                      {(() => {
+                        const target = targetMap.get(p.asset_id);
+                        if (target == null) return <Text size="xs" c="dimmed">—</Text>;
+                        const delta = p.weight - target;
+                        const warn = Math.abs(delta) > 5;
+                        return (
+                          <Group gap={4} wrap="nowrap" justify="flex-end">
+                            <Text size="xs">{formatNum(target, 1)}%</Text>
+                            {warn && (
+                              <Tooltip label={`Scostamento: ${delta > 0 ? '+' : ''}${formatNum(delta, 1)}%`} withArrow>
+                                <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
+                              </Tooltip>
+                            )}
+                          </Group>
+                        );
+                      })()}
+                    </Table.Td>
+                  )}
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="md">
                     <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
                   </Table.Td>
@@ -291,6 +334,7 @@ export function HoldingsTable({ positions, currency, summary }: HoldingsTablePro
                 <Table.Td style={{ textAlign: 'right' }}>
                   <Text fw={700} size="xs">100%</Text>
                 </Table.Td>
+                {hasTargets && <Table.Td />}
                 <Table.Td visibleFrom="md" />
                 <Table.Td />
               </Table.Tr>

@@ -93,7 +93,14 @@ export function PerformanceChart({
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
               <XAxis dataKey={xKey} axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
-              <YAxis hide domain={['auto', 'auto']} />
+              <YAxis
+                domain={['auto', 'auto']}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: tickColor, fontSize: 11 }}
+                width={50}
+                tickFormatter={(v: number) => formatNum(v, v >= 1000 ? 0 : 1)}
+              />
               {tooltipContent ? (
                 <Tooltip content={tooltipContent} />
               ) : (

@@ -81,8 +81,8 @@ function MarketItemCard({ item }: { item: MarketQuoteItem }) {
   const isError = !!item.error;
 
   return (
-    <Card withBorder radius="md" shadow="sm" style={{ opacity: isError ? 0.75 : 1 }}>
-      <Stack gap="xs">
+    <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1 }}>
+      <Stack gap={4}>
         <Group justify="space-between" align="flex-start" wrap="nowrap">
           <div>
             <Text fw={600}>{item.name}</Text>
@@ -159,9 +159,9 @@ export function MercatiTab() {
       )}
 
       {data?.categories.map((category) => (
-        <Card key={category.category} withBorder radius="md" p="md" shadow="sm">
-          <Text fw={700} mb="md">{category.label}</Text>
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="md">
+        <Card key={category.category} withBorder radius="md" p="sm" shadow="sm">
+          <Text fw={700} mb="sm">{category.label}</Text>
+          <SimpleGrid cols={{ base: 1, xs: 2, sm: 2, md: 3, lg: 4 }} spacing="sm">
             {category.items.map((item) => (
               <MarketItemCard key={item.symbol} item={item} />
             ))}
