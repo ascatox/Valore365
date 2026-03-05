@@ -153,7 +153,7 @@ export function PanoramicaTab({ data }: PanoramicaTabProps) {
   const hasBenchmark = selectedBenchmarkId !== null && (comparisonChartData.length > 0 || benchmarkLoading);
 
   const comparisonStats = useMemo(() => {
-    if (!hasBenchmark) return undefined;
+    if (!hasBenchmark || comparisonChartData.length === 0) return undefined;
     const last = comparisonChartData[comparisonChartData.length - 1];
     const pPct = last.portfolio - 100;
     const bPct = last.benchmark - 100;
