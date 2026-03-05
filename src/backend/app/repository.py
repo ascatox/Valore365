@@ -1,3 +1,4 @@
+import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass
@@ -1797,23 +1798,30 @@ class PortfolioRepository:
                     return None
                 return series[idx][1]
 
+            _log = logging.getLogger(__name__)
             previous_market_value = 0.0
             for asset_id, quantity in qty_by_asset.items():
                 series = daily_by_asset.get(asset_id, [])
                 if len(series) < 2:
+                    _log.warning("day_change: asset %s has only %d bars in price_bars_1d, skipping", asset_id, len(series))
                     continue
                 latest_day, _latest_close = series[0]
                 prev_day, prev_close = series[1]
                 if latest_day == prev_day:
+                    _log.warning("day_change: asset %s latest_day==prev_day (%s), skipping", asset_id, latest_day)
                     continue
                 meta = asset_meta.get(asset_id)
                 if meta is None:
+                    _log.warning("day_change: asset %s has no meta, skipping", asset_id)
                     continue
                 prev_fx = fx_rate_on_or_before(meta.quote_currency, prev_day)
                 if prev_fx is None:
+                    _log.warning("day_change: asset %s no FX rate for %s on %s, skipping", asset_id, meta.quote_currency, prev_day)
                     continue
                 current_price_base = market_price_by_asset.get(asset_id, 0.0)
                 previous_price_base = prev_close * prev_fx
+                _log.info("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (close=%.4f fx=%.4f) dates=%s→%s",
+                          asset_id, quantity, current_price_base, previous_price_base, prev_close, prev_fx, prev_day, latest_day)
                 day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
 
