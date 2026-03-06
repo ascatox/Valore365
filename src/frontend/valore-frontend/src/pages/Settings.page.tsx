@@ -1,6 +1,7 @@
 
 import { useEffect, useState } from 'react';
 import {
+  Badge,
   Tabs,
   Paper,
   Select,
@@ -94,18 +95,61 @@ export function SettingsPage() {
   };
 
   return (
-    <Stack gap={0}>
-      <Title order={2} fw={700} mb="md">Impostazioni</Title>
+    <Stack gap={isMobile ? 'md' : 0}>
+      {isMobile ? (
+        <Paper
+          radius="xl"
+          p="lg"
+          style={{
+            background: 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 100%)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            boxShadow: '0 16px 42px rgba(15, 23, 42, 0.10)',
+          }}
+        >
+          <Stack gap="xs">
+            <Badge variant="light" color="teal" size="lg" style={{ alignSelf: 'flex-start' }}>
+              Impostazioni
+            </Badge>
+            <Title order={2} fw={800} c="#0f172a">Preferenze app</Title>
+            <Text size="sm" c="dimmed">
+              Privacy, fiscalita' e tema in un layout piu' pulito.
+            </Text>
+          </Stack>
+        </Paper>
+      ) : (
+        <Title order={2} fw={700} mb="md">Impostazioni</Title>
+      )}
 
       <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} defaultValue="general" variant="pills" radius="md">
-        <Tabs.List>
+        <Tabs.List
+          style={isMobile ? {
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 8,
+            padding: 8,
+            background: 'rgba(255,255,255,0.9)',
+            border: '1px solid rgba(148,163,184,0.18)',
+            borderRadius: 20,
+            boxShadow: '0 14px 30px rgba(15, 23, 42, 0.08)',
+          } : undefined}
+        >
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
           <Tabs.Tab value="tax" leftSection={<IconReceipt size={18} />}>Fiscalità</Tabs.Tab>
           <Tabs.Tab value="security" leftSection={<IconShield size={18} />}>Sicurezza</Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="general">
-          <Paper withBorder p="lg" radius="md" ml={isMobile ? 0 : 'md'} mt={isMobile ? 'md' : 0}>
+          <Paper
+            withBorder
+            p="lg"
+            radius={isMobile ? 'xl' : 'md'}
+            ml={isMobile ? 0 : 'md'}
+            mt={isMobile ? 'md' : 0}
+            style={isMobile ? {
+              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+              boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+            } : undefined}
+          >
             <Stack gap="lg">
               <Title order={3}>Impostazioni Generali</Title>
               <Select
@@ -164,7 +208,17 @@ export function SettingsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="tax">
-        <Paper withBorder p="lg" radius="md" ml={isMobile ? 0 : 'md'} mt={isMobile ? 'md' : 0}>
+        <Paper
+          withBorder
+          p="lg"
+          radius={isMobile ? 'xl' : 'md'}
+          ml={isMobile ? 0 : 'md'}
+          mt={isMobile ? 'md' : 0}
+          style={isMobile ? {
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+            boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+          } : undefined}
+        >
           <Stack>
             <Title order={3}>Impostazioni Fiscali</Title>
             {settingsSavedMessage && <Alert color={settingsSavedMessage.includes('non valide') ? 'red' : 'teal'}>{settingsSavedMessage}</Alert>}
@@ -212,10 +266,28 @@ export function SettingsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="security">
-        <Paper withBorder p="lg" radius="md" ml={isMobile ? 0 : 'md'} mt={isMobile ? 'md' : 0}>
+        <Paper
+          withBorder
+          p="lg"
+          radius={isMobile ? 'xl' : 'md'}
+          ml={isMobile ? 0 : 'md'}
+          mt={isMobile ? 'md' : 0}
+          style={isMobile ? {
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+            boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+          } : undefined}
+        >
             <Stack>
                 <Title order={3}>Sicurezza e Dati</Title>
-                <Paper withBorder p="lg" style={{ borderColor: theme.colors.red[6] }}>
+                <Paper
+                  withBorder
+                  p="lg"
+                  radius={isMobile ? 'xl' : 'md'}
+                  style={{
+                    borderColor: theme.colors.red[6],
+                    background: isMobile ? 'linear-gradient(180deg, #fff7f7 0%, #ffffff 100%)' : undefined,
+                  }}
+                >
                     <Stack>
                         <Title order={4} c="red">Area critica</Title>
                         <Text>Queste azioni sono irreversibili. Procedi con cautela.</Text>

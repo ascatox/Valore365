@@ -112,7 +112,7 @@ export function MobileActionSheet({
               </Badge>
             )}
             <Badge variant="outline" color="gray" size="lg">
-              Flusso mobile
+              Flusso rapido
             </Badge>
           </Group>
 

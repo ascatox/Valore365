@@ -1,5 +1,5 @@
-import { ActionIcon, Badge, Box, Group, Loader, Stack, Text } from '@mantine/core';
-import { IconRefresh, IconSparkles } from '@tabler/icons-react';
+import { Badge, Box, Group, Loader, Stack, Text } from '@mantine/core';
+import { IconSparkles } from '@tabler/icons-react';
 import { PortfolioSwitcher } from '../portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../dashboard/formatters';
 import type { Portfolio } from '../../services/api';
@@ -9,10 +9,8 @@ interface DashboardMobileHeaderProps {
   selectedPortfolioId: string | null;
   onSelectPortfolio: (value: string) => void;
   portfoliosLoading: boolean;
-  refreshing: boolean;
   refreshMessage: string | null;
   lastUpdatedAt: string | null;
-  onRefresh: () => void;
 }
 
 export function DashboardMobileHeader({
@@ -20,10 +18,8 @@ export function DashboardMobileHeader({
   selectedPortfolioId,
   onSelectPortfolio,
   portfoliosLoading,
-  refreshing,
   refreshMessage,
   lastUpdatedAt,
-  onRefresh,
 }: DashboardMobileHeaderProps) {
   return (
     <Box
@@ -55,20 +51,9 @@ export function DashboardMobileHeader({
                 c="#0f766e"
                 style={{ letterSpacing: 1 }}
               >
-                Dashboard mobile
+                Dashboard
               </Text>
             </Box>
-            <ActionIcon
-              variant="light"
-              color="teal"
-              radius="xl"
-              size={42}
-              onClick={onRefresh}
-              loading={refreshing}
-              aria-label="Aggiorna dashboard"
-            >
-              <IconRefresh size={19} />
-            </ActionIcon>
           </Group>
 
           <PortfolioSwitcher

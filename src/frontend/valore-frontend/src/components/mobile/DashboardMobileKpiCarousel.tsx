@@ -42,7 +42,7 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
                 radius="xl"
                 styles={{ root: { alignSelf: 'flex-start' } }}
               >
-                Focus mobile
+                Focus
               </Badge>
             </Stack>
           </Box>
