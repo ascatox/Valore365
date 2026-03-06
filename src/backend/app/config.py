@@ -43,6 +43,14 @@ class Settings(BaseSettings):
     # Keep default=True for backward compatibility; disable explicitly via env.
     enable_target_allocation: bool = True
 
+    # Copilot (AI assistant) — multi-provider
+    # provider: "openai" | "anthropic" | "gemini"
+    copilot_provider: str = "openai"
+    copilot_model: str = ""  # empty = auto-default per provider
+    openai_api_key: str = ""
+    anthropic_api_key: str = ""
+    gemini_api_key: str = ""
+
     # Price validation thresholds
     price_validation_min_price: float = 0.0001
     price_validation_max_daily_change_pct: float = 50.0

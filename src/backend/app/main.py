@@ -123,6 +123,13 @@ from .models import (
     UserSettingsUpdate,
     MWRResult,
 )
+from .copilot_service import (
+    CopilotChatRequest,
+    build_portfolio_snapshot,
+    is_copilot_available,
+    stream_copilot_response,
+    _get_model,
+)
 from .pac_service import PacExecutionService
 from .performance_service import PerformanceService
 from .pricing_service import PriceIngestionService
@@ -1720,6 +1727,45 @@ def skip_pac_execution(
         status_code = 404 if "non trovata" in message.lower() else 400
         code = "not_found" if status_code == 404 else "bad_request"
         raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+# ---------------------------------------------------------------------------
+# Copilot (AI assistant)
+# ---------------------------------------------------------------------------
+
+@router.get("/copilot/status")
+def copilot_status() -> dict:
+    available = is_copilot_available(settings)
+    return {
+        "available": available,
+        "provider": settings.copilot_provider if available else None,
+        "model": _get_model(settings) if available else None,
+    }
+
+
+@router.post("/copilot/chat")
+def copilot_chat(
+    payload: CopilotChatRequest,
+    _auth: AuthContext = Depends(require_auth),
+):
+    from fastapi.responses import StreamingResponse
+
+    if not is_copilot_available(settings):
+        raise AppError(
+            code="copilot_unavailable",
+            message="Copilot non configurato: API key mancante",
+            status_code=503,
+        )
+
+    snapshot = build_portfolio_snapshot(
+        repo, performance_service, payload.portfolio_id, _auth.user_id,
+    )
+
+    return StreamingResponse(
+        stream_copilot_response(settings, snapshot, payload.messages),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 app.include_router(router, prefix="/api")

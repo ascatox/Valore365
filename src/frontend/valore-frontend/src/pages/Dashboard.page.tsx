@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Box,
@@ -11,9 +12,9 @@ import {
   useMantineTheme,
   useComputedColorScheme,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useQueryClient } from '@tanstack/react-query';
-import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage } from '@tabler/icons-react';
+import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardMobileHeader } from '../components/mobile/DashboardMobileHeader';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
@@ -27,7 +28,8 @@ import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constants';
 import { ENABLE_TARGET_ALLOCATION } from '../features';
-import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../services/api';
+import { refreshPortfolioPrices, backfillPortfolioDailyPrices, getCopilotStatus } from '../services/api';
+import { CopilotChat } from '../components/copilot/CopilotChat';
 
 export function DashboardPage() {
   const DASHBOARD_TABS = ENABLE_TARGET_ALLOCATION
@@ -62,6 +64,14 @@ export function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+
+  // --- Copilot ---
+  const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
+  const [copilotAvailable, setCopilotAvailable] = useState(false);
+
+  useEffect(() => {
+    getCopilotStatus().then((s) => setCopilotAvailable(s.available)).catch(() => {});
+  }, []);
 
   // --- Queries ---
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
@@ -282,6 +292,33 @@ export function DashboardPage() {
           onChange={handleTabChange}
         />
       )}
+
+      {/* Copilot FAB */}
+      {copilotAvailable && (
+        <ActionIcon
+          variant="filled"
+          color="teal"
+          size={52}
+          radius="xl"
+          onClick={openCopilot}
+          aria-label="Apri Portfolio Copilot"
+          style={{
+            position: 'fixed',
+            bottom: isMobile ? 80 : 24,
+            right: 24,
+            zIndex: 100,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <IconRobot size={24} />
+        </ActionIcon>
+      )}
+
+      <CopilotChat
+        opened={copilotOpened}
+        onClose={closeCopilot}
+        portfolioId={portfolioId}
+      />
     </Box>
   );
 }

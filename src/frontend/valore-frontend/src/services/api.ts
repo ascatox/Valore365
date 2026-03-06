@@ -5,6 +5,9 @@ let _getToken: TokenGetter = async () => null;
 export function setTokenGetter(fn: TokenGetter): void {
   _getToken = fn;
 }
+export function getAuthToken(): Promise<string | null> {
+  return _getToken();
+}
 
 export interface ApiErrorPayload {
   error?: {
@@ -1125,6 +1128,18 @@ export const backfillBenchmarkPrices = async (
     `/benchmarks/${assetId}/backfill?portfolio_id=${portfolioId}&days=${days}`,
     { method: 'POST' },
   );
+};
+
+// --- Copilot ---
+
+export interface CopilotStatus {
+  available: boolean;
+  provider: string | null;
+  model: string | null;
+}
+
+export const getCopilotStatus = async (): Promise<CopilotStatus> => {
+  return apiFetch<CopilotStatus>('/copilot/status');
 };
 
 export const getAssetPriceTimeseries = async (
