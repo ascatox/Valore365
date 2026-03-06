@@ -20,6 +20,8 @@ import {
   Tooltip,
   Checkbox,
   Tabs,
+  useComputedColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2 } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
@@ -66,6 +68,9 @@ import { ENABLE_TARGET_ALLOCATION } from '../features';
 
 export function PortfolioPage() {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
   const [allocations, setAllocations] = useState<PortfolioTargetAllocationItem[]>([]);
@@ -1232,8 +1237,10 @@ export function PortfolioPage() {
         radius="xl"
         p="lg"
         style={{
-          background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-          boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+          background: isDark
+            ? `linear-gradient(180deg, ${theme.colors.dark[7]} 0%, ${theme.colors.dark[6]} 100%)`
+            : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+          boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.24)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
         }}
       >
         <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
@@ -1255,8 +1262,8 @@ export function PortfolioPage() {
             </Group>
             {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
           </div>
-          <Card radius="lg" p="sm" style={{ minWidth: 110, background: 'rgba(15,118,110,0.06)', border: '1px solid rgba(15,118,110,0.12)' }}>
-            <Text size="xs" fw={700} tt="uppercase" c="#0f766e" style={{ letterSpacing: 0.8 }}>Valore</Text>
+          <Card radius="lg" p="sm" style={{ minWidth: 110, background: isDark ? 'rgba(15,118,110,0.15)' : 'rgba(15,118,110,0.06)', border: isDark ? `1px solid ${theme.colors.teal[8]}` : '1px solid rgba(15,118,110,0.12)' }}>
+            <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.teal[4] : '#0f766e'} style={{ letterSpacing: 0.8 }}>Valore</Text>
             <Text fw={800} size="sm">{formatMoney(total, tx.trade_currency)}</Text>
           </Card>
         </Group>
@@ -1264,29 +1271,29 @@ export function PortfolioPage() {
         <Text size="xs" c="dimmed" mt={8}>{formatDateTime(tx.trade_at)}</Text>
 
         <Group grow mt="md">
-          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
-            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Quantita'</Text>
+          <Card radius="lg" p="sm" bg={isDark ? theme.colors.dark[6] : '#f8fafc'} withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 0.8 }}>Quantita'</Text>
             <Text fw={700} size="sm">{formatNum(tx.quantity, 4)}</Text>
           </Card>
-          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
-            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Prezzo</Text>
+          <Card radius="lg" p="sm" bg={isDark ? theme.colors.dark[6] : '#f8fafc'} withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 0.8 }}>Prezzo</Text>
             <Text fw={700} size="sm">{formatMoney(tx.price, tx.trade_currency)}</Text>
           </Card>
         </Group>
         <Group grow mt="xs">
-          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
-            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Fee</Text>
+          <Card radius="lg" p="sm" bg={isDark ? theme.colors.dark[6] : '#f8fafc'} withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 0.8 }}>Fee</Text>
             <Text fw={700} size="sm">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Text>
           </Card>
-          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
-            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Lordo</Text>
+          <Card radius="lg" p="sm" bg={isDark ? theme.colors.dark[6] : '#f8fafc'} withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 0.8 }}>Lordo</Text>
             <Text fw={700} size="sm">{formatMoney(gross, tx.trade_currency)}</Text>
           </Card>
         </Group>
         {!!tx.notes && (
-          <Card radius="lg" p="sm" mt="sm" bg="#fff7ed" style={{ border: '1px solid #fed7aa' }}>
-            <Text size="xs" fw={700} tt="uppercase" c="#9a3412" style={{ letterSpacing: 0.8 }}>Note</Text>
-            <Text size="sm" c="#7c2d12">{tx.notes}</Text>
+          <Card radius="lg" p="sm" mt="sm" bg={isDark ? 'rgba(251,191,36,0.08)' : '#fff7ed'} style={{ border: isDark ? `1px solid ${theme.colors.yellow[8]}` : '1px solid #fed7aa' }}>
+            <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.yellow[4] : '#9a3412'} style={{ letterSpacing: 0.8 }}>Note</Text>
+            <Text size="sm" c={isDark ? theme.colors.yellow[3] : '#7c2d12'}>{tx.notes}</Text>
           </Card>
         )}
         <Group grow mt="sm">
@@ -1337,9 +1344,11 @@ export function PortfolioPage() {
         radius="xl"
         p="lg"
         style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          background: isDark
+            ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 100%)`
+            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
           color: '#ffffff',
-          boxShadow: '0 18px 36px rgba(15, 23, 42, 0.20)',
+          boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.32)' : '0 18px 36px rgba(15, 23, 42, 0.20)',
         }}
       >
         <Group justify="space-between" gap="xs">
