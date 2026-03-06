@@ -218,10 +218,15 @@ class PerformanceService:
 
         twr = self.calculate_twr(portfolio_id, user_id, start, end)
         mwr = self.calculate_mwr(portfolio_id, user_id, start, end)
-        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
 
-        total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'deposit')
-        total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'withdrawal')
+        if use_trade_flows:
+            # Treat buy cost as "deposits" and sell proceeds as "withdrawals"
+            total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'buy')
+            total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'sell')
+        else:
+            total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'deposit')
+            total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'withdrawal')
         net_invested = total_deposits - total_withdrawals
         current_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
 
