@@ -1361,10 +1361,10 @@ export function PortfolioPage() {
 
   return (
     <>
-      <div style={isMobile ? { paddingBottom: 96 } : undefined}>
+      <div style={isMobile ? { paddingBottom: 96, paddingTop: 4 } : undefined}>
       {/* Header */}
-      <Group justify="space-between" mb="md" wrap="wrap" gap="xs">
-        <Title order={2} fw={700}>Il Mio Portafoglio</Title>
+      <Group justify="space-between" mb={isMobile ? 'xs' : 'md'} wrap="wrap" gap="xs">
+        {!isMobile && <Title order={2} fw={700}>Il Mio Portafoglio</Title>}
         {!isMobile && (
           <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openCreatePortfolioModal}>
             Nuovo Portfolio
@@ -1373,9 +1373,9 @@ export function PortfolioPage() {
       </Group>
 
       {/* Selezione portfolio + menu azioni */}
-      <Group mb="md" align="flex-end" gap="xs">
+      <Group mb={isMobile ? 'xs' : 'md'} align="flex-end" gap="xs">
         <PortfolioSwitcher
-          label="Portfolio attivo"
+          label={isMobile ? undefined : 'Portfolio attivo'}
           portfolios={portfolios}
           value={selectedPortfolioId}
           onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
@@ -1395,7 +1395,7 @@ export function PortfolioPage() {
       </Group>
 
       {/* Vista + azione contestuale */}
-      <Group mb="md" justify="space-between" wrap="wrap" gap="xs">
+      <Group mb={isMobile ? 'xs' : 'md'} justify="space-between" wrap="wrap" gap="xs">
         <Tabs
           value={portfolioView}
           onChange={(value) => {
@@ -1410,7 +1410,7 @@ export function PortfolioPage() {
             style={isMobile ? {
               flexWrap: 'nowrap',
               overflowX: 'hidden',
-              padding: 4,
+              padding: 2,
               gap: '0.25rem',
               background: 'var(--mantine-color-default)',
               border: '1px solid var(--mantine-color-default-border)',

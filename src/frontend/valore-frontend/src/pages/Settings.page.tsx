@@ -95,11 +95,11 @@ export function SettingsPage() {
   };
 
   return (
-    <Stack gap={isMobile ? 'md' : 0}>
+    <Stack gap={isMobile ? 'xs' : 0}>
       {isMobile ? (
         <Paper
           radius="xl"
-          p="lg"
+          p="sm"
           style={{
             background: colorScheme === 'dark'
               ? `linear-gradient(180deg, ${theme.colors.dark[7]}F5 0%, ${theme.colors.dark[6]}EB 100%)`
@@ -108,14 +108,11 @@ export function SettingsPage() {
             boxShadow: colorScheme === 'dark' ? '0 16px 42px rgba(0, 0, 0, 0.28)' : '0 16px 42px rgba(15, 23, 42, 0.10)',
           }}
         >
-          <Stack gap="xs">
-            <Badge variant="light" color="teal" size="lg" style={{ alignSelf: 'flex-start' }}>
+          <Stack gap={4}>
+            <Badge variant="light" color="teal" style={{ alignSelf: 'flex-start' }}>
               Impostazioni
             </Badge>
-            <Title order={2} fw={800} c={colorScheme === 'dark' ? theme.white : '#0f172a'}>Preferenze app</Title>
-            <Text size="sm" c="dimmed">
-              Privacy, fiscalita' e tema in un layout piu' pulito.
-            </Text>
+            <Title order={3} fw={800} c={colorScheme === 'dark' ? theme.white : '#0f172a'}>Preferenze app</Title>
           </Stack>
         </Paper>
       ) : (
