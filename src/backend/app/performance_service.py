@@ -27,6 +27,33 @@ class PerformanceService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
 
+    def _get_cashflows_with_fallback(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start_date: date,
+        end_date: date,
+    ) -> tuple[list, bool]:
+        """Return (cashflows, used_trade_fallback).
+
+        If no deposit/withdrawal/dividend/fee/interest exist in the period,
+        falls back to buy/sell as implicit investor cashflows.
+        """
+        cashflows = self.repo.get_external_cashflows(
+            portfolio_id, user_id, start_date=start_date, end_date=end_date,
+        )
+        if cashflows:
+            return cashflows, False
+
+        trade_cashflows = self.repo.get_external_cashflows(
+            portfolio_id, user_id, start_date=start_date, end_date=end_date, include_trades=True,
+        )
+        buy_sell_flows = [cf for cf in trade_cashflows if cf.side in ("buy", "sell")]
+        if buy_sell_flows:
+            return trade_cashflows, True
+
+        return [], False
+
     def calculate_twr(
         self,
         portfolio_id: int,
@@ -37,11 +64,16 @@ class PerformanceService:
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
         period_days = max((end - start).days, 1)
 
-        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
         cashflow_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
-            cashflow_by_day[day] = cashflow_by_day.get(day, 0.0) + float(cf.amount)
+            if use_trade_flows and cf.side in ("buy", "sell"):
+                # For TWR, buy/sell don't change portfolio value (internal movements).
+                # Register the date to break sub-periods, but with zero cashflow amount.
+                cashflow_by_day.setdefault(day, 0.0)
+            else:
+                cashflow_by_day[day] = cashflow_by_day.get(day, 0.0) + float(cf.amount)
 
         start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
 
@@ -99,35 +131,22 @@ class PerformanceService:
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
         period_days = max((end - start).days, 1)
 
-        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
         start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
         end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
 
-        # Fallback: if no deposit/withdrawal recorded, use buy/sell as implicit
-        # investor cashflows and adjust portfolio values to asset-only.
-        use_trade_flows = False
-        if not cashflows:
-            trade_cashflows = self.repo.get_external_cashflows(
-                portfolio_id, user_id, start_date=start, end_date=end, include_trades=True,
+        # When using buy/sell as cashflows, adjust portfolio values to
+        # exclude the cash impact of trades (avoid double-counting).
+        if use_trade_flows:
+            all_before = self.repo.get_external_cashflows(
+                portfolio_id, user_id, end_date=start, include_trades=True,
             )
-            # Only use trade flows if there are actual buy/sell in the period
-            buy_sell_flows = [cf for cf in trade_cashflows if cf.side in ("buy", "sell")]
-            if buy_sell_flows:
-                cashflows = trade_cashflows
-                use_trade_flows = True
+            cash_before = sum(cf.amount for cf in all_before if cf.side in ("buy", "sell"))
+            start_value = start_value - cash_before
 
-                # When using buy/sell as cashflows, adjust start/end values to
-                # exclude the cash impact of trades (avoid double-counting).
-                # cash_from_trades_before_start: sum of buy/sell cash impact before the period
-                all_before = self.repo.get_external_cashflows(
-                    portfolio_id, user_id, end_date=start, include_trades=True,
-                )
-                cash_before = sum(cf.amount for cf in all_before if cf.side in ("buy", "sell"))
-                start_value = start_value - cash_before
-
-                # cash_from_trades_in_period: sum of buy/sell cash impact during the period
-                cash_in_period = sum(cf.amount for cf in buy_sell_flows)
-                end_value = end_value - cash_before - cash_in_period
+            buy_sell_in_period = [cf for cf in cashflows if cf.side in ("buy", "sell")]
+            cash_in_period = sum(cf.amount for cf in buy_sell_in_period)
+            end_value = end_value - cash_before - cash_in_period
 
         if start_value == 0 and not cashflows and end_value == 0:
             return MWRResult(
@@ -230,12 +249,16 @@ class PerformanceService:
         end_date: date | None = None,
     ) -> list[TWRTimeseriesPoint]:
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
 
         cf_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
-            cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
+            if use_trade_flows and cf.side in ("buy", "sell"):
+                # Buy/sell are internal movements — zero cashflow for TWR formula
+                cf_by_day.setdefault(day, 0.0)
+            else:
+                cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
         values: dict[date, float] = {}
         cursor = start
@@ -282,12 +305,14 @@ class PerformanceService:
         end_date: date | None = None,
     ) -> list[GainTimeseriesPoint]:
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
 
+        # For net_invested, use deposit/withdrawal (or buy/sell if fallback)
+        invest_sides = ('buy', 'sell') if use_trade_flows else ('deposit', 'withdrawal')
         cf_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
-            if cf.side in ('deposit', 'withdrawal'):
+            if cf.side in invest_sides:
                 cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
         points: list[GainTimeseriesPoint] = []
@@ -325,17 +350,32 @@ class PerformanceService:
         else:
             step = 1
 
-        # Pre-fetch all cashflows once
-        cashflows = self.repo.get_external_cashflows(portfolio_id, user_id, start_date=start, end_date=end)
+        # Pre-fetch all cashflows once (with buy/sell fallback)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
         start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+
+        # When using buy/sell as cashflows, adjust start_value to asset-only
+        if use_trade_flows:
+            all_before = self.repo.get_external_cashflows(
+                portfolio_id, user_id, end_date=start, include_trades=True,
+            )
+            cash_before = sum(cf.amount for cf in all_before if cf.side in ("buy", "sell"))
+            start_value = start_value - cash_before
 
         # Pre-compute cashflow list with day offsets
         cf_entries: list[tuple[date, float, float]] = []  # (day, days_from_start, amount_investor)
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
             days_offset = float((day - start).days)
-            # Invert sign: repo amount is portfolio perspective, IRR needs investor perspective
             cf_entries.append((day, days_offset, -float(cf.amount)))
+
+        # Pre-compute buy/sell cash by day for value adjustments
+        trade_cash_by_day: dict[date, float] = {}
+        if use_trade_flows:
+            for cf in cashflows:
+                if cf.side in ("buy", "sell"):
+                    day = date.fromisoformat(cf.date)
+                    trade_cash_by_day[day] = trade_cash_by_day.get(day, 0.0) + float(cf.amount)
 
         points: list[MWRTimeseriesPoint] = []
         points.append(MWRTimeseriesPoint(date=start.isoformat(), cumulative_mwr_pct=0.0))
@@ -344,6 +384,13 @@ class PerformanceService:
         while cursor <= end:
             cursor_days = float((cursor - start).days)
             cursor_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+
+            # When using trade flows, adjust cursor_value to asset-only
+            if use_trade_flows:
+                cash_up_to_cursor = sum(
+                    amt for day, amt in trade_cash_by_day.items() if start < day <= cursor
+                )
+                cursor_value = cursor_value - cash_before - cash_up_to_cursor
 
             # Build flows for start..cursor
             flows: list[tuple[float, float]] = []
@@ -370,6 +417,9 @@ class PerformanceService:
         if points[-1].date != end.isoformat():
             cursor_days = float((end - start).days)
             end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
+            if use_trade_flows:
+                total_trade_cash = sum(trade_cash_by_day.values())
+                end_value = end_value - cash_before - total_trade_cash
             flows = []
             if start_value != 0:
                 flows.append((0.0, -float(start_value)))
