@@ -112,7 +112,7 @@ export function SettingsPage() {
             <Badge variant="light" color="teal" style={{ alignSelf: 'flex-start' }}>
               Impostazioni
             </Badge>
-            <Title order={3} fw={800} c={colorScheme === 'dark' ? theme.white : '#0f172a'}>Preferenze app</Title>
+            <Title order={4} fw={800} c={colorScheme === 'dark' ? theme.white : '#0f172a'}>Preferenze app</Title>
           </Stack>
         </Paper>
       ) : (

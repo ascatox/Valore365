@@ -1363,29 +1363,24 @@ export function PortfolioPage() {
     <>
       <div style={isMobile ? { paddingBottom: 96, paddingTop: 4 } : undefined}>
       {/* Header */}
-      <Group justify="space-between" mb={isMobile ? 'xs' : 'md'} wrap="wrap" gap="xs">
-        {!isMobile && <Title order={2} fw={700}>Il Mio Portafoglio</Title>}
-        {!isMobile && (
-          <Button leftSection={<IconPlus size={16} />} variant="light" onClick={openCreatePortfolioModal}>
-            Nuovo Portfolio
-          </Button>
-        )}
-      </Group>
-
-      {/* Selezione portfolio + menu azioni */}
-      <Group mb={isMobile ? 'xs' : 'md'} align="flex-end" gap="xs">
+      <Group justify="space-between" mb={isMobile ? 'xs' : 'md'} align="flex-end" wrap="wrap" gap="xs">
+        {isMobile ? <Title order={4} fw={800}>Portafoglio</Title> : <Title order={2} fw={700}>Portfolio</Title>}
         <PortfolioSwitcher
-          label={isMobile ? undefined : 'Portfolio attivo'}
+          label={isMobile ? undefined : undefined}
           portfolios={portfolios}
           value={selectedPortfolioId}
           onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
           loading={loadingPortfolios}
-          style={isMobile ? { width: '100%' } : { flex: 1, maxWidth: 420 }}
+          style={isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
           onCreatePortfolio={openCreatePortfolioModal}
           onEditPortfolio={selectedPortfolioId ? openEditPortfolioModal : null}
           onClonePortfolio={selectedPortfolioId ? openClonePortfolioModal : null}
           onDeletePortfolio={selectedPortfolioId ? () => setPortfolioDeleteOpened(true) : null}
         />
+      </Group>
+
+      {/* Stato caricamento selezione */}
+      <Group mb={isMobile ? 'xs' : 'md'} align="flex-end" gap="xs">
         {(loadingPortfolios || loadingData) && (
           <Group gap="xs">
             <Loader size="sm" />
