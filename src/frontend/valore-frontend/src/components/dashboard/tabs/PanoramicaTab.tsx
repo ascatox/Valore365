@@ -143,6 +143,15 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       iconColor: 'blue' as const,
     },
     {
+      label: isMobile ? 'Var. Giorn' : 'Var. Giornaliera',
+      value: portfolioSummary
+        ? `${formatMoney(portfolioSummary.day_change, mvpCurrency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
+        : 'N/D',
+      color: getVariationColor(portfolioSummary?.day_change ?? 0),
+      icon: IconArrowUpRight,
+      iconColor: 'orange' as const,
+    },
+    {
       label: 'P/L Totale',
       value: portfolioSummary ? formatMoney(portfolioSummary.unrealized_pl, mvpCurrency, true) : 'N/D',
       color: getVariationColor(portfolioSummary?.unrealized_pl ?? 0),
@@ -155,15 +164,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       color: getVariationColor(portfolioSummary?.unrealized_pl_pct ?? 0),
       icon: IconArrowUpRight,
       iconColor: 'green' as const,
-    },
-    {
-      label: isMobile ? 'Var. Giorn' : 'Var. Giornaliera',
-      value: portfolioSummary
-        ? `${formatMoney(portfolioSummary.day_change, mvpCurrency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
-        : 'N/D',
-      color: getVariationColor(portfolioSummary?.day_change ?? 0),
-      icon: IconArrowUpRight,
-      iconColor: 'orange' as const,
     },
     {
       label: 'Cash',
