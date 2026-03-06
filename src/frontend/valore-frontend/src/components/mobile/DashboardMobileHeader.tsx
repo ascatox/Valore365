@@ -57,12 +57,6 @@ export function DashboardMobileHeader({
               >
                 Dashboard mobile
               </Text>
-              <Text fw={800} size="xl" c="#0f172a">
-                Valore365
-              </Text>
-              <Text size="sm" c="dimmed">
-                Contesto, KPI e azioni sempre a portata di pollice
-              </Text>
             </Box>
             <ActionIcon
               variant="light"

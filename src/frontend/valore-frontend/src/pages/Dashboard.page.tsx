@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type TouchEvent } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -37,7 +37,6 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const theme = useMantineTheme();
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // --- Shared UI state ---
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
@@ -124,26 +123,6 @@ export function DashboardPage() {
     if (typeof window !== 'undefined' && tab) {
       window.localStorage.setItem(STORAGE_KEYS.activeTab, tab);
     }
-  };
-
-  const handleTouchStart = (event: TouchEvent<HTMLDivElement>) => {
-    if (!isMobile || event.touches.length !== 1) return;
-    const touch = event.touches[0];
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY };
-  };
-
-  const handleTouchEnd = (event: TouchEvent<HTMLDivElement>) => {
-    if (!isMobile || !touchStartRef.current || event.changedTouches.length !== 1 || !activeTab) return;
-    const touch = event.changedTouches[0];
-    const dx = touch.clientX - touchStartRef.current.x;
-    const dy = touch.clientY - touchStartRef.current.y;
-    touchStartRef.current = null;
-    if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy) || Math.abs(dy) > 80) return;
-    const currentIndex = DASHBOARD_TABS.indexOf(activeTab as (typeof DASHBOARD_TABS)[number]);
-    if (currentIndex < 0) return;
-    const nextIndex = dx < 0 ? currentIndex + 1 : currentIndex - 1;
-    if (nextIndex < 0 || nextIndex >= DASHBOARD_TABS.length) return;
-    handleTabChange(DASHBOARD_TABS[nextIndex]);
   };
 
   // Auto-dismiss refresh message after 5s
@@ -267,7 +246,7 @@ export function DashboardPage() {
           </Tabs.List>
         )}
 
-        <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+        <div>
           <Tabs.Panel value="panoramica">
             <PanoramicaTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
           </Tabs.Panel>
