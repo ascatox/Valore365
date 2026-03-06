@@ -39,7 +39,7 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
                   </ThemeIcon>
                 )}
               </Group>
-              <Text fw={800} size="1.7rem" c={color ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.05 }}>
+              <Text fw={800} size="1.3rem" c={color ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.15 }}>
                 {value}
               </Text>
               <Badge
