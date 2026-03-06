@@ -1,6 +1,5 @@
-import { ActionIcon, Badge, Box, Group, Loader, Stack, Text, UnstyledButton } from '@mantine/core';
-import { IconArrowsExchange, IconRefresh, IconSparkles } from '@tabler/icons-react';
-import { useNavigate } from 'react-router-dom';
+import { ActionIcon, Badge, Box, Group, Loader, Stack, Text } from '@mantine/core';
+import { IconRefresh, IconSparkles } from '@tabler/icons-react';
 import { PortfolioSwitcher } from '../portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../dashboard/formatters';
 import type { Portfolio } from '../../services/api';
@@ -26,8 +25,6 @@ export function DashboardMobileHeader({
   lastUpdatedAt,
   onRefresh,
 }: DashboardMobileHeaderProps) {
-  const navigate = useNavigate();
-
   return (
     <Box
       style={{
@@ -85,53 +82,7 @@ export function DashboardMobileHeader({
             value={selectedPortfolioId}
             onChange={onSelectPortfolio}
             loading={portfoliosLoading}
-            onOpenPortfolio={() => navigate('/portfolio')}
           />
-
-          <Group grow>
-            <UnstyledButton
-              onClick={onRefresh}
-              style={{
-                borderRadius: 18,
-                padding: '14px 16px',
-                background: 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)',
-                color: '#ffffff',
-                boxShadow: '0 14px 30px rgba(15, 118, 110, 0.24)',
-              }}
-            >
-              <Group justify="space-between" wrap="nowrap">
-                <Box>
-                  <Text size="xs" fw={700} tt="uppercase" style={{ letterSpacing: 0.8, opacity: 0.82 }}>
-                    Dati
-                  </Text>
-                  <Text fw={700}>Aggiorna prezzi</Text>
-                </Box>
-                {refreshing ? <Loader size={16} color="#ffffff" /> : <IconRefresh size={18} />}
-              </Group>
-            </UnstyledButton>
-
-            <UnstyledButton
-              onClick={() => navigate('/portfolio')}
-              style={{
-                borderRadius: 18,
-                padding: '14px 16px',
-                background: 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)',
-                color: '#0f172a',
-                border: '1px solid #d6d9de',
-                boxShadow: '0 12px 28px rgba(15, 23, 42, 0.08)',
-              }}
-            >
-              <Group justify="space-between" wrap="nowrap">
-                <Box>
-                  <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>
-                    Operativita'
-                  </Text>
-                  <Text fw={700}>Nuova transazione</Text>
-                </Box>
-                <IconArrowsExchange size={18} />
-              </Group>
-            </UnstyledButton>
-          </Group>
 
           <Group gap="xs" wrap="wrap">
             {refreshMessage ? (
