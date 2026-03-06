@@ -103,6 +103,32 @@ class PerformanceService:
         start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
         end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
 
+        # Fallback: if no deposit/withdrawal recorded, use buy/sell as implicit
+        # investor cashflows and adjust portfolio values to asset-only.
+        use_trade_flows = False
+        if not cashflows:
+            trade_cashflows = self.repo.get_external_cashflows(
+                portfolio_id, user_id, start_date=start, end_date=end, include_trades=True,
+            )
+            # Only use trade flows if there are actual buy/sell in the period
+            buy_sell_flows = [cf for cf in trade_cashflows if cf.side in ("buy", "sell")]
+            if buy_sell_flows:
+                cashflows = trade_cashflows
+                use_trade_flows = True
+
+                # When using buy/sell as cashflows, adjust start/end values to
+                # exclude the cash impact of trades (avoid double-counting).
+                # cash_from_trades_before_start: sum of buy/sell cash impact before the period
+                all_before = self.repo.get_external_cashflows(
+                    portfolio_id, user_id, end_date=start, include_trades=True,
+                )
+                cash_before = sum(cf.amount for cf in all_before if cf.side in ("buy", "sell"))
+                start_value = start_value - cash_before
+
+                # cash_from_trades_in_period: sum of buy/sell cash impact during the period
+                cash_in_period = sum(cf.amount for cf in buy_sell_flows)
+                end_value = end_value - cash_before - cash_in_period
+
         if start_value == 0 and not cashflows and end_value == 0:
             return MWRResult(
                 mwr_pct=0.0,

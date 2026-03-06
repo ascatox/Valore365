@@ -1249,9 +1249,12 @@ class PortfolioRepository:
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
+        include_trades: bool = False,
     ) -> list[CashFlowEntry]:
         txs = self.get_transactions_in_range(portfolio_id, user_id, start_date=start_date, end_date=end_date)
         external_sides = {"deposit", "withdrawal", "dividend", "fee", "interest"}
+        if include_trades:
+            external_sides |= {"buy", "sell"}
         selected = [tx for tx in txs if tx.side in external_sides]
         if not selected:
             return []
@@ -1300,11 +1303,21 @@ class PortfolioRepository:
         out: list[CashFlowEntry] = []
         for tx in selected:
             amount = tx.quantity * tx.price
-            amount_base = amount * fx_rate_on_or_before(tx.trade_currency, tx.trade_at.date())
-            if tx.side in {"deposit", "dividend", "interest"}:
+            fx = fx_rate_on_or_before(tx.trade_currency, tx.trade_at.date())
+            amount_base = amount * fx
+            costs_base = (tx.fees + tx.taxes) * fx
+
+            if tx.side == "buy":
+                # Investor outflow: price + fees/taxes (same sign as deposit)
+                signed = amount_base + costs_base
+            elif tx.side == "sell":
+                # Investor inflow: price - fees/taxes (same sign as withdrawal)
+                signed = -(amount_base - costs_base)
+            elif tx.side in {"deposit", "dividend", "interest"}:
                 signed = amount_base
-            else:
+            else:  # withdrawal, fee
                 signed = -amount_base
+
             out.append(
                 CashFlowEntry(
                     date=tx.trade_at.date().isoformat(),
