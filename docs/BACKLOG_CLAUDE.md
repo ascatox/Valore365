@@ -48,6 +48,7 @@
 | 24 | Eliminazione dati utente | Bottone "Elimina tutti i dati" nella pagina Sicurezza non funzionante | `Settings.page.tsx:290-292` |
 | 25 | Copilot: cronologia chat | Persistenza conversazioni, ripresa sessione precedente | `CopilotChat.tsx` |
 | 26 | Copilot: streaming Gemini | Gemini restituisce risposta completa, non stream — usare `generate_content_stream` | `copilot_service.py:279-284` |
+| 27 | Internazionalizzazione (i18n) | Rilevamento lingua browser, supporto italiano + inglese, libreria i18n (react-i18next) | Tutto il frontend |
 
 ---
 
