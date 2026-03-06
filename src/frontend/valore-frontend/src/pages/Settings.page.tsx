@@ -97,24 +97,9 @@ export function SettingsPage() {
   return (
     <Stack gap={isMobile ? 'xs' : 0}>
       {isMobile ? (
-        <Paper
-          radius="xl"
-          p="sm"
-          style={{
-            background: colorScheme === 'dark'
-              ? `linear-gradient(180deg, ${theme.colors.dark[7]}F5 0%, ${theme.colors.dark[6]}EB 100%)`
-              : 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 100%)',
-            border: colorScheme === 'dark' ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.18)',
-            boxShadow: colorScheme === 'dark' ? '0 16px 42px rgba(0, 0, 0, 0.28)' : '0 16px 42px rgba(15, 23, 42, 0.10)',
-          }}
-        >
-          <Stack gap={4}>
-            <Badge variant="light" color="teal" style={{ alignSelf: 'flex-start' }}>
-              Impostazioni
-            </Badge>
-            <Title order={4} fw={800} c={colorScheme === 'dark' ? theme.white : '#0f172a'}>Preferenze app</Title>
-          </Stack>
-        </Paper>
+        <Group justify="space-between" mb="xs" align="flex-end" wrap="wrap" gap="xs">
+          <Title order={4} fw={800}>Impostazioni</Title>
+        </Group>
       ) : (
         <Title order={2} fw={700} mb="md">Impostazioni</Title>
       )}

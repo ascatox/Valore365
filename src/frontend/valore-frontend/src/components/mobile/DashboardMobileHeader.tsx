@@ -1,4 +1,4 @@
-import { Badge, Box, Group, Loader, Stack, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Badge, Box, Group, Loader, Stack, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconSparkles } from '@tabler/icons-react';
 import { PortfolioSwitcher } from '../portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../dashboard/formatters';
@@ -45,15 +45,6 @@ export function DashboardMobileHeader({
         }}
       >
         <Stack gap={8}>
-          <Text
-            size="sm"
-            fw={800}
-            c={isDark ? theme.white : theme.black}
-            style={{ lineHeight: 1.1 }}
-          >
-            Dashboard
-          </Text>
-
           <PortfolioSwitcher
             portfolios={portfolios}
             value={selectedPortfolioId}

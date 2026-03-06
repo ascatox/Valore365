@@ -171,14 +171,19 @@ export function DashboardPage() {
       }}
     >
       {isMobile ? (
-        <DashboardMobileHeader
-          portfolios={portfolios}
-          selectedPortfolioId={selectedPortfolioId}
-          onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
-          portfoliosLoading={portfoliosLoading}
-          refreshMessage={refreshMessage}
-          lastUpdatedAt={!error && ENABLE_TARGET_ALLOCATION && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
-        />
+        <>
+          <Group justify="space-between" mb="xs" align="flex-end" wrap="wrap" gap="xs">
+            <Title order={4} fw={800}>Dashboard</Title>
+          </Group>
+          <DashboardMobileHeader
+            portfolios={portfolios}
+            selectedPortfolioId={selectedPortfolioId}
+            onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
+            portfoliosLoading={portfoliosLoading}
+            refreshMessage={refreshMessage}
+            lastUpdatedAt={!error && ENABLE_TARGET_ALLOCATION && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
+          />
+        </>
       ) : (
         <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
           <Title order={2} fw={700}>Dashboard</Title>
