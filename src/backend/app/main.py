@@ -126,7 +126,9 @@ from .models import (
 from .copilot_service import (
     CopilotChatRequest,
     build_portfolio_snapshot,
+    encrypt_api_key,
     is_copilot_available,
+    resolve_copilot_config,
     stream_copilot_response,
     _get_model,
 )
@@ -219,7 +221,15 @@ def get_user_settings(_auth: AuthContext = Depends(require_auth)) -> UserSetting
 @router.put("/settings/user", response_model=UserSettingsRead, responses={400: {"model": ErrorResponse}})
 def update_user_settings(payload: UserSettingsUpdate, _auth: AuthContext = Depends(require_auth)) -> UserSettingsRead:
     try:
-        return repo.upsert_user_settings(_auth.user_id, payload)
+        api_key_enc: str | None = None
+        if payload.copilot_api_key is not None:
+            if payload.copilot_api_key == "":
+                api_key_enc = ""  # clear key
+            else:
+                api_key_enc = encrypt_api_key(payload.copilot_api_key, settings)
+                if not api_key_enc:
+                    raise ValueError("Impossibile cifrare la chiave API: COPILOT_ENCRYPTION_KEY non configurata")
+        return repo.upsert_user_settings(_auth.user_id, payload, api_key_enc=api_key_enc)
     except ValueError as exc:
         raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
 
@@ -1734,12 +1744,20 @@ def skip_pac_execution(
 # ---------------------------------------------------------------------------
 
 @router.get("/copilot/status")
-def copilot_status() -> dict:
-    available = is_copilot_available(settings)
+def copilot_status(_auth: AuthContext = Depends(require_auth)) -> dict:
+    user_settings = repo.get_user_settings(_auth.user_id)
+    user_key_enc = repo.get_user_copilot_api_key_enc(_auth.user_id)
+    config = resolve_copilot_config(
+        settings,
+        user_provider=user_settings.copilot_provider,
+        user_model=user_settings.copilot_model,
+        user_api_key_enc=user_key_enc,
+    )
     return {
-        "available": available,
-        "provider": settings.copilot_provider if available else None,
-        "model": _get_model(settings) if available else None,
+        "available": config is not None,
+        "provider": config.provider if config else None,
+        "model": config.model if config else None,
+        "source": "user" if (config and user_settings.copilot_api_key_set) else ("server" if config else None),
     }
 
 
@@ -1750,7 +1768,15 @@ def copilot_chat(
 ):
     from fastapi.responses import StreamingResponse
 
-    if not is_copilot_available(settings):
+    user_settings = repo.get_user_settings(_auth.user_id)
+    user_key_enc = repo.get_user_copilot_api_key_enc(_auth.user_id)
+    config = resolve_copilot_config(
+        settings,
+        user_provider=user_settings.copilot_provider,
+        user_model=user_settings.copilot_model,
+        user_api_key_enc=user_key_enc,
+    )
+    if config is None:
         raise AppError(
             code="copilot_unavailable",
             message="Copilot non configurato: API key mancante",
@@ -1762,7 +1788,7 @@ def copilot_chat(
     )
 
     return StreamingResponse(
-        stream_copilot_response(settings, snapshot, payload.messages),
+        stream_copilot_response(config, snapshot, payload.messages),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

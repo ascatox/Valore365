@@ -104,7 +104,11 @@ class PortfolioRepository:
             row = conn.execute(
                 text(
                     """
-                    select user_id, broker_default_fee::float8 as broker_default_fee
+                    select user_id,
+                           broker_default_fee::float8 as broker_default_fee,
+                           copilot_provider,
+                           copilot_model,
+                           copilot_api_key_enc
                     from app_user_settings
                     where user_id = :user_id
                     """
@@ -116,27 +120,63 @@ class PortfolioRepository:
         return UserSettingsRead(
             user_id=str(row["user_id"]),
             broker_default_fee=float(row["broker_default_fee"] or 0.0),
+            copilot_provider=str(row["copilot_provider"] or ""),
+            copilot_model=str(row["copilot_model"] or ""),
+            copilot_api_key_set=bool(row["copilot_api_key_enc"]),
         )
 
-    def upsert_user_settings(self, user_id: str, payload: UserSettingsUpdate) -> UserSettingsRead:
+    def get_user_copilot_api_key_enc(self, user_id: str) -> str:
+        """Return the raw encrypted API key (or empty string)."""
+        normalized_user_id = (user_id or "").strip()
+        if not normalized_user_id:
+            return ""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("select copilot_api_key_enc from app_user_settings where user_id = :user_id"),
+                {"user_id": normalized_user_id},
+            ).mappings().fetchone()
+        return str(row["copilot_api_key_enc"] or "") if row else ""
+
+    def upsert_user_settings(self, user_id: str, payload: UserSettingsUpdate, api_key_enc: str | None = None) -> UserSettingsRead:
         normalized_user_id = (user_id or "").strip()
         if not normalized_user_id:
             raise ValueError("user_id non valido")
+
+        # Build SET clauses dynamically — only update provided fields
+        set_parts = ["updated_at = now()"]
+        params: dict = {"user_id": normalized_user_id}
+
+        if payload.broker_default_fee is not None:
+            set_parts.append("broker_default_fee = :broker_default_fee")
+            params["broker_default_fee"] = payload.broker_default_fee
+        if payload.copilot_provider is not None:
+            set_parts.append("copilot_provider = :copilot_provider")
+            params["copilot_provider"] = payload.copilot_provider
+        if payload.copilot_model is not None:
+            set_parts.append("copilot_model = :copilot_model")
+            params["copilot_model"] = payload.copilot_model
+        if api_key_enc is not None:
+            set_parts.append("copilot_api_key_enc = :copilot_api_key_enc")
+            params["copilot_api_key_enc"] = api_key_enc
+
+        set_clause = ", ".join(set_parts)
+
         with self.engine.begin() as conn:
             conn.execute(
                 text(
-                    """
-                    insert into app_user_settings (user_id, broker_default_fee, updated_at)
-                    values (:user_id, :broker_default_fee, now())
+                    f"""
+                    insert into app_user_settings (user_id, broker_default_fee, copilot_provider, copilot_model, copilot_api_key_enc, updated_at)
+                    values (:user_id, coalesce(:bf, 0), coalesce(:cp, ''), coalesce(:cm, ''), coalesce(:ck, ''), now())
                     on conflict (user_id)
-                    do update set
-                      broker_default_fee = excluded.broker_default_fee,
-                      updated_at = now()
+                    do update set {set_clause}
                     """
                 ),
                 {
-                    "user_id": normalized_user_id,
-                    "broker_default_fee": payload.broker_default_fee,
+                    **params,
+                    "bf": payload.broker_default_fee,
+                    "cp": payload.copilot_provider,
+                    "cm": payload.copilot_model,
+                    "ck": api_key_enc,
                 },
             )
         return self.get_user_settings(normalized_user_id)

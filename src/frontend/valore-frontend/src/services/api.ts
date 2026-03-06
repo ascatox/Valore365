@@ -19,10 +19,16 @@ export interface ApiErrorPayload {
 export interface UserSettings {
   user_id: string;
   broker_default_fee: number;
+  copilot_provider: string;
+  copilot_model: string;
+  copilot_api_key_set: boolean;
 }
 
 export interface UserSettingsUpdateInput {
-  broker_default_fee: number;
+  broker_default_fee?: number;
+  copilot_provider?: string;
+  copilot_model?: string;
+  copilot_api_key?: string;
 }
 
 export interface Portfolio {
@@ -1136,6 +1142,7 @@ export interface CopilotStatus {
   available: boolean;
   provider: string | null;
   model: string | null;
+  source: 'user' | 'server' | null;
 }
 
 export const getCopilotStatus = async (): Promise<CopilotStatus> => {

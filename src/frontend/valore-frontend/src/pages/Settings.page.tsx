@@ -21,9 +21,10 @@ import {
   Alert,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop } from '@tabler/icons-react';
+import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop, IconRobot } from '@tabler/icons-react';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
-import { getUserSettings, updateUserSettings } from '../services/api';
+import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
+import type { CopilotStatus } from '../services/api';
 
 export function SettingsPage() {
   const theme = useMantineTheme();
@@ -32,6 +33,15 @@ export function SettingsPage() {
   const [brokerDefaultFee, setBrokerDefaultFee] = useState<number | string>(1.99);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
+
+  // Copilot settings
+  const [copilotProvider, setCopilotProvider] = useState('');
+  const [copilotModel, setCopilotModel] = useState('');
+  const [copilotApiKey, setCopilotApiKey] = useState('');
+  const [copilotApiKeySet, setCopilotApiKeySet] = useState(false);
+  const [copilotStatus, setCopilotStatus] = useState<CopilotStatus | null>(null);
+  const [copilotSaving, setCopilotSaving] = useState(false);
+  const [copilotMessage, setCopilotMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -42,15 +52,18 @@ export function SettingsPage() {
     }
 
     getUserSettings()
-      .then((settings) => {
+      .then((s) => {
         if (!active) return;
-        const fee = Number(settings.broker_default_fee ?? 0);
+        const fee = Number(s.broker_default_fee ?? 0);
         if (Number.isFinite(fee) && fee >= 0) {
           setBrokerDefaultFee(fee);
           if (typeof window !== 'undefined') {
             window.localStorage.setItem(STORAGE_KEYS.brokerDefaultFee, String(fee));
           }
         }
+        setCopilotProvider(s.copilot_provider || '');
+        setCopilotModel(s.copilot_model || '');
+        setCopilotApiKeySet(s.copilot_api_key_set);
       })
       .catch(() => {
         if (!active || typeof window === 'undefined') return;
@@ -62,6 +75,8 @@ export function SettingsPage() {
         }
       });
 
+    getCopilotStatus().then((st) => { if (active) setCopilotStatus(st); }).catch(() => {});
+
     return () => {
       active = false;
     };
@@ -72,6 +87,53 @@ export function SettingsPage() {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, String(checked));
     }
+  };
+
+  const handleSaveCopilotSettings = () => {
+    setCopilotSaving(true);
+    setCopilotMessage(null);
+    const payload: Record<string, string | undefined> = {
+      copilot_provider: copilotProvider,
+      copilot_model: copilotModel,
+    };
+    // Only send API key if user typed something new (or explicitly cleared it)
+    if (copilotApiKey !== '') {
+      payload.copilot_api_key = copilotApiKey;
+    } else if (!copilotApiKeySet && copilotProvider) {
+      // Provider set but no key — user needs to provide one
+      setCopilotMessage('Inserisci una chiave API per il provider selezionato');
+      setCopilotSaving(false);
+      return;
+    }
+    updateUserSettings(payload as any)
+      .then((saved) => {
+        setCopilotApiKeySet(saved.copilot_api_key_set);
+        setCopilotApiKey('');
+        setCopilotMessage('Impostazioni Copilot salvate');
+        getCopilotStatus().then(setCopilotStatus).catch(() => {});
+      })
+      .catch((err) => {
+        setCopilotMessage(err instanceof Error ? err.message : 'Errore salvataggio');
+      })
+      .finally(() => setCopilotSaving(false));
+  };
+
+  const handleClearCopilotKey = () => {
+    setCopilotSaving(true);
+    setCopilotMessage(null);
+    updateUserSettings({ copilot_provider: '', copilot_model: '', copilot_api_key: '' } as any)
+      .then((saved) => {
+        setCopilotProvider('');
+        setCopilotModel('');
+        setCopilotApiKey('');
+        setCopilotApiKeySet(false);
+        setCopilotMessage('Chiave API rimossa');
+        getCopilotStatus().then(setCopilotStatus).catch(() => {});
+      })
+      .catch((err) => {
+        setCopilotMessage(err instanceof Error ? err.message : 'Errore');
+      })
+      .finally(() => setCopilotSaving(false));
   };
 
   const handleSaveTaxSettings = () => {
@@ -108,7 +170,7 @@ export function SettingsPage() {
         <Tabs.List
           style={isMobile ? {
             display: 'grid',
-            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
             gap: 8,
             padding: 8,
             background: colorScheme === 'dark' ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
@@ -118,6 +180,7 @@ export function SettingsPage() {
           } : undefined}
         >
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
+          <Tabs.Tab value="copilot" leftSection={<IconRobot size={18} />}>Copilot</Tabs.Tab>
           <Tabs.Tab value="tax" leftSection={<IconReceipt size={18} />}>Fiscalità</Tabs.Tab>
           <Tabs.Tab value="security" leftSection={<IconShield size={18} />}>Sicurezza</Tabs.Tab>
         </Tabs.List>
@@ -189,6 +252,99 @@ export function SettingsPage() {
                   ]}
                 />
               </Stack>
+            </Stack>
+          </Paper>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="copilot">
+          <Paper
+            withBorder
+            p="lg"
+            radius={isMobile ? 'xl' : 'md'}
+            ml={isMobile ? 0 : 'md'}
+            mt={isMobile ? 'md' : 0}
+            style={isMobile ? {
+              background: colorScheme === 'dark'
+                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+              boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
+            } : undefined}
+          >
+            <Stack gap="lg">
+              <Title order={3}>Portfolio Copilot</Title>
+              <Text size="sm" c="dimmed">
+                Inserisci la tua chiave API per abilitare il chatbot AI. La chiave viene cifrata e non è mai visibile dopo il salvataggio.
+              </Text>
+
+              {copilotMessage && (
+                <Alert color={copilotMessage.includes('Errore') || copilotMessage.includes('Inserisci') ? 'red' : 'teal'}>
+                  {copilotMessage}
+                </Alert>
+              )}
+
+              {copilotStatus && (
+                <Badge
+                  variant="light"
+                  color={copilotStatus.available ? 'green' : 'gray'}
+                  size="lg"
+                >
+                  {copilotStatus.available
+                    ? `Attivo: ${copilotStatus.provider} / ${copilotStatus.model} (${copilotStatus.source === 'user' ? 'chiave personale' : 'chiave server'})`
+                    : 'Non configurato'}
+                </Badge>
+              )}
+
+              <Select
+                label="Provider LLM"
+                placeholder="Seleziona provider"
+                value={copilotProvider || null}
+                onChange={(value) => setCopilotProvider(value ?? '')}
+                data={[
+                  { value: 'openai', label: 'OpenAI (GPT-4o, GPT-4o-mini, ...)' },
+                  { value: 'anthropic', label: 'Anthropic (Claude Sonnet, Haiku, ...)' },
+                  { value: 'gemini', label: 'Google Gemini (Gemini 2.0 Flash, ...)' },
+                ]}
+                clearable
+                style={{ maxWidth: 400 }}
+              />
+
+              <TextInput
+                label="Modello (opzionale)"
+                placeholder="Lascia vuoto per il default del provider"
+                value={copilotModel}
+                onChange={(e) => setCopilotModel(e.currentTarget.value)}
+                description={copilotProvider === 'openai' ? 'Default: gpt-4o-mini' : copilotProvider === 'anthropic' ? 'Default: claude-sonnet-4-20250514' : copilotProvider === 'gemini' ? 'Default: gemini-2.0-flash' : ''}
+                style={{ maxWidth: 400 }}
+              />
+
+              <TextInput
+                label="Chiave API"
+                placeholder={copilotApiKeySet ? '••••••••  (già configurata)' : 'sk-... / Inserisci la tua chiave'}
+                value={copilotApiKey}
+                onChange={(e) => setCopilotApiKey(e.currentTarget.value)}
+                type="password"
+                style={{ maxWidth: 400 }}
+              />
+
+              <Group justify="flex-start" gap="sm">
+                <Button
+                  onClick={handleSaveCopilotSettings}
+                  loading={copilotSaving}
+                  disabled={!copilotProvider}
+                >
+                  Salva impostazioni Copilot
+                </Button>
+                {copilotApiKeySet && (
+                  <Button
+                    variant="outline"
+                    color="red"
+                    onClick={handleClearCopilotKey}
+                    loading={copilotSaving}
+                  >
+                    Rimuovi chiave API
+                  </Button>
+                )}
+              </Group>
             </Stack>
           </Paper>
         </Tabs.Panel>

@@ -19,10 +19,16 @@ class ErrorResponse(BaseModel):
 class UserSettingsRead(BaseModel):
     user_id: str
     broker_default_fee: float = Field(default=0, ge=0)
+    copilot_provider: str = ""
+    copilot_model: str = ""
+    copilot_api_key_set: bool = False  # never expose the actual key
 
 
 class UserSettingsUpdate(BaseModel):
-    broker_default_fee: float = Field(ge=0)
+    broker_default_fee: float | None = Field(default=None, ge=0)
+    copilot_provider: str | None = None
+    copilot_model: str | None = None
+    copilot_api_key: str | None = None  # plaintext, encrypted before storage
 
 
 class PortfolioCreate(BaseModel):

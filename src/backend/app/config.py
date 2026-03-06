@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     # Local LLM (Ollama, LM Studio, llama.cpp, vLLM) — OpenAI-compatible API
     copilot_local_url: str = "http://localhost:11434/v1"
     copilot_local_api_key: str = "not-needed"
+    # Fernet key for encrypting user API keys (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+    copilot_encryption_key: str = ""
 
     # Price validation thresholds
     price_validation_min_price: float = 0.0001

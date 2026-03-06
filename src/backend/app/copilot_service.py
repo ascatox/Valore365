@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 from typing import Generator
 
 from pydantic import BaseModel
@@ -170,8 +171,77 @@ def build_portfolio_snapshot(
 # Provider helpers
 # ---------------------------------------------------------------------------
 
-def _get_api_key(settings: Settings) -> str:
-    """Return the API key for the configured provider."""
+@dataclass
+class CopilotConfig:
+    """Resolved copilot configuration (user-level or server-level)."""
+    provider: str
+    model: str
+    api_key: str
+    local_url: str = ""
+
+
+def _decrypt_api_key(encrypted: str, settings: Settings) -> str:
+    """Decrypt a Fernet-encrypted API key. Returns empty string on failure."""
+    if not encrypted or not settings.copilot_encryption_key:
+        return ""
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(settings.copilot_encryption_key.encode())
+        return f.decrypt(encrypted.encode()).decode()
+    except Exception:
+        logger.warning("Failed to decrypt user API key")
+        return ""
+
+
+def encrypt_api_key(plaintext: str, settings: Settings) -> str:
+    """Encrypt an API key with Fernet. Returns empty string if no encryption key."""
+    if not plaintext or not settings.copilot_encryption_key:
+        return ""
+    from cryptography.fernet import Fernet
+    f = Fernet(settings.copilot_encryption_key.encode())
+    return f.encrypt(plaintext.encode()).decode()
+
+
+def resolve_copilot_config(
+    settings: Settings,
+    user_provider: str = "",
+    user_model: str = "",
+    user_api_key_enc: str = "",
+) -> CopilotConfig | None:
+    """Resolve copilot config: user key first, then server fallback.
+
+    Returns None if no valid configuration is available.
+    """
+    # 1. Try user-level config
+    if user_provider and user_api_key_enc:
+        decrypted = _decrypt_api_key(user_api_key_enc, settings)
+        if decrypted:
+            model = user_model or _DEFAULT_MODELS.get(user_provider, "gpt-4o-mini")
+            return CopilotConfig(
+                provider=user_provider,
+                model=model,
+                api_key=decrypted,
+                local_url=settings.copilot_local_url if user_provider == "local" else "",
+            )
+
+    # 2. Fallback to server-level config
+    provider = settings.copilot_provider
+    if not provider:
+        return None
+    api_key = _get_server_api_key(settings)
+    if not api_key:
+        return None
+    model = settings.copilot_model or _DEFAULT_MODELS.get(provider, "gpt-4o-mini")
+    return CopilotConfig(
+        provider=provider,
+        model=model,
+        api_key=api_key,
+        local_url=settings.copilot_local_url if provider == "local" else "",
+    )
+
+
+def _get_server_api_key(settings: Settings) -> str:
+    """Return the server-level API key for the configured provider."""
     provider = settings.copilot_provider
     if provider == "openai":
         return settings.openai_api_key
@@ -185,15 +255,15 @@ def _get_api_key(settings: Settings) -> str:
 
 
 def _get_model(settings: Settings) -> str:
-    """Return the model name, falling back to provider default."""
+    """Return the model name, falling back to provider default (for status endpoint)."""
     if settings.copilot_model:
         return settings.copilot_model
     return _DEFAULT_MODELS.get(settings.copilot_provider, "gpt-4o-mini")
 
 
-def is_copilot_available(settings: Settings) -> bool:
-    """Check if the copilot is enabled (provider set) and has a valid API key."""
-    return bool(settings.copilot_provider) and bool(_get_api_key(settings))
+def is_copilot_available(settings: Settings, user_provider: str = "", user_api_key_enc: str = "") -> bool:
+    """Check if the copilot is available (user key or server key)."""
+    return resolve_copilot_config(settings, user_provider=user_provider, user_api_key_enc=user_api_key_enc) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -201,15 +271,15 @@ def is_copilot_available(settings: Settings) -> bool:
 # ---------------------------------------------------------------------------
 
 def stream_copilot_response(
-    settings: Settings,
+    config: CopilotConfig,
     snapshot: dict,
     messages: list[CopilotMessage],
 ) -> Generator[str, None, None]:
     """Stream LLM response as SSE events. Supports OpenAI, Anthropic, Gemini."""
     system_prompt = SYSTEM_PROMPT.format(context=json.dumps(snapshot, ensure_ascii=False, indent=2))
-    provider = settings.copilot_provider
-    api_key = _get_api_key(settings)
-    model = _get_model(settings)
+    provider = config.provider
+    api_key = config.api_key
+    model = config.model
 
     try:
         if provider == "openai":
@@ -219,7 +289,7 @@ def stream_copilot_response(
         elif provider == "gemini":
             yield from _stream_gemini(api_key, model, system_prompt, messages)
         elif provider == "local":
-            yield from _stream_local(settings, model, system_prompt, messages)
+            yield from _stream_local(config.local_url, api_key, model, system_prompt, messages)
         else:
             raise ValueError(f"Provider non supportato: {provider}")
 
@@ -285,14 +355,14 @@ def _stream_gemini(
 
 
 def _stream_local(
-    settings: Settings, model: str, system_prompt: str, messages: list[CopilotMessage],
+    local_url: str, api_key: str, model: str, system_prompt: str, messages: list[CopilotMessage],
 ) -> Generator[str, None, None]:
     """Stream from a local LLM server exposing an OpenAI-compatible API (Ollama, LM Studio, etc.)."""
     import openai
 
     client = openai.OpenAI(
-        base_url=settings.copilot_local_url,
-        api_key=settings.copilot_local_api_key or "not-needed",
+        base_url=local_url or "http://localhost:11434/v1",
+        api_key=api_key or "not-needed",
     )
     openai_messages = [{"role": "system", "content": system_prompt}]
     for msg in messages:
