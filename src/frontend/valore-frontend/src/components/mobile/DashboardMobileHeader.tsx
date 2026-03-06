@@ -9,6 +9,7 @@ interface DashboardMobileHeaderProps {
   selectedPortfolioId: string | null;
   onSelectPortfolio: (value: string) => void;
   portfoliosLoading: boolean;
+  refreshing: boolean;
   refreshMessage: string | null;
   lastUpdatedAt: string | null;
 }
@@ -18,6 +19,7 @@ export function DashboardMobileHeader({
   selectedPortfolioId,
   onSelectPortfolio,
   portfoliosLoading,
+  refreshing,
   refreshMessage,
   lastUpdatedAt,
 }: DashboardMobileHeaderProps) {
@@ -53,7 +55,11 @@ export function DashboardMobileHeader({
           />
 
           <Group gap="xs" wrap="wrap">
-            {refreshMessage ? (
+            {refreshing ? (
+              <Badge variant="light" color="blue" leftSection={<Loader size={12} />}>
+                Aggiornamento in corso...
+              </Badge>
+            ) : refreshMessage ? (
               <Badge variant="light" color="teal">
                 {refreshMessage}
               </Badge>

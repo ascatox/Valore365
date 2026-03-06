@@ -180,6 +180,7 @@ export function DashboardPage() {
             selectedPortfolioId={selectedPortfolioId}
             onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
             portfoliosLoading={portfoliosLoading}
+            refreshing={refreshing}
             refreshMessage={refreshMessage}
             lastUpdatedAt={!error && ENABLE_TARGET_ALLOCATION && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
           />
