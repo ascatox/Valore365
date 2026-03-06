@@ -53,8 +53,10 @@ export function PerformanceChart({
       p={isMobile ? 'lg' : 'md'}
       shadow="sm"
       style={isMobile ? {
-        background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-        boxShadow: '0 18px 38px rgba(15, 23, 42, 0.08)',
+        background: isDark
+          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+          : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+        boxShadow: isDark ? '0 18px 38px rgba(0, 0, 0, 0.28)' : '0 18px 38px rgba(15, 23, 42, 0.08)',
       } : undefined}
     >
       <Group justify="space-between" mb="xs" align={isMobile ? 'flex-start' : 'center'} wrap="wrap" gap="xs">

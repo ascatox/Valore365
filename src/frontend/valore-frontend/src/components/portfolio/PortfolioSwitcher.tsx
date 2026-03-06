@@ -14,6 +14,8 @@ import {
   Text,
   TextInput,
   UnstyledButton,
+  useComputedColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import {
@@ -76,6 +78,9 @@ export function PortfolioSwitcher({
   onClonePortfolio = null,
   onDeletePortfolio = null,
 }: PortfolioSwitcherProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [opened, setOpened] = useState(false);
   const [query, setQuery] = useState('');
@@ -121,7 +126,7 @@ export function PortfolioSwitcher({
     { label: 'Apri portfolio', icon: IconExternalLink, onClick: onOpenPortfolio },
     { label: 'Modifica', icon: IconEdit, onClick: onEditPortfolio },
     { label: 'Clona', icon: IconCopy, onClick: onClonePortfolio },
-    { label: 'Elimina', icon: IconTrash, onClick: onDeletePortfolio, color: '#dc2626' },
+    { label: 'Elimina', icon: IconTrash, onClick: onDeletePortfolio, color: 'red' },
   ].filter((action) => action.onClick);
 
   const list = (
@@ -137,7 +142,7 @@ export function PortfolioSwitcher({
         <Stack gap="xs">
           {selectedPortfolio && orderedPortfolios.length > 0 && (
             <Box>
-              <Text size="xs" fw={700} tt="uppercase" c="#64748b" mb={8} style={{ letterSpacing: 0.8 }}>
+              <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
                 Attivo
               </Text>
               <UnstyledButton
@@ -149,17 +154,17 @@ export function PortfolioSwitcher({
                 style={{
                   width: '100%',
                   borderRadius: 18,
-                  border: '1px solid #0f766e',
-                  background: 'linear-gradient(135deg, rgba(15,118,110,0.13), rgba(15,118,110,0.05))',
+                  border: `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`,
+                  background: isDark ? 'rgba(20,184,166,0.12)' : 'linear-gradient(135deg, rgba(15,118,110,0.13), rgba(15,118,110,0.05))',
                   padding: '16px',
                   textAlign: 'left',
-                  boxShadow: '0 12px 28px rgba(15, 118, 110, 0.10)',
+                  boxShadow: isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)',
                 }}
               >
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
                   <Box style={{ minWidth: 0 }}>
                     <Group gap={8} mb={8} wrap="wrap">
-                      <Text fw={700} size="sm" c="#0f172a">{selectedPortfolio.name}</Text>
+                      <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'}>{selectedPortfolio.name}</Text>
                       <Badge variant="light" color="teal" radius="xl">{selectedPortfolio.base_currency}</Badge>
                       <Badge variant="outline" color="gray" radius="xl">{`#${selectedPortfolio.id}`}</Badge>
                     </Group>
@@ -177,7 +182,7 @@ export function PortfolioSwitcher({
                       {`Creato ${formatDate(selectedPortfolio.created_at)} · TZ ${selectedPortfolio.timezone}`}
                     </Text>
                   </Box>
-                  <IconCheck size={18} color="#0f766e" style={{ flexShrink: 0, marginTop: 2 }} />
+                  <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />
                 </Group>
               </UnstyledButton>
             </Box>
@@ -186,7 +191,7 @@ export function PortfolioSwitcher({
           {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).length ? (
             <>
               <Box>
-                <Text size="xs" fw={700} tt="uppercase" c="#64748b" mb={8} style={{ letterSpacing: 0.8 }}>
+                <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
                   {selectedPortfolio ? 'Tutti i portafogli' : 'Portafogli'}
                 </Text>
                 <Stack gap="xs">
@@ -203,18 +208,24 @@ export function PortfolioSwitcher({
                 style={{
                   width: '100%',
                   borderRadius: 16,
-                  border: isActive ? '1px solid #0f766e' : '1px solid #d6d9de',
-                  background: isActive ? 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(15,118,110,0.04))' : '#ffffff',
+                  border: isActive
+                    ? `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`
+                    : `1px solid ${isDark ? theme.colors.dark[4] : '#d6d9de'}`,
+                  background: isActive
+                    ? (isDark ? 'rgba(20,184,166,0.10)' : 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(15,118,110,0.04))')
+                    : (isDark ? theme.colors.dark[6] : '#ffffff'),
                   padding: '14px 16px',
                   textAlign: 'left',
                   transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
-                  boxShadow: isActive ? '0 12px 28px rgba(15, 118, 110, 0.10)' : '0 8px 20px rgba(15, 23, 42, 0.05)',
+                  boxShadow: isActive
+                    ? (isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)')
+                    : (isDark ? '0 8px 20px rgba(0, 0, 0, 0.18)' : '0 8px 20px rgba(15, 23, 42, 0.05)'),
                 }}
               >
                 <Group justify="space-between" align="flex-start" wrap="nowrap">
                   <Box style={{ minWidth: 0 }}>
                     <Group gap={8} mb={6} wrap="wrap">
-                      <Text fw={700} size="sm" c="#0f172a" lineClamp={1}>{portfolio.name}</Text>
+                      <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'} lineClamp={1}>{portfolio.name}</Text>
                       <Badge variant="light" color="teal" radius="xl">{portfolio.base_currency}</Badge>
                       <Badge variant="outline" color="gray" radius="xl">{`#${portfolio.id}`}</Badge>
                     </Group>
@@ -232,7 +243,7 @@ export function PortfolioSwitcher({
                       {`Creato ${formatDate(portfolio.created_at)} · TZ ${portfolio.timezone}`}
                     </Text>
                   </Box>
-                  {isActive && <IconCheck size={18} color="#0f766e" style={{ flexShrink: 0, marginTop: 2 }} />}
+                  {isActive && <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />}
                 </Group>
               </UnstyledButton>
             );
@@ -241,7 +252,7 @@ export function PortfolioSwitcher({
               </Box>
             </>
           ) : (
-            <Paper radius="lg" p="md" withBorder bg="#f8fafc">
+            <Paper radius="lg" p="md" withBorder bg={isDark ? theme.colors.dark[6] : '#f8fafc'}>
               <Text size="sm" c="dimmed">Nessun portafoglio trovato</Text>
             </Paper>
           )}
@@ -252,7 +263,7 @@ export function PortfolioSwitcher({
         <>
           <Divider />
           <Box>
-            <Text size="xs" fw={700} tt="uppercase" c="#64748b" mb={8} style={{ letterSpacing: 0.8 }}>
+            <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
               Azioni rapide
             </Text>
             <Group gap="xs" wrap="wrap">
@@ -305,10 +316,12 @@ export function PortfolioSwitcher({
       style={{
         width: '100%',
         borderRadius: 18,
-        border: '1px solid #d6d9de',
-        background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+        border: `1px solid ${isDark ? theme.colors.dark[4] : '#d6d9de'}`,
+        background: isDark
+          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+          : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
         padding: isMobile ? '14px 16px' : '15px 18px',
-        boxShadow: '0 12px 32px rgba(15, 23, 42, 0.07)',
+        boxShadow: isDark ? '0 12px 32px rgba(0, 0, 0, 0.24)' : '0 12px 32px rgba(15, 23, 42, 0.07)',
       }}
     >
       <Group justify="space-between" wrap="nowrap" gap="sm">
@@ -329,10 +342,10 @@ export function PortfolioSwitcher({
             <IconBriefcase2 size={20} />
           </Box>
           <Box style={{ minWidth: 0, textAlign: 'left' }}>
-            <Text size="xs" tt="uppercase" fw={700} c="#64748b" mb={4} style={{ letterSpacing: 0.8 }}>
+            <Text size="xs" tt="uppercase" fw={700} c={isDark ? theme.colors.gray[4] : '#64748b'} mb={4} style={{ letterSpacing: 0.8 }}>
               Portfolio attivo
             </Text>
-            <Text fw={700} size="sm" c="#0f172a" lineClamp={1}>
+            <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'} lineClamp={1}>
               {triggerLabel}
             </Text>
             <Text size="xs" c="dimmed" lineClamp={1}>
@@ -353,7 +366,7 @@ export function PortfolioSwitcher({
           </Box>
         </Group>
         <ActionIcon variant="subtle" color="gray" radius="xl" aria-label="Apri selettore portafogli">
-          <IconChevronDown size={18} color="#475569" style={{ flexShrink: 0 }} />
+          <IconChevronDown size={18} color={isDark ? theme.colors.gray[4] : '#475569'} style={{ flexShrink: 0 }} />
         </ActionIcon>
       </Group>
     </UnstyledButton>
@@ -362,7 +375,7 @@ export function PortfolioSwitcher({
   return (
     <Box style={style}>
       {label && (
-        <Text size="xs" fw={700} c="#475569" mb={6} tt="uppercase" style={{ letterSpacing: 0.8 }}>
+        <Text size="xs" fw={700} c={isDark ? theme.colors.gray[4] : '#475569'} mb={6} tt="uppercase" style={{ letterSpacing: 0.8 }}>
           {label}
         </Text>
       )}

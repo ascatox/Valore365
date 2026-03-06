@@ -1,4 +1,4 @@
-import { Badge, Box, Card, Group, Progress, Stack, Text, Tooltip } from '@mantine/core';
+import { Badge, Box, Card, Group, Progress, Stack, Text, Tooltip, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconAlertTriangle, IconArrowUpRight, IconTarget, IconWallet } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../dashboard/formatters';
@@ -25,6 +25,9 @@ function formatPriceDate(value?: string | null): string {
 }
 
 export function MobileHoldingsCards({ positions, currency, summary, targetMap }: MobileHoldingsCardsProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
   const hasTargets = targetMap && targetMap.size > 0;
 
   const totals = (() => {
@@ -37,7 +40,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
 
   if (!positions.length) {
     return (
-      <Card withBorder radius="xl" p="lg" bg="#f8fafc">
+      <Card withBorder radius="xl" p="lg" bg={isDark ? theme.colors.dark[6] : '#f8fafc'}>
         <Text c="dimmed" ta="center" size="sm">Nessuna posizione disponibile</Text>
       </Card>
     );
@@ -59,15 +62,17 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
             radius="xl"
             p="lg"
             style={{
-              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+              background: isDark
+                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+              boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
             }}
           >
             <Stack gap="md">
               <Group justify="space-between" align="flex-start" wrap="nowrap">
                 <Box style={{ minWidth: 0 }}>
                   <Group gap={6} wrap="wrap" mb={6}>
-                    <Text fw={800} size="lg" c="#0f172a">{position.symbol}</Text>
+                    <Text fw={800} size="lg" c={isDark ? theme.white : '#0f172a'}>{position.symbol}</Text>
                     {position.price_stale && (
                       <Tooltip
                         label={`Prezzo non aggiornato${position.price_date ? ` (ultimo: ${formatPriceDate(position.price_date)})` : ''}`}
@@ -87,15 +92,15 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                     minWidth: 112,
                     borderRadius: 18,
                     padding: '10px 12px',
-                    background: 'linear-gradient(135deg, rgba(15,118,110,0.10), rgba(15,118,110,0.04))',
-                    border: '1px solid rgba(15,118,110,0.12)',
+                    background: isDark ? 'rgba(20, 184, 166, 0.12)' : 'linear-gradient(135deg, rgba(15,118,110,0.10), rgba(15,118,110,0.04))',
+                    border: isDark ? `1px solid ${theme.colors.teal[8]}` : '1px solid rgba(15,118,110,0.12)',
                     textAlign: 'right',
                   }}
                 >
-                  <Text size="xs" fw={700} tt="uppercase" c="#0f766e" style={{ letterSpacing: 0.8 }}>
+                  <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ letterSpacing: 0.8 }}>
                     Valore
                   </Text>
-                  <Text fw={800} size="sm" c="#0f172a">{formatMoney(position.market_value, currency)}</Text>
+                  <Text fw={800} size="sm" c={isDark ? theme.white : '#0f172a'}>{formatMoney(position.market_value, currency)}</Text>
                 </Box>
               </Group>
 
@@ -104,15 +109,15 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                   style={{
                     borderRadius: 18,
                     padding: '12px 14px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
+                    background: isDark ? theme.colors.dark[5] : '#f8fafc',
+                    border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
                   }}
                 >
                   <Group justify="space-between" wrap="nowrap" mb={4}>
-                    <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>
+                    <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
                       P/L
                     </Text>
-                    <IconArrowUpRight size={14} color={plColor === 'green' ? '#16a34a' : plColor === 'red' ? '#dc2626' : '#64748b'} />
+                    <IconArrowUpRight size={14} color={plColor === 'green' ? '#16a34a' : plColor === 'red' ? '#dc2626' : (isDark ? theme.colors.gray[4] : '#64748b')} />
                   </Group>
                   <Text fw={800} size="sm" c={plColor}>{formatMoney(position.unrealized_pl, currency, true)}</Text>
                   <Text size="xs" c={pctColor}>{formatPct(position.unrealized_pl_pct)}</Text>
@@ -122,15 +127,15 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                   style={{
                     borderRadius: 18,
                     padding: '12px 14px',
-                    background: '#f8fafc',
-                    border: '1px solid #e2e8f0',
+                    background: isDark ? theme.colors.dark[5] : '#f8fafc',
+                    border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
                   }}
                 >
                   <Group justify="space-between" wrap="nowrap" mb={4}>
-                    <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>
+                    <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
                       Peso
                     </Text>
-                    <IconWallet size={14} color="#2563eb" />
+                    <IconWallet size={14} color={theme.colors.blue[5]} />
                   </Group>
                   <Progress value={position.weight} size="sm" radius="xl" color="blue" mb={6} />
                   <Text fw={700} size="sm">{formatNum(position.weight, 1)}%</Text>
@@ -160,9 +165,11 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
         radius="xl"
         p="lg"
         style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          background: isDark
+            ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[6]} 100%)`
+            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
           color: '#ffffff',
-          boxShadow: '0 18px 36px rgba(15, 23, 42, 0.20)',
+          boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.34)' : '0 18px 36px rgba(15, 23, 42, 0.20)',
         }}
       >
         <Stack gap="sm">

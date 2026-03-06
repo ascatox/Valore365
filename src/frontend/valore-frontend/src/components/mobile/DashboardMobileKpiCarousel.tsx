@@ -1,4 +1,4 @@
-import { Badge, Box, Group, ScrollArea, Stack, Text, ThemeIcon } from '@mantine/core';
+import { Badge, Box, Group, ScrollArea, Stack, Text, ThemeIcon, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { KpiStatCardProps } from '../dashboard/types';
 
 interface DashboardMobileKpiCarouselProps {
@@ -6,6 +6,10 @@ interface DashboardMobileKpiCarouselProps {
 }
 
 export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarouselProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   return (
     <ScrollArea offsetScrollbars scrollbarSize={0} type="never">
       <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6 }}>
@@ -16,15 +20,17 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
               minWidth: 244,
               borderRadius: 24,
               padding: 18,
-              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              border: '1px solid #e2e8f0',
-              boxShadow: '0 16px 32px rgba(15, 23, 42, 0.08)',
+              background: isDark
+                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+              border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
+              boxShadow: isDark ? '0 16px 32px rgba(0, 0, 0, 0.28)' : '0 16px 32px rgba(15, 23, 42, 0.08)',
               scrollSnapAlign: 'start',
             }}
           >
             <Stack gap="lg">
               <Group justify="space-between" align="center" wrap="nowrap">
-                <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>
+                <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
                   {label}
                 </Text>
                 {Icon && (
@@ -33,7 +39,7 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
                   </ThemeIcon>
                 )}
               </Group>
-              <Text fw={800} size="1.7rem" c={color ?? '#0f172a'} style={{ lineHeight: 1.05 }}>
+              <Text fw={800} size="1.7rem" c={color ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.05 }}>
                 {value}
               </Text>
               <Badge

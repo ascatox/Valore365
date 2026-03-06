@@ -101,16 +101,18 @@ export function SettingsPage() {
           radius="xl"
           p="lg"
           style={{
-            background: 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 100%)',
-            border: '1px solid rgba(148,163,184,0.18)',
-            boxShadow: '0 16px 42px rgba(15, 23, 42, 0.10)',
+            background: colorScheme === 'dark'
+              ? `linear-gradient(180deg, ${theme.colors.dark[7]}F5 0%, ${theme.colors.dark[6]}EB 100%)`
+              : 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 100%)',
+            border: colorScheme === 'dark' ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.18)',
+            boxShadow: colorScheme === 'dark' ? '0 16px 42px rgba(0, 0, 0, 0.28)' : '0 16px 42px rgba(15, 23, 42, 0.10)',
           }}
         >
           <Stack gap="xs">
             <Badge variant="light" color="teal" size="lg" style={{ alignSelf: 'flex-start' }}>
               Impostazioni
             </Badge>
-            <Title order={2} fw={800} c="#0f172a">Preferenze app</Title>
+            <Title order={2} fw={800} c={colorScheme === 'dark' ? theme.white : '#0f172a'}>Preferenze app</Title>
             <Text size="sm" c="dimmed">
               Privacy, fiscalita' e tema in un layout piu' pulito.
             </Text>
@@ -127,10 +129,10 @@ export function SettingsPage() {
             gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
             gap: 8,
             padding: 8,
-            background: 'rgba(255,255,255,0.9)',
-            border: '1px solid rgba(148,163,184,0.18)',
+            background: colorScheme === 'dark' ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
+            border: colorScheme === 'dark' ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.18)',
             borderRadius: 20,
-            boxShadow: '0 14px 30px rgba(15, 23, 42, 0.08)',
+            boxShadow: colorScheme === 'dark' ? '0 14px 30px rgba(0, 0, 0, 0.24)' : '0 14px 30px rgba(15, 23, 42, 0.08)',
           } : undefined}
         >
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
@@ -146,8 +148,10 @@ export function SettingsPage() {
             ml={isMobile ? 0 : 'md'}
             mt={isMobile ? 'md' : 0}
             style={isMobile ? {
-              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+              background: colorScheme === 'dark'
+                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+              boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
             } : undefined}
           >
             <Stack gap="lg">
@@ -215,8 +219,10 @@ export function SettingsPage() {
           ml={isMobile ? 0 : 'md'}
           mt={isMobile ? 'md' : 0}
           style={isMobile ? {
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-            boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+            background: colorScheme === 'dark'
+              ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+              : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+            boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
           } : undefined}
         >
           <Stack>
@@ -273,8 +279,10 @@ export function SettingsPage() {
           ml={isMobile ? 0 : 'md'}
           mt={isMobile ? 'md' : 0}
           style={isMobile ? {
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-            boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+            background: colorScheme === 'dark'
+              ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+              : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+            boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
           } : undefined}
         >
             <Stack>
@@ -285,7 +293,11 @@ export function SettingsPage() {
                   radius={isMobile ? 'xl' : 'md'}
                   style={{
                     borderColor: theme.colors.red[6],
-                    background: isMobile ? 'linear-gradient(180deg, #fff7f7 0%, #ffffff 100%)' : undefined,
+                    background: isMobile
+                      ? (colorScheme === 'dark'
+                        ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                        : 'linear-gradient(180deg, #fff7f7 0%, #ffffff 100%)')
+                      : undefined,
                   }}
                 >
                     <Stack>

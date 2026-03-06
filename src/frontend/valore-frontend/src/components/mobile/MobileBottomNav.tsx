@@ -1,4 +1,4 @@
-import { Group, Text, UnstyledButton } from '@mantine/core';
+import { Group, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { TablerIconsProps } from '@tabler/icons-react';
 
 interface MobileBottomNavItem {
@@ -14,6 +14,10 @@ interface MobileBottomNavProps {
 }
 
 export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   return (
     <Group
       justify="space-between"
@@ -27,10 +31,10 @@ export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps
         zIndex: 45,
         padding: 8,
         borderRadius: 24,
-        background: 'rgba(255,255,255,0.94)',
+        background: isDark ? 'rgba(30,41,59,0.94)' : 'rgba(255,255,255,0.94)',
         backdropFilter: 'blur(16px)',
-        border: '1px solid rgba(148,163,184,0.22)',
-        boxShadow: '0 18px 42px rgba(15, 23, 42, 0.18)',
+        border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
+        boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',
       }}
     >
       {items.map((item) => {
@@ -46,7 +50,7 @@ export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps
               borderRadius: 18,
               padding: '10px 6px',
               background: isActive ? 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)' : 'transparent',
-              color: isActive ? '#ffffff' : '#475569',
+              color: isActive ? '#ffffff' : (isDark ? theme.colors.gray[3] : '#475569'),
               textAlign: 'center',
               transition: 'all 140ms ease',
             }}

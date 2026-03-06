@@ -150,7 +150,11 @@ export function DashboardPage() {
       style={{
         padding: 'var(--mantine-spacing-sm)',
         paddingBottom: isMobile ? 104 : undefined,
-        background: isMobile ? 'linear-gradient(180deg, #eef6f4 0%, #f8fafc 22%, transparent 42%)' : undefined,
+        background: isMobile
+          ? (theme.colorScheme === 'dark'
+            ? `linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 22%, transparent 42%)`
+            : 'linear-gradient(180deg, #eef6f4 0%, #f8fafc 22%, transparent 42%)')
+          : undefined,
         minHeight: '100%',
       }}
     >
@@ -160,10 +164,8 @@ export function DashboardPage() {
           selectedPortfolioId={selectedPortfolioId}
           onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
           portfoliosLoading={portfoliosLoading}
-          refreshing={refreshing}
           refreshMessage={refreshMessage}
           lastUpdatedAt={!error && ENABLE_TARGET_ALLOCATION && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
-          onRefresh={handleRefresh}
         />
       ) : (
         <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">

@@ -1,4 +1,4 @@
-import { Badge, Box, Group, Loader, Stack, Text } from '@mantine/core';
+import { Badge, Box, Group, Loader, Stack, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconSparkles } from '@tabler/icons-react';
 import { PortfolioSwitcher } from '../portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../dashboard/formatters';
@@ -21,6 +21,10 @@ export function DashboardMobileHeader({
   refreshMessage,
   lastUpdatedAt,
 }: DashboardMobileHeaderProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   return (
     <Box
       style={{
@@ -35,10 +39,12 @@ export function DashboardMobileHeader({
         style={{
           borderRadius: 24,
           padding: 14,
-          background: 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 100%)',
+          background: isDark
+            ? `linear-gradient(180deg, ${theme.colors.dark[7]}F5 0%, ${theme.colors.dark[6]}EB 100%)`
+            : 'linear-gradient(180deg, rgba(248,250,252,0.96) 0%, rgba(255,255,255,0.92) 100%)',
           backdropFilter: 'blur(14px)',
-          border: '1px solid rgba(148,163,184,0.18)',
-          boxShadow: '0 16px 42px rgba(15, 23, 42, 0.10)',
+          border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.18)',
+          boxShadow: isDark ? '0 16px 42px rgba(0, 0, 0, 0.28)' : '0 16px 42px rgba(15, 23, 42, 0.10)',
         }}
       >
         <Stack gap="sm">
@@ -48,7 +54,7 @@ export function DashboardMobileHeader({
                 size="xs"
                 fw={700}
                 tt="uppercase"
-                c="#0f766e"
+                c={isDark ? theme.colors.teal[3] : theme.colors.teal[7]}
                 style={{ letterSpacing: 1 }}
               >
                 Dashboard

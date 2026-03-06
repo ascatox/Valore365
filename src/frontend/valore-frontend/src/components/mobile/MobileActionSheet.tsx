@@ -1,4 +1,4 @@
-import { Badge, Box, Button, Drawer, Group, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Badge, Box, Button, Drawer, Group, Stack, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { TablerIconsProps } from '@tabler/icons-react';
 import { IconBolt, IconChevronUp } from '@tabler/icons-react';
 
@@ -34,6 +34,10 @@ export function MobileActionSheet({
   primaryAction,
   items,
 }: MobileActionSheetProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   return (
     <>
       <Group
@@ -47,10 +51,10 @@ export function MobileActionSheet({
           zIndex: 44,
           padding: 8,
           borderRadius: 24,
-          background: 'rgba(255,255,255,0.94)',
+          background: isDark ? 'rgba(30, 41, 59, 0.94)' : 'rgba(255,255,255,0.94)',
           backdropFilter: 'blur(16px)',
-          border: '1px solid rgba(148,163,184,0.22)',
-          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.18)',
+          border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
+          boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',
         }}
       >
         {primaryAction && (
@@ -74,9 +78,11 @@ export function MobileActionSheet({
             minWidth: primaryAction ? 112 : undefined,
             borderRadius: 18,
             padding: primaryAction ? '12px 16px' : '14px 18px',
-            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            background: isDark
+              ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[6]} 100%)`
+              : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
             color: '#ffffff',
-            boxShadow: '0 14px 30px rgba(15, 23, 42, 0.22)',
+            boxShadow: isDark ? '0 14px 30px rgba(0, 0, 0, 0.34)' : '0 14px 30px rgba(15, 23, 42, 0.22)',
           }}
         >
           <Group justify="space-between" wrap="nowrap" gap="sm">
@@ -131,12 +137,14 @@ export function MobileActionSheet({
                   borderRadius: 20,
                   padding: '16px 18px',
                   textAlign: 'left',
-                  border: '1px solid #e2e8f0',
+                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
                   background: item.disabled
-                    ? '#f8fafc'
-                    : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+                    ? (isDark ? theme.colors.dark[6] : '#f8fafc')
+                    : (isDark
+                      ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+                      : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)'),
                   opacity: item.disabled ? 0.55 : 1,
-                  boxShadow: item.disabled ? 'none' : '0 12px 28px rgba(15, 23, 42, 0.07)',
+                  boxShadow: item.disabled ? 'none' : (isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 23, 42, 0.07)'),
                 }}
               >
                 <Group justify="space-between" wrap="nowrap" gap="sm">
@@ -156,7 +164,7 @@ export function MobileActionSheet({
                       <Icon size={18} />
                     </Box>
                     <Box style={{ minWidth: 0 }}>
-                      <Text fw={700} size="sm" c="#0f172a">{item.label}</Text>
+                      <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'}>{item.label}</Text>
                       <Text size="xs" c="dimmed">{item.description}</Text>
                     </Box>
                   </Group>
