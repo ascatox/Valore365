@@ -62,7 +62,6 @@ export function PerformanceChart({
       <Group justify="space-between" mb="xs" align={isMobile ? 'flex-start' : 'center'} wrap="wrap" gap="xs">
         <Group gap="xs">
           <Text fw={700} size={isMobile ? 'md' : 'sm'}>{title}</Text>
-          {isMobile && <Badge variant="dot" color="teal">Touch-first</Badge>}
           {stats?.map((s) => (
             <Badge
               key={s.label}
