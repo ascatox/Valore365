@@ -309,7 +309,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       <div style={{ marginTop: 16 }}>
         {hasBenchmark ? (
           <Card withBorder radius="md" p="md" shadow="sm">
-            <Group justify="space-between" mb="xs" align="center" wrap="wrap" gap="xs">
+            <Group justify="space-between" mb="xs" align={isMobile ? 'flex-start' : 'center'} wrap="wrap" gap="xs">
               <Group gap="xs">
                 <Text fw={600} size="sm">
                   {`Andamento Portafoglio vs ${comparisonStats?.benchLabel} (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
@@ -327,25 +327,26 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
                   </>
                 )}
               </Group>
-              <Group gap="xs">
+              <Group gap="xs" style={isMobile ? { width: '100%' } : undefined}>
                 <Select
-                  size="xs"
-                  w={140}
+                  size={isMobile ? 'sm' : 'xs'}
+                  w={isMobile ? '100%' : 140}
                   data={benchmarkSelectData}
                   value={selectedBenchmarkId != null ? String(selectedBenchmarkId) : ''}
                   onChange={(v) => setSelectedBenchmarkId(v ? Number(v) : null)}
                   allowDeselect={false}
                 />
                 <SegmentedControl
-                  size="xs"
+                  size={isMobile ? 'sm' : 'xs'}
                   value={chartWindow}
                   onChange={setChartWindow}
                   data={DASHBOARD_WINDOWS.map((w) => ({ label: w.label, value: w.value }))}
+                  fullWidth={isMobile}
                 />
               </Group>
             </Group>
             <Text size="xs" c="dimmed" mb="sm">Entrambe le serie normalizzate a base 100</Text>
-            <div style={{ height: 260 }}>
+            <div style={{ height: isMobile ? 320 : 260 }}>
               {benchmarkLoading ? (
                 <Group h="100%" justify="center">
                   <Loader size="sm" />
@@ -486,7 +487,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
           </Group>
         </Group>
         <Text size="xs" c="dimmed" mb="sm">Valore di mercato del portafoglio confrontato con il netto investito</Text>
-        <div style={{ height: 220 }}>
+        <div style={{ height: isMobile ? 300 : 220 }}>
           {gainChartLoading ? (
             <Group h="100%" justify="center">
               <Loader size="sm" />

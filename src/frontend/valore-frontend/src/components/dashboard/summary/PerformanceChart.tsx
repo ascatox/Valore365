@@ -44,12 +44,23 @@ export function PerformanceChart({
   const isMobile = useMediaQuery('(max-width: 48em)');
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+  const resolvedHeight = isMobile ? Math.max(height, 300) : height;
 
   return (
-    <Card withBorder radius="md" p="md" shadow="sm">
-      <Group justify="space-between" mb="xs" align="center" wrap="wrap" gap="xs">
+    <Card
+      withBorder
+      radius={isMobile ? 'xl' : 'md'}
+      p={isMobile ? 'lg' : 'md'}
+      shadow="sm"
+      style={isMobile ? {
+        background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+        boxShadow: '0 18px 38px rgba(15, 23, 42, 0.08)',
+      } : undefined}
+    >
+      <Group justify="space-between" mb="xs" align={isMobile ? 'flex-start' : 'center'} wrap="wrap" gap="xs">
         <Group gap="xs">
-          <Text fw={600} size="sm">{title}</Text>
+          <Text fw={700} size={isMobile ? 'md' : 'sm'}>{title}</Text>
+          {isMobile && <Badge variant="dot" color="teal">Touch-first</Badge>}
           {stats?.map((s) => (
             <Badge
               key={s.label}
@@ -72,7 +83,7 @@ export function PerformanceChart({
         {headerRight}
       </Group>
       {subtitle && <Text size="xs" c="dimmed" mb="sm">{subtitle}</Text>}
-      <div style={{ height }}>
+      <div style={{ height: resolvedHeight }}>
         {loading ? (
           <Group h="100%" justify="center">
             <Loader size="sm" />
@@ -92,11 +103,18 @@ export function PerformanceChart({
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey={xKey} axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
+              <XAxis
+                dataKey={xKey}
+                axisLine={false}
+                tickLine={false}
+                minTickGap={isMobile ? 24 : 8}
+                tick={{ fill: tickColor, fontSize: isMobile ? 11 : 12 }}
+              />
               <YAxis
                 domain={['auto', 'auto']}
                 axisLine={false}
                 tickLine={false}
+                hide={isMobile}
                 tick={{ fill: tickColor, fontSize: 11 }}
                 width={50}
                 tickFormatter={(v: number) => formatNum(v, v >= 1000 ? 0 : 1)}
@@ -122,9 +140,10 @@ export function PerformanceChart({
                 type="monotone"
                 dataKey={dataKey}
                 stroke={color}
-                strokeWidth={2.5}
+                strokeWidth={isMobile ? 3 : 2.5}
                 fillOpacity={1}
                 fill={`url(#${gradientId})`}
+                activeDot={{ r: isMobile ? 6 : 4, strokeWidth: 0 }}
               />
             </AreaChart>
           </ResponsiveContainer>

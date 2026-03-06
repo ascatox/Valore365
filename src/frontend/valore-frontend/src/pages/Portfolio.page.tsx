@@ -1223,42 +1223,86 @@ export function PortfolioPage() {
     const total = tx.side === 'buy'
       ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
       : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+    const sideColor = tx.side === 'buy' ? 'teal' : tx.side === 'sell' ? 'orange' : tx.side === 'dividend' ? 'blue' : 'gray';
 
     return (
-      <Card key={`tx-mobile-${tx.id}`} withBorder>
+      <Card
+        key={`tx-mobile-${tx.id}`}
+        withBorder
+        radius="xl"
+        p="lg"
+        style={{
+          background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+          boxShadow: '0 18px 36px rgba(15, 23, 42, 0.08)',
+        }}
+      >
         <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
-          <div>
-            <Text fw={600}>{tx.symbol}</Text>
+          <div style={{ minWidth: 0 }}>
+            <Group gap={8} wrap="wrap" mb={4}>
+              <Text fw={800} size="lg">{tx.symbol}</Text>
+              <Text
+                fw={700}
+                size="xs"
+                c={sideColor}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: 999,
+                  background: sideColor === 'teal' ? 'rgba(13,148,136,0.12)' : sideColor === 'orange' ? 'rgba(249,115,22,0.12)' : 'rgba(59,130,246,0.12)',
+                }}
+              >
+                {formatTransactionSideLabel(tx.side)}
+              </Text>
+            </Group>
             {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
           </div>
-          <Text fw={700} c={tx.side === 'buy' ? 'teal' : 'orange'}>
-            {formatTransactionSideLabel(tx.side)}
-          </Text>
+          <Card radius="lg" p="sm" style={{ minWidth: 110, background: 'rgba(15,118,110,0.06)', border: '1px solid rgba(15,118,110,0.12)' }}>
+            <Text size="xs" fw={700} tt="uppercase" c="#0f766e" style={{ letterSpacing: 0.8 }}>Valore</Text>
+            <Text fw={800} size="sm">{formatMoney(total, tx.trade_currency)}</Text>
+          </Card>
         </Group>
 
-        <Text size="xs" c="dimmed" mt={6}>{formatDateTime(tx.trade_at)}</Text>
+        <Text size="xs" c="dimmed" mt={8}>{formatDateTime(tx.trade_at)}</Text>
 
-        <Group justify="space-between" mt="sm" gap="xs">
-          <Text size="sm" c="dimmed">Quantita</Text>
-          <Text size="sm">{formatNum(tx.quantity, 4)}</Text>
+        <Group grow mt="md">
+          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Quantita'</Text>
+            <Text fw={700} size="sm">{formatNum(tx.quantity, 4)}</Text>
+          </Card>
+          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Prezzo</Text>
+            <Text fw={700} size="sm">{formatMoney(tx.price, tx.trade_currency)}</Text>
+          </Card>
         </Group>
-        <Group justify="space-between" gap="xs">
-          <Text size="sm" c="dimmed">Prezzo</Text>
-          <Text size="sm">{formatMoney(tx.price, tx.trade_currency)}</Text>
-        </Group>
-        <Group justify="space-between" gap="xs">
-          <Text size="sm" c="dimmed">Fee</Text>
-          <Text size="sm">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Text>
-        </Group>
-        <Group justify="space-between" gap="xs">
-          <Text size="sm" c="dimmed">Valore</Text>
-          <Text size="sm" fw={700}>{formatMoney(total, tx.trade_currency)}</Text>
+        <Group grow mt="xs">
+          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Fee</Text>
+            <Text fw={700} size="sm">{formatMoney(tx.fees ?? 0, tx.trade_currency)}</Text>
+          </Card>
+          <Card radius="lg" p="sm" bg="#f8fafc" withBorder>
+            <Text size="xs" fw={700} tt="uppercase" c="#64748b" style={{ letterSpacing: 0.8 }}>Lordo</Text>
+            <Text fw={700} size="sm">{formatMoney(gross, tx.trade_currency)}</Text>
+          </Card>
         </Group>
         {!!tx.notes && (
-          <Text size="xs" c="dimmed" mt="sm">
-            Note: {tx.notes}
-          </Text>
+          <Card radius="lg" p="sm" mt="sm" bg="#fff7ed" style={{ border: '1px solid #fed7aa' }}>
+            <Text size="xs" fw={700} tt="uppercase" c="#9a3412" style={{ letterSpacing: 0.8 }}>Note</Text>
+            <Text size="sm" c="#7c2d12">{tx.notes}</Text>
+          </Card>
         )}
+        <Group grow mt="sm">
+          <Button variant="default" radius="xl" onClick={() => openEditTransactionModal(tx)}>
+            Modifica
+          </Button>
+          <Button
+            color="red"
+            variant="light"
+            radius="xl"
+            onClick={() => openDeleteTransactionModal(tx)}
+            loading={deletingTransactionId === tx.id}
+          >
+            Elimina
+          </Button>
+        </Group>
       </Card>
     );
   });
@@ -1288,11 +1332,20 @@ export function PortfolioPage() {
     );
 
     transactionMobileCards.push(
-      <Card key="tx-mobile-total" withBorder>
+      <Card
+        key="tx-mobile-total"
+        radius="xl"
+        p="lg"
+        style={{
+          background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+          color: '#ffffff',
+          boxShadow: '0 18px 36px rgba(15, 23, 42, 0.20)',
+        }}
+      >
         <Group justify="space-between" gap="xs">
-          <Text fw={700}>Totale</Text>
+          <Text fw={700} c="rgba(255,255,255,0.75)">Totale filtro</Text>
           {transactionTotals.mixedCurrencies ? (
-            <Text fw={700} c="dimmed">Valute miste</Text>
+            <Text fw={700} c="rgba(255,255,255,0.75)">Valute miste</Text>
           ) : (
             <Text fw={700}>
               {formatMoney(transactionTotals.totalValue, transactionTotals.currency ?? selectedPortfolio?.base_currency)}

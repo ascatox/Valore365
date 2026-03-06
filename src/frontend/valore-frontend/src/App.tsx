@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import {
   AppShell,
+  Box,
   Burger,
   Group,
   ActionIcon,
@@ -26,9 +27,10 @@ import {
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
-import { PortfolioPage } from './pages/Portfolio.page.tsx';
-import { DashboardPage } from './pages/Dashboard.page.tsx';
-import { SettingsPage } from './pages/Settings.page.tsx';
+
+const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
+const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
+const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
 
 const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -133,11 +135,19 @@ function App() {
             )}
           </Transition>
           <Container fluid>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Routes>
+            <Suspense
+              fallback={(
+                <Box py="xl" ta="center" c="dimmed">
+                  Caricamento pagina...
+                </Box>
+              )}
+            >
+              <Routes>
+                <Route path="/" element={<DashboardPage />} />
+                <Route path="/portfolio" element={<PortfolioPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
+              </Routes>
+            </Suspense>
           </Container>
         </AppShell.Main>
       </AppShell>
