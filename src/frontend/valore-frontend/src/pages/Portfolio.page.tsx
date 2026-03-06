@@ -21,12 +21,13 @@ import {
   Checkbox,
   Tabs,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2 } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/TargetAllocationCsvImportModal.tsx';
 import { PacRuleDrawer } from '../components/portfolio/PacRuleDrawer.tsx';
 import { PacSection } from '../components/portfolio/PacSection.tsx';
+import { MobileActionSheet } from '../components/mobile/MobileActionSheet.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
@@ -160,6 +161,7 @@ export function PortfolioPage() {
   const [csvImportOpened, setCsvImportOpened] = useState(false);
   const [targetCsvImportOpened, setTargetCsvImportOpened] = useState(false);
   const [pacDrawerOpened, setPacDrawerOpened] = useState(false);
+  const [mobileActionSheetOpened, setMobileActionSheetOpened] = useState(false);
   const [editingPacRule, setEditingPacRule] = useState<PacRuleRead | null>(null);
   const [pacRefreshTrigger, setPacRefreshTrigger] = useState(0);
 
@@ -1306,6 +1308,7 @@ export function PortfolioPage() {
 
   return (
     <>
+      <div style={isMobile ? { paddingBottom: 96 } : undefined}>
       {/* Header */}
       <Group justify="space-between" mb="md" wrap="wrap" gap="xs">
         <Title order={2} fw={700}>Il Mio Portafoglio</Title>
@@ -1465,6 +1468,82 @@ export function PortfolioPage() {
             setPacDrawerOpened(true);
           }}
           refreshTrigger={pacRefreshTrigger}
+        />
+      )}
+      </div>
+
+      {isMobile && (
+        <MobileActionSheet
+          opened={mobileActionSheetOpened}
+          onOpen={() => setMobileActionSheetOpened(true)}
+          onClose={() => setMobileActionSheetOpened(false)}
+          title="Azioni portfolio"
+          badge={selectedPortfolio ? selectedPortfolio.name : 'Seleziona portafoglio'}
+          primaryAction={{
+            label: portfolioView === 'target' ? 'Aggiungi asset' : 'Nuova transazione',
+            onClick: portfolioView === 'target' ? openDrawer : openTransactionDrawer,
+            disabled: !selectedPortfolioId,
+          }}
+          items={[
+            {
+              label: 'Nuova transazione',
+              description: 'Apri il drawer rapido per acquisti e vendite',
+              icon: IconArrowsExchange,
+              onClick: openTransactionDrawer,
+              disabled: !selectedPortfolioId,
+            },
+            {
+              label: 'Importa CSV',
+              description: 'Carica movimenti o storico dal file broker',
+              icon: IconFileImport,
+              onClick: () => setCsvImportOpened(true),
+              disabled: !selectedPortfolioId || portfolioView !== 'transactions',
+            },
+            {
+              label: 'Aggiungi asset target',
+              description: 'Inserisci un nuovo peso target nel portafoglio',
+              icon: IconTarget,
+              onClick: openDrawer,
+              disabled: !selectedPortfolioId || !ENABLE_TARGET_ALLOCATION || portfolioView !== 'target',
+            },
+            {
+              label: 'Genera da target',
+              description: 'Preview di ribilanciamento disponibile su desktop',
+              icon: IconChartArrows,
+              onClick: () => setFormSuccess('La preview di ribilanciamento e disponibile solo su desktop'),
+              disabled: !selectedPortfolioId || !ENABLE_TARGET_ALLOCATION || portfolioView !== 'target',
+            },
+            {
+              label: 'Nuovo portfolio',
+              description: 'Crea un nuovo contenitore con valuta e cash dedicati',
+              icon: IconPlus,
+              onClick: openCreatePortfolioModal,
+            },
+            {
+              label: 'Clona portfolio',
+              description: 'Duplica impostazioni e target allocation',
+              icon: IconCopy,
+              onClick: openClonePortfolioModal,
+              disabled: !selectedPortfolioId,
+            },
+            {
+              label: 'Gestisci PAC',
+              description: 'Apri configurazione regole PAC e pianificazione',
+              icon: IconCoins,
+              onClick: () => {
+                setEditingPacRule(null);
+                setPacDrawerOpened(true);
+              },
+              disabled: !selectedPortfolioId || portfolioView !== 'transactions',
+            },
+            {
+              label: 'Modifica portfolio',
+              description: 'Aggiorna nome, valuta base, timezone e cash',
+              icon: IconSettings2,
+              onClick: openEditPortfolioModal,
+              disabled: !selectedPortfolioId,
+            },
+          ]}
         />
       )}
 

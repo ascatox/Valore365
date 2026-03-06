@@ -2,16 +2,20 @@ import { useEffect, useRef, useState, type TouchEvent } from 'react';
 import {
   Alert,
   Badge,
+  Box,
   Group,
   Loader,
   Tabs,
   Text,
   Title,
+  useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { DashboardMobileHeader } from '../components/mobile/DashboardMobileHeader';
+import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
@@ -32,6 +36,7 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const theme = useMantineTheme();
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // --- Shared UI state ---
@@ -149,23 +154,55 @@ export function DashboardPage() {
   }, [refreshMessage]);
 
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
+  const mobileTabItems = [
+    { value: 'panoramica', label: 'Home', icon: IconChartPie },
+    { value: 'posizioni', label: 'Posizioni', icon: IconList },
+    ...(ENABLE_TARGET_ALLOCATION ? [{ value: 'analisi', label: 'Analisi', icon: IconChartBar }] : []),
+    { value: 'mercati', label: 'Mercati', icon: IconWorld },
+    { value: 'performance', label: 'Perf.', icon: IconPercentage },
+  ];
+
+  const handleRefresh = () => {
+    window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
+  };
 
   return (
-    <div style={{ padding: 'var(--mantine-spacing-sm)' }}>
-      <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
-        <Title order={2} fw={700}>Dashboard</Title>
-        <PortfolioSwitcher
+    <Box
+      style={{
+        padding: 'var(--mantine-spacing-sm)',
+        paddingBottom: isMobile ? 104 : undefined,
+        background: isMobile ? 'linear-gradient(180deg, #eef6f4 0%, #f8fafc 22%, transparent 42%)' : undefined,
+        minHeight: '100%',
+      }}
+    >
+      {isMobile ? (
+        <DashboardMobileHeader
           portfolios={portfolios}
-          value={selectedPortfolioId}
-          onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-          loading={portfoliosLoading}
-          onOpenPortfolio={() => navigate('/portfolio')}
-          style={{ width: '100%', maxWidth: isMobile ? undefined : 360 }}
+          selectedPortfolioId={selectedPortfolioId}
+          onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
+          portfoliosLoading={portfoliosLoading}
+          refreshing={refreshing}
+          refreshMessage={refreshMessage}
+          lastUpdatedAt={!error && ENABLE_TARGET_ALLOCATION && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
+          onRefresh={handleRefresh}
         />
-      </Group>
+      ) : (
+        <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
+          <Title order={2} fw={700}>Dashboard</Title>
+          <PortfolioSwitcher
+            portfolios={portfolios}
+            value={selectedPortfolioId}
+            onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+            loading={portfoliosLoading}
+            onOpenPortfolio={() => navigate('/portfolio')}
+            style={{ width: '100%', maxWidth: 360 }}
+          />
+        </Group>
+      )}
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
 
+      {!isMobile && (
       <Group mb="md" gap="xs" wrap="wrap">
         {refreshing && (
           <Badge variant="light" color="blue" size="lg" leftSection={<Loader size={12} />}>
@@ -188,64 +225,47 @@ export function DashboardPage() {
           </Badge>
         )}
       </Group>
+      )}
 
       <Tabs value={activeTab} onChange={handleTabChange} variant="default">
-        <Tabs.List
-          mb="md"
-          style={isMobile ? {
-            flexWrap: 'nowrap',
-            overflowX: 'auto',
-            gap: 0,
-            borderBottom: '2px solid var(--mantine-color-default-border)',
-            scrollbarWidth: 'none',
-          } : {
-            flexWrap: 'nowrap',
-            overflowX: 'auto',
-            overflowY: 'hidden',
-            WebkitOverflowScrolling: 'touch',
-            scrollbarWidth: 'none',
-            paddingBottom: 0,
-            gap: 0,
-          }}
-        >
-          <Tabs.Tab
-            value="panoramica"
-            leftSection={isMobile ? undefined : <IconChartPie size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
+        {!isMobile && (
+          <Tabs.List
+            mb="md"
+            style={{
+              flexWrap: 'nowrap',
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+              paddingBottom: 0,
+              gap: 0,
+            }}
           >
-            {isMobile ? <IconChartPie size={20} /> : <Text span>Panoramica</Text>}
-          </Tabs.Tab>
-          <Tabs.Tab
-            value="posizioni"
-            leftSection={isMobile ? undefined : <IconList size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
-          >
-            {isMobile ? <IconList size={20} /> : <Text span>Posizioni</Text>}
-          </Tabs.Tab>
-          {ENABLE_TARGET_ALLOCATION && (
-            <Tabs.Tab
-              value="analisi"
-              leftSection={isMobile ? undefined : <IconChartBar size={16} />}
-              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
-            >
-              {isMobile ? <IconChartBar size={20} /> : <Text span>Analisi</Text>}
+            <Tabs.Tab value="panoramica" leftSection={<IconChartPie size={16} />}>
+              <Text span>Panoramica</Text>
             </Tabs.Tab>
-          )}
-          <Tabs.Tab
-            value="mercati"
-            leftSection={isMobile ? undefined : <IconWorld size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
-          >
-            {isMobile ? <IconWorld size={20} /> : <Text span>Mercati</Text>}
-          </Tabs.Tab>
-          <Tabs.Tab
-            value="performance"
-            leftSection={isMobile ? undefined : <IconPercentage size={16} />}
-            style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : {}}
-          >
-            {isMobile ? <IconPercentage size={20} /> : <Text span>Performance</Text>}
-          </Tabs.Tab>
-        </Tabs.List>
+            <Tabs.Tab value="posizioni" leftSection={<IconList size={16} />}>
+              <Text span>Posizioni</Text>
+            </Tabs.Tab>
+            {ENABLE_TARGET_ALLOCATION && (
+              <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
+                <Text span>Analisi</Text>
+              </Tabs.Tab>
+            )}
+            <Tabs.Tab
+              value="mercati"
+              leftSection={<IconWorld size={16} />}
+            >
+              <Text span>Mercati</Text>
+            </Tabs.Tab>
+            <Tabs.Tab
+              value="performance"
+              leftSection={<IconPercentage size={16} />}
+            >
+              <Text span>Performance</Text>
+            </Tabs.Tab>
+          </Tabs.List>
+        )}
 
         <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
           <Tabs.Panel value="panoramica">
@@ -271,6 +291,14 @@ export function DashboardPage() {
           </Tabs.Panel>
         </div>
       </Tabs>
-    </div>
+
+      {isMobile && (
+        <MobileBottomNav
+          items={mobileTabItems}
+          value={activeTab}
+          onChange={handleTabChange}
+        />
+      )}
+    </Box>
   );
 }

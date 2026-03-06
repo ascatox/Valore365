@@ -8,6 +8,7 @@ import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { BestWorstCards } from '../summary/BestWorstCards';
+import { DashboardMobileKpiCarousel } from '../../mobile/DashboardMobileKpiCarousel';
 import { DASHBOARD_WINDOWS } from '../constants';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 import {
@@ -303,7 +304,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
         </Alert>
       )}
 
-      <KpiStatsGrid items={kpiItems} />
+      {isMobile ? <DashboardMobileKpiCarousel items={kpiItems} /> : <KpiStatsGrid items={kpiItems} />}
 
       <div style={{ marginTop: 16 }}>
         {hasBenchmark ? (

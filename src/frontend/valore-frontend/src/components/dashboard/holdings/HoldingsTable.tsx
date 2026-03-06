@@ -5,6 +5,7 @@ import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconIn
 import type { Position, PortfolioSummary } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 import { AssetInfoModal } from './AssetInfoModal';
+import { MobileHoldingsCards } from '../../mobile/MobileHoldingsCards';
 
 type SortKey = 'symbol' | 'quantity' | 'market_price' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'weight' | 'first_trade_at';
 
@@ -132,88 +133,14 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
         />
       )}
 
-      <Stack gap="sm" hiddenFrom="sm">
-        {sorted.map((p) => (
-          <Card key={p.asset_id} withBorder>
-            <Group justify="space-between" align="flex-start" wrap="nowrap" gap="xs">
-              <div>
-                <Group gap={4} wrap="nowrap">
-                  <Text fw={600} size="sm">{p.symbol}</Text>
-                  <StaleIcon position={p} />
-                </Group>
-                <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
-              </div>
-              <Text fw={700} size="sm">{formatMoney(p.market_value, currency)}</Text>
-            </Group>
-
-            <Group justify="space-between" mt="sm" gap="xs">
-              <Text size="sm" c="dimmed">Quantita</Text>
-              <Text size="sm">{formatNum(p.quantity)}</Text>
-            </Group>
-            <Group justify="space-between" gap="xs">
-              <Text size="sm" c="dimmed">P/L</Text>
-              <Text size="sm" fw={600} c={getVariationColor(p.unrealized_pl)}>
-                {formatMoney(p.unrealized_pl, currency, true)}
-              </Text>
-            </Group>
-            <Group justify="space-between" gap="xs">
-              <Text size="sm" c="dimmed">Prezzo Mkt</Text>
-              <Text size="sm">{formatMoney(p.market_price, currency)}</Text>
-            </Group>
-            <Group justify="space-between" gap="xs">
-              <Text size="sm" c="dimmed">P/L %</Text>
-              <Text size="sm" fw={600} c={getVariationColor(p.unrealized_pl_pct)}>
-                {formatPct(p.unrealized_pl_pct)}
-              </Text>
-            </Group>
-            <Group justify="space-between" align="center" gap="xs" mt={4}>
-              <Text size="sm" c="dimmed">Allocazione</Text>
-              <Group gap="xs" wrap="nowrap">
-                <Progress value={p.weight} size="sm" w={80} color="blue" />
-                <Text size="xs">{formatNum(p.weight, 1)}%</Text>
-              </Group>
-            </Group>
-            {hasTargets && (() => {
-              const target = targetMap.get(p.asset_id);
-              if (target == null) return null;
-              const delta = p.weight - target;
-              const warn = Math.abs(delta) > 5;
-              return (
-                <Group justify="space-between" align="center" gap="xs" mt={4}>
-                  <Text size="sm" c="dimmed">Target</Text>
-                  <Group gap={4} wrap="nowrap">
-                    <Text size="xs">{formatNum(target, 1)}%</Text>
-                    {warn && <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" />}
-                  </Group>
-                </Group>
-              );
-            })()}
-            <Group justify="space-between" gap="xs" mt={4}>
-              <Text size="sm" c="dimmed">Prima operazione</Text>
-              <Text size="sm">{formatFirstTrade(p.first_trade_at)}</Text>
-            </Group>
-          </Card>
-        ))}
-
-        <Card withBorder>
-          <Group justify="space-between" gap="xs">
-            <Text fw={700}>Totale</Text>
-            <Text fw={700}>{formatMoney(totals.totalValue, currency)}</Text>
-          </Group>
-          <Group justify="space-between" gap="xs" mt={4}>
-            <Text size="sm" c="dimmed">P/L</Text>
-            <Text size="sm" fw={700} c={getVariationColor(totals.totalPl)}>
-              {formatMoney(totals.totalPl, currency, true)}
-            </Text>
-          </Group>
-          <Group justify="space-between" gap="xs">
-            <Text size="sm" c="dimmed">P/L %</Text>
-            <Text size="sm" fw={700} c={getVariationColor(totals.totalPlPct)}>
-              {formatPct(totals.totalPlPct)}
-            </Text>
-          </Group>
-        </Card>
-      </Stack>
+      <div hidden={!isMobile}>
+        <MobileHoldingsCards
+          positions={sorted}
+          currency={currency}
+          summary={summary}
+          targetMap={targetMap}
+        />
+      </div>
 
       <Table.ScrollContainer minWidth={500} visibleFrom="sm">
         <Table striped highlightOnHover>
