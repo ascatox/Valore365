@@ -9,6 +9,7 @@ import {
   Text,
   Title,
   useMantineTheme,
+  useComputedColorScheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useQueryClient } from '@tanstack/react-query';
@@ -37,6 +38,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
 
   // --- Shared UI state ---
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
@@ -151,7 +153,7 @@ export function DashboardPage() {
         padding: 'var(--mantine-spacing-sm)',
         paddingBottom: isMobile ? 104 : undefined,
         background: isMobile
-          ? (theme.colorScheme === 'dark'
+          ? (colorScheme === 'dark'
             ? `linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 22%, transparent 42%)`
             : 'linear-gradient(180deg, #eef6f4 0%, #f8fafc 22%, transparent 42%)')
           : undefined,
