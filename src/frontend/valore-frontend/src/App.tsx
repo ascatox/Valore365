@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useState, useEffect } from 'react';
 import {
   AppShell,
   Box,
@@ -38,6 +38,14 @@ function App() {
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) {
+      meta.setAttribute('content', colorScheme === 'dark' ? '#242424' : '#ffffff');
+    }
+  }, [colorScheme]);
+
   const handleGlobalRefresh = () => {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
   };
