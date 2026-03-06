@@ -64,8 +64,8 @@
       onStart = {
         # Example: start a background task to watch and re-build backend code
         # watch-backend = "npm run watch-backend";
-        codex="npm i -g @openai/codex | codex";
-        claude="curl -fsSL https://claude.ai/install.sh | bash | claude --dangerously-skip-permissions";
+        codex="npm i -g @openai/codex | bash | codex";
+        claude="curl -fsSL https://claude.ai/install.sh | bash 
       };
     };
   };

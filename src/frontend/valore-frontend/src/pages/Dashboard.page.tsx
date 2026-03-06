@@ -4,7 +4,6 @@ import {
   Badge,
   Group,
   Loader,
-  Select,
   Tabs,
   Text,
   Title,
@@ -12,12 +11,14 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import { useQueryClient } from '@tanstack/react-query';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage } from '@tabler/icons-react';
+import { useNavigate } from 'react-router-dom';
 import { usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
 import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
 import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
 import { PerformanceMetrics } from '../components/dashboard/analysis/PerformanceMetrics';
+import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constants';
 import { ENABLE_TARGET_ALLOCATION } from '../features';
@@ -29,6 +30,7 @@ export function DashboardPage() {
     : (['panoramica', 'posizioni', 'mercati', 'performance'] as const);
 
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const touchStartRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -152,13 +154,13 @@ export function DashboardPage() {
     <div style={{ padding: 'var(--mantine-spacing-sm)' }}>
       <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
         <Title order={2} fw={700}>Dashboard</Title>
-        <Select
-          placeholder={portfoliosLoading ? 'Caricamento portafogli...' : 'Seleziona portfolio'}
-          data={portfolios.map((p) => ({ value: String(p.id), label: `${p.name} (#${p.id})` }))}
+        <PortfolioSwitcher
+          portfolios={portfolios}
           value={selectedPortfolioId}
-          onChange={setSelectedPortfolioId}
-          disabled={portfoliosLoading || portfolios.length === 0}
-          style={{ width: '100%', maxWidth: isMobile ? undefined : 280 }}
+          onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+          loading={portfoliosLoading}
+          onOpenPortfolio={() => navigate('/portfolio')}
+          style={{ width: '100%', maxWidth: isMobile ? undefined : 360 }}
         />
       </Group>
 

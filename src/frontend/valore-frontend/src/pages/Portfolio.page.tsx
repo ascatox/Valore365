@@ -17,17 +17,17 @@ import {
   ActionIcon,
   TextInput,
   SegmentedControl,
-  Menu,
   Tooltip,
   Checkbox,
   Tabs,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconDotsVertical, IconArrowsExchange, IconTarget, IconCopy, IconFileImport } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/TargetAllocationCsvImportModal.tsx';
 import { PacRuleDrawer } from '../components/portfolio/PacRuleDrawer.tsx';
 import { PacSection } from '../components/portfolio/PacSection.tsx';
+import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
 import {
@@ -1318,43 +1318,18 @@ export function PortfolioPage() {
 
       {/* Selezione portfolio + menu azioni */}
       <Group mb="md" align="flex-end" gap="xs">
-        <Select
+        <PortfolioSwitcher
           label="Portfolio attivo"
-          placeholder={loadingPortfolios ? 'Caricamento...' : 'Seleziona portfolio'}
-          data={portfolios.map((p) => ({ value: String(p.id), label: `${p.name} (#${p.id})` }))}
+          portfolios={portfolios}
           value={selectedPortfolioId}
-          onChange={setSelectedPortfolioId}
-          disabled={loadingPortfolios || portfolios.length === 0}
+          onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+          loading={loadingPortfolios}
           style={isMobile ? { width: '100%' } : { flex: 1, maxWidth: 420 }}
+          onCreatePortfolio={openCreatePortfolioModal}
+          onEditPortfolio={selectedPortfolioId ? openEditPortfolioModal : null}
+          onClonePortfolio={selectedPortfolioId ? openClonePortfolioModal : null}
+          onDeletePortfolio={selectedPortfolioId ? () => setPortfolioDeleteOpened(true) : null}
         />
-        {!isMobile && (
-          <Tooltip label="Azioni portfolio" disabled={!selectedPortfolioId}>
-            <Menu shadow="md" width={200} position="bottom-end" disabled={!selectedPortfolioId}>
-              <Menu.Target>
-                <ActionIcon
-                  variant="default"
-                  size="lg"
-                  disabled={!selectedPortfolioId}
-                  aria-label="Azioni portfolio"
-                >
-                  <IconDotsVertical size={18} />
-                </ActionIcon>
-              </Menu.Target>
-              <Menu.Dropdown>
-                <Menu.Item leftSection={<IconEdit size={14} />} onClick={openEditPortfolioModal}>
-                  Modifica portfolio
-                </Menu.Item>
-                <Menu.Item leftSection={<IconCopy size={14} />} onClick={openClonePortfolioModal}>
-                  Clona portfolio
-                </Menu.Item>
-                <Menu.Divider />
-                <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => setPortfolioDeleteOpened(true)}>
-                  Elimina portfolio
-                </Menu.Item>
-              </Menu.Dropdown>
-            </Menu>
-          </Tooltip>
-        )}
         {(loadingPortfolios || loadingData) && (
           <Group gap="xs">
             <Loader size="sm" />
