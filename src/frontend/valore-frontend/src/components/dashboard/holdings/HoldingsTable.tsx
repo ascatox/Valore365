@@ -31,7 +31,7 @@ const BASE_COLUMNS: ColumnDef[] = [
   { label: 'Valore', key: 'market_value', align: 'right', sortable: true },
   { label: 'P/L', key: 'unrealized_pl', align: 'right', sortable: true },
   { label: 'P/L %', key: 'unrealized_pl_pct', align: 'right', sortable: true },
-  { label: 'Alloc.', key: 'weight', align: 'right', sortable: true },
+  { label: 'Peso Titolo', key: 'weight', align: 'right', sortable: true },
   { label: 'Prima Op.', key: 'first_trade_at', align: 'right', visibleFrom: 'md', sortable: true },
 ];
 
