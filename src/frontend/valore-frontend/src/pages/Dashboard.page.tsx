@@ -165,7 +165,7 @@ export function DashboardPage() {
         background: isMobile
           ? (colorScheme === 'dark'
             ? `linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 22%, transparent 42%)`
-            : 'linear-gradient(180deg, #eef6f4 0%, #f8fafc 22%, transparent 42%)')
+            : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 22%, transparent 42%)')
           : undefined,
         minHeight: '100%',
       }}
