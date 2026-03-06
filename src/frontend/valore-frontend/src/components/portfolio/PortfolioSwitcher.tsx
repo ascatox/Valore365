@@ -104,6 +104,11 @@ export function PortfolioSwitcher({
     });
   }, [filteredPortfolios, value]);
 
+  const inactivePortfolios = useMemo(
+    () => orderedPortfolios.filter((portfolio) => String(portfolio.id) !== value),
+    [orderedPortfolios, value],
+  );
+
   const triggerLabel = loading
     ? 'Caricamento portafogli...'
     : (selectedPortfolio?.name ?? (portfolios.length ? 'Seleziona portafoglio' : emptyLabel));
@@ -178,14 +183,14 @@ export function PortfolioSwitcher({
             </Box>
           )}
 
-          {orderedPortfolios.length ? (
+          {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).length ? (
             <>
               <Box>
                 <Text size="xs" fw={700} tt="uppercase" c="#64748b" mb={8} style={{ letterSpacing: 0.8 }}>
                   {selectedPortfolio ? 'Tutti i portafogli' : 'Portafogli'}
                 </Text>
                 <Stack gap="xs">
-                  {orderedPortfolios.map((portfolio) => {
+                  {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).map((portfolio) => {
             const isActive = String(portfolio.id) === value;
             return (
               <UnstyledButton
