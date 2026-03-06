@@ -6,28 +6,30 @@
     </linearGradient>
   </defs>
 
-  <path
-    d="M 50 60 L 100 150"
-    stroke="#1e3a8a"
-    stroke-width="24"
-    stroke-linecap="round"
-    fill="none"
-  />
+  <g transform="translate(-8 -8) scale(1.08)">
+    <path
+      d="M 50 60 L 100 150"
+      stroke="#1e3a8a"
+      stroke-width="24"
+      stroke-linecap="round"
+      fill="none"
+    />
 
-  <path
-    d="M 100 150 L 150 50"
-    stroke="url(#growthGradientMark)"
-    stroke-width="24"
-    stroke-linecap="round"
-    fill="none"
-  />
+    <path
+      d="M 100 150 L 150 50"
+      stroke="url(#growthGradientMark)"
+      stroke-width="24"
+      stroke-linecap="round"
+      fill="none"
+    />
 
-  <path
-    d="M 115 50 L 150 50 L 150 85"
-    stroke="#10b981"
-    stroke-width="24"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    fill="none"
-  />
+    <path
+      d="M 115 50 L 150 50 L 150 85"
+      stroke="#10b981"
+      stroke-width="24"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      fill="none"
+    />
+  </g>
 </svg>
