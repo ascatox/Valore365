@@ -45,7 +45,7 @@ class Settings(BaseSettings):
 
     # Copilot (AI assistant) — multi-provider
     # provider: "openai" | "anthropic" | "gemini"
-    copilot_provider: str = "openai"
+    copilot_provider: str = ""
     copilot_model: str = ""  # empty = auto-default per provider
     openai_api_key: str = ""
     anthropic_api_key: str = ""

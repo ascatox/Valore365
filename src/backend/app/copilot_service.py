@@ -189,8 +189,8 @@ def _get_model(settings: Settings) -> str:
 
 
 def is_copilot_available(settings: Settings) -> bool:
-    """Check if the copilot has a valid API key configured."""
-    return bool(_get_api_key(settings))
+    """Check if the copilot is enabled (provider set) and has a valid API key."""
+    return bool(settings.copilot_provider) and bool(_get_api_key(settings))
 
 
 # ---------------------------------------------------------------------------
