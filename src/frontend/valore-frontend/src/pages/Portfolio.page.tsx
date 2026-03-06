@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMediaQuery } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   Table,
   Card,
@@ -23,7 +23,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2 } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/TargetAllocationCsvImportModal.tsx';
@@ -65,6 +65,8 @@ import type {
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { formatNum } from '../components/dashboard/formatters';
 import { ENABLE_TARGET_ALLOCATION } from '../features';
+import { getCopilotStatus } from '../services/api';
+import { CopilotChat } from '../components/copilot/CopilotChat';
 
 export function PortfolioPage() {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -169,6 +171,14 @@ export function PortfolioPage() {
   const [mobileActionSheetOpened, setMobileActionSheetOpened] = useState(false);
   const [editingPacRule, setEditingPacRule] = useState<PacRuleRead | null>(null);
   const [pacRefreshTrigger, setPacRefreshTrigger] = useState(0);
+
+  // --- Copilot ---
+  const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
+  const [copilotAvailable, setCopilotAvailable] = useState(false);
+
+  useEffect(() => {
+    getCopilotStatus().then((s) => setCopilotAvailable(s.available)).catch(() => {});
+  }, []);
 
   const selectedPortfolio = useMemo(
     () => portfolios.find((p) => String(p.id) === selectedPortfolioId) ?? null,
@@ -2140,6 +2150,33 @@ export function PortfolioPage() {
           onSaved={() => setPacRefreshTrigger((n) => n + 1)}
         />
       )}
+
+      {/* Copilot FAB */}
+      {copilotAvailable && (
+        <ActionIcon
+          variant="filled"
+          color="teal"
+          size={52}
+          radius="xl"
+          onClick={openCopilot}
+          aria-label="Apri Portfolio Copilot"
+          style={{
+            position: 'fixed',
+            bottom: isMobile ? 80 : 24,
+            right: 24,
+            zIndex: 100,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <IconRobot size={24} />
+        </ActionIcon>
+      )}
+
+      <CopilotChat
+        opened={copilotOpened}
+        onClose={closeCopilot}
+        portfolioId={selectedPortfolioId ? Number(selectedPortfolioId) : null}
+      />
     </>
   );
 }
