@@ -1,0 +1,33 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="growthGradientMark" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#1e3a8a" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+  </defs>
+
+  <path
+    d="M 50 60 L 100 150"
+    stroke="#1e3a8a"
+    stroke-width="24"
+    stroke-linecap="round"
+    fill="none"
+  />
+
+  <path
+    d="M 100 150 L 150 50"
+    stroke="url(#growthGradientMark)"
+    stroke-width="24"
+    stroke-linecap="round"
+    fill="none"
+  />
+
+  <path
+    d="M 115 50 L 150 50 L 150 85"
+    stroke="#10b981"
+    stroke-width="24"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    fill="none"
+  />
+</svg>

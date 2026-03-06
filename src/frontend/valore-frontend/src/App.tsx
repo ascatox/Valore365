@@ -27,6 +27,7 @@ import {
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
+import { BrandMark } from './components/BrandMark';
 
 const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
 const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
@@ -72,8 +73,12 @@ function App() {
               >
                 {navbarExpanded ? <IconChevronsLeft size={18} /> : <IconChevronsRight size={18} />}
               </ActionIcon>
-              <Title order={3} visibleFrom="sm">Valore365</Title>
-              <Title order={4} hiddenFrom="sm">Valore365</Title>
+              <Box visibleFrom="sm">
+                <BrandMark />
+              </Box>
+              <Box hiddenFrom="sm">
+                <BrandMark compact />
+              </Box>
             </Group>
             <Group>
               <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
