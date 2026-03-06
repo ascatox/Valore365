@@ -83,6 +83,45 @@ Importante:
 - Backend unit/integration: vedi `src/backend/README.md`
 - Smoke REST script: `scripts/e2e/rest_be_smoke.sh` (adatta URL/token al tuo ambiente)
 
+## 🤖 Portfolio Copilot (AI chatbot)
+Un assistente AI integrato nel dashboard che spiega in linguaggio semplice i dati del portafoglio (performance, allocazione, drift, cash, best/worst performer).
+
+**Non** fornisce consulenza finanziaria, **non** esegue azioni sul DB.
+
+### Attivazione
+Aggiungi al `.env` del backend:
+
+```bash
+# Scegli un provider: "openai" | "anthropic" | "gemini" | "local"
+COPILOT_PROVIDER=openai
+
+# Inserisci la API key del provider scelto
+OPENAI_API_KEY=sk-...
+# ANTHROPIC_API_KEY=sk-ant-...
+# GEMINI_API_KEY=AI...
+
+# Modello (opzionale, lasciare vuoto per il default)
+# Default: openai=gpt-4o-mini, anthropic=claude-sonnet-4-20250514, gemini=gemini-2.0-flash, local=llama3.2:3b
+COPILOT_MODEL=
+```
+
+### LLM locale (sviluppo)
+Per usare Ollama o LM Studio in locale senza costi API:
+
+```bash
+COPILOT_PROVIDER=local
+COPILOT_MODEL=llama3.2:3b
+COPILOT_LOCAL_URL=http://localhost:11434/v1
+```
+
+Prerequisito: avere Ollama installato e il modello scaricato (`ollama pull llama3.2:3b`).
+
+### Disattivazione
+Lasciare `COPILOT_PROVIDER=` vuoto (o rimuoverlo). Il bottone del copilot non apparira nel frontend.
+
+### Documentazione
+Piano completo di implementazione: [`docs/PORTFOLIO_COPILOT_PIANO_CLAUDE.md`](docs/PORTFOLIO_COPILOT_PIANO_CLAUDE.md)
+
 ## 🏁 Feature Flag Target Allocation (ripristino rapido)
 La logica esclusivamente legata a Target Allocation puo essere disattivata/riattivata senza patchare il codice:
 
