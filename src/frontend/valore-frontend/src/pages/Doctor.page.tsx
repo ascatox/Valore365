@@ -101,12 +101,15 @@ export function DoctorPage() {
   const pageError = (portfoliosError instanceof Error ? portfoliosError.message : null)
     || (healthError instanceof Error ? healthError.message : null);
 
+  const cardBg = isDark ? theme.colors.dark[7] : undefined;
+  const cardBorder = isDark ? `1px solid ${theme.colors.dark[5]}` : undefined;
+
   return (
     <Box
       style={{
         minHeight: '100%',
         background: isDark
-          ? `radial-gradient(circle at top left, rgba(19,78,74,0.18), transparent 24%), linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 26%, ${theme.colors.dark[9]} 100%)`
+          ? `radial-gradient(circle at top left, rgba(19,78,74,0.18), transparent 24%), linear-gradient(180deg, ${theme.colors.dark[9]} 0%, ${theme.colors.dark[8]} 26%, ${theme.colors.dark[9]} 100%)`
           : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
         padding: 'var(--mantine-spacing-sm)',
       }}
@@ -121,7 +124,7 @@ export function DoctorPage() {
                 </ThemeIcon>
                 <Text fw={800} tt="uppercase" size="xs" c="dimmed">Share-ready diagnostics</Text>
               </Group>
-              <Title order={2}>Doctor</Title>
+              <Title order={2} c={isDark ? 'white' : undefined}>Doctor</Title>
               <Text c="dimmed" maw={680}>
                 A portfolio checkup designed to be readable, screenshot-friendly, and ready to share.
               </Text>
@@ -145,7 +148,7 @@ export function DoctorPage() {
           )}
 
           {healthLoading && portfolioId != null && (
-            <Card withBorder radius="xl" padding="xl">
+            <Card withBorder radius="xl" padding="xl" style={{ background: cardBg, border: cardBorder }}>
               <Group justify="center" py="xl">
                 <Loader />
               </Group>
@@ -222,7 +225,7 @@ export function DoctorPage() {
                 </Grid.Col>
 
                 <Grid.Col span={{ base: 12, xl: 4 }}>
-                  <Card withBorder radius="xl" padding="lg" h="100%">
+                  <Card withBorder radius="xl" padding="lg" h="100%" style={{ background: cardBg, border: cardBorder }}>
                     <Stack gap="md">
                       <Group gap="sm">
                         <ThemeIcon color="yellow" variant="light" radius="xl">
@@ -252,7 +255,7 @@ export function DoctorPage() {
 
               <Grid gutter="lg" align="start">
                 <Grid.Col span={{ base: 12, lg: 6 }}>
-                  <Card withBorder radius="xl" padding="lg">
+                  <Card withBorder radius="xl" padding="lg" style={{ background: cardBg, border: cardBorder }}>
                     <Title order={4} mb="md">Metric breakdown</Title>
                     <Table withTableBorder withColumnBorders highlightOnHover>
                       <Table.Tbody>
@@ -269,7 +272,7 @@ export function DoctorPage() {
                 </Grid.Col>
 
                 <Grid.Col span={{ base: 12, lg: 6 }}>
-                  <Card withBorder radius="xl" padding="lg">
+                  <Card withBorder radius="xl" padding="lg" style={{ background: cardBg, border: cardBorder }}>
                     <Title order={4} mb="md">Category scores</Title>
                     <SimpleGrid cols={2} spacing="md">
                       <ScorePill label="Diversification" value={`${health.category_scores.diversification} / 25`} isDark={isDark} />
@@ -284,7 +287,7 @@ export function DoctorPage() {
 
               <Grid gutter="lg" align="start">
                 <Grid.Col span={{ base: 12, lg: 6 }}>
-                  <Card withBorder radius="xl" padding="lg">
+                  <Card withBorder radius="xl" padding="lg" style={{ background: cardBg, border: cardBorder }}>
                     <Group gap="sm" mb="md">
                       <ThemeIcon color="orange" variant="light" radius="xl">
                         <IconAlertTriangle size={18} />
@@ -302,7 +305,7 @@ export function DoctorPage() {
                 </Grid.Col>
 
                 <Grid.Col span={{ base: 12, lg: 6 }}>
-                  <Card withBorder radius="xl" padding="lg">
+                  <Card withBorder radius="xl" padding="lg" style={{ background: cardBg, border: cardBorder }}>
                     <Group gap="sm" mb="md">
                       <ThemeIcon color="teal" variant="light" radius="xl">
                         <IconSparkles size={18} />
