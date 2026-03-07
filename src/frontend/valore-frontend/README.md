@@ -14,6 +14,7 @@ Frontend SPA `React + Vite + TypeScript + Mantine` per dashboard, gestione portf
 ## Funzionalita implementate
 - Layout applicativo con navbar, refresh globale e toggle tema
 - Dashboard con tab `Panoramica`, `Posizioni`, `Analisi`
+- Pagina pubblica `/instant-analyzer` per analisi portfolio senza login
 - Selezione portfolio persistita in `localStorage`
 - Refresh dati dashboard via evento globale (`valore365:refresh-dashboard`)
 - Pull-to-refresh su mobile
@@ -78,6 +79,7 @@ Build arg supportato:
 - `src/main.tsx`: bootstrap Mantine + Clerk provider opzionale
 - `src/services/api.ts`: client API + tipi TypeScript
 - `src/pages/Dashboard.page.tsx`: dashboard e tab analitici
+- `src/pages/InstantPortfolioAnalyzerPage.tsx`: esperienza pubblica di analisi istantanea
 - `src/pages/Portfolio.page.tsx`: portfolio, target allocation e transazioni
 - `src/pages/Settings.page.tsx`: impostazioni (UI)
 

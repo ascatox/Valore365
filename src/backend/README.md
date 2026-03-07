@@ -97,6 +97,7 @@ Pricing / storico:
 
 Analytics / dashboard:
 - `GET /api/portfolios/{portfolio_id}/summary`
+- `POST /api/public/portfolio/analyze`
 - `GET /api/portfolios/{portfolio_id}/positions`
 - `GET /api/portfolios/{portfolio_id}/allocation`
 - `GET /api/portfolios/{portfolio_id}/timeseries?range=1y&interval=1d`

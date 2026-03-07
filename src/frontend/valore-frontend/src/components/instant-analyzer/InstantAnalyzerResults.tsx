@@ -1,0 +1,101 @@
+import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
+import { IconArrowRight, IconChartDonut3 } from '@tabler/icons-react';
+import type { InstantAnalyzeResponse } from '../../services/api';
+import { InstantAnalyzerInsights } from './InstantAnalyzerInsights';
+import { InstantAnalyzerScoreCard } from './InstantAnalyzerScoreCard';
+
+interface InstantAnalyzerResultsProps {
+  result: InstantAnalyzeResponse;
+}
+
+const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+function formatPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return 'N/D';
+  return `${value.toFixed(1)}%`;
+}
+
+export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) {
+  return (
+    <Stack gap="lg">
+      <InstantAnalyzerScoreCard result={result} />
+
+      <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
+        <Card withBorder radius="xl" padding="lg">
+          <Group gap="sm" mb="md">
+            <IconChartDonut3 size={18} />
+            <Title order={4}>Key metrics</Title>
+          </Group>
+          <Table withTableBorder withColumnBorders highlightOnHover>
+            <Table.Tbody>
+              <Table.Tr><Table.Td>USA exposure</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Europe exposure</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Emerging exposure</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Max position</Table.Td><Table.Td>{formatPct(result.metrics.max_position_weight)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Overlap score</Table.Td><Table.Td>{formatPct(result.metrics.overlap_score)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Volatility</Table.Td><Table.Td>{formatPct(result.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Weighted TER</Table.Td><Table.Td>{formatPct(result.metrics.weighted_ter)}</Table.Td></Table.Tr>
+            </Table.Tbody>
+          </Table>
+        </Card>
+
+        <Card withBorder radius="xl" padding="lg">
+          <Title order={4} mb="md">Resolved positions</Title>
+          <Stack gap="sm">
+            {result.positions.map((position) => (
+              <Group key={`${position.identifier}-${position.resolved_symbol}`} justify="space-between" align="flex-start">
+                <div>
+                  <Text fw={700}>{position.resolved_symbol}</Text>
+                  <Text size="sm" c="dimmed">{position.resolved_name}</Text>
+                </div>
+                <Stack gap={2} align="flex-end">
+                  <Badge variant="light">{position.weight.toFixed(2)}%</Badge>
+                  <Text size="sm">EUR {position.value.toLocaleString('it-IT')}</Text>
+                </Stack>
+              </Group>
+            ))}
+          </Stack>
+        </Card>
+      </SimpleGrid>
+
+      <InstantAnalyzerInsights result={result} />
+
+      {(result.unresolved.length > 0 || result.parse_errors.length > 0) && (
+        <Card withBorder radius="xl" padding="lg">
+          <Title order={4} mb="md">Input issues</Title>
+          <Stack gap="sm">
+            {result.parse_errors.map((error) => (
+              <Alert key={`parse-${error.line}-${error.raw}`} color="red" variant="light">
+                Line {error.line}: {error.error}
+              </Alert>
+            ))}
+            {result.unresolved.map((item) => (
+              <Alert key={`unresolved-${item.identifier}-${item.line ?? 'na'}`} color="yellow" variant="light">
+                {item.identifier}: {item.error}
+              </Alert>
+            ))}
+          </Stack>
+        </Card>
+      )}
+
+      <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(135deg, #183153 0%, #245f73 100%)', color: 'white' }}>
+        <Group justify="space-between" align="center">
+          <div>
+            <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Next step</Text>
+            <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
+          </div>
+          <Button
+            component="a"
+            href={clerkEnabled ? '/sign-up' : '/portfolio'}
+            rightSection={<IconArrowRight size={16} />}
+            color="yellow"
+            variant="filled"
+            radius="xl"
+          >
+            Create free account
+          </Button>
+        </Group>
+      </Card>
+    </Stack>
+  );
+}

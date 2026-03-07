@@ -1,3 +1,4 @@
+from .instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
 from .portfolio_health import register_portfolio_health_routes
 
-__all__ = ["register_portfolio_health_routes"]
+__all__ = ["register_instant_portfolio_analyzer_routes", "register_portfolio_health_routes"]

@@ -29,6 +29,7 @@ import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
 import { BrandMark } from './components/BrandMark';
 
+const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
 const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
 const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
 const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
@@ -36,6 +37,32 @@ const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module
 const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 function App() {
+  return (
+    <BrowserRouter>
+      <Suspense
+        fallback={(
+          <Box py="xl" ta="center" c="dimmed">
+            Caricamento pagina...
+          </Box>
+        )}
+      >
+        <Routes>
+          <Route path="/instant-analyzer" element={<InstantPortfolioAnalyzerPage />} />
+          <Route
+            path="/*"
+            element={(
+              <AuthGuard>
+                <ProtectedApp />
+              </AuthGuard>
+            )}
+          />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+  );
+}
+
+function ProtectedApp() {
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
@@ -53,8 +80,6 @@ function App() {
   const { pulling, pullDistance, reached } = usePullToRefresh(handleGlobalRefresh);
 
   return (
-    <BrowserRouter>
-      <AuthGuard>
       <AppShell
         header={{ height: 60 }}
         navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: !opened } }}
@@ -148,24 +173,14 @@ function App() {
             )}
           </Transition>
           <Container fluid>
-            <Suspense
-              fallback={(
-                <Box py="xl" ta="center" c="dimmed">
-                  Caricamento pagina...
-                </Box>
-              )}
-            >
-              <Routes>
-                <Route path="/" element={<DashboardPage />} />
-                <Route path="/portfolio" element={<PortfolioPage />} />
-                <Route path="/settings" element={<SettingsPage />} />
-              </Routes>
-            </Suspense>
+            <Routes>
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/portfolio" element={<PortfolioPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Routes>
           </Container>
         </AppShell.Main>
       </AppShell>
-      </AuthGuard>
-    </BrowserRouter>
   );
 }
 

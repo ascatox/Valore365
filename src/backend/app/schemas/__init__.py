@@ -1,3 +1,16 @@
+from .instant_portfolio_analyzer import (
+    InstantAnalyzeCta,
+    InstantAnalyzeLineError,
+    InstantAnalyzeRequest,
+    InstantAnalyzeResponse,
+    InstantAnalyzeUnresolvedItem,
+    ParsedPositionInput,
+    PortfolioAnalyzeAlert,
+    PortfolioAnalyzeMetrics,
+    PortfolioAnalyzeSuggestion,
+    PortfolioAnalyzeSummary,
+    ResolvedPosition,
+)
 from .portfolio_doctor import (
     PortfolioHealthAlert,
     PortfolioHealthCategoryScores,
@@ -8,10 +21,21 @@ from .portfolio_doctor import (
 )
 
 __all__ = [
+    "InstantAnalyzeCta",
+    "InstantAnalyzeLineError",
+    "InstantAnalyzeRequest",
+    "InstantAnalyzeResponse",
+    "InstantAnalyzeUnresolvedItem",
+    "ParsedPositionInput",
+    "PortfolioAnalyzeAlert",
+    "PortfolioAnalyzeMetrics",
+    "PortfolioAnalyzeSuggestion",
+    "PortfolioAnalyzeSummary",
     "PortfolioHealthAlert",
     "PortfolioHealthCategoryScores",
     "PortfolioHealthMetrics",
     "PortfolioHealthResponse",
     "PortfolioHealthSuggestion",
     "PortfolioHealthSummary",
+    "ResolvedPosition",
 ]

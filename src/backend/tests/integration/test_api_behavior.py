@@ -1,12 +1,22 @@
 from fastapi.testclient import TestClient
 
 import app.api.portfolio_health as portfolio_health_api
+import app.api.instant_portfolio_analyzer as instant_portfolio_api
 import app.main as api_main
 from app.schemas.portfolio_doctor import (
     PortfolioHealthCategoryScores,
     PortfolioHealthMetrics,
     PortfolioHealthResponse,
     PortfolioHealthSummary,
+)
+from app.schemas.instant_portfolio_analyzer import (
+    InstantAnalyzeCta,
+    InstantAnalyzeResponse,
+    PortfolioAnalyzeAlert,
+    PortfolioAnalyzeMetrics,
+    PortfolioAnalyzeSuggestion,
+    PortfolioAnalyzeSummary,
+    ResolvedPosition,
 )
 
 
@@ -313,3 +323,78 @@ def test_portfolio_health_route_not_found(monkeypatch):
     assert response.status_code == 404
     payload = response.json()
     assert payload['error']['code'] == 'not_found'
+
+
+def test_public_instant_portfolio_analyzer_route(monkeypatch):
+    def _fake_analyze(repo, payload):
+        assert payload.input_mode == 'raw_text'
+        return InstantAnalyzeResponse(
+            summary=PortfolioAnalyzeSummary(
+                total_value=17000,
+                score=74,
+                risk_level='medium',
+                diversification='good',
+                overlap='moderate',
+                cost_efficiency='low_cost',
+            ),
+            positions=[
+                ResolvedPosition(
+                    identifier='VWCE',
+                    resolved_symbol='VWCE',
+                    resolved_name='Vanguard FTSE All-World UCITS ETF',
+                    value=10000,
+                    weight=58.82,
+                )
+            ],
+            unresolved=[],
+            parse_errors=[],
+            metrics=PortfolioAnalyzeMetrics(
+                geographic_exposure={'usa': 68.0, 'europe': 17.0, 'emerging': 10.0, 'other': 5.0},
+                max_position_weight=58.82,
+                overlap_score=61.0,
+                portfolio_volatility=14.8,
+                weighted_ter=0.21,
+            ),
+            alerts=[
+                PortfolioAnalyzeAlert(
+                    severity='warning',
+                    code='HIGH_US_EXPOSURE',
+                    message='Your portfolio is heavily exposed to US markets (68%).',
+                )
+            ],
+            suggestions=[
+                PortfolioAnalyzeSuggestion(
+                    code='ADD_DIVERSIFICATION',
+                    message='Consider increasing exposure to non-US markets.',
+                )
+            ],
+            cta=InstantAnalyzeCta(
+                show_signup=True,
+                message='Create a free account to save and track this portfolio over time.',
+            ),
+        )
+
+    monkeypatch.setattr(instant_portfolio_api, 'analyze_public_portfolio', _fake_analyze)
+    client = TestClient(api_main.app)
+
+    response = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': 'VWCE 10000'})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['summary']['score'] == 74
+    assert payload['cta']['show_signup'] is True
+    assert payload['positions'][0]['resolved_symbol'] == 'VWCE'
+
+
+def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):
+    def _fake_analyze(repo, payload):
+        raise ValueError('No valid positions found')
+
+    monkeypatch.setattr(instant_portfolio_api, 'analyze_public_portfolio', _fake_analyze)
+    client = TestClient(api_main.app)
+
+    response = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': ''})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'

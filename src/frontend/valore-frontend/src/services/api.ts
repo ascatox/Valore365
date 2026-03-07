@@ -16,6 +16,81 @@ export interface ApiErrorPayload {
   };
 }
 
+export interface InstantAnalyzeRequest {
+  input_mode: 'text' | 'raw_text';
+  positions?: Array<{
+    identifier: string;
+    value: number;
+  }>;
+  raw_text?: string;
+}
+
+export interface InstantAnalyzeLineError {
+  line: number;
+  raw: string;
+  error: string;
+}
+
+export interface InstantAnalyzeUnresolvedItem {
+  identifier: string;
+  raw: string | null;
+  line: number | null;
+  error: string;
+}
+
+export interface PortfolioAnalyzeSummary {
+  total_value: number;
+  score: number;
+  risk_level: 'low' | 'medium' | 'high' | 'unknown';
+  diversification: 'excellent' | 'good' | 'moderate' | 'weak' | 'unknown';
+  overlap: 'low' | 'moderate' | 'high' | 'unknown';
+  cost_efficiency: 'low_cost' | 'moderate_cost' | 'high_cost' | 'unknown';
+}
+
+export interface PortfolioAnalyzeMetrics {
+  geographic_exposure: Record<string, number>;
+  max_position_weight: number;
+  overlap_score: number;
+  portfolio_volatility: number | null;
+  weighted_ter: number | null;
+}
+
+export interface ResolvedPublicPosition {
+  identifier: string;
+  resolved_symbol: string;
+  resolved_name: string;
+  value: number;
+  weight: number;
+  status: 'resolved';
+}
+
+export interface PortfolioAnalyzeAlert {
+  severity: 'info' | 'warning' | 'critical';
+  code: string;
+  message: string;
+}
+
+export interface PortfolioAnalyzeSuggestion {
+  code: string;
+  message: string;
+}
+
+export interface InstantAnalyzeCta {
+  show_signup: boolean;
+  message: string;
+}
+
+export interface InstantAnalyzeResponse {
+  summary: PortfolioAnalyzeSummary;
+  positions: ResolvedPublicPosition[];
+  unresolved: InstantAnalyzeUnresolvedItem[];
+  parse_errors: InstantAnalyzeLineError[];
+  metrics: PortfolioAnalyzeMetrics;
+  alerts: PortfolioAnalyzeAlert[];
+  suggestions: PortfolioAnalyzeSuggestion[];
+  cta: InstantAnalyzeCta;
+}
+
 export interface UserSettings {
   user_id: string;
   broker_default_fee: number;
@@ -1161,4 +1236,11 @@ export const getAssetPriceTimeseries = async (
   return apiFetch<AssetPricePoint[]>(
     `/assets/${assetId}/price-timeseries${query ? `?${query}` : ''}`,
   );
+};
+
+export const analyzeInstantPortfolio = async (payload: InstantAnalyzeRequest): Promise<InstantAnalyzeResponse> => {
+  return apiFetch<InstantAnalyzeResponse>('/public/portfolio/analyze', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 };

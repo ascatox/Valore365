@@ -1,0 +1,101 @@
+[
+  {
+    "symbol": "VWCE",
+    "isin": "IE00BK5BQT80",
+    "name": "Vanguard FTSE All-World UCITS ETF",
+    "asset_type": "etf",
+    "quote_currency": "EUR",
+    "estimated_volatility": 15.5,
+    "ter": 0.22,
+    "overlap_tags": ["global_equity", "acwi", "us_large_cap"],
+    "region_profile": {"usa": 58.0, "europe": 18.0, "emerging": 11.0, "other": 13.0}
+  },
+  {
+    "symbol": "AGGH",
+    "isin": "IE00BDBRDM35",
+    "name": "iShares Core Global Aggregate Bond UCITS ETF",
+    "asset_type": "bond",
+    "quote_currency": "EUR",
+    "estimated_volatility": 6.5,
+    "ter": 0.10,
+    "overlap_tags": ["global_bond", "aggregate_bond"],
+    "region_profile": {"usa": 40.0, "europe": 30.0, "emerging": 5.0, "other": 25.0}
+  },
+  {
+    "symbol": "EIMI",
+    "isin": "IE00BKM4GZ66",
+    "name": "iShares Core MSCI Emerging Markets IMI UCITS ETF",
+    "asset_type": "etf",
+    "quote_currency": "USD",
+    "estimated_volatility": 18.8,
+    "ter": 0.18,
+    "overlap_tags": ["emerging_equity"],
+    "region_profile": {"usa": 0.0, "europe": 0.0, "emerging": 100.0, "other": 0.0}
+  },
+  {
+    "symbol": "CSPX",
+    "isin": "IE00B5BMR087",
+    "name": "iShares Core S&P 500 UCITS ETF",
+    "asset_type": "etf",
+    "quote_currency": "USD",
+    "estimated_volatility": 16.8,
+    "ter": 0.07,
+    "overlap_tags": ["broad_us_equity", "sp500", "us_large_cap"],
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+  },
+  {
+    "symbol": "VUAA",
+    "isin": "IE00BFMXXD54",
+    "name": "Vanguard S&P 500 UCITS ETF",
+    "asset_type": "etf",
+    "quote_currency": "USD",
+    "estimated_volatility": 16.8,
+    "ter": 0.07,
+    "overlap_tags": ["broad_us_equity", "sp500", "us_large_cap"],
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+  },
+  {
+    "symbol": "SWDA",
+    "isin": "IE00B4L5Y983",
+    "name": "iShares Core MSCI World UCITS ETF",
+    "asset_type": "etf",
+    "quote_currency": "USD",
+    "estimated_volatility": 15.0,
+    "ter": 0.20,
+    "overlap_tags": ["global_equity", "msci_world", "us_large_cap"],
+    "region_profile": {"usa": 69.0, "europe": 18.0, "emerging": 0.0, "other": 13.0}
+  },
+  {
+    "symbol": "IWDA",
+    "isin": "IE00B4L5Y983",
+    "name": "iShares Core MSCI World UCITS ETF",
+    "asset_type": "etf",
+    "quote_currency": "USD",
+    "estimated_volatility": 15.0,
+    "ter": 0.20,
+    "overlap_tags": ["global_equity", "msci_world", "us_large_cap"],
+    "region_profile": {"usa": 69.0, "europe": 18.0, "emerging": 0.0, "other": 13.0}
+  },
+  {
+    "symbol": "AAPL",
+    "isin": "US0378331005",
+    "name": "Apple Inc.",
+    "asset_type": "stock",
+    "quote_currency": "USD",
+    "estimated_volatility": 28.0,
+    "ter": 0.0,
+    "overlap_tags": ["single_stock", "technology", "usa"],
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+  },
+  {
+    "symbol": "MSFT",
+    "isin": "US5949181045",
+    "name": "Microsoft Corporation",
+    "asset_type": "stock",
+    "quote_currency": "USD",
+    "estimated_volatility": 26.0,
+    "ter": 0.0,
+    "overlap_tags": ["single_stock", "technology", "usa"],
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+  }
+]
