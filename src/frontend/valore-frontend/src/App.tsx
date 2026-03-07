@@ -12,7 +12,7 @@ import {
   useMantineColorScheme,
   Title,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
 import {
   IconSun,
@@ -66,6 +66,7 @@ function ProtectedApp() {
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -88,7 +89,7 @@ function ProtectedApp() {
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between">
             <Group>
-              <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+              <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="md" />
               <ActionIcon
                 visibleFrom="sm"
                 variant="default"
@@ -106,11 +107,11 @@ function ProtectedApp() {
               </Box>
             </Group>
             <Group>
-              <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
-                {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+              <ActionIcon onClick={toggleColorScheme} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Cambia tema">
+                {colorScheme === 'dark' ? <IconSun size={isMobile ? 22 : 18} /> : <IconMoon size={isMobile ? 22 : 18} />}
               </ActionIcon>
-              <ActionIcon variant="default" size="lg" onClick={handleGlobalRefresh} hiddenFrom="sm" aria-label="Aggiorna">
-                <IconRefresh size={18} />
+              <ActionIcon variant="default" size={42} onClick={handleGlobalRefresh} hiddenFrom="sm" aria-label="Aggiorna">
+                <IconRefresh size={22} />
               </ActionIcon>
               <Button leftSection={<IconRefresh size={16} />} variant="default" onClick={handleGlobalRefresh} visibleFrom="sm">
                 Aggiorna
