@@ -145,9 +145,9 @@ function ProtectedApp() {
           <NavLink
               component={Link}
               to="/doctor"
-              label={navbarExpanded ? 'Doctor' : undefined}
+              label={navbarExpanded ? 'Diagnosi' : undefined}
               leftSection={<IconHeartRateMonitor size={16} />}
-              aria-label="Doctor"
+              aria-label="Diagnosi"
               onClick={close}
           />
           <NavLink
