@@ -116,6 +116,50 @@ export interface Portfolio {
   created_at: string;
 }
 
+export interface PortfolioHealthSummary {
+  risk_level: 'low' | 'medium' | 'high' | 'unknown';
+  diversification: 'excellent' | 'good' | 'moderate' | 'weak' | 'unknown';
+  overlap: 'low' | 'moderate' | 'high' | 'unknown';
+  cost_efficiency: 'low_cost' | 'moderate_cost' | 'high_cost' | 'unknown';
+}
+
+export interface PortfolioHealthMetrics {
+  geographic_exposure: Record<string, number>;
+  max_position_weight: number;
+  overlap_score: number;
+  portfolio_volatility: number | null;
+  weighted_ter: number | null;
+}
+
+export interface PortfolioHealthCategoryScores {
+  diversification: number;
+  risk: number;
+  concentration: number;
+  overlap: number;
+  cost_efficiency: number;
+}
+
+export interface PortfolioHealthAlert {
+  severity: 'info' | 'warning' | 'critical';
+  type: string;
+  message: string;
+}
+
+export interface PortfolioHealthSuggestion {
+  priority: 'low' | 'medium' | 'high';
+  message: string;
+}
+
+export interface PortfolioHealthResponse {
+  portfolio_id: number;
+  score: number;
+  summary: PortfolioHealthSummary;
+  metrics: PortfolioHealthMetrics;
+  category_scores: PortfolioHealthCategoryScores;
+  alerts: PortfolioHealthAlert[];
+  suggestions: PortfolioHealthSuggestion[];
+}
+
 export interface PortfolioCreateInput {
   name: string;
   base_currency: string;
@@ -683,6 +727,10 @@ export const clonePortfolio = async (portfolioId: number, payload: PortfolioClon
 
 export const getPortfolioSummary = async (portfolioId: number): Promise<PortfolioSummary> => {
   return apiFetch<PortfolioSummary>(`/portfolios/${portfolioId}/summary`);
+};
+
+export const getPortfolioHealth = async (portfolioId: number): Promise<PortfolioHealthResponse> => {
+  return apiFetch<PortfolioHealthResponse>(`/portfolios/${portfolioId}/health`);
 };
 
 export const getPerformanceSummary = async (

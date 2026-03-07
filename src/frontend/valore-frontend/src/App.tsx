@@ -20,6 +20,7 @@ import {
   IconRefresh,
   IconLayoutDashboard,
   IconBriefcase,
+  IconHeartRateMonitor,
   IconSettings,
   IconChevronsLeft,
   IconChevronsRight,
@@ -30,6 +31,7 @@ import { AuthGuard } from './components/AuthGuard';
 import { BrandMark } from './components/BrandMark';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
+const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
 const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
 const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
 const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
@@ -140,6 +142,14 @@ function ProtectedApp() {
           />
           <NavLink
               component={Link}
+              to="/doctor"
+              label={navbarExpanded ? 'Doctor' : undefined}
+              leftSection={<IconHeartRateMonitor size={16} />}
+              aria-label="Doctor"
+              onClick={close}
+          />
+          <NavLink
+              component={Link}
               to="/settings"
               label={navbarExpanded ? 'Impostazioni' : undefined}
               leftSection={<IconSettings size={16} />}
@@ -177,6 +187,7 @@ function ProtectedApp() {
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />
+              <Route path="/doctor" element={<DoctorPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>
           </Container>

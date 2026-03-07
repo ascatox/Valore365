@@ -10,6 +10,7 @@ import {
   getPerformanceSummary,
   getPortfolioAllocation,
   getPortfolioDataCoverage,
+  getPortfolioHealth,
   getPortfolioIntradayTimeseries,
   getPortfolioPositions,
   getPortfolioSummary,
@@ -41,6 +42,14 @@ export function usePortfolioSummary(portfolioId: number | null) {
   return useQuery({
     queryKey: ['portfolio-summary', portfolioId],
     queryFn: () => getPortfolioSummary(portfolioId!),
+    enabled: portfolioId != null,
+  });
+}
+
+export function usePortfolioHealth(portfolioId: number | null) {
+  return useQuery({
+    queryKey: ['portfolio-health', portfolioId],
+    queryFn: () => getPortfolioHealth(portfolioId!),
     enabled: portfolioId != null,
   });
 }
