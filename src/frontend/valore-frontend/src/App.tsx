@@ -183,14 +183,12 @@ function ProtectedApp() {
               </div>
             )}
           </Transition>
-          <Container fluid>
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/portfolio" element={<PortfolioPage />} />
+          <Routes>
+              <Route path="/" element={<Container fluid><DashboardPage /></Container>} />
+              <Route path="/portfolio" element={<Container fluid><PortfolioPage /></Container>} />
               <Route path="/doctor" element={<DoctorPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/settings" element={<Container fluid><SettingsPage /></Container>} />
             </Routes>
-          </Container>
         </AppShell.Main>
       </AppShell>
   );
