@@ -109,10 +109,10 @@ export function DoctorPage() {
       style={{
         minHeight: 'calc(100vh - 60px)',
         margin: 'calc(-1 * var(--mantine-spacing-md))',
-        background: isDark
-          ? `radial-gradient(circle at top left, rgba(19,78,74,0.18), transparent 24%), linear-gradient(180deg, ${theme.colors.dark[9]} 0%, ${theme.colors.dark[8]} 26%, ${theme.colors.dark[9]} 100%)`
-          : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
         padding: 'var(--mantine-spacing-md)',
+        background: isDark
+          ? theme.colors.dark[9]
+          : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
       }}
     >
       <Container fluid>
