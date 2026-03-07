@@ -120,7 +120,7 @@ export function DoctorPage() {
         {isMobile ? (
           <>
             <Group justify="space-between" mb="xs" align="flex-end" wrap="wrap" gap="xs">
-              <Title order={4} fw={800}>Diagnosi</Title>
+              <Title order={4} fw={800}>Doctor</Title>
             </Group>
             <PortfolioSwitcher
               portfolios={portfolios}
@@ -132,7 +132,7 @@ export function DoctorPage() {
           </>
         ) : (
           <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
-            <Title order={2} fw={700}>Diagnosi</Title>
+            <Title order={2} fw={700}>Doctor</Title>
             <PortfolioSwitcher
               portfolios={portfolios}
               value={selectedPortfolioId}
