@@ -108,10 +108,9 @@ export function DoctorPage() {
     <Box
       style={{
         minHeight: 'calc(100vh - 60px)',
-        margin: 'calc(-1 * var(--mantine-spacing-md))',
-        padding: 'var(--mantine-spacing-md)',
-        background: isDark
-          ? theme.colors.dark[9]
+        backgroundColor: 'var(--mantine-color-body)',
+        backgroundImage: isDark
+          ? 'none'
           : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
       }}
     >

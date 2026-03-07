@@ -9,6 +9,7 @@ import {
   NavLink,
   Container,
   Transition,
+  useComputedColorScheme,
   useMantineColorScheme,
   Title,
 } from '@mantine/core';
@@ -67,15 +68,16 @@ function App() {
 function ProtectedApp() {
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const { toggleColorScheme } = useMantineColorScheme();
+  const computedScheme = useComputedColorScheme('light');
   const isMobile = useMediaQuery('(max-width: 48em)');
 
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', colorScheme === 'dark' ? '#242424' : '#ffffff');
+      meta.setAttribute('content', computedScheme === 'dark' ? '#242424' : '#ffffff');
     }
-  }, [colorScheme]);
+  }, [computedScheme]);
 
   const handleGlobalRefresh = () => {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
@@ -110,7 +112,7 @@ function ProtectedApp() {
             </Group>
             <Group>
               <ActionIcon onClick={toggleColorScheme} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Cambia tema">
-                {colorScheme === 'dark' ? <IconSun size={isMobile ? 22 : 18} /> : <IconMoon size={isMobile ? 22 : 18} />}
+                {computedScheme === 'dark' ? <IconSun size={isMobile ? 22 : 18} /> : <IconMoon size={isMobile ? 22 : 18} />}
               </ActionIcon>
               <ActionIcon variant="default" size={42} onClick={handleGlobalRefresh} hiddenFrom="sm" aria-label="Aggiorna">
                 <IconRefresh size={22} />
