@@ -47,6 +47,7 @@ class SafeJSONResponse(JSONResponse):
 from fastapi import UploadFile, File
 
 from .auth import AuthContext, require_auth
+from .api.portfolio_health import register_portfolio_health_routes
 from .config import get_settings
 from .csv_service import CsvImportService
 from .db import engine
@@ -193,6 +194,7 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
 
 
 router = APIRouter()
+register_portfolio_health_routes(router, repo)
 
 
 @router.get("/health")

@@ -1,6 +1,13 @@
 from fastapi.testclient import TestClient
 
+import app.api.portfolio_health as portfolio_health_api
 import app.main as api_main
+from app.schemas.portfolio_doctor import (
+    PortfolioHealthCategoryScores,
+    PortfolioHealthMetrics,
+    PortfolioHealthResponse,
+    PortfolioHealthSummary,
+)
 
 
 class _FakeRepo:
@@ -250,3 +257,59 @@ def test_performance_summary_route(monkeypatch):
     assert payload['period'] == '1y'
     assert payload['twr']['twr_pct'] == 12.34
     assert payload['mwr']['converged'] is True
+
+
+def test_portfolio_health_route(monkeypatch):
+    def _fake_analyze(repo, portfolio_id: int, user_id: str):
+        assert user_id == 'dev-user'
+        return PortfolioHealthResponse(
+            portfolio_id=portfolio_id,
+            score=74,
+            summary=PortfolioHealthSummary(
+                risk_level='medium',
+                diversification='good',
+                overlap='moderate',
+                cost_efficiency='low_cost',
+            ),
+            metrics=PortfolioHealthMetrics(
+                geographic_exposure={'usa': 67.2, 'europe': 14.5, 'emerging': 6.3, 'other': 12.0},
+                max_position_weight=45.1,
+                overlap_score=58.0,
+                portfolio_volatility=16.2,
+                weighted_ter=0.24,
+            ),
+            category_scores=PortfolioHealthCategoryScores(
+                diversification=19,
+                risk=16,
+                concentration=14,
+                overlap=11,
+                cost_efficiency=14,
+            ),
+            alerts=[],
+            suggestions=[],
+        )
+
+    monkeypatch.setattr(portfolio_health_api, 'analyze_portfolio_health', _fake_analyze)
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/portfolios/7/health')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['portfolio_id'] == 7
+    assert payload['score'] == 74
+    assert payload['summary']['diversification'] == 'good'
+
+
+def test_portfolio_health_route_not_found(monkeypatch):
+    def _fake_analyze(repo, portfolio_id: int, user_id: str):
+        raise ValueError('Portfolio non trovato')
+
+    monkeypatch.setattr(portfolio_health_api, 'analyze_portfolio_health', _fake_analyze)
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/portfolios/999/health')
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload['error']['code'] == 'not_found'
