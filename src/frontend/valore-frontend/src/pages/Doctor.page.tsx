@@ -16,6 +16,8 @@ import {
   Text,
   ThemeIcon,
   Title,
+  useComputedColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconAlertTriangle,
@@ -93,6 +95,9 @@ export function DoctorPage() {
   }, [health, selectedPortfolio]);
 
   const tone = scoreTone(health?.score ?? 0);
+  const colorScheme = useComputedColorScheme('light');
+  const theme = useMantineTheme();
+  const isDark = colorScheme === 'dark';
   const pageError = (portfoliosError instanceof Error ? portfoliosError.message : null)
     || (healthError instanceof Error ? healthError.message : null);
 
@@ -100,7 +105,9 @@ export function DoctorPage() {
     <Box
       style={{
         minHeight: '100%',
-        background: 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
+        background: isDark
+          ? `radial-gradient(circle at top left, rgba(19,78,74,0.18), transparent 24%), linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 26%, ${theme.colors.dark[9]} 100%)`
+          : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
         padding: 'var(--mantine-spacing-sm)',
       }}
     >
@@ -265,11 +272,11 @@ export function DoctorPage() {
                   <Card withBorder radius="xl" padding="lg">
                     <Title order={4} mb="md">Category scores</Title>
                     <SimpleGrid cols={2} spacing="md">
-                      <ScorePill label="Diversification" value={`${health.category_scores.diversification} / 25`} />
-                      <ScorePill label="Risk" value={`${health.category_scores.risk} / 25`} />
-                      <ScorePill label="Concentration" value={`${health.category_scores.concentration} / 20`} />
-                      <ScorePill label="Overlap" value={`${health.category_scores.overlap} / 15`} />
-                      <ScorePill label="Cost efficiency" value={`${health.category_scores.cost_efficiency} / 15`} />
+                      <ScorePill label="Diversification" value={`${health.category_scores.diversification} / 25`} isDark={isDark} />
+                      <ScorePill label="Risk" value={`${health.category_scores.risk} / 25`} isDark={isDark} />
+                      <ScorePill label="Concentration" value={`${health.category_scores.concentration} / 20`} isDark={isDark} />
+                      <ScorePill label="Overlap" value={`${health.category_scores.overlap} / 15`} isDark={isDark} />
+                      <ScorePill label="Cost efficiency" value={`${health.category_scores.cost_efficiency} / 15`} isDark={isDark} />
                     </SimpleGrid>
                   </Card>
                 </Grid.Col>
@@ -336,14 +343,16 @@ function MetricChip({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ScorePill({ label, value }: { label: string; value: string }) {
+function ScorePill({ label, value, isDark }: { label: string; value: string; isDark: boolean }) {
   return (
     <Box
       style={{
         borderRadius: 18,
         padding: '14px 16px',
-        background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
-        border: '1px solid #e2e8f0',
+        background: isDark
+          ? 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.03) 100%)'
+          : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+        border: isDark ? '1px solid rgba(255,255,255,0.10)' : '1px solid #e2e8f0',
       }}
     >
       <Text size="sm" c="dimmed">{label}</Text>
