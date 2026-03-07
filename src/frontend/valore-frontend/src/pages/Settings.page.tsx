@@ -16,20 +16,24 @@ import {
   useMantineTheme,
   SegmentedControl,
   useMantineColorScheme,
+  useComputedColorScheme,
   Center,
   Box,
   Alert,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop, IconRobot } from '@tabler/icons-react';
+import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
 import type { CopilotStatus } from '../services/api';
 
 export function SettingsPage() {
   const theme = useMantineTheme();
-  const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const { colorScheme: colorSchemeRaw, setColorScheme } = useMantineColorScheme();
+  const colorScheme = useComputedColorScheme('light');
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [activeTab, setActiveTab] = useState('general');
   const [brokerDefaultFee, setBrokerDefaultFee] = useState<number | string>(1.99);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
@@ -156,7 +160,25 @@ export function SettingsPage() {
       });
   };
 
+  const mobileTabItems = [
+    { value: 'general', label: 'Generale', icon: IconSettings },
+    { value: 'copilot', label: 'Copilot', icon: IconRobot },
+    { value: 'tax', label: 'Fiscalità', icon: IconReceipt },
+    { value: 'security', label: 'Sicurezza', icon: IconShield },
+  ];
+
   return (
+    <Box
+      style={{
+        paddingBottom: isMobile ? 104 : undefined,
+        background: isMobile
+          ? (colorScheme === 'dark'
+            ? `linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 22%, transparent 42%)`
+            : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 22%, transparent 42%)')
+          : undefined,
+        minHeight: '100%',
+      }}
+    >
     <Stack gap={isMobile ? 'xs' : 0}>
       {isMobile ? (
         <Group justify="space-between" mb="xs" align="flex-end" wrap="wrap" gap="xs">
@@ -166,24 +188,15 @@ export function SettingsPage() {
         <Title order={2} fw={700} mb="md">Impostazioni</Title>
       )}
 
-      <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} defaultValue="general" variant="pills" radius="md">
-        <Tabs.List
-          style={isMobile ? {
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-            gap: 8,
-            padding: 8,
-            background: colorScheme === 'dark' ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)',
-            border: colorScheme === 'dark' ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.18)',
-            borderRadius: 20,
-            boxShadow: colorScheme === 'dark' ? '0 14px 30px rgba(0, 0, 0, 0.24)' : '0 14px 30px rgba(15, 23, 42, 0.08)',
-          } : undefined}
-        >
+      <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} value={activeTab} onChange={(v) => setActiveTab(v ?? 'general')} variant="pills" radius="md">
+        {!isMobile && (
+        <Tabs.List>
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
           <Tabs.Tab value="copilot" leftSection={<IconRobot size={18} />}>Copilot</Tabs.Tab>
           <Tabs.Tab value="tax" leftSection={<IconReceipt size={18} />}>Fiscalità</Tabs.Tab>
           <Tabs.Tab value="security" leftSection={<IconShield size={18} />}>Sicurezza</Tabs.Tab>
         </Tabs.List>
+        )}
 
         <Tabs.Panel value="general">
           <Paper
@@ -219,7 +232,7 @@ export function SettingsPage() {
               <Stack gap="xs">
                 <Text fw={500} size="sm">Aspetto dell'Applicazione</Text>
                 <SegmentedControl
-                  value={colorScheme}
+                  value={colorSchemeRaw}
                   onChange={(value) => setColorScheme(value as 'light' | 'dark' | 'auto')}
                   data={[
                     {
@@ -454,5 +467,14 @@ export function SettingsPage() {
         </Tabs.Panel>
       </Tabs>
     </Stack>
+
+      {isMobile && (
+        <MobileBottomNav
+          items={mobileTabItems}
+          value={activeTab}
+          onChange={setActiveTab}
+        />
+      )}
+    </Box>
   );
 }
