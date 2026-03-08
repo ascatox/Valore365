@@ -448,7 +448,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="warning",
                 type="geographic_concentration",
-                message=f"Your portfolio is heavily exposed to US markets ({usa:.1f}%).",
+                message=f"Il portafoglio è fortemente esposto al mercato statunitense ({usa:.1f}%).",
             )
         )
     if metrics.max_position_weight > 60:
@@ -456,7 +456,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="critical",
                 type="position_concentration",
-                message=f"One holding dominates the portfolio ({metrics.max_position_weight:.1f}%).",
+                message=f"Una singola posizione domina il portafoglio ({metrics.max_position_weight:.1f}%).",
             )
         )
     elif metrics.max_position_weight > 40:
@@ -464,7 +464,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="warning",
                 type="position_concentration",
-                message=f"One holding has a large weight in the portfolio ({metrics.max_position_weight:.1f}%).",
+                message=f"Una posizione ha un peso elevato nel portafoglio ({metrics.max_position_weight:.1f}%).",
             )
         )
     if metrics.overlap_score > 70:
@@ -472,7 +472,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="critical",
                 type="etf_overlap",
-                message=f"Several holdings appear highly redundant because ETF overlap is very high ({metrics.overlap_score:.1f}%).",
+                message=f"Diverse posizioni risultano molto ridondanti: la sovrapposizione tra ETF è molto alta ({metrics.overlap_score:.1f}%).",
             )
         )
     elif metrics.overlap_score > 50:
@@ -480,7 +480,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="warning",
                 type="etf_overlap",
-                message=f"Several holdings appear redundant because ETF overlap is high ({metrics.overlap_score:.1f}%).",
+                message=f"Diverse posizioni risultano ridondanti: la sovrapposizione tra ETF è alta ({metrics.overlap_score:.1f}%).",
             )
         )
     if metrics.portfolio_volatility is not None and metrics.portfolio_volatility > 15:
@@ -488,7 +488,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="warning",
                 type="portfolio_risk",
-                message=f"Estimated portfolio volatility is elevated ({metrics.portfolio_volatility:.1f}%).",
+                message=f"La volatilità stimata del portafoglio è elevata ({metrics.portfolio_volatility:.1f}%).",
             )
         )
     if metrics.weighted_ter is not None and metrics.weighted_ter > 0.5:
@@ -496,7 +496,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
             PortfolioHealthAlert(
                 severity="warning",
                 type="high_costs",
-                message=f"Estimated weighted fund cost is relatively high ({metrics.weighted_ter:.2f}%).",
+                message=f"Il costo medio ponderato dei fondi è relativamente alto ({metrics.weighted_ter:.2f}%).",
             )
         )
     severity_order = {"critical": 0, "warning": 1, "info": 2}
@@ -513,35 +513,35 @@ def build_suggestions(metrics: PortfolioHealthMetrics, *, equity_weight: float) 
         suggestions.append(
             PortfolioHealthSuggestion(
                 priority="medium",
-                message="Consider increasing exposure to non-US equities to improve diversification.",
+                message="Valuta di aumentare l'esposizione ad azioni non statunitensi per migliorare la diversificazione.",
             )
         )
     if emerging < 5 and equity_weight >= 60:
         suggestions.append(
             PortfolioHealthSuggestion(
                 priority="medium",
-                message="Consider adding a small emerging markets allocation to broaden equity exposure.",
+                message="Valuta di aggiungere una piccola allocazione ai mercati emergenti per ampliare l'esposizione azionaria.",
             )
         )
     if metrics.overlap_score > 50:
         suggestions.append(
             PortfolioHealthSuggestion(
                 priority="high",
-                message="Review broad equity ETFs with similar mandates and consolidate overlapping positions where possible.",
+                message="Rivedi gli ETF azionari ampi con mandati simili e consolida le posizioni sovrapposte dove possibile.",
             )
         )
     if metrics.max_position_weight > 40:
         suggestions.append(
             PortfolioHealthSuggestion(
                 priority="high" if metrics.max_position_weight > 60 else "medium",
-                message="Reducing the largest position could improve concentration risk and score stability.",
+                message="Ridurre la posizione più grande potrebbe migliorare il rischio di concentrazione e la stabilità del punteggio.",
             )
         )
     if metrics.weighted_ter is not None and metrics.weighted_ter > 0.3:
         suggestions.append(
             PortfolioHealthSuggestion(
                 priority="low",
-                message="Compare fund costs against similar lower-fee ETFs to improve cost efficiency.",
+                message="Confronta i costi dei fondi con ETF simili a commissioni più basse per migliorare l'efficienza dei costi.",
             )
         )
     return suggestions

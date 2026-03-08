@@ -31,10 +31,10 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolios } from '../components/dashboard/hooks/queries';
 
 function scoreTone(score: number): { label: string; color: string } {
-  if (score >= 80) return { label: 'Excellent', color: 'teal' };
-  if (score >= 70) return { label: 'Good', color: 'blue' };
-  if (score >= 60) return { label: 'Average', color: 'yellow' };
-  return { label: 'Weak', color: 'red' };
+  if (score >= 80) return { label: 'Eccellente', color: 'teal' };
+  if (score >= 70) return { label: 'Buono', color: 'blue' };
+  if (score >= 60) return { label: 'Nella media', color: 'yellow' };
+  return { label: 'Debole', color: 'red' };
 }
 
 function formatPct(value: number | null | undefined): string {
@@ -83,12 +83,12 @@ export function DoctorPage() {
     return [
       `${selectedPortfolio.name} Portfolio Doctor`,
       `Score: ${health.score}/100`,
-      `Risk: ${humanize(health.summary.risk_level)}`,
-      `Diversification: ${humanize(health.summary.diversification)}`,
-      `Overlap: ${humanize(health.summary.overlap)}`,
-      `Costs: ${humanize(health.summary.cost_efficiency)}`,
-      alerts ? `Warnings:\n${alerts}` : '',
-      suggestions ? `Suggestions:\n${suggestions}` : '',
+      `Rischio: ${humanize(health.summary.risk_level)}`,
+      `Diversificazione: ${humanize(health.summary.diversification)}`,
+      `Sovrapposizione: ${humanize(health.summary.overlap)}`,
+      `Costi: ${humanize(health.summary.cost_efficiency)}`,
+      alerts ? `Avvisi:\n${alerts}` : '',
+      suggestions ? `Suggerimenti:\n${suggestions}` : '',
     ].filter(Boolean).join('\n');
   }, [health, selectedPortfolio]);
 
@@ -112,11 +112,11 @@ export function DoctorPage() {
                 <ThemeIcon radius="xl" color="teal" variant="light">
                   <IconHeartRateMonitor size={18} />
                 </ThemeIcon>
-                <Text fw={800} tt="uppercase" size="xs" c="dimmed">Share-ready diagnostics</Text>
+                <Text fw={800} tt="uppercase" size="xs" c="dimmed">Diagnostica pronta da condividere</Text>
               </Group>
               <Title order={2}>Doctor</Title>
               <Text c="dimmed" maw={680}>
-                A portfolio checkup designed to be readable, screenshot-friendly, and ready to share.
+                Un checkup del portafoglio progettato per essere leggibile, adatto agli screenshot e pronto da condividere.
               </Text>
             </div>
 
@@ -133,7 +133,7 @@ export function DoctorPage() {
 
           {!selectedPortfolio && !portfoliosLoading && (
             <Alert color="yellow">
-              Create a portfolio first, then come back here for a Doctor report.
+              Crea prima un portafoglio, poi torna qui per un report del Doctor.
             </Alert>
           )}
 
@@ -173,10 +173,10 @@ export function DoctorPage() {
                       </Group>
 
                       <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-                        <MetricChip label="Risk" value={health.summary.risk_level} />
-                        <MetricChip label="Diversification" value={health.summary.diversification} />
-                        <MetricChip label="Overlap" value={health.summary.overlap} />
-                        <MetricChip label="Costs" value={health.summary.cost_efficiency} />
+                        <MetricChip label="Rischio" value={health.summary.risk_level} />
+                        <MetricChip label="Diversificazione" value={health.summary.diversification} />
+                        <MetricChip label="Sovrapposizione" value={health.summary.overlap} />
+                        <MetricChip label="Costi" value={health.summary.cost_efficiency} />
                       </SimpleGrid>
 
                       <Group gap="sm" wrap="wrap">
@@ -189,7 +189,7 @@ export function DoctorPage() {
                               onClick={copy}
                               radius="xl"
                             >
-                              {copied ? 'Summary copied' : 'Copy summary'}
+                              {copied ? 'Riepilogo copiato' : 'Copia riepilogo'}
                             </Button>
                           )}
                         </CopyButton>
@@ -202,12 +202,12 @@ export function DoctorPage() {
                               onClick={copy}
                               radius="xl"
                             >
-                              {copied ? 'Link copied' : 'Copy link'}
+                              {copied ? 'Link copiato' : 'Copia link'}
                             </Button>
                           )}
                         </CopyButton>
                         <Badge variant="light" color="yellow" leftSection={<IconShare size={12} />}>
-                          Built for screenshot sharing
+                          Pensato per la condivisione via screenshot
                         </Badge>
                       </Group>
                     </Stack>
@@ -221,7 +221,7 @@ export function DoctorPage() {
                         <ThemeIcon color="yellow" variant="light" radius="xl">
                           <IconSparkles size={18} />
                         </ThemeIcon>
-                        <Title order={4}>Top signals</Title>
+                        <Title order={4}>Segnali principali</Title>
                       </Group>
                       {health.alerts.slice(0, 2).map((alert) => (
                         <Alert key={`${alert.type}-${alert.message}`} color={alert.severity === 'critical' ? 'red' : 'orange'} variant="light">
@@ -230,7 +230,7 @@ export function DoctorPage() {
                       ))}
                       {!health.alerts.length && (
                         <Alert color="teal" variant="light">
-                          No major structural warnings were detected.
+                          Nessun avviso strutturale rilevante rilevato.
                         </Alert>
                       )}
                       {health.suggestions.slice(0, 2).map((suggestion) => (
@@ -246,16 +246,16 @@ export function DoctorPage() {
               <Grid gutter="lg" align="start">
                 <Grid.Col span={{ base: 12, lg: 6 }}>
                   <Card withBorder radius="xl" padding="lg">
-                    <Title order={4} mb="md">Metric breakdown</Title>
+                    <Title order={4} mb="md">Dettaglio metriche</Title>
                     <Table withTableBorder withColumnBorders highlightOnHover>
                       <Table.Tbody>
-                        <Table.Tr><Table.Td>USA exposure</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Europe exposure</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Emerging exposure</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Max position weight</Table.Td><Table.Td>{formatPct(health.metrics.max_position_weight)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Overlap score</Table.Td><Table.Td>{formatPct(health.metrics.overlap_score)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Volatility</Table.Td><Table.Td>{formatPct(health.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Weighted TER</Table.Td><Table.Td>{formatPct(health.metrics.weighted_ter)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>Esposizione USA</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>Esposizione Europa</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>Esposizione Emergenti</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>Peso massimo posizione</Table.Td><Table.Td>{formatPct(health.metrics.max_position_weight)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>Punteggio sovrapposizione</Table.Td><Table.Td>{formatPct(health.metrics.overlap_score)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>Volatilità</Table.Td><Table.Td>{formatPct(health.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td>TER ponderato</Table.Td><Table.Td>{formatPct(health.metrics.weighted_ter)}</Table.Td></Table.Tr>
                       </Table.Tbody>
                     </Table>
                   </Card>
@@ -263,13 +263,13 @@ export function DoctorPage() {
 
                 <Grid.Col span={{ base: 12, lg: 6 }}>
                   <Card withBorder radius="xl" padding="lg">
-                    <Title order={4} mb="md">Category scores</Title>
+                    <Title order={4} mb="md">Punteggi per categoria</Title>
                     <SimpleGrid cols={2} spacing="md">
-                      <ScorePill label="Diversification" value={`${health.category_scores.diversification} / 25`} />
-                      <ScorePill label="Risk" value={`${health.category_scores.risk} / 25`} />
-                      <ScorePill label="Concentration" value={`${health.category_scores.concentration} / 20`} />
-                      <ScorePill label="Overlap" value={`${health.category_scores.overlap} / 15`} />
-                      <ScorePill label="Cost efficiency" value={`${health.category_scores.cost_efficiency} / 15`} />
+                      <ScorePill label="Diversificazione" value={`${health.category_scores.diversification} / 25`} />
+                      <ScorePill label="Rischio" value={`${health.category_scores.risk} / 25`} />
+                      <ScorePill label="Concentrazione" value={`${health.category_scores.concentration} / 20`} />
+                      <ScorePill label="Sovrapposizione" value={`${health.category_scores.overlap} / 15`} />
+                      <ScorePill label="Efficienza costi" value={`${health.category_scores.cost_efficiency} / 15`} />
                     </SimpleGrid>
                   </Card>
                 </Grid.Col>
@@ -282,14 +282,14 @@ export function DoctorPage() {
                       <ThemeIcon color="orange" variant="light" radius="xl">
                         <IconAlertTriangle size={18} />
                       </ThemeIcon>
-                      <Title order={4}>All warnings</Title>
+                      <Title order={4}>Tutti gli avvisi</Title>
                     </Group>
                     <Stack gap="sm">
                       {health.alerts.length ? health.alerts.map((alert) => (
                         <Alert key={`${alert.type}-${alert.message}`} color={alert.severity === 'critical' ? 'red' : 'orange'} variant="light">
                           {alert.message}
                         </Alert>
-                      )) : <Text c="dimmed">No warnings.</Text>}
+                      )) : <Text c="dimmed">Nessun avviso.</Text>}
                     </Stack>
                   </Card>
                 </Grid.Col>
@@ -300,14 +300,14 @@ export function DoctorPage() {
                       <ThemeIcon color="teal" variant="light" radius="xl">
                         <IconSparkles size={18} />
                       </ThemeIcon>
-                      <Title order={4}>Improvement ideas</Title>
+                      <Title order={4}>Idee di miglioramento</Title>
                     </Group>
                     <Stack gap="sm">
                       {health.suggestions.length ? health.suggestions.map((suggestion) => (
                         <Alert key={suggestion.message} color="teal" variant="light">
                           {suggestion.message}
                         </Alert>
-                      )) : <Text c="dimmed">No suggestions.</Text>}
+                      )) : <Text c="dimmed">Nessun suggerimento.</Text>}
                     </Stack>
                   </Card>
                 </Grid.Col>
