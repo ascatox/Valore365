@@ -12,6 +12,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconTrendingUp } from '@tabler/icons-react';
 import {
   Area,
@@ -67,6 +68,7 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const hasValue = marketValue != null && marketValue > 0;
 
   if (isLoading && portfolioId != null) {
@@ -128,31 +130,32 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
           <ThemeIcon color="indigo" variant="light" radius="xl">
             <IconTrendingUp size={18} />
           </ThemeIcon>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <Title order={4}>Proiezione Monte Carlo</Title>
-            <Text size="xs" c="dimmed">
-              {data.num_simulations.toLocaleString()} simulazioni &middot; rendimento medio {data.annualized_mean_return_pct.toFixed(1)}% &middot; volatilità {data.annualized_volatility_pct.toFixed(1)}%
-              {hasValue && <> &middot; controvalore attuale {formatCurrency(marketValue, currency)}</>}
+            <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
+              {data.num_simulations.toLocaleString()} sim. &middot; rend. medio {data.annualized_mean_return_pct.toFixed(1)}% &middot; vol. {data.annualized_volatility_pct.toFixed(1)}%
+              {hasValue && <> &middot; valore {formatCurrency(marketValue, currency)}</>}
             </Text>
           </div>
         </Group>
 
-        <Box style={{ width: '100%', height: 320 }}>
+        <Box style={{ width: '100%', height: 320, overflow: 'hidden' }}>
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 10, right: isMobile ? 5 : 10, left: isMobile ? -15 : 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? theme.colors.dark[4] : '#e2e8f0'} />
               <XAxis
                 dataKey="year"
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: isMobile ? 10 : 12 }}
                 tickFormatter={(v) => v === '0' ? 'Oggi' : `${v}a`}
               />
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: 12 }}
+                tick={{ fontSize: isMobile ? 10 : 12 }}
                 tickFormatter={(v: number) => `${v}`}
                 domain={['auto', 'auto']}
+                width={isMobile ? 35 : 60}
               />
-              {hasValue && (
+              {hasValue && !isMobile && (
                 <YAxis
                   yAxisId="right"
                   orientation="right"
@@ -295,22 +298,22 @@ function HorizonSummary({
       }}
     >
       <Text size="xs" tt="uppercase" c="dimmed" fw={700}>{years} anni</Text>
-      <Text fw={800} size="lg">
+      <Text fw={800} size="lg" style={{ wordBreak: 'break-word' }}>
         {formatGrowth(projection.p50)}
-        {hasValue && (
-          <Text component="span" size="sm" fw={600} c="dimmed">
-            {' '}({formatCurrency(indexToValue(projection.p50, marketValue), currency)})
-          </Text>
-        )}
       </Text>
-      <Text size="xs" c="dimmed">
+      {hasValue && (
+        <Text size="sm" fw={600} c="dimmed" style={{ wordBreak: 'break-word' }}>
+          {formatCurrency(indexToValue(projection.p50, marketValue), currency)}
+        </Text>
+      )}
+      <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
         Range: {formatGrowth(projection.p10)} / {formatGrowth(projection.p90)}
-        {hasValue && (
-          <>
-            {' '}({formatCurrency(indexToValue(projection.p10, marketValue), currency)} / {formatCurrency(indexToValue(projection.p90, marketValue), currency)})
-          </>
-        )}
       </Text>
+      {hasValue && (
+        <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
+          {formatCurrency(indexToValue(projection.p10, marketValue), currency)} / {formatCurrency(indexToValue(projection.p90, marketValue), currency)}
+        </Text>
+      )}
     </Box>
   );
 }

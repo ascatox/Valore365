@@ -23,7 +23,7 @@ export function PageHeader({ eyebrow, title, description, actions }: PageHeaderP
         <Title order={isMobile ? 4 : 2} fw={isMobile ? 800 : 700}>
           {title}
         </Title>
-        {description && (
+        {description && !isMobile && (
           <Text c="dimmed" maw={680}>
             {description}
           </Text>

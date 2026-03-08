@@ -159,8 +159,18 @@ export function DoctorAlertDetailsModal({
                 <Table.Tbody>
                   {overlapPairs.map((pair) => (
                     <Table.Tr key={`${pair.left.symbol}-${pair.right.symbol}`}>
-                      <Table.Td>{pair.left.symbol} ({formatPct(pair.left.weight_pct)})</Table.Td>
-                      <Table.Td>{pair.right.symbol} ({formatPct(pair.right.weight_pct)})</Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <Text fw={700}>{pair.left.symbol} ({formatPct(pair.left.weight_pct)})</Text>
+                          <Text size="sm" c="dimmed">{pair.left.name}</Text>
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <Text fw={700}>{pair.right.symbol} ({formatPct(pair.right.weight_pct)})</Text>
+                          <Text size="sm" c="dimmed">{pair.right.name}</Text>
+                        </Stack>
+                      </Table.Td>
                       <Table.Td>{formatPct(pair.estimated_overlap_pct)}</Table.Td>
                       <Table.Td>{formatPct(pair.combined_weight_pct)}</Table.Td>
                     </Table.Tr>

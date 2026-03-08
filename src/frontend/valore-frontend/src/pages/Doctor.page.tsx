@@ -148,9 +148,9 @@ export function DoctorPage() {
                 <Grid.Col span={{ base: 12, xl: 8 }}>
                   <Card
                     radius="xl"
-                    padding="xl"
+                    padding={{ base: 'md', sm: 'xl' }}
                     withBorder
-                    style={{ background: 'linear-gradient(140deg, #103c39 0%, #1f5d59 58%, #f0b24f 160%)', color: 'white' }}
+                    style={{ background: 'linear-gradient(140deg, #103c39 0%, #1f5d59 58%, #f0b24f 160%)', color: 'white', overflow: 'hidden' }}
                   >
                     <Stack gap="lg">
                       <Group justify="space-between" align="flex-start" wrap="wrap">
@@ -203,7 +203,7 @@ export function DoctorPage() {
                             </Button>
                           )}
                         </CopyButton>
-                        <Badge variant="light" color="yellow" leftSection={<IconShare size={12} />}>
+                        <Badge variant="light" color="yellow" leftSection={<IconShare size={12} />} style={{ whiteSpace: 'normal', height: 'auto', lineHeight: 1.4 }}>
                           Pensato per la condivisione via screenshot
                         </Badge>
                       </Group>
@@ -212,7 +212,7 @@ export function DoctorPage() {
                 </Grid.Col>
 
                 <Grid.Col span={{ base: 12, xl: 4 }}>
-                  <Card withBorder radius="xl" padding="lg" h="100%">
+                  <Card withBorder radius="xl" padding="lg" h="100%" style={{ overflow: 'hidden' }}>
                     <Stack gap="md">
                       <Group gap="sm">
                         <ThemeIcon color="yellow" variant="light" radius="xl">
@@ -244,15 +244,15 @@ export function DoctorPage() {
                 <Grid.Col span={{ base: 12, lg: 6 }}>
                   <Card withBorder radius="xl" padding="lg">
                     <Title order={4} mb="md">Dettaglio metriche</Title>
-                    <Table withTableBorder withColumnBorders highlightOnHover>
+                    <Table withTableBorder withColumnBorders highlightOnHover style={{ tableLayout: 'fixed' }}>
                       <Table.Tbody>
-                        <Table.Tr><Table.Td>Esposizione USA</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Esposizione Europa</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Esposizione Emergenti</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Peso massimo posizione</Table.Td><Table.Td>{formatPct(health.metrics.max_position_weight)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Punteggio sovrapposizione</Table.Td><Table.Td>{formatPct(health.metrics.overlap_score)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>Volatilità</Table.Td><Table.Td>{formatPct(health.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
-                        <Table.Tr><Table.Td>TER ponderato</Table.Td><Table.Td>{formatPct(health.metrics.weighted_ter)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>Esposizione USA</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>Esposizione Europa</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>Esposizione Emergenti</Table.Td><Table.Td>{formatPct(health.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>Peso max posizione</Table.Td><Table.Td>{formatPct(health.metrics.max_position_weight)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>Sovrapposizione</Table.Td><Table.Td>{formatPct(health.metrics.overlap_score)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>Volatilità</Table.Td><Table.Td>{formatPct(health.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
+                        <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>TER ponderato</Table.Td><Table.Td>{formatPct(health.metrics.weighted_ter)}</Table.Td></Table.Tr>
                       </Table.Tbody>
                     </Table>
                   </Card>
@@ -353,8 +353,8 @@ function MetricChip({ label, value }: { label: string; value: string }) {
         border: '1px solid rgba(255,255,255,0.16)',
       }}
     >
-      <Text size="xs" tt="uppercase" style={{ opacity: 0.7 }}>{label}</Text>
-      <Text fw={700}>{humanize(value)}</Text>
+      <Text size="xs" tt="uppercase" style={{ opacity: 0.7, wordBreak: 'break-word' }}>{label}</Text>
+      <Text fw={700} style={{ wordBreak: 'break-word' }}>{humanize(value)}</Text>
     </Box>
   );
 }
