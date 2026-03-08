@@ -6,6 +6,7 @@ import {
   getBenchmarks,
   getGainTimeseries,
   getMarketQuotes,
+  getMonteCarloProjection,
   getMWRTimeseries,
   getPerformanceSummary,
   getPortfolioAllocation,
@@ -50,6 +51,14 @@ export function usePortfolioHealth(portfolioId: number | null) {
   return useQuery({
     queryKey: ['portfolio-health', portfolioId],
     queryFn: () => getPortfolioHealth(portfolioId!),
+    enabled: portfolioId != null,
+  });
+}
+
+export function useMonteCarloProjection(portfolioId: number | null) {
+  return useQuery({
+    queryKey: ['monte-carlo-projection', portfolioId],
+    queryFn: () => getMonteCarloProjection(portfolioId!),
     enabled: portfolioId != null,
   });
 }

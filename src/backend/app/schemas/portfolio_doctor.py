@@ -45,3 +45,21 @@ class PortfolioHealthResponse(BaseModel):
     category_scores: PortfolioHealthCategoryScores
     alerts: list[PortfolioHealthAlert] = Field(default_factory=list)
     suggestions: list[PortfolioHealthSuggestion] = Field(default_factory=list)
+
+
+class MonteCarloYearProjection(BaseModel):
+    year: int = Field(ge=0)
+    p10: float
+    p25: float
+    p50: float
+    p75: float
+    p90: float
+
+
+class MonteCarloProjectionResponse(BaseModel):
+    portfolio_id: int = Field(ge=1)
+    num_simulations: int
+    horizons: list[int]
+    projections: list[MonteCarloYearProjection]
+    annualized_mean_return_pct: float
+    annualized_volatility_pct: float

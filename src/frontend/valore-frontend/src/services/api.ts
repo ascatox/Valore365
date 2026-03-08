@@ -160,6 +160,24 @@ export interface PortfolioHealthResponse {
   suggestions: PortfolioHealthSuggestion[];
 }
 
+export interface MonteCarloYearProjection {
+  year: number;
+  p10: number;
+  p25: number;
+  p50: number;
+  p75: number;
+  p90: number;
+}
+
+export interface MonteCarloProjectionResponse {
+  portfolio_id: number;
+  num_simulations: number;
+  horizons: number[];
+  projections: MonteCarloYearProjection[];
+  annualized_mean_return_pct: number;
+  annualized_volatility_pct: number;
+}
+
 export interface PortfolioCreateInput {
   name: string;
   base_currency: string;
@@ -731,6 +749,10 @@ export const getPortfolioSummary = async (portfolioId: number): Promise<Portfoli
 
 export const getPortfolioHealth = async (portfolioId: number): Promise<PortfolioHealthResponse> => {
   return apiFetch<PortfolioHealthResponse>(`/portfolios/${portfolioId}/health`);
+};
+
+export const getMonteCarloProjection = async (portfolioId: number): Promise<MonteCarloProjectionResponse> => {
+  return apiFetch<MonteCarloProjectionResponse>(`/portfolios/${portfolioId}/monte-carlo`);
 };
 
 export const getPerformanceSummary = async (

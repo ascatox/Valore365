@@ -31,6 +31,9 @@ import {
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolios } from '../components/dashboard/hooks/queries';
+import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
+import { PageHeader } from '../components/layout/PageHeader';
+import { PageLayout } from '../components/layout/PageLayout';
 
 function scoreTone(score: number): { label: string; color: string } {
   if (score >= 80) return { label: 'Eccellente', color: 'teal' };
@@ -49,9 +52,6 @@ function humanize(value: string): string {
 }
 
 export function DoctorPage() {
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
-  const isDark = colorScheme === 'dark';
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
@@ -102,39 +102,23 @@ export function DoctorPage() {
     || (healthError instanceof Error ? healthError.message : null);
 
   return (
-    <Box
-      style={{
-        minHeight: '100%',
-        background: isDark
-          ? `radial-gradient(circle at top left, rgba(32, 201, 151, 0.14), transparent 24%), linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 28%, ${theme.colors.dark[8]} 100%)`
-          : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
-        padding: 'var(--mantine-spacing-sm)',
-      }}
-    >
+    <PageLayout variant="editorial">
       <Container fluid>
         <Stack gap="lg">
-          <Group justify="space-between" align="flex-end" wrap="wrap" gap="xs">
-            <div>
-              <Group gap="sm" mb={8}>
-                <ThemeIcon radius="xl" color="teal" variant="light">
-                  <IconHeartRateMonitor size={18} />
-                </ThemeIcon>
-                <Text fw={800} tt="uppercase" size="xs" c="dimmed">Diagnostica pronta da condividere</Text>
-              </Group>
-              <Title order={2}>Doctor</Title>
-              <Text c="dimmed" maw={680}>
-                Un checkup del portafoglio progettato per essere leggibile, adatto agli screenshot e pronto da condividere.
-              </Text>
-            </div>
-
-            <PortfolioSwitcher
-              portfolios={portfolios}
-              value={selectedPortfolioId}
-              onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-              loading={portfoliosLoading}
-              style={{ width: '100%', maxWidth: 360 }}
-            />
-          </Group>
+          <PageHeader
+            eyebrow="Diagnostica pronta da condividere"
+            title="Doctor"
+            description="Un checkup del portafoglio progettato per essere leggibile, adatto agli screenshot e pronto da condividere."
+            actions={(
+              <PortfolioSwitcher
+                portfolios={portfolios}
+                value={selectedPortfolioId}
+                onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+                loading={portfoliosLoading}
+                style={{ width: '100%', maxWidth: 360 }}
+              />
+            )}
+          />
 
           {pageError && <Alert color="red">{pageError}</Alert>}
 
@@ -319,11 +303,13 @@ export function DoctorPage() {
                   </Card>
                 </Grid.Col>
               </Grid>
+
+              <MonteCarloCard portfolioId={portfolioId} />
             </>
           )}
         </Stack>
       </Container>
-    </Box>
+    </PageLayout>
   );
 }
 

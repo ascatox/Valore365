@@ -1,4 +1,5 @@
 import math
+import random
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,6 +9,8 @@ from sqlalchemy import text
 
 from ..repository import PortfolioRepository
 from ..schemas.portfolio_doctor import (
+    MonteCarloProjectionResponse,
+    MonteCarloYearProjection,
     PortfolioHealthAlert,
     PortfolioHealthCategoryScores,
     PortfolioHealthMetrics,
@@ -607,3 +610,152 @@ def build_summary(
 
 def _is_equity_like(holding: AnalyzedHolding) -> bool:
     return holding.asset_type.lower() in {"stock", "etf", "fund"}
+
+
+NUM_SIMULATIONS = 1_000
+MAX_PROJECTION_YEARS = 20
+PROJECTION_HORIZONS = [5, 10, 20]
+
+
+def run_monte_carlo_projection(
+    repo: PortfolioRepository,
+    portfolio_id: int,
+    user_id: str | None = None,
+) -> MonteCarloProjectionResponse:
+    if not user_id:
+        raise ValueError("Utente non valido")
+
+    holdings = _load_holdings(repo, portfolio_id, user_id)
+    if not holdings:
+        return _empty_monte_carlo_response(portfolio_id)
+
+    mu_annual, sigma_annual = _compute_portfolio_return_params(repo, holdings)
+    if sigma_annual == 0.0:
+        return _empty_monte_carlo_response(portfolio_id)
+
+    projections = _simulate_paths(mu_annual, sigma_annual)
+
+    return MonteCarloProjectionResponse(
+        portfolio_id=portfolio_id,
+        num_simulations=NUM_SIMULATIONS,
+        horizons=PROJECTION_HORIZONS,
+        projections=projections,
+        annualized_mean_return_pct=round(mu_annual * 100, 2),
+        annualized_volatility_pct=round(sigma_annual * 100, 2),
+    )
+
+
+def _compute_portfolio_return_params(
+    repo: PortfolioRepository,
+    holdings: list[AnalyzedHolding],
+) -> tuple[float, float]:
+    asset_ids = [h.asset_id for h in holdings if h.asset_type != "cash"]
+    if not asset_ids:
+        return 0.0, 0.0
+
+    start_date = date.today() - timedelta(days=370)
+    with repo.engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                select asset_id, price_date, close::float8 as close
+                from price_bars_1d
+                where asset_id = any(:asset_ids)
+                  and price_date >= :start_date
+                order by asset_id asc, price_date asc
+                """
+            ),
+            {"asset_ids": asset_ids, "start_date": start_date},
+        ).mappings().all()
+
+    prices_by_asset: dict[int, list[float]] = defaultdict(list)
+    for row in rows:
+        close = float(row["close"])
+        if close > 0 and math.isfinite(close):
+            prices_by_asset[int(row["asset_id"])].append(close)
+
+    weighted_mu = 0.0
+    weighted_sigma = 0.0
+    covered_weight = 0.0
+
+    for holding in holdings:
+        series = prices_by_asset.get(holding.asset_id, [])
+        if len(series) < 20:
+            continue
+        log_returns = [
+            math.log(curr / prev)
+            for prev, curr in zip(series, series[1:])
+            if prev > 0 and curr > 0
+        ]
+        if len(log_returns) < 20:
+            continue
+
+        mu_daily = statistics.mean(log_returns)
+        sigma_daily = statistics.pstdev(log_returns)
+        mu_ann = mu_daily * 252
+        sigma_ann = sigma_daily * math.sqrt(252)
+        weight_fraction = holding.weight_pct / 100.0
+
+        weighted_mu += mu_ann * weight_fraction
+        weighted_sigma += sigma_ann * weight_fraction
+        covered_weight += weight_fraction
+
+    if covered_weight == 0:
+        return 0.0, 0.0
+
+    return weighted_mu / covered_weight, weighted_sigma / covered_weight
+
+
+def _simulate_paths(
+    mu_annual: float,
+    sigma_annual: float,
+) -> list[MonteCarloYearProjection]:
+    drift = mu_annual - 0.5 * sigma_annual**2
+    rng = random.Random(42)
+
+    # Each simulation: cumulative log-return at each year
+    all_paths: list[list[float]] = []
+    for _ in range(NUM_SIMULATIONS):
+        cum = 0.0
+        path = [100.0]
+        for _ in range(MAX_PROJECTION_YEARS):
+            shock = rng.gauss(0, 1)
+            cum += drift + sigma_annual * shock
+            path.append(100.0 * math.exp(cum))
+        all_paths.append(path)
+
+    projections: list[MonteCarloYearProjection] = []
+    for year_idx in range(MAX_PROJECTION_YEARS + 1):
+        values = sorted(p[year_idx] for p in all_paths)
+        projections.append(
+            MonteCarloYearProjection(
+                year=year_idx,
+                p10=round(_percentile(values, 10), 1),
+                p25=round(_percentile(values, 25), 1),
+                p50=round(_percentile(values, 50), 1),
+                p75=round(_percentile(values, 75), 1),
+                p90=round(_percentile(values, 90), 1),
+            )
+        )
+    return projections
+
+
+def _percentile(sorted_values: list[float], pct: int) -> float:
+    n = len(sorted_values)
+    k = (pct / 100) * (n - 1)
+    f = math.floor(k)
+    c = math.ceil(k)
+    if f == c:
+        return sorted_values[f]
+    return sorted_values[f] + (k - f) * (sorted_values[c] - sorted_values[f])
+
+
+def _empty_monte_carlo_response(portfolio_id: int) -> MonteCarloProjectionResponse:
+    return MonteCarloProjectionResponse(
+        portfolio_id=portfolio_id,
+        num_simulations=0,
+        horizons=PROJECTION_HORIZONS,
+        projections=[],
+        annualized_mean_return_pct=0.0,
+        annualized_volatility_pct=0.0,
+    )
