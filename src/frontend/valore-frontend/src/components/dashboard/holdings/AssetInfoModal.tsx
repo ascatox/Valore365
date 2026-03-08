@@ -4,7 +4,7 @@ import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconInfoCircle } from '@tabler/icons-react';
 import type { AssetInfo } from '../../../services/api';
-import { getAssetInfo } from '../../../services/api';
+import { getAssetInfo, getMarketSymbolInfo } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
 function formatMarketCap(value: number | null): string {
@@ -93,7 +93,7 @@ function PriceHistoryChart({ data, currency }: { data: { date: string; close: nu
 }
 
 interface AssetInfoModalProps {
-  assetId: number;
+  assetId?: number;
   symbol: string;
   opened: boolean;
   onClose: () => void;
@@ -110,12 +110,13 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
     setLoading(true);
     setError(null);
     setInfo(null);
-    getAssetInfo(assetId)
+    const fetcher = assetId != null ? getAssetInfo(assetId) : getMarketSymbolInfo(symbol);
+    fetcher
       .then((data) => { if (active) setInfo(data); })
       .catch((err) => { if (active) setError(err instanceof Error ? err.message : 'Errore nel caricamento'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [opened, assetId]);
+  }, [opened, assetId, symbol]);
 
   return (
     <Modal

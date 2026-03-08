@@ -1471,6 +1471,50 @@ def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuote
     return MarketQuotesResponse(categories=categories)
 
 
+@router.get("/markets/symbol-info", response_model=AssetInfoResponse, responses={404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
+def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> AssetInfoResponse:
+    """Return detailed info for a market symbol (index, commodity, crypto, etc.)."""
+    try:
+        info = finance_client.get_asset_info(symbol)
+    except Exception as exc:
+        raise AppError(code="provider_error", message=f"Impossibile ottenere info: {exc}", status_code=502) from exc
+    price_history: list[AssetInfoPricePoint] = []
+    try:
+        start_5y = date.today().replace(year=date.today().year - 5).isoformat()
+        bars = finance_client.get_daily_bars(symbol, start_date=start_5y, end_date=date.today().isoformat())
+        price_history = [
+            AssetInfoPricePoint(date=b.day.isoformat(), close=b.close)
+            for i, b in enumerate(bars)
+            if i % 5 == 0 or i == len(bars) - 1
+        ]
+    except Exception:
+        pass
+    day_change_pct: float | None = None
+    if info.current_price is not None and info.previous_close is not None and info.previous_close != 0:
+        day_change_pct = round(((info.current_price / info.previous_close) - 1) * 100, 2)
+    return AssetInfoResponse(
+        asset_id=0,
+        symbol=symbol,
+        name=info.name,
+        sector=info.sector,
+        industry=info.industry,
+        country=info.country,
+        market_cap=info.market_cap,
+        trailing_pe=info.trailing_pe,
+        forward_pe=info.forward_pe,
+        dividend_yield=info.dividend_yield,
+        beta=info.beta,
+        fifty_two_week_high=info.fifty_two_week_high,
+        fifty_two_week_low=info.fifty_two_week_low,
+        avg_volume=info.avg_volume,
+        currency=info.currency,
+        current_price=info.current_price,
+        previous_close=info.previous_close,
+        day_change_pct=day_change_pct,
+        description=info.description,
+        price_history_5y=price_history,
+    )
+
 
 # ---- Feature 2: Cash Movements ----
 

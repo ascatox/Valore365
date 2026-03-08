@@ -6,6 +6,7 @@ import { IconAlertTriangle, IconTrendingDown, IconTrendingUp } from '@tabler/ico
 import { formatDateTime, formatPct, getVariationColor } from '../formatters';
 import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
+import { AssetInfoModal } from '../holdings/AssetInfoModal';
 
 /* ── Exchange schedule per symbol ────────────────────────────────── */
 
@@ -166,13 +167,13 @@ function IntradayMiniChart({ item }: { item: MarketQuoteItem }) {
   );
 }
 
-function MarketItemCard({ item }: { item: MarketQuoteItem }) {
+function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: () => void }) {
   const variation = item.change_pct;
   const variationColor = variation != null ? getVariationColor(variation) : 'gray';
   const isError = !!item.error;
 
   return (
-    <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1 }}>
+    <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1, cursor: 'pointer' }} onClick={onClick}>
       <Stack gap={4}>
         <Group justify="space-between" align="flex-start" wrap="nowrap">
           <div>
@@ -215,6 +216,7 @@ function MarketItemCard({ item }: { item: MarketQuoteItem }) {
 export function MercatiTab() {
   const { data, isLoading, error } = useMarketQuotes();
   const [closedAlertDismissed, setClosedAlertDismissed] = useState(false);
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   const lastUpdatedAt = useMemo(() => {
     if (!data) return null;
@@ -280,11 +282,19 @@ export function MercatiTab() {
           <Text fw={700} mb="sm">{category.label}</Text>
           <SimpleGrid cols={{ base: 1, xs: 2, sm: 2, md: 3, lg: 4 }} spacing="sm">
             {category.items.map((item) => (
-              <MarketItemCard key={item.symbol} item={item} />
+              <MarketItemCard key={item.symbol} item={item} onClick={() => setSelectedSymbol(item.symbol)} />
             ))}
           </SimpleGrid>
         </Card>
       ))}
+
+      {selectedSymbol && (
+        <AssetInfoModal
+          symbol={selectedSymbol}
+          opened={!!selectedSymbol}
+          onClose={() => setSelectedSymbol(null)}
+        />
+      )}
     </Stack>
   );
 }
