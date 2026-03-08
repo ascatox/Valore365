@@ -26,7 +26,15 @@ import {
   ComposedChart,
 } from 'recharts';
 import { useMonteCarloProjection } from '../dashboard/hooks/queries';
+import { STORAGE_KEYS } from '../dashboard/constants';
 import type { MonteCarloYearProjection } from '../../services/api';
+
+const PRIVACY_MASK = '******';
+
+function isPrivacyModeEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true';
+}
 
 interface Props {
   portfolioId: number | null;
@@ -50,6 +58,7 @@ function formatGrowth(value: number): string {
 }
 
 function formatCurrency(value: number, currency: string): string {
+  if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   return value.toLocaleString('it-IT', {
     style: 'currency',
     currency,

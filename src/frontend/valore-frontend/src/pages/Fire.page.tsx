@@ -25,7 +25,15 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
 import { updateUserSettings } from '../services/api';
 
+const PRIVACY_MASK = '******';
+
+function isPrivacyModeEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true';
+}
+
 function formatMoney(value: number | null | undefined, currency = 'EUR'): string {
+  if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return new Intl.NumberFormat('it-IT', {
     style: 'currency',
@@ -35,6 +43,7 @@ function formatMoney(value: number | null | undefined, currency = 'EUR'): string
 }
 
 function formatPct(value: number | null | undefined, digits = 1): string {
+  if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return `${value.toFixed(digits)}%`;
 }
@@ -236,7 +245,7 @@ export function FirePage() {
                   </Text>
                 </div>
                 <Badge size="xl" radius="sm" color={coveragePct != null && coveragePct >= 100 ? 'teal' : 'red'} variant="filled">
-                  {coveragePct != null ? `${Math.min(999, coveragePct).toFixed(0)}% coperto` : 'Configura il piano'}
+                  {isPrivacyModeEnabled() ? PRIVACY_MASK : coveragePct != null ? `${Math.min(999, coveragePct).toFixed(0)}% coperto` : 'Configura il piano'}
                 </Badge>
               </Group>
 
@@ -250,7 +259,7 @@ export function FirePage() {
               <Stack gap={8}>
                 <Group justify="space-between">
                   <Text size="sm" c="rgba(255,255,255,0.82)">Avanzamento verso la soglia FIRE</Text>
-                  <Text size="sm" fw={700} c="white">{coveragePct != null ? `${Math.min(100, coveragePct).toFixed(1)}%` : 'N/D'}</Text>
+                  <Text size="sm" fw={700} c="white">{isPrivacyModeEnabled() ? PRIVACY_MASK : coveragePct != null ? `${Math.min(100, coveragePct).toFixed(1)}%` : 'N/D'}</Text>
                 </Group>
                 <Progress value={Math.max(0, Math.min(100, coveragePct ?? 0))} color="red" radius="xl" size="lg" />
               </Stack>
