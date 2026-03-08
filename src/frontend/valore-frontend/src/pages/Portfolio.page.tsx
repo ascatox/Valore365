@@ -1421,43 +1421,42 @@ export function PortfolioPage() {
             const next = (value as 'transactions' | 'target') ?? 'transactions';
             setPortfolioView(!ENABLE_TARGET_ALLOCATION && next === 'target' ? 'transactions' : next);
           }}
-          variant="pills"
-          radius="xl"
+          variant="default"
           style={isMobile ? { width: '100%' } : undefined}
         >
           <Tabs.List
             style={isMobile ? {
               flexWrap: 'nowrap',
-              overflowX: 'hidden',
-              padding: 2,
-              gap: '0.25rem',
-              background: 'var(--mantine-color-default)',
-              border: '1px solid var(--mantine-color-default-border)',
-              borderRadius: 999,
+              overflowX: 'auto',
+              overflowY: 'hidden',
+              WebkitOverflowScrolling: 'touch',
+              scrollbarWidth: 'none',
+              paddingBottom: 0,
+              gap: 0,
             } : {
               flexWrap: 'nowrap',
               overflowX: 'auto',
               overflowY: 'hidden',
               WebkitOverflowScrolling: 'touch',
               scrollbarWidth: 'none',
-              paddingBottom: 4,
-              gap: '0.25rem',
+              paddingBottom: 0,
+              gap: 0,
             }}
           >
             <Tabs.Tab
               value="transactions"
-              leftSection={isMobile ? undefined : <IconArrowsExchange size={16} />}
-              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+              leftSection={<IconArrowsExchange size={16} />}
+              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : undefined}
             >
-              {isMobile ? <IconArrowsExchange size={20} /> : <Text span>Transazioni</Text>}
+              <Text span>Transazioni</Text>
             </Tabs.Tab>
             {ENABLE_TARGET_ALLOCATION && (
               <Tabs.Tab
                 value="target"
-                leftSection={isMobile ? undefined : <IconTarget size={16} />}
-                style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : { flex: '0 0 auto' }}
+                leftSection={<IconTarget size={16} />}
+                style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : undefined}
               >
-                {isMobile ? <IconTarget size={20} /> : <Text span>Allocazione target</Text>}
+                <Text span>Allocazione target</Text>
               </Tabs.Tab>
             )}
           </Tabs.List>
