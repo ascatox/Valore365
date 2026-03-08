@@ -988,6 +988,10 @@ export const getMarketQuotes = async (): Promise<MarketQuotesResponse> => {
   return apiFetch<MarketQuotesResponse>('/markets/quotes');
 };
 
+export const getMarketSymbolInfo = async (symbol: string): Promise<AssetInfo> => {
+  return apiFetch<AssetInfo>(`/markets/symbol-info?symbol=${encodeURIComponent(symbol)}`);
+};
+
 export const getPortfolioDataCoverage = async (
   portfolioId: number,
   days = 365,
