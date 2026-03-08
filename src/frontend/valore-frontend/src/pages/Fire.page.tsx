@@ -200,7 +200,7 @@ export function FirePage() {
       <Stack gap="lg">
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
-          title="Fire"
+          title="FIRE"
           description="Stimatore operativo per Financial Independence, con soglia FIRE, traiettoria attesa e scenari di raggiungimento."
           actions={(
             <PortfolioSwitcher
@@ -268,7 +268,16 @@ export function FirePage() {
               <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
                 <NumberInput label="Spesa annua target" value={annualExpenses} onChange={setAnnualExpenses} min={0} thousandSeparator="." decimalSeparator="," />
                 <NumberInput label="Contributo annuo" value={annualContribution} onChange={setAnnualContribution} min={0} thousandSeparator="." decimalSeparator="," />
-                <NumberInput label="Safe withdrawal rate (%)" value={safeWithdrawalRate} onChange={setSafeWithdrawalRate} min={0.1} max={20} decimalScale={2} />
+                <NumberInput
+                  label="Safe withdrawal rate (%)"
+                  value={safeWithdrawalRate}
+                  onChange={setSafeWithdrawalRate}
+                  min={0.1}
+                  max={20}
+                  step={0.01}
+                  decimalScale={2}
+                  fixedDecimalScale
+                />
                 <NumberInput label="Età attuale" value={currentAge} onChange={setCurrentAge} min={18} max={100} allowDecimal={false} />
                 <NumberInput label="Età FIRE target" value={targetAge} onChange={setTargetAge} min={18} max={100} allowDecimal={false} />
               </SimpleGrid>
@@ -378,6 +387,29 @@ export function FirePage() {
                 <Alert color="yellow" variant="light">
                   Servono una soglia FIRE configurata e dati Monte Carlo disponibili per confrontare gli orizzonti.
                 </Alert>
+              ) : isMobile ? (
+                <Stack gap="sm">
+                  {horizonScenarios.map((scenario) => (
+                    <Card key={scenario.year} withBorder radius="lg" padding="md">
+                      <Stack gap="xs">
+                        <Group justify="space-between" align="flex-start">
+                          <div>
+                            <Text size="xs" tt="uppercase" fw={800} c="dimmed">Orizzonte</Text>
+                            <Text fw={700}>{scenario.year} anni</Text>
+                          </div>
+                          <Badge color={scenario.onTrack ? 'teal' : (scenario.stretch ? 'yellow' : 'red')} variant="light">
+                            {scenario.onTrack ? 'Target centrale raggiunto' : (scenario.stretch ? 'Scenario alto' : 'Sotto soglia')}
+                          </Badge>
+                        </Group>
+                        <SimpleGrid cols={3} spacing="sm">
+                          <ScenarioMetric label="P25" value={formatMoney(scenario.p25Value, currency)} />
+                          <ScenarioMetric label="P50" value={formatMoney(scenario.p50Value, currency)} />
+                          <ScenarioMetric label="P75" value={formatMoney(scenario.p75Value, currency)} />
+                        </SimpleGrid>
+                      </Stack>
+                    </Card>
+                  ))}
+                </Stack>
               ) : (
                 <Table withTableBorder withColumnBorders>
                   <Table.Thead>
@@ -409,14 +441,19 @@ export function FirePage() {
             </Stack>
           </Card>
         </SimpleGrid>
-
-        {isMobile && (
-          <Alert color="red" variant="light">
-            Su mobile la pagina mantiene le stesse stime della versione desktop, ma privilegia lettura rapida e card verticali.
-          </Alert>
-        )}
       </Stack>
     </PageLayout>
+  );
+}
+
+function ScenarioMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <Stack gap={2}>
+      <Text size="xs" tt="uppercase" fw={800} c="dimmed">
+        {label}
+      </Text>
+      <Text fw={700} size="sm">{value}</Text>
+    </Stack>
   );
 }
 
