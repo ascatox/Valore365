@@ -38,6 +38,13 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import type { PortfolioHealthAlert } from '../services/api';
 
+const PRIVACY_MASK = '******';
+
+function isPrivacyModeEnabled(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true';
+}
+
 function scoreTone(score: number): { label: string; color: string } {
   if (score >= 80) return { label: 'Eccellente', color: 'teal' };
   if (score >= 70) return { label: 'Buono', color: 'blue' };
@@ -46,6 +53,7 @@ function scoreTone(score: number): { label: string; color: string } {
 }
 
 function formatPct(value: number | null | undefined): string {
+  if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return `${value.toFixed(1)}%`;
 }
@@ -157,8 +165,8 @@ export function DoctorPage() {
                         <div>
                           <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.72 }}>Portfolio Doctor</Text>
                           <Title order={1} mt={6} c="white" style={{ fontSize: 'clamp(3rem, 7vw, 5.5rem)', lineHeight: 0.95 }}>
-                            {health.score}
-                            <Text component="span" inherit style={{ opacity: 0.72 }}> / 100</Text>
+                            {isPrivacyModeEnabled() ? PRIVACY_MASK : health.score}
+                            {!isPrivacyModeEnabled() && <Text component="span" inherit style={{ opacity: 0.72 }}> / 100</Text>}
                           </Title>
                           <Text c="rgba(255,255,255,0.82)" mt="sm" size="lg">
                             {selectedPortfolio.name}
@@ -262,11 +270,11 @@ export function DoctorPage() {
                   <Card withBorder radius="xl" padding="lg">
                     <Title order={4} mb="md">Punteggi per categoria</Title>
                     <SimpleGrid cols={2} spacing="md">
-                      <ScorePill label="Diversificazione" value={`${health.category_scores.diversification} / 25`} />
-                      <ScorePill label="Rischio" value={`${health.category_scores.risk} / 25`} />
-                      <ScorePill label="Concentrazione" value={`${health.category_scores.concentration} / 20`} />
-                      <ScorePill label="Sovrapposizione" value={`${health.category_scores.overlap} / 15`} />
-                      <ScorePill label="Efficienza costi" value={`${health.category_scores.cost_efficiency} / 15`} />
+                      <ScorePill label="Diversificazione" value={isPrivacyModeEnabled() ? PRIVACY_MASK : `${health.category_scores.diversification} / 25`} />
+                      <ScorePill label="Rischio" value={isPrivacyModeEnabled() ? PRIVACY_MASK : `${health.category_scores.risk} / 25`} />
+                      <ScorePill label="Concentrazione" value={isPrivacyModeEnabled() ? PRIVACY_MASK : `${health.category_scores.concentration} / 20`} />
+                      <ScorePill label="Sovrapposizione" value={isPrivacyModeEnabled() ? PRIVACY_MASK : `${health.category_scores.overlap} / 15`} />
+                      <ScorePill label="Efficienza costi" value={isPrivacyModeEnabled() ? PRIVACY_MASK : `${health.category_scores.cost_efficiency} / 15`} />
                     </SimpleGrid>
                   </Card>
                 </Grid.Col>
