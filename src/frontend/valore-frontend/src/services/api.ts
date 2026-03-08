@@ -143,6 +143,7 @@ export interface PortfolioHealthAlert {
   severity: 'info' | 'warning' | 'critical';
   type: string;
   message: string;
+  details?: Record<string, unknown> | null;
 }
 
 export interface PortfolioHealthSuggestion {

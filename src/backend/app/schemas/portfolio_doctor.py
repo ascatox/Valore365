@@ -30,6 +30,7 @@ class PortfolioHealthAlert(BaseModel):
     severity: Literal["info", "warning", "critical"]
     type: str = Field(min_length=1)
     message: str = Field(min_length=1)
+    details: dict[str, object] | None = None
 
 
 class PortfolioHealthSuggestion(BaseModel):

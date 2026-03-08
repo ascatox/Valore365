@@ -69,7 +69,7 @@ def analyze_portfolio_health(
     category_scores = compute_category_scores(metrics, top3_weight=top3_weight, equity_weight=equity_weight)
     score = compute_total_score(category_scores)
     summary = build_summary(metrics, category_scores)
-    alerts = build_alerts(metrics)
+    alerts = build_alerts(metrics, holdings)
     suggestions = build_suggestions(metrics, equity_weight=equity_weight)
 
     return PortfolioHealthResponse(
@@ -443,7 +443,7 @@ def compute_category_scores(
     )
 
 
-def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
+def build_alerts(metrics: PortfolioHealthMetrics, holdings: list[AnalyzedHolding]) -> list[PortfolioHealthAlert]:
     alerts: list[PortfolioHealthAlert] = []
     usa = metrics.geographic_exposure.get("usa", 0.0)
     if usa > 60:
@@ -460,6 +460,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
                 severity="critical",
                 type="position_concentration",
                 message=f"Una singola posizione domina il portafoglio ({metrics.max_position_weight:.1f}%).",
+                details=build_position_concentration_details(holdings),
             )
         )
     elif metrics.max_position_weight > 40:
@@ -468,6 +469,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
                 severity="warning",
                 type="position_concentration",
                 message=f"Una posizione ha un peso elevato nel portafoglio ({metrics.max_position_weight:.1f}%).",
+                details=build_position_concentration_details(holdings),
             )
         )
     if metrics.overlap_score > 70:
@@ -476,6 +478,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
                 severity="critical",
                 type="etf_overlap",
                 message=f"Diverse posizioni risultano molto ridondanti: la sovrapposizione tra ETF è molto alta ({metrics.overlap_score:.1f}%).",
+                details=build_etf_overlap_details(holdings, metrics.overlap_score),
             )
         )
     elif metrics.overlap_score > 50:
@@ -484,6 +487,7 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
                 severity="warning",
                 type="etf_overlap",
                 message=f"Diverse posizioni risultano ridondanti: la sovrapposizione tra ETF è alta ({metrics.overlap_score:.1f}%).",
+                details=build_etf_overlap_details(holdings, metrics.overlap_score),
             )
         )
     if metrics.portfolio_volatility is not None and metrics.portfolio_volatility > 15:
@@ -505,6 +509,75 @@ def build_alerts(metrics: PortfolioHealthMetrics) -> list[PortfolioHealthAlert]:
     severity_order = {"critical": 0, "warning": 1, "info": 2}
     alerts.sort(key=lambda alert: (severity_order[alert.severity], alert.type))
     return alerts
+
+
+def build_position_concentration_details(holdings: list[AnalyzedHolding]) -> dict[str, object] | None:
+    ranked = sorted(holdings, key=lambda holding: holding.weight_pct, reverse=True)
+    if not ranked:
+        return None
+
+    def serialize_holding(holding: AnalyzedHolding) -> dict[str, object]:
+        return {
+            "symbol": holding.symbol,
+            "name": holding.name,
+            "asset_type": holding.asset_type,
+            "weight_pct": round(holding.weight_pct, 1),
+            "market_value": round(holding.market_value, 2),
+        }
+
+    dominant = serialize_holding(ranked[0])
+    top_positions = [serialize_holding(holding) for holding in ranked[:3]]
+    return {
+        "dominant_position": dominant,
+        "top_positions": top_positions,
+    }
+
+
+def build_etf_overlap_details(holdings: list[AnalyzedHolding], overlap_score: float) -> dict[str, object] | None:
+    fund_like_holdings = [holding for holding in holdings if holding.asset_type in {"etf", "fund"}]
+    if len(fund_like_holdings) < 2:
+        return None
+
+    pairs: list[dict[str, object]] = []
+    for index, left in enumerate(fund_like_holdings):
+        for right in fund_like_holdings[index + 1 :]:
+            estimated_overlap = estimate_overlap_between_assets(left, right)
+            if estimated_overlap < 40:
+                continue
+            pair_weight = (left.weight_pct / 100.0) * (right.weight_pct / 100.0)
+            pairs.append(
+                {
+                    "left": {
+                        "symbol": left.symbol,
+                        "name": left.name,
+                        "weight_pct": round(left.weight_pct, 1),
+                    },
+                    "right": {
+                        "symbol": right.symbol,
+                        "name": right.name,
+                        "weight_pct": round(right.weight_pct, 1),
+                    },
+                    "estimated_overlap_pct": round(estimated_overlap, 1),
+                    "combined_weight_pct": round(left.weight_pct + right.weight_pct, 1),
+                    "priority_score": estimated_overlap * pair_weight,
+                }
+            )
+
+    if not pairs:
+        return None
+
+    top_pairs = sorted(
+        pairs,
+        key=lambda pair: (float(pair["estimated_overlap_pct"]), float(pair["priority_score"])),
+        reverse=True,
+    )[:3]
+    for pair in top_pairs:
+        pair.pop("priority_score", None)
+
+    return {
+        "overlap_score": round(overlap_score, 1),
+        "pairs": top_pairs,
+    }
 
 
 def build_suggestions(metrics: PortfolioHealthMetrics, *, equity_weight: float) -> list[PortfolioHealthSuggestion]:

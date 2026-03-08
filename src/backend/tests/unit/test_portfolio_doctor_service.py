@@ -2,6 +2,8 @@ from app.schemas.portfolio_doctor import PortfolioHealthMetrics
 from app.services.portfolio_doctor import (
     AnalyzedHolding,
     build_alerts,
+    build_etf_overlap_details,
+    build_position_concentration_details,
     build_summary,
     compute_category_scores,
     compute_geographic_exposure,
@@ -71,7 +73,13 @@ def test_scoring_and_alerts_penalize_concentration_risk_and_costs():
 
     category_scores = compute_category_scores(metrics, top3_weight=81.0, equity_weight=92.0)
     summary = build_summary(metrics, category_scores)
-    alerts = build_alerts(metrics)
+    holdings = [
+        _holding(1, "VWCE", "Vanguard FTSE All-World UCITS ETF", "etf", 48.0, "EUR"),
+        _holding(2, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 28.0, "USD"),
+        _holding(3, "EIMI", "iShares Core MSCI Emerging Markets IMI", "etf", 16.0, "USD"),
+        _holding(4, "XNAS", "Nasdaq 100 UCITS ETF", "etf", 8.0, "USD"),
+    ]
+    alerts = build_alerts(metrics, holdings)
 
     assert category_scores.diversification < 25
     assert category_scores.risk < 25
@@ -86,3 +94,41 @@ def test_scoring_and_alerts_penalize_concentration_risk_and_costs():
         "portfolio_risk",
         "high_costs",
     }
+    position_alert = next(alert for alert in alerts if alert.type == "position_concentration")
+    overlap_alert = next(alert for alert in alerts if alert.type == "etf_overlap")
+    assert position_alert.details is not None
+    assert position_alert.details["dominant_position"]["symbol"] == "VWCE"
+    assert overlap_alert.details is not None
+    assert len(overlap_alert.details["pairs"]) >= 1
+
+
+def test_position_concentration_details_include_top_holdings():
+    holdings = [
+        _holding(1, "VWCE", "Vanguard FTSE All-World UCITS ETF", "etf", 52.5, "EUR"),
+        _holding(2, "EIMI", "iShares Core MSCI Emerging Markets IMI", "etf", 21.0, "USD"),
+        _holding(3, "BTP", "BTP Italia", "bond", 14.0, "EUR"),
+    ]
+
+    details = build_position_concentration_details(holdings)
+
+    assert details is not None
+    assert details["dominant_position"]["symbol"] == "VWCE"
+    assert len(details["top_positions"]) == 3
+    assert details["top_positions"][0]["weight_pct"] == 52.5
+
+
+def test_etf_overlap_details_return_top_pairs():
+    holdings = [
+        _holding(1, "VWCE", "Vanguard FTSE All-World UCITS ETF", "etf", 45.0, "EUR"),
+        _holding(2, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 35.0, "USD"),
+        _holding(3, "EQQQ", "Invesco Nasdaq 100 UCITS ETF", "etf", 20.0, "USD"),
+    ]
+
+    details = build_etf_overlap_details(holdings, 63.4)
+
+    assert details is not None
+    assert details["overlap_score"] == 63.4
+    assert len(details["pairs"]) >= 1
+    first_pair = details["pairs"][0]
+    assert first_pair["left"]["symbol"] in {"VWCE", "CSPX", "EQQQ"}
+    assert first_pair["estimated_overlap_pct"] >= 40

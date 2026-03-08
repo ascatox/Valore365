@@ -21,6 +21,7 @@ import {
 } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconChartBubble,
   IconCheck,
   IconCopy,
   IconHeartRateMonitor,
@@ -31,9 +32,11 @@ import {
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
+import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetailsModal';
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import type { PortfolioHealthAlert } from '../services/api';
 
 function scoreTone(score: number): { label: string; color: string } {
   if (score >= 80) return { label: 'Eccellente', color: 'teal' };
@@ -56,6 +59,7 @@ export function DoctorPage() {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
   });
+  const [detailsAlert, setDetailsAlert] = useState<PortfolioHealthAlert | null>(null);
 
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
@@ -101,6 +105,7 @@ export function DoctorPage() {
   const tone = scoreTone(health?.score ?? 0);
   const pageError = (portfoliosError instanceof Error ? portfoliosError.message : null)
     || (healthError instanceof Error ? healthError.message : null);
+  const baseCurrency = selectedPortfolio?.base_currency ?? summary?.base_currency ?? 'EUR';
 
   return (
     <PageLayout variant="editorial">
@@ -279,7 +284,20 @@ export function DoctorPage() {
                     <Stack gap="sm">
                       {health.alerts.length ? health.alerts.map((alert) => (
                         <Alert key={`${alert.type}-${alert.message}`} color={alert.severity === 'critical' ? 'red' : 'orange'} variant="light">
-                          {alert.message}
+                          <Group justify="space-between" align="center" wrap="wrap" gap="sm">
+                            <Text>{alert.message}</Text>
+                            {alert.details && (
+                              <Button
+                                variant="subtle"
+                                size="xs"
+                                color={alert.severity === 'critical' ? 'red' : 'orange'}
+                                leftSection={<IconChartBubble size={14} />}
+                                onClick={() => setDetailsAlert(alert)}
+                              >
+                                Approfondisci
+                              </Button>
+                            )}
+                          </Group>
                         </Alert>
                       )) : <Text c="dimmed">Nessun avviso.</Text>}
                     </Stack>
@@ -309,6 +327,13 @@ export function DoctorPage() {
                 portfolioId={portfolioId}
                 marketValue={summary?.market_value ?? null}
                 currency={summary?.base_currency ?? 'EUR'}
+              />
+
+              <DoctorAlertDetailsModal
+                alert={detailsAlert}
+                opened={detailsAlert != null}
+                onClose={() => setDetailsAlert(null)}
+                currency={baseCurrency}
               />
             </>
           )}
