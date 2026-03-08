@@ -16,6 +16,8 @@ import {
   Text,
   ThemeIcon,
   Title,
+  useComputedColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import {
   IconAlertTriangle,
@@ -47,6 +49,9 @@ function humanize(value: string): string {
 }
 
 export function DoctorPage() {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
@@ -100,7 +105,9 @@ export function DoctorPage() {
     <Box
       style={{
         minHeight: '100%',
-        background: 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
+        background: isDark
+          ? `radial-gradient(circle at top left, rgba(32, 201, 151, 0.14), transparent 24%), linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 28%, ${theme.colors.dark[8]} 100%)`
+          : 'radial-gradient(circle at top left, rgba(19,78,74,0.10), transparent 24%), linear-gradient(180deg, #f7fbfa 0%, #ffffff 26%, #fffaf1 100%)',
         padding: 'var(--mantine-spacing-sm)',
       }}
     >
@@ -337,13 +344,19 @@ function MetricChip({ label, value }: { label: string; value: string }) {
 }
 
 function ScorePill({ label, value }: { label: string; value: string }) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   return (
     <Box
       style={{
         borderRadius: 18,
         padding: '14px 16px',
-        background: 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
-        border: '1px solid #e2e8f0',
+        background: isDark
+          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+          : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 100%)',
+        border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
       }}
     >
       <Text size="sm" c="dimmed">{label}</Text>
