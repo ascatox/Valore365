@@ -30,7 +30,7 @@ import {
 } from '@tabler/icons-react';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
-import { usePortfolioHealth, usePortfolios } from '../components/dashboard/hooks/queries';
+import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -60,6 +60,7 @@ export function DoctorPage() {
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
   const { data: health, isLoading: healthLoading, error: healthError } = usePortfolioHealth(portfolioId);
+  const { data: summary } = usePortfolioSummary(portfolioId);
 
   useEffect(() => {
     if (!portfolios.length) return;
@@ -304,7 +305,11 @@ export function DoctorPage() {
                 </Grid.Col>
               </Grid>
 
-              <MonteCarloCard portfolioId={portfolioId} />
+              <MonteCarloCard
+                portfolioId={portfolioId}
+                marketValue={summary?.market_value ?? null}
+                currency={summary?.base_currency ?? 'EUR'}
+              />
             </>
           )}
         </Stack>

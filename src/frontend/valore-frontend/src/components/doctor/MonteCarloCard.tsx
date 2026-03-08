@@ -15,10 +15,8 @@ import {
 import { IconTrendingUp } from '@tabler/icons-react';
 import {
   Area,
-  AreaChart,
   CartesianGrid,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -31,6 +29,8 @@ import type { MonteCarloYearProjection } from '../../services/api';
 
 interface Props {
   portfolioId: number | null;
+  marketValue: number | null;
+  currency: string;
 }
 
 interface ChartDatum {
@@ -48,11 +48,26 @@ function formatGrowth(value: number): string {
   return `${pct.toFixed(0)}%`;
 }
 
-export function MonteCarloCard({ portfolioId }: Props) {
+function formatCurrency(value: number, currency: string): string {
+  return value.toLocaleString('it-IT', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+}
+
+function indexToValue(index: number, marketValue: number): number {
+  return (index / 100) * marketValue;
+}
+
+export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
   const { data, isLoading, error } = useMonteCarloProjection(portfolioId);
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+
+  const hasValue = marketValue != null && marketValue > 0;
 
   if (isLoading && portfolioId != null) {
     return (
@@ -117,6 +132,7 @@ export function MonteCarloCard({ portfolioId }: Props) {
             <Title order={4}>Proiezione Monte Carlo</Title>
             <Text size="xs" c="dimmed">
               {data.num_simulations.toLocaleString()} simulazioni &middot; rendimento medio {data.annualized_mean_return_pct.toFixed(1)}% &middot; volatilità {data.annualized_volatility_pct.toFixed(1)}%
+              {hasValue && <> &middot; controvalore attuale {formatCurrency(marketValue, currency)}</>}
             </Text>
           </div>
         </Group>
@@ -131,10 +147,20 @@ export function MonteCarloCard({ portfolioId }: Props) {
                 tickFormatter={(v) => v === '0' ? 'Oggi' : `${v}a`}
               />
               <YAxis
+                yAxisId="left"
                 tick={{ fontSize: 12 }}
                 tickFormatter={(v: number) => `${v}`}
                 domain={['auto', 'auto']}
               />
+              {hasValue && (
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tick={{ fontSize: 11 }}
+                  tickFormatter={(v: number) => formatCurrency(indexToValue(v, marketValue), currency)}
+                  domain={['auto', 'auto']}
+                />
+              )}
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
@@ -151,17 +177,25 @@ export function MonteCarloCard({ portfolioId }: Props) {
                       <Text fw={700} size="sm" mb={4}>
                         {d.year === '0' ? 'Oggi' : `Anno ${d.year}`}
                       </Text>
-                      <Text size="xs" c="dimmed">P90: {formatGrowth(d.p90)}</Text>
-                      <Text size="xs" c="dimmed">P75: {formatGrowth(d.p75)}</Text>
-                      <Text size="xs" fw={600}>P50: {formatGrowth(d.p50)}</Text>
-                      <Text size="xs" c="dimmed">P25: {formatGrowth(d.p25)}</Text>
-                      <Text size="xs" c="dimmed">P10: {formatGrowth(d.p10)}</Text>
+                      {[
+                        { label: 'P90', val: d.p90 },
+                        { label: 'P75', val: d.p75 },
+                        { label: 'P50', val: d.p50, bold: true },
+                        { label: 'P25', val: d.p25 },
+                        { label: 'P10', val: d.p10 },
+                      ].map(({ label, val, bold }) => (
+                        <Text key={label} size="xs" c={bold ? undefined : 'dimmed'} fw={bold ? 600 : undefined}>
+                          {label}: {formatGrowth(val)}
+                          {hasValue && ` (${formatCurrency(indexToValue(val, marketValue), currency)})`}
+                        </Text>
+                      ))}
                     </Box>
                   );
                 }}
               />
-              <ReferenceLine y={100} stroke={isDark ? theme.colors.dark[3] : '#94a3b8'} strokeDasharray="4 4" />
+              <ReferenceLine yAxisId="left" y={100} stroke={isDark ? theme.colors.dark[3] : '#94a3b8'} strokeDasharray="4 4" />
               <Area
+                yAxisId="left"
                 type="monotone"
                 dataKey="p90"
                 stroke="none"
@@ -170,6 +204,7 @@ export function MonteCarloCard({ portfolioId }: Props) {
                 isAnimationActive={false}
               />
               <Area
+                yAxisId="left"
                 type="monotone"
                 dataKey="p75"
                 stroke="none"
@@ -178,6 +213,7 @@ export function MonteCarloCard({ portfolioId }: Props) {
                 isAnimationActive={false}
               />
               <Area
+                yAxisId="left"
                 type="monotone"
                 dataKey="p25"
                 stroke="none"
@@ -186,6 +222,7 @@ export function MonteCarloCard({ portfolioId }: Props) {
                 isAnimationActive={false}
               />
               <Area
+                yAxisId="left"
                 type="monotone"
                 dataKey="p10"
                 stroke="none"
@@ -194,6 +231,7 @@ export function MonteCarloCard({ portfolioId }: Props) {
                 isAnimationActive={false}
               />
               <Line
+                yAxisId="left"
                 type="monotone"
                 dataKey="p50"
                 stroke={tealColor}
@@ -207,7 +245,14 @@ export function MonteCarloCard({ portfolioId }: Props) {
 
         <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
           {horizonSnapshots.map(({ horizon, projection }) => (
-            <HorizonSummary key={horizon} years={horizon} projection={projection} isDark={isDark} />
+            <HorizonSummary
+              key={horizon}
+              years={horizon}
+              projection={projection}
+              isDark={isDark}
+              marketValue={hasValue ? marketValue : null}
+              currency={currency}
+            />
           ))}
         </SimpleGrid>
 
@@ -223,14 +268,20 @@ function HorizonSummary({
   years,
   projection,
   isDark,
+  marketValue,
+  currency,
 }: {
   years: number;
   projection: MonteCarloYearProjection | undefined;
   isDark: boolean;
+  marketValue: number | null;
+  currency: string;
 }) {
   const theme = useMantineTheme();
 
   if (!projection) return null;
+
+  const hasValue = marketValue != null && marketValue > 0;
 
   return (
     <Box
@@ -244,9 +295,21 @@ function HorizonSummary({
       }}
     >
       <Text size="xs" tt="uppercase" c="dimmed" fw={700}>{years} anni</Text>
-      <Text fw={800} size="lg">{formatGrowth(projection.p50)}</Text>
+      <Text fw={800} size="lg">
+        {formatGrowth(projection.p50)}
+        {hasValue && (
+          <Text component="span" size="sm" fw={600} c="dimmed">
+            {' '}({formatCurrency(indexToValue(projection.p50, marketValue), currency)})
+          </Text>
+        )}
+      </Text>
       <Text size="xs" c="dimmed">
         Range: {formatGrowth(projection.p10)} / {formatGrowth(projection.p90)}
+        {hasValue && (
+          <>
+            {' '}({formatCurrency(indexToValue(projection.p10, marketValue), currency)} / {formatCurrency(indexToValue(projection.p90, marketValue), currency)})
+          </>
+        )}
       </Text>
     </Box>
   );
