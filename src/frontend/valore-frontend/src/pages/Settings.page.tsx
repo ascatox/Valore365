@@ -170,7 +170,7 @@ export function SettingsPage() {
   ];
 
   return (
-    <PageLayout mobileBottomPadding={isMobile ? 104 : undefined}>
+    <PageLayout variant="settings" mobileBottomPadding={isMobile ? 104 : undefined}>
     <Stack gap={isMobile ? 'xs' : 0}>
       <PageHeader
         eyebrow="Preferenze, tema e configurazione"
