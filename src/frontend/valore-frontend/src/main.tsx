@@ -35,11 +35,11 @@ const theme = createTheme({
           fontWeight: 700,
         },
         close: {
-          color: theme.colors[theme.primaryColor][7],
-          border: `1px solid ${theme.colors[theme.primaryColor][3]}`,
-          backgroundColor: theme.white,
+          color: 'var(--mantine-color-text)',
+          border: '1px solid var(--mantine-color-default-border)',
+          backgroundColor: 'var(--mantine-color-body)',
           '&:hover': {
-            backgroundColor: theme.colors[theme.primaryColor][0],
+            backgroundColor: 'var(--mantine-color-default-hover)',
           },
         },
       }),
@@ -51,11 +51,11 @@ const theme = createTheme({
           fontWeight: 700,
         },
         close: {
-          color: theme.colors[theme.primaryColor][7],
-          border: `1px solid ${theme.colors[theme.primaryColor][3]}`,
-          backgroundColor: theme.white,
+          color: 'var(--mantine-color-text)',
+          border: '1px solid var(--mantine-color-default-border)',
+          backgroundColor: 'var(--mantine-color-body)',
           '&:hover': {
-            backgroundColor: theme.colors[theme.primaryColor][0],
+            backgroundColor: 'var(--mantine-color-default-hover)',
           },
         },
       }),
