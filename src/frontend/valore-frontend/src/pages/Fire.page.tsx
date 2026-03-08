@@ -200,7 +200,7 @@ export function FirePage() {
       <Stack gap="lg">
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
-          title="FIRE"
+          title="Fire"
           description="Stimatore operativo per Financial Independence, con soglia FIRE, traiettoria attesa e scenari di raggiungimento."
           actions={(
             <PortfolioSwitcher

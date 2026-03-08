@@ -153,9 +153,9 @@ function ProtectedApp() {
           <NavLink
               component={Link}
               to="/fire"
-              label={navbarExpanded ? 'FIRE' : undefined}
+              label={navbarExpanded ? 'Fire' : undefined}
               leftSection={<IconFlame size={16} />}
-              aria-label="FIRE"
+              aria-label="Fire"
               onClick={close}
           />
           <NavLink
