@@ -3,14 +3,10 @@ import {
   ActionIcon,
   Alert,
   Badge,
-  Box,
   Group,
   Loader,
   Tabs,
   Text,
-  Title,
-  useMantineTheme,
-  useComputedColorScheme,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { useQueryClient } from '@tanstack/react-query';
@@ -30,6 +26,8 @@ import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constan
 import { ENABLE_TARGET_ALLOCATION } from '../features';
 import { refreshPortfolioPrices, backfillPortfolioDailyPrices, getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
+import { PageHeader } from '../components/layout/PageHeader';
+import { PageLayout } from '../components/layout/PageLayout';
 
 export function DashboardPage() {
   const DASHBOARD_TABS = ENABLE_TARGET_ALLOCATION
@@ -39,8 +37,6 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
 
   // --- Shared UI state ---
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
@@ -158,23 +154,14 @@ export function DashboardPage() {
   };
 
   return (
-    <Box
-      style={{
-        padding: 'var(--mantine-spacing-sm)',
-        paddingBottom: isMobile ? 104 : undefined,
-        background: isMobile
-          ? (colorScheme === 'dark'
-            ? `linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 22%, transparent 42%)`
-            : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 22%, transparent 42%)')
-          : undefined,
-        minHeight: '100%',
-      }}
-    >
+    <PageLayout mobileBottomPadding={isMobile ? 104 : undefined}>
       {isMobile ? (
         <>
-          <Group justify="space-between" mb="xs" align="flex-end" wrap="wrap" gap="xs">
-            <Title order={4} fw={800}>Dashboard</Title>
-          </Group>
+          <PageHeader
+            eyebrow="Vista operativa del patrimonio"
+            title="Dashboard"
+            description="Monitoraggio quotidiano, performance e mercati in un unico punto."
+          />
           <DashboardMobileHeader
             portfolios={portfolios}
             selectedPortfolioId={selectedPortfolioId}
@@ -186,17 +173,21 @@ export function DashboardPage() {
           />
         </>
       ) : (
-        <Group justify="space-between" mb="md" align="flex-end" wrap="wrap" gap="xs">
-          <Title order={2} fw={700}>Dashboard</Title>
-          <PortfolioSwitcher
-            portfolios={portfolios}
-            value={selectedPortfolioId}
-            onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-            loading={portfoliosLoading}
-            onOpenPortfolio={() => navigate('/portfolio')}
-            style={{ width: '100%', maxWidth: 360 }}
-          />
-        </Group>
+        <PageHeader
+          eyebrow="Vista operativa del patrimonio"
+          title="Dashboard"
+          description="Monitoraggio quotidiano, performance e mercati in un unico punto."
+          actions={(
+            <PortfolioSwitcher
+              portfolios={portfolios}
+              value={selectedPortfolioId}
+              onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+              loading={portfoliosLoading}
+              onOpenPortfolio={() => navigate('/portfolio')}
+              style={{ width: '100%', maxWidth: 360 }}
+            />
+          )}
+        />
       )}
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
@@ -325,6 +316,6 @@ export function DashboardPage() {
         onClose={closeCopilot}
         portfolioId={portfolioId}
       />
-    </Box>
+    </PageLayout>
   );
 }

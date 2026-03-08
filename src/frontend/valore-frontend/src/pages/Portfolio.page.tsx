@@ -67,6 +67,8 @@ import { formatNum } from '../components/dashboard/formatters';
 import { ENABLE_TARGET_ALLOCATION } from '../features';
 import { getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
+import { PageHeader } from '../components/layout/PageHeader';
+import { PageLayout } from '../components/layout/PageLayout';
 
 export function PortfolioPage() {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -1380,23 +1382,26 @@ export function PortfolioPage() {
 
   return (
     <>
-      <div style={isMobile ? { paddingBottom: 96, paddingTop: 4 } : undefined}>
-      {/* Header */}
-      <Group justify="space-between" mb={isMobile ? 'xs' : 'md'} align="flex-end" wrap="wrap" gap="xs">
-        {isMobile ? <Title order={4} fw={800}>Portafoglio</Title> : <Title order={2} fw={700}>Portfolio</Title>}
-        <PortfolioSwitcher
-          label={isMobile ? undefined : undefined}
-          portfolios={portfolios}
-          value={selectedPortfolioId}
-          onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-          loading={loadingPortfolios}
-          style={isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
-          onCreatePortfolio={openCreatePortfolioModal}
-          onEditPortfolio={selectedPortfolioId ? openEditPortfolioModal : null}
-          onClonePortfolio={selectedPortfolioId ? openClonePortfolioModal : null}
-          onDeletePortfolio={selectedPortfolioId ? () => setPortfolioDeleteOpened(true) : null}
-        />
-      </Group>
+      <PageLayout mobileBottomPadding={isMobile ? 96 : undefined} style={isMobile ? { paddingTop: 4 } : undefined}>
+      <PageHeader
+        eyebrow="Gestione movimenti, liquidita e target"
+        title="Portfolio"
+        description="Operazioni, allocazione e struttura del portafoglio in una vista operativa unica."
+        actions={(
+          <PortfolioSwitcher
+            label={isMobile ? undefined : undefined}
+            portfolios={portfolios}
+            value={selectedPortfolioId}
+            onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+            loading={loadingPortfolios}
+            style={isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
+            onCreatePortfolio={openCreatePortfolioModal}
+            onEditPortfolio={selectedPortfolioId ? openEditPortfolioModal : null}
+            onClonePortfolio={selectedPortfolioId ? openClonePortfolioModal : null}
+            onDeletePortfolio={selectedPortfolioId ? () => setPortfolioDeleteOpened(true) : null}
+          />
+        )}
+      />
 
       {/* Stato caricamento selezione */}
       <Group mb={isMobile ? 'xs' : 'md'} align="flex-end" gap="xs">
@@ -1537,7 +1542,7 @@ export function PortfolioPage() {
           refreshTrigger={pacRefreshTrigger}
         />
       )}
-      </div>
+      </PageLayout>
 
       {isMobile && (
         <MobileActionSheet

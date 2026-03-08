@@ -27,6 +27,8 @@ import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
 import type { CopilotStatus } from '../services/api';
+import { PageHeader } from '../components/layout/PageHeader';
+import { PageLayout } from '../components/layout/PageLayout';
 
 export function SettingsPage() {
   const theme = useMantineTheme();
@@ -168,25 +170,13 @@ export function SettingsPage() {
   ];
 
   return (
-    <Box
-      style={{
-        paddingBottom: isMobile ? 104 : undefined,
-        background: isMobile
-          ? (colorScheme === 'dark'
-            ? `linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 22%, transparent 42%)`
-            : 'linear-gradient(180deg, #f8fafc 0%, #ffffff 22%, transparent 42%)')
-          : undefined,
-        minHeight: '100%',
-      }}
-    >
+    <PageLayout mobileBottomPadding={isMobile ? 104 : undefined}>
     <Stack gap={isMobile ? 'xs' : 0}>
-      {isMobile ? (
-        <Group justify="space-between" mb="xs" align="flex-end" wrap="wrap" gap="xs">
-          <Title order={4} fw={800}>Impostazioni</Title>
-        </Group>
-      ) : (
-        <Title order={2} fw={700} mb="md">Impostazioni</Title>
-      )}
+      <PageHeader
+        eyebrow="Preferenze, tema e configurazione"
+        title="Impostazioni"
+        description="Controlli dell'app, aspetto visivo e settaggi personali raccolti in un'unica vista."
+      />
 
       <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} value={activeTab} onChange={(v) => setActiveTab(v ?? 'general')} variant="pills" radius="md">
         {!isMobile && (
@@ -475,6 +465,6 @@ export function SettingsPage() {
           onChange={setActiveTab}
         />
       )}
-    </Box>
+    </PageLayout>
   );
 }
