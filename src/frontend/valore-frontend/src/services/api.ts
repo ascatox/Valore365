@@ -97,6 +97,11 @@ export interface UserSettings {
   copilot_provider: string;
   copilot_model: string;
   copilot_api_key_set: boolean;
+  fire_annual_expenses: number;
+  fire_annual_contribution: number;
+  fire_safe_withdrawal_rate: number;
+  fire_current_age: number | null;
+  fire_target_age: number | null;
 }
 
 export interface UserSettingsUpdateInput {
@@ -104,6 +109,11 @@ export interface UserSettingsUpdateInput {
   copilot_provider?: string;
   copilot_model?: string;
   copilot_api_key?: string;
+  fire_annual_expenses?: number;
+  fire_annual_contribution?: number;
+  fire_safe_withdrawal_rate?: number;
+  fire_current_age?: number | null;
+  fire_target_age?: number | null;
 }
 
 export interface Portfolio {

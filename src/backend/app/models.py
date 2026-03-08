@@ -22,6 +22,11 @@ class UserSettingsRead(BaseModel):
     copilot_provider: str = ""
     copilot_model: str = ""
     copilot_api_key_set: bool = False  # never expose the actual key
+    fire_annual_expenses: float = Field(default=0, ge=0)
+    fire_annual_contribution: float = Field(default=0, ge=0)
+    fire_safe_withdrawal_rate: float = Field(default=4, gt=0, le=20)
+    fire_current_age: int | None = Field(default=None, ge=18, le=100)
+    fire_target_age: int | None = Field(default=None, ge=18, le=100)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -29,6 +34,11 @@ class UserSettingsUpdate(BaseModel):
     copilot_provider: str | None = None
     copilot_model: str | None = None
     copilot_api_key: str | None = None  # plaintext, encrypted before storage
+    fire_annual_expenses: float | None = Field(default=None, ge=0)
+    fire_annual_contribution: float | None = Field(default=None, ge=0)
+    fire_safe_withdrawal_rate: float | None = Field(default=None, gt=0, le=20)
+    fire_current_age: int | None = Field(default=None, ge=18, le=100)
+    fire_target_age: int | None = Field(default=None, ge=18, le=100)
 
 
 class PortfolioCreate(BaseModel):

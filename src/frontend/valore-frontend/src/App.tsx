@@ -20,6 +20,7 @@ import {
   IconRefresh,
   IconLayoutDashboard,
   IconBriefcase,
+  IconFlame,
   IconHeartRateMonitor,
   IconSettings,
   IconChevronsLeft,
@@ -32,6 +33,7 @@ import { BrandMark } from './components/BrandMark';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
 const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
+const FirePage = lazy(() => import('./pages/Fire.page.tsx').then((module) => ({ default: module.FirePage })));
 const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
 const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
 const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
@@ -150,6 +152,14 @@ function ProtectedApp() {
           />
           <NavLink
               component={Link}
+              to="/fire"
+              label={navbarExpanded ? 'FIRE' : undefined}
+              leftSection={<IconFlame size={16} />}
+              aria-label="FIRE"
+              onClick={close}
+          />
+          <NavLink
+              component={Link}
               to="/settings"
               label={navbarExpanded ? 'Impostazioni' : undefined}
               leftSection={<IconSettings size={16} />}
@@ -188,6 +198,7 @@ function ProtectedApp() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/doctor" element={<DoctorPage />} />
+              <Route path="/fire" element={<FirePage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>
           </Container>

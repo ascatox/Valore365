@@ -22,6 +22,7 @@ import {
   getPortfolioTargetPerformance,
   getPortfolioTimeseries,
   getTWRTimeseries,
+  getUserSettings,
 } from '../../../services/api';
 import { ENABLE_TARGET_ALLOCATION } from '../../../features';
 
@@ -44,6 +45,13 @@ export function usePortfolioSummary(portfolioId: number | null) {
     queryKey: ['portfolio-summary', portfolioId],
     queryFn: () => getPortfolioSummary(portfolioId!),
     enabled: portfolioId != null,
+  });
+}
+
+export function useUserSettings() {
+  return useQuery({
+    queryKey: ['user-settings'],
+    queryFn: getUserSettings,
   });
 }
 

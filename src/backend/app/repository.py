@@ -108,7 +108,12 @@ class PortfolioRepository:
                            broker_default_fee::float8 as broker_default_fee,
                            copilot_provider,
                            copilot_model,
-                           copilot_api_key_enc
+                           copilot_api_key_enc,
+                           fire_annual_expenses::float8 as fire_annual_expenses,
+                           fire_annual_contribution::float8 as fire_annual_contribution,
+                           fire_safe_withdrawal_rate::float8 as fire_safe_withdrawal_rate,
+                           fire_current_age,
+                           fire_target_age
                     from app_user_settings
                     where user_id = :user_id
                     """
@@ -123,6 +128,11 @@ class PortfolioRepository:
             copilot_provider=str(row["copilot_provider"] or ""),
             copilot_model=str(row["copilot_model"] or ""),
             copilot_api_key_set=bool(row["copilot_api_key_enc"]),
+            fire_annual_expenses=float(row["fire_annual_expenses"] or 0.0),
+            fire_annual_contribution=float(row["fire_annual_contribution"] or 0.0),
+            fire_safe_withdrawal_rate=float(row["fire_safe_withdrawal_rate"] or 4.0),
+            fire_current_age=int(row["fire_current_age"]) if row["fire_current_age"] is not None else None,
+            fire_target_age=int(row["fire_target_age"]) if row["fire_target_age"] is not None else None,
         )
 
     def get_user_copilot_api_key_enc(self, user_id: str) -> str:
@@ -141,20 +151,36 @@ class PortfolioRepository:
         normalized_user_id = (user_id or "").strip()
         if not normalized_user_id:
             raise ValueError("user_id non valido")
+        fields_set = getattr(payload, "model_fields_set", set())
 
         # Build SET clauses dynamically — only update provided fields
         set_parts = ["updated_at = now()"]
         params: dict = {"user_id": normalized_user_id}
 
-        if payload.broker_default_fee is not None:
+        if "broker_default_fee" in fields_set and payload.broker_default_fee is not None:
             set_parts.append("broker_default_fee = :broker_default_fee")
             params["broker_default_fee"] = payload.broker_default_fee
-        if payload.copilot_provider is not None:
+        if "copilot_provider" in fields_set and payload.copilot_provider is not None:
             set_parts.append("copilot_provider = :copilot_provider")
             params["copilot_provider"] = payload.copilot_provider
-        if payload.copilot_model is not None:
+        if "copilot_model" in fields_set and payload.copilot_model is not None:
             set_parts.append("copilot_model = :copilot_model")
             params["copilot_model"] = payload.copilot_model
+        if "fire_annual_expenses" in fields_set and payload.fire_annual_expenses is not None:
+            set_parts.append("fire_annual_expenses = :fire_annual_expenses")
+            params["fire_annual_expenses"] = payload.fire_annual_expenses
+        if "fire_annual_contribution" in fields_set and payload.fire_annual_contribution is not None:
+            set_parts.append("fire_annual_contribution = :fire_annual_contribution")
+            params["fire_annual_contribution"] = payload.fire_annual_contribution
+        if "fire_safe_withdrawal_rate" in fields_set and payload.fire_safe_withdrawal_rate is not None:
+            set_parts.append("fire_safe_withdrawal_rate = :fire_safe_withdrawal_rate")
+            params["fire_safe_withdrawal_rate"] = payload.fire_safe_withdrawal_rate
+        if "fire_current_age" in fields_set:
+            set_parts.append("fire_current_age = :fire_current_age")
+            params["fire_current_age"] = payload.fire_current_age
+        if "fire_target_age" in fields_set:
+            set_parts.append("fire_target_age = :fire_target_age")
+            params["fire_target_age"] = payload.fire_target_age
         if api_key_enc is not None:
             set_parts.append("copilot_api_key_enc = :copilot_api_key_enc")
             params["copilot_api_key_enc"] = api_key_enc
@@ -165,8 +191,32 @@ class PortfolioRepository:
             conn.execute(
                 text(
                     f"""
-                    insert into app_user_settings (user_id, broker_default_fee, copilot_provider, copilot_model, copilot_api_key_enc, updated_at)
-                    values (:user_id, coalesce(:bf, 0), coalesce(:cp, ''), coalesce(:cm, ''), coalesce(:ck, ''), now())
+                    insert into app_user_settings (
+                      user_id,
+                      broker_default_fee,
+                      copilot_provider,
+                      copilot_model,
+                      copilot_api_key_enc,
+                      fire_annual_expenses,
+                      fire_annual_contribution,
+                      fire_safe_withdrawal_rate,
+                      fire_current_age,
+                      fire_target_age,
+                      updated_at
+                    )
+                    values (
+                      :user_id,
+                      coalesce(:bf, 0),
+                      coalesce(:cp, ''),
+                      coalesce(:cm, ''),
+                      coalesce(:ck, ''),
+                      coalesce(:fae, 0),
+                      coalesce(:fac, 0),
+                      coalesce(:fswr, 4),
+                      :fca,
+                      :fta,
+                      now()
+                    )
                     on conflict (user_id)
                     do update set {set_clause}
                     """
@@ -177,6 +227,11 @@ class PortfolioRepository:
                     "cp": payload.copilot_provider,
                     "cm": payload.copilot_model,
                     "ck": api_key_enc,
+                    "fae": payload.fire_annual_expenses,
+                    "fac": payload.fire_annual_contribution,
+                    "fswr": payload.fire_safe_withdrawal_rate,
+                    "fca": payload.fire_current_age,
+                    "fta": payload.fire_target_age,
                 },
             )
         return self.get_user_settings(normalized_user_id)

@@ -127,6 +127,14 @@ create index idx_api_idempotency_keys_owner on api_idempotency_keys(owner_user_i
 create table app_user_settings (
   user_id varchar(255) primary key,
   broker_default_fee numeric(28,10) not null default 0,
+  copilot_provider varchar(32) not null default '',
+  copilot_model varchar(128) not null default '',
+  copilot_api_key_enc text not null default '',
+  fire_annual_expenses numeric(28,10) not null default 0,
+  fire_annual_contribution numeric(28,10) not null default 0,
+  fire_safe_withdrawal_rate numeric(10,4) not null default 4 check (fire_safe_withdrawal_rate > 0 and fire_safe_withdrawal_rate <= 20),
+  fire_current_age int check (fire_current_age is null or (fire_current_age >= 18 and fire_current_age <= 100)),
+  fire_target_age int check (fire_target_age is null or (fire_target_age >= 18 and fire_target_age <= 100)),
   updated_at timestamptz not null default now()
 );
 
