@@ -463,7 +463,7 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
             ],
             cta=InstantAnalyzeCta(
                 show_signup=True,
-                message='Create a free account to save and track this portfolio over time.',
+                message='Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
             ),
         )
 

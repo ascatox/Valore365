@@ -137,7 +137,7 @@ def analyze_public_portfolio(repo: PortfolioRepository, payload: InstantAnalyzeR
         suggestions=suggestions,
         cta=InstantAnalyzeCta(
             show_signup=True,
-            message="Create a free account to save and track this portfolio over time.",
+            message="Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.",
         ),
     )
 

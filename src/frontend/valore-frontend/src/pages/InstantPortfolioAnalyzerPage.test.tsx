@@ -83,7 +83,7 @@ describe('InstantPortfolioAnalyzerPage', () => {
       ],
       cta: {
         show_signup: true,
-        message: 'Create a free account to save and track this portfolio over time.',
+        message: 'Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
       },
     });
 
@@ -145,7 +145,7 @@ describe('InstantPortfolioAnalyzerPage', () => {
       suggestions: [],
       cta: {
         show_signup: false,
-        message: 'Create a free account to save and track this portfolio over time.',
+        message: 'Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
       },
     });
 
