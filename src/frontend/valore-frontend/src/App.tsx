@@ -83,7 +83,6 @@ function ProtectedApp() {
     setPrivacyMode(next);
     window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, String(next));
     window.dispatchEvent(new CustomEvent('valore365:privacy-changed', { detail: next }));
-    window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
   };
 
   useEffect(() => {
@@ -210,7 +209,7 @@ function ProtectedApp() {
               </div>
             )}
           </Transition>
-          <Container fluid>
+          <Container fluid key={`privacy-${privacyMode}`}>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />
