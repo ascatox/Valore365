@@ -78,7 +78,7 @@ export function InstantPortfolioAnalyzerPage() {
         padding: isMobile ? '24px 0 48px' : '48px 0 72px',
       }}
     >
-      <Container fluid px={isMobile ? 'md' : 'xl'}>
+      <Container size="1600" px={isMobile ? 'md' : 'xl'}>
         <Stack gap="xl">
           <Stack gap="md">
             <Group gap={isMobile ? 'md' : 'lg'} align="center" wrap="nowrap">
