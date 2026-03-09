@@ -22,8 +22,10 @@ import {
   Tabs,
   useComputedColorScheme,
   useMantineTheme,
+  SimpleGrid,
+  ThemeIcon,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot, IconChecklist, IconSparkles } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/TargetAllocationCsvImportModal.tsx';
@@ -1466,7 +1468,7 @@ export function PortfolioPage() {
             <Button leftSection={<IconPlus size={16} />} onClick={openTransactionDrawer} disabled={!selectedPortfolioId}>
               Nuova Transazione
             </Button>
-            <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => setCsvImportOpened(true)} disabled={!selectedPortfolioId}>
+            <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => setCsvImportOpened(true)}>
               Importa
             </Button>
           </Group>
@@ -1481,6 +1483,80 @@ export function PortfolioPage() {
       {error && <Alert color="red" mb="md">{error}</Alert>}
       {transactionsError && <Alert color="red" mb="md">{transactionsError}</Alert>}
       {formSuccess && <Alert color="teal" mb="md">{formSuccess}</Alert>}
+
+      {portfolios.length === 0 && (
+        <Card
+          withBorder
+          radius="xl"
+          mb="md"
+          style={{
+            background: isDark
+              ? 'linear-gradient(135deg, rgba(20,184,166,0.10), rgba(15,23,42,0.9))'
+              : 'linear-gradient(135deg, #f8fffd 0%, #eefaf6 48%, #f8fbff 100%)',
+          }}
+        >
+          <Stack gap="lg">
+            <Group gap="sm">
+              <ThemeIcon radius="xl" size={42} color="teal" variant="light">
+                <IconSparkles size={22} />
+              </ThemeIcon>
+              <div>
+                <Title order={3}>Inizia da qui</Title>
+                <Text c="dimmed">
+                  Per partire ti basta creare il primo portfolio oppure importare uno storico da file.
+                </Text>
+              </div>
+            </Group>
+
+            <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+              <Card withBorder radius="lg" padding="md">
+                <Group gap="sm" mb="xs">
+                  <ThemeIcon radius="xl" size={32} color="blue" variant="light">
+                    <IconPlus size={18} />
+                  </ThemeIcon>
+                  <Text fw={600}>1. Crea il portfolio</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Imposta nome, valuta base e timezone del portafoglio che userai come contenitore iniziale.
+                </Text>
+              </Card>
+
+              <Card withBorder radius="lg" padding="md">
+                <Group gap="sm" mb="xs">
+                  <ThemeIcon radius="xl" size={32} color="teal" variant="light">
+                    <IconFileImport size={18} />
+                  </ThemeIcon>
+                  <Text fw={600}>2. Importa o inserisci</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Puoi importare da Fineco o da file generico, oppure aggiungere le prime transazioni manualmente.
+                </Text>
+              </Card>
+
+              <Card withBorder radius="lg" padding="md">
+                <Group gap="sm" mb="xs">
+                  <ThemeIcon radius="xl" size={32} color="orange" variant="light">
+                    <IconChecklist size={18} />
+                  </ThemeIcon>
+                  <Text fw={600}>3. Controlla il risultato</Text>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Dopo il primo caricamento puoi rivedere transazioni, liquidita e allocazione target dalla stessa pagina.
+                </Text>
+              </Card>
+            </SimpleGrid>
+
+            <Group gap="sm">
+              <Button leftSection={<IconPlus size={16} />} onClick={openCreatePortfolioModal}>
+                Crea portfolio
+              </Button>
+              <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => setCsvImportOpened(true)}>
+                Importa da file
+              </Button>
+            </Group>
+          </Stack>
+        </Card>
+      )}
 
       {ENABLE_TARGET_ALLOCATION && portfolioView === 'target' && (
         <TargetAllocationSection
@@ -1568,7 +1644,7 @@ export function PortfolioPage() {
               description: 'Carica movimenti o storico dal file broker',
               icon: IconFileImport,
               onClick: () => setCsvImportOpened(true),
-              disabled: !selectedPortfolioId || portfolioView !== 'transactions',
+              disabled: portfolioView !== 'transactions',
             },
             {
               label: 'Aggiungi asset target',
@@ -2113,18 +2189,18 @@ export function PortfolioPage() {
         </Stack>
       </Modal>
 
-      {selectedPortfolioId && (
-        <CsvImportModal
-          opened={csvImportOpened}
-          onClose={() => setCsvImportOpened(false)}
-          portfolioId={Number(selectedPortfolioId)}
-          onImportComplete={() => {
-            if (selectedPortfolioId) {
-              void loadTransactions(Number(selectedPortfolioId));
-            }
-          }}
-        />
-      )}
+      <CsvImportModal
+        opened={csvImportOpened}
+        onClose={() => setCsvImportOpened(false)}
+        portfolioId={selectedPortfolioId ? Number(selectedPortfolioId) : null}
+        onPortfolioCreated={(portfolioId) => {
+          void loadPortfolios(String(portfolioId));
+        }}
+        onImportComplete={(portfolioId) => {
+          void loadPortfolios(String(portfolioId));
+          void loadTransactions(portfolioId);
+        }}
+      />
 
       {ENABLE_TARGET_ALLOCATION && selectedPortfolioId && (
         <TargetAllocationCsvImportModal

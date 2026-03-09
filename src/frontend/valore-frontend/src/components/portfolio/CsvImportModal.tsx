@@ -12,6 +12,8 @@ import {
   Stack,
   Table,
   Text,
+  TextInput,
+  Alert,
 } from '@mantine/core';
 import { IconFileImport, IconCheck, IconX, IconChartPie } from '@tabler/icons-react';
 import { formatNum } from '../dashboard/formatters';
@@ -20,6 +22,7 @@ import {
   uploadCsvImportPreview,
   commitCsvImport,
   cancelCsvImport,
+  createPortfolio,
   type CsvImportPreviewResponse,
   type CsvImportCommitResponse,
 } from '../../services/api';
@@ -44,8 +47,9 @@ const GENERIC_OPTIONAL_COLUMNS = [
 interface CsvImportModalProps {
   opened: boolean;
   onClose: () => void;
-  portfolioId: number;
-  onImportComplete?: () => void;
+  portfolioId: number | null;
+  onImportComplete?: (portfolioId: number) => void;
+  onPortfolioCreated?: (portfolioId: number) => void;
 }
 
 function BrokerSelectOption({ logo, label }: { logo?: string; label: string }) {
@@ -59,7 +63,13 @@ function BrokerSelectOption({ logo, label }: { logo?: string; label: string }) {
   );
 }
 
-export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete }: CsvImportModalProps) {
+export function CsvImportModal({
+  opened,
+  onClose,
+  portfolioId,
+  onImportComplete,
+  onPortfolioCreated,
+}: CsvImportModalProps) {
   const navigate = useNavigate();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [broker, setBroker] = useState<string>('fineco');
@@ -68,6 +78,13 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
+  const [resolvedPortfolioId, setResolvedPortfolioId] = useState<number | null>(portfolioId);
+  const [portfolioName, setPortfolioName] = useState('Primo Portfolio');
+  const [portfolioBaseCurrency, setPortfolioBaseCurrency] = useState('EUR');
+  const [portfolioTimezone, setPortfolioTimezone] = useState(
+    typeof Intl !== 'undefined' ? Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Rome' : 'Europe/Rome',
+  );
+  const [creatingPortfolio, setCreatingPortfolio] = useState(false);
 
   const selectedBroker = BROKER_OPTIONS.find((b) => b.value === broker);
 
@@ -79,14 +96,55 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
     setPreview(null);
     setResult(null);
     setError(null);
+    setResolvedPortfolioId(portfolioId);
     onClose();
   };
 
+  const handleCreatePortfolio = async () => {
+    const name = portfolioName.trim();
+    const baseCurrency = portfolioBaseCurrency.trim().toUpperCase();
+    const timezone = portfolioTimezone.trim();
+
+    if (!name) {
+      setError('Nome portfolio obbligatorio');
+      return;
+    }
+    if (!/^[A-Z]{3}$/.test(baseCurrency)) {
+      setError('Valuta base non valida (es. EUR)');
+      return;
+    }
+    if (!timezone) {
+      setError('Timezone obbligatoria');
+      return;
+    }
+
+    try {
+      setCreatingPortfolio(true);
+      setError(null);
+      const created = await createPortfolio({
+        name,
+        base_currency: baseCurrency,
+        timezone,
+        cash_balance: 0,
+      });
+      setResolvedPortfolioId(created.id);
+      onPortfolioCreated?.(created.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossibile creare il portfolio');
+    } finally {
+      setCreatingPortfolio(false);
+    }
+  };
+
   const handleFileUpload = async (file: File) => {
+    if (!resolvedPortfolioId) {
+      setError('Crea prima un portfolio per continuare con l’importazione');
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
-      const data = await uploadCsvImportPreview(portfolioId, file, broker);
+      const data = await uploadCsvImportPreview(resolvedPortfolioId, file, broker);
       setPreview(data);
       setStep('preview');
     } catch (err) {
@@ -104,7 +162,9 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
       const commitResult = await commitCsvImport(preview.batch_id);
       setResult(commitResult);
       setStep('done');
-      onImportComplete?.();
+      if (resolvedPortfolioId) {
+        onImportComplete?.(resolvedPortfolioId);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
@@ -164,6 +224,49 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
               Seleziona il file esportato dal tuo broker. Sono supportati i formati CSV e Excel (XLSX).
             </Text>
 
+            {!resolvedPortfolioId && (
+              <Card withBorder radius="lg" padding="md">
+                <Stack gap="sm">
+                  <Text fw={600}>Crea il tuo primo portfolio</Text>
+                  <Text size="sm" c="dimmed">
+                    Prima dell’import serve un portfolio di destinazione. Inserisci i dati minimi e poi continua con il file.
+                  </Text>
+                  <TextInput
+                    label="Nome portfolio"
+                    value={portfolioName}
+                    onChange={(event) => setPortfolioName(event.currentTarget.value)}
+                    placeholder="Es. Portafoglio principale"
+                  />
+                  <Group grow>
+                    <TextInput
+                      label="Valuta base"
+                      value={portfolioBaseCurrency}
+                      onChange={(event) => setPortfolioBaseCurrency(event.currentTarget.value.toUpperCase())}
+                      placeholder="EUR"
+                      maxLength={3}
+                    />
+                    <TextInput
+                      label="Timezone"
+                      value={portfolioTimezone}
+                      onChange={(event) => setPortfolioTimezone(event.currentTarget.value)}
+                      placeholder="Europe/Rome"
+                    />
+                  </Group>
+                  <Group justify="flex-end">
+                    <Button onClick={handleCreatePortfolio} loading={creatingPortfolio}>
+                      Crea portfolio e continua
+                    </Button>
+                  </Group>
+                </Stack>
+              </Card>
+            )}
+
+            {resolvedPortfolioId && !preview && (
+              <Alert color="teal" variant="light">
+                Portfolio pronto. Ora puoi caricare il file da importare.
+              </Alert>
+            )}
+
             {broker === 'generic' && (
               <Card withBorder radius="lg" padding="md">
                 <Stack gap="md">
@@ -211,6 +314,7 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
             <input
               type="file"
               accept=".csv,.xlsx,.xls"
+              disabled={!resolvedPortfolioId}
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleFileUpload(file);
