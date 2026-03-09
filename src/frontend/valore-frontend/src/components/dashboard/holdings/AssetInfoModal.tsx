@@ -144,6 +144,21 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
         <Stack gap="md">
           {info.name && <Text fw={600} size="md">{info.name}</Text>}
 
+          {(info.asset_type || info.quote_type) && (
+            <Group gap="xs">
+              {info.asset_type && (
+                <Badge variant="light" color="blue" size="md">
+                  {info.asset_type.toUpperCase()}
+                </Badge>
+              )}
+              {info.quote_type && info.quote_type.toUpperCase() !== info.asset_type?.toUpperCase() && (
+                <Badge variant="outline" color="gray" size="sm">
+                  {info.quote_type}
+                </Badge>
+              )}
+            </Group>
+          )}
+
           {info.current_price != null && (
             <Group gap="sm" align="center">
               <Text fw={700} size="lg">{formatMoney(info.current_price, info.currency ?? 'USD')}</Text>

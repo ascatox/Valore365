@@ -580,10 +580,19 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) ->
     day_change_pct: float | None = None
     if info.current_price is not None and info.previous_close is not None and info.previous_close != 0:
         day_change_pct = round(((info.current_price / info.previous_close) - 1) * 100, 2)
+    # Fetch asset_type from DB
+    db_asset_type: str | None = None
+    try:
+        db_asset = repo.get_asset(asset_id)
+        db_asset_type = db_asset.asset_type
+    except ValueError:
+        pass
     return AssetInfoResponse(
         asset_id=asset_id,
         symbol=pricing_asset.symbol,
         name=info.name,
+        asset_type=db_asset_type,
+        quote_type=info.quote_type,
         sector=info.sector,
         industry=info.industry,
         country=info.country,
@@ -1538,6 +1547,8 @@ def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext
         asset_id=0,
         symbol=symbol,
         name=info.name,
+        asset_type=None,
+        quote_type=info.quote_type,
         sector=info.sector,
         industry=info.industry,
         country=info.country,

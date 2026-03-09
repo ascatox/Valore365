@@ -328,6 +328,8 @@ export interface AssetInfo {
   asset_id: number;
   symbol: string;
   name: string | null;
+  asset_type: string | null;
+  quote_type: string | null;
   sector: string | null;
   industry: string | null;
   country: string | null;
