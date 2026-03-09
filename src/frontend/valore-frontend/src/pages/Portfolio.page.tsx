@@ -284,6 +284,7 @@ export function PortfolioPage() {
   const loadPortfolios = async (preferredSelectedId?: string | null) => {
     const items = await getAdminPortfolios();
     setPortfolios(items);
+    window.dispatchEvent(new CustomEvent('valore365:portfolios-changed', { detail: { count: items.length } }));
     setSelectedPortfolioId((prev) => {
       const candidate = preferredSelectedId ?? prev;
       const exists = candidate ? items.some((p) => String(p.id) === candidate) : false;

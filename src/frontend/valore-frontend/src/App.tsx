@@ -31,11 +31,12 @@ import {
   IconEye,
   IconEyeOff,
 } from '@tabler/icons-react';
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
 import { BrandMark } from './components/BrandMark';
 import { STORAGE_KEYS } from './components/dashboard/constants';
+import { getAdminPortfolios } from './services/api';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
 const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
@@ -73,10 +74,13 @@ function App() {
 }
 
 function ProtectedApp() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [hasPortfolios, setHasPortfolios] = useState<boolean | null>(null);
   const [privacyMode, setPrivacyMode] = useState(() =>
     window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true',
   );
@@ -94,6 +98,45 @@ function ProtectedApp() {
       meta.setAttribute('content', colorScheme === 'dark' ? '#242424' : '#ffffff');
     }
   }, [colorScheme]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadPortfolioAvailability = async () => {
+      try {
+        const portfolios = await getAdminPortfolios();
+        if (active) {
+          setHasPortfolios(portfolios.length > 0);
+        }
+      } catch {
+        if (active) {
+          setHasPortfolios(true);
+        }
+      }
+    };
+
+    const handlePortfoliosChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ count?: number }>).detail;
+      if (typeof detail?.count === 'number') {
+        setHasPortfolios(detail.count > 0);
+        return;
+      }
+      void loadPortfolioAvailability();
+    };
+
+    void loadPortfolioAvailability();
+    window.addEventListener('valore365:portfolios-changed', handlePortfoliosChanged as EventListener);
+    return () => {
+      active = false;
+      window.removeEventListener('valore365:portfolios-changed', handlePortfoliosChanged as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (hasPortfolios === false && location.pathname !== '/portfolio') {
+      navigate('/portfolio', { replace: true });
+    }
+  }, [hasPortfolios, location.pathname, navigate]);
 
   const handleGlobalRefresh = useCallback(() => {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
@@ -137,6 +180,7 @@ function ProtectedApp() {
   const countdownSec = Math.ceil(countdown / 1000);
 
   const { pulling, pullDistance, reached } = usePullToRefresh(handleGlobalRefresh);
+  const lockNonPortfolioNavigation = hasPortfolios === false;
 
   return (
       <AppShell
@@ -210,6 +254,7 @@ function ProtectedApp() {
               label={navbarExpanded ? 'Dashboard' : undefined}
               leftSection={<IconLayoutDashboard size={16} />}
               aria-label="Dashboard"
+              disabled={lockNonPortfolioNavigation}
               onClick={close}
           />
           <NavLink
@@ -226,6 +271,7 @@ function ProtectedApp() {
               label={navbarExpanded ? 'Doctor' : undefined}
               leftSection={<IconHeartRateMonitor size={16} />}
               aria-label="Doctor"
+              disabled={lockNonPortfolioNavigation}
               onClick={close}
           />
           <NavLink
@@ -234,6 +280,7 @@ function ProtectedApp() {
               label={navbarExpanded ? 'FIRE' : undefined}
               leftSection={<IconFlame size={16} />}
               aria-label="FIRE"
+              disabled={lockNonPortfolioNavigation}
               onClick={close}
           />
           <NavLink
@@ -242,6 +289,7 @@ function ProtectedApp() {
               label={navbarExpanded ? 'Impostazioni' : undefined}
               leftSection={<IconSettings size={16} />}
               aria-label="Impostazioni"
+              disabled={lockNonPortfolioNavigation}
               onClick={close}
           />
         </AppShell.Navbar>
