@@ -80,7 +80,7 @@ export function InstantPortfolioAnalyzerPage() {
     >
       <Container fluid px={isMobile ? 'md' : 'xl'}>
         <Stack gap="xl">
-          <Stack gap="md" maw={860}>
+          <Stack gap="md">
             <Group gap={isMobile ? 'md' : 'lg'} align="center" wrap="nowrap">
               <Box
                 style={{
