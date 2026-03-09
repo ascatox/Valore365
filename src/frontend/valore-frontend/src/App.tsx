@@ -163,50 +163,51 @@ function ProtectedApp() {
               <Box hiddenFrom="sm">
                 <BrandMark compact />
               </Box>
-            </Group>
-            <Group>
-              <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
-                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
-                  {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
-                </ActionIcon>
-              </Tooltip>
-              <Box visibleFrom="sm">
-                <Tooltip label={colorScheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'} withArrow>
-                  <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
-                    {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+
+              <Group gap="xs" ml="md">
+                <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
+                  <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
+                    {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                   </ActionIcon>
                 </Tooltip>
-              </Box>
-              <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
-                <ActionIcon
-                  variant={autoRefresh || isMobile ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : isMobile ? 'teal' : undefined}
-                  size={isMobile ? 42 : 'lg'}
-                  onClick={handleGlobalRefresh}
-                  onDoubleClick={toggleAutoRefresh}
-                  aria-label="Aggiorna"
-                >
-                  <IconRefresh
-                    size={isMobile ? 22 : 18}
-                    style={autoRefresh ? { animation: 'spin 2s linear infinite' } : undefined}
-                  />
-                </ActionIcon>
-              </Tooltip>
-              <Tooltip label={autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh (60s)'} withArrow>
-                <ActionIcon
-                  variant={autoRefresh ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : undefined}
-                  size={isMobile ? 42 : 'lg'}
-                  onClick={toggleAutoRefresh}
-                  aria-label="Auto-refresh"
-                >
-                  {autoRefresh
-                    ? <IconPlayerStop size={isMobile ? 22 : 18} />
-                    : <IconPlayerPlay size={isMobile ? 22 : 18} />}
-                </ActionIcon>
-              </Tooltip>
-              {clerkEnabled && <UserButton afterSignOutUrl="/" />}
+                <Box visibleFrom="sm">
+                  <Tooltip label={colorScheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'} withArrow>
+                    <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
+                      {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+                    </ActionIcon>
+                  </Tooltip>
+                </Box>
+                <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
+                  <ActionIcon
+                    variant={autoRefresh || isMobile ? 'filled' : 'default'}
+                    color={autoRefresh ? 'blue' : isMobile ? 'teal' : undefined}
+                    size={isMobile ? 42 : 'lg'}
+                    onClick={handleGlobalRefresh}
+                    onDoubleClick={toggleAutoRefresh}
+                    aria-label="Aggiorna"
+                  >
+                    <IconRefresh
+                      size={isMobile ? 22 : 18}
+                      style={autoRefresh ? { animation: 'spin 2s linear infinite' } : undefined}
+                    />
+                  </ActionIcon>
+                </Tooltip>
+                <Tooltip label={autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh (60s)'} withArrow>
+                  <ActionIcon
+                    variant={autoRefresh ? 'filled' : 'default'}
+                    color={autoRefresh ? 'blue' : undefined}
+                    size={isMobile ? 42 : 'lg'}
+                    onClick={toggleAutoRefresh}
+                    aria-label="Auto-refresh"
+                  >
+                    {autoRefresh
+                      ? <IconPlayerStop size={isMobile ? 22 : 18} />
+                      : <IconPlayerPlay size={isMobile ? 22 : 18} />}
+                  </ActionIcon>
+                </Tooltip>
+              </Group>
             </Group>
+            {clerkEnabled && <UserButton afterSignOutUrl="/" />}
           </Group>
         </AppShell.Header>
 
