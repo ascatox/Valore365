@@ -13,7 +13,7 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
   return (
     <ScrollArea offsetScrollbars scrollbarSize={0} type="never">
       <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6 }}>
-        {items.map(({ label, value, color, icon: Icon, iconColor }) => (
+        {items.map(({ label, value, color, icon: Icon, iconColor, subtitle, subtitleColor }) => (
           <Box
             key={label}
             style={{
@@ -42,14 +42,20 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
               <Text fw={800} size="1.3rem" c={color ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.15 }}>
                 {value}
               </Text>
-              <Badge
-                variant="light"
-                color={color ? undefined : 'teal'}
-                radius="xl"
-                styles={{ root: { alignSelf: 'flex-start' } }}
-              >
-                Focus
-              </Badge>
+              {subtitle ? (
+                <Text fw={800} size="1.3rem" c={subtitleColor ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.15 }}>
+                  {subtitle}
+                </Text>
+              ) : (
+                <Badge
+                  variant="light"
+                  color={color ? undefined : 'teal'}
+                  radius="xl"
+                  styles={{ root: { alignSelf: 'flex-start' } }}
+                >
+                  Focus
+                </Badge>
+              )}
             </Stack>
           </Box>
         ))}

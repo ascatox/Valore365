@@ -8,6 +8,8 @@ export interface KpiStatCardProps {
   diffLabel?: string;
   icon?: React.ComponentType<IconProps>;
   iconColor?: string;
+  subtitle?: string;
+  subtitleColor?: string;
 }
 
 export interface ChartPoint {

@@ -152,6 +152,8 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       color: getVariationColor(portfolioSummary?.day_change ?? 0),
       icon: IconArrowUpRight,
       iconColor: 'orange' as const,
+      subtitle: portfolioSummary ? formatMoney(portfolioSummary.day_change, mvpCurrency, true) : undefined,
+      subtitleColor: getVariationColor(portfolioSummary?.day_change ?? 0),
     },
     {
       label: 'P/L Totale',
