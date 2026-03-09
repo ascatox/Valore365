@@ -4,7 +4,9 @@ import {
   Avatar,
   Badge,
   Button,
+  Card,
   Group,
+  List,
   Modal,
   Select,
   Stack,
@@ -14,6 +16,7 @@ import {
 import { IconFileImport, IconCheck, IconX, IconChartPie } from '@tabler/icons-react';
 import { formatNum } from '../dashboard/formatters';
 import {
+  downloadCsvImportTemplate,
   uploadCsvImportPreview,
   commitCsvImport,
   cancelCsvImport,
@@ -23,6 +26,19 @@ import {
 
 const BROKER_OPTIONS = [
   { value: 'fineco', label: 'Fineco', logo: '/logos/fineco.svg' },
+  { value: 'generic', label: 'Generico' },
+];
+
+const GENERIC_REQUIRED_COLUMNS = ['operazione', 'isin', 'segno', 'quantita', 'prezzo'];
+const GENERIC_OPTIONAL_COLUMNS = [
+  'titolo',
+  'descrizione',
+  'divisa',
+  'controvalore',
+  'commissioni fondi sw/ingr/uscita',
+  'commissioni fondi banca corrispondente',
+  'spese fondi sgr',
+  'commissioni amministrato',
 ];
 
 interface CsvImportModalProps {
@@ -32,10 +48,12 @@ interface CsvImportModalProps {
   onImportComplete?: () => void;
 }
 
-function BrokerSelectOption({ logo, label }: { logo: string; label: string }) {
+function BrokerSelectOption({ logo, label }: { logo?: string; label: string }) {
   return (
     <Group gap="sm" wrap="nowrap">
-      <Avatar src={logo} size={24} radius="sm" />
+      <Avatar src={logo} size={24} radius="sm" color={logo ? undefined : 'blue'}>
+        {!logo ? label.slice(0, 1) : null}
+      </Avatar>
       <Text size="sm">{label}</Text>
     </Group>
   );
@@ -49,6 +67,7 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
   const [result, setResult] = useState<CsvImportCommitResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [downloadingTemplate, setDownloadingTemplate] = useState(false);
 
   const selectedBroker = BROKER_OPTIONS.find((b) => b.value === broker);
 
@@ -93,6 +112,26 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
     }
   };
 
+  const handleTemplateDownload = async () => {
+    try {
+      setDownloadingTemplate(true);
+      setError(null);
+      const { blob, filename } = await downloadCsvImportTemplate('generic');
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Impossibile scaricare il template');
+    } finally {
+      setDownloadingTemplate(false);
+    }
+  };
+
   return (
     <Modal
       opened={opened}
@@ -114,12 +153,60 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
                 const b = BROKER_OPTIONS.find((x) => x.value === option.value);
                 return b ? <BrokerSelectOption logo={b.logo} label={b.label} /> : <Text size="sm">{option.label}</Text>;
               }}
-              leftSection={selectedBroker ? <Avatar src={selectedBroker.logo} size={20} radius="sm" /> : undefined}
+              leftSection={selectedBroker ? (
+                <Avatar src={selectedBroker.logo} size={20} radius="sm" color={selectedBroker.logo ? undefined : 'blue'}>
+                  {!selectedBroker.logo ? selectedBroker.label.slice(0, 1) : null}
+                </Avatar>
+              ) : undefined}
             />
 
             <Text size="sm" c="dimmed">
               Seleziona il file esportato dal tuo broker. Sono supportati i formati CSV e Excel (XLSX).
             </Text>
+
+            {broker === 'generic' && (
+              <Card withBorder radius="lg" padding="md">
+                <Stack gap="md">
+                  <div>
+                    <Text fw={600}>Formato atteso per importazione generica</Text>
+                    <Text size="sm" c="dimmed">
+                      Il file generico deve contenere almeno le colonne obbligatorie. Puoi scaricare un file Excel vuoto di esempio e compilarlo.
+                    </Text>
+                  </div>
+
+                  <div>
+                    <Text size="sm" fw={600}>Colonne obbligatorie</Text>
+                    <List size="sm" spacing={4}>
+                      {GENERIC_REQUIRED_COLUMNS.map((column) => (
+                        <List.Item key={column}>
+                          <code>{column}</code>
+                        </List.Item>
+                      ))}
+                    </List>
+                  </div>
+
+                  <div>
+                    <Text size="sm" fw={600}>Colonne opzionali supportate</Text>
+                    <List size="sm" spacing={4}>
+                      {GENERIC_OPTIONAL_COLUMNS.map((column) => (
+                        <List.Item key={column}>
+                          <code>{column}</code>
+                        </List.Item>
+                      ))}
+                    </List>
+                  </div>
+
+                  <Group justify="space-between" align="center">
+                    <Text size="sm" c="dimmed">
+                      Le date possono essere in formato <code>dd/mm/yyyy</code> o <code>yyyy-mm-dd</code>. Il campo <code>segno</code> usa <code>A</code> per acquisto e <code>V</code> per vendita.
+                    </Text>
+                    <Button variant="light" onClick={handleTemplateDownload} loading={downloadingTemplate}>
+                      Scarica template XLSX
+                    </Button>
+                  </Group>
+                </Stack>
+              </Card>
+            )}
 
             <input
               type="file"

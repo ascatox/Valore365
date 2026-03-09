@@ -526,3 +526,20 @@ def test_public_instant_portfolio_analyzer_real_route_rate_limits_requests(monke
     assert first.status_code == 200
     assert second.status_code == 429
     assert second.json()['error']['code'] == 'rate_limited'
+
+
+def test_csv_import_template_route(monkeypatch):
+    monkeypatch.setattr(
+        api_main.csv_import_service,
+        'build_template_xlsx',
+        lambda broker='generic': (b'fake-xlsx', 'valore365-generic-import-template.xlsx'),
+    )
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/csv-import/template?broker=generic')
+
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    assert 'valore365-generic-import-template.xlsx' in response.headers['content-disposition']

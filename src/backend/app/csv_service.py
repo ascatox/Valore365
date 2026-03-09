@@ -30,6 +30,13 @@ FEE_COLUMNS = [
     "spese fondi sgr",
     "commissioni amministrato",
 ]
+GENERIC_OPTIONAL_COLUMNS = [
+    "titolo",
+    "descrizione",
+    "divisa",
+    "controvalore",
+    *FEE_COLUMNS,
+]
 
 # Positional column mapping for headerless bank export CSVs (semicolon-separated)
 BANK_EXPORT_COLUMNS = [
@@ -48,6 +55,22 @@ BANK_EXPORT_COLUMNS = [
     "commissioni fondi banca corrispondente",    # 12
     "spese fondi sgr",                           # 13
     "commissioni amministrato",                  # 14
+]
+
+GENERIC_TEMPLATE_COLUMNS = [
+    "operazione",
+    "isin",
+    "segno",
+    "quantita",
+    "prezzo",
+    "titolo",
+    "descrizione",
+    "divisa",
+    "controvalore",
+    "commissioni fondi sw/ingr/uscita",
+    "commissioni fondi banca corrispondente",
+    "spese fondi sgr",
+    "commissioni amministrato",
 ]
 
 
@@ -164,6 +187,24 @@ class CsvImportService:
             if symbol and symbol != code:
                 return symbol
         return None
+
+    def build_template_xlsx(self, broker: str = "generic") -> tuple[bytes, str]:
+        normalized_broker = (broker or "generic").strip().lower()
+        if normalized_broker != "generic":
+            raise ValueError("Template disponibile solo per il profilo generic")
+
+        workbook = openpyxl.Workbook()
+        worksheet = workbook.active
+        if worksheet is None:
+            raise ValueError("Impossibile creare il template Excel")
+
+        worksheet.title = "import_template"
+        worksheet.append(GENERIC_TEMPLATE_COLUMNS)
+
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+        workbook.close()
+        return buffer.getvalue(), "valore365-generic-import-template.xlsx"
 
     def _ensure_provider_symbol_mapping(self, asset_id: int, provider_symbol: str) -> None:
         value = (provider_symbol or "").strip().upper()

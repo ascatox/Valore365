@@ -13,6 +13,7 @@ from fastapi import Depends, FastAPI, Header, Query, Request, APIRouter
 from sqlalchemy import text
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 
@@ -1640,6 +1641,25 @@ async def csv_import_preview(
         status_code = 404 if "non trovato" in message.lower() else 400
         code = "not_found" if status_code == 404 else "bad_request"
         raise AppError(code=code, message=message, status_code=status_code) from exc
+
+
+@router.get(
+    "/csv-import/template",
+    responses={400: {"model": ErrorResponse}},
+)
+def csv_import_template(
+    broker: str = Query("generic"),
+    _auth: AuthContext = Depends(require_auth),
+) -> StreamingResponse:
+    try:
+        content, filename = csv_import_service.build_template_xlsx(broker)
+        return StreamingResponse(
+            iter([content]),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ValueError as exc:
+        raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
 
 
 @router.post(
