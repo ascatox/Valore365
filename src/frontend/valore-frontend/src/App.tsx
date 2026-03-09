@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, useEffect } from 'react';
+import { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import {
   AppShell,
   Box,
@@ -9,6 +9,7 @@ import {
   NavLink,
   Container,
   Transition,
+  Tooltip,
   useMantineColorScheme,
   Title,
 } from '@mantine/core';
@@ -18,6 +19,8 @@ import {
   IconSun,
   IconMoon,
   IconRefresh,
+  IconPlayerPlay,
+  IconPlayerStop,
   IconLayoutDashboard,
   IconBriefcase,
   IconFlame,
@@ -92,9 +95,47 @@ function ProtectedApp() {
     }
   }, [colorScheme]);
 
-  const handleGlobalRefresh = () => {
+  const handleGlobalRefresh = useCallback(() => {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
-  };
+  }, []);
+
+  const AUTO_REFRESH_INTERVAL = 60_000;
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [countdown, setCountdown] = useState(AUTO_REFRESH_INTERVAL);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTimers = useCallback(() => {
+    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+    if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
+  }, []);
+
+  const startAutoRefresh = useCallback(() => {
+    clearTimers();
+    setCountdown(AUTO_REFRESH_INTERVAL);
+    intervalRef.current = setInterval(() => {
+      handleGlobalRefresh();
+      setCountdown(AUTO_REFRESH_INTERVAL);
+    }, AUTO_REFRESH_INTERVAL);
+    tickRef.current = setInterval(() => {
+      setCountdown((c) => Math.max(0, c - 1000));
+    }, 1000);
+  }, [clearTimers, handleGlobalRefresh]);
+
+  useEffect(() => {
+    if (autoRefresh) {
+      handleGlobalRefresh();
+      startAutoRefresh();
+    } else {
+      clearTimers();
+      setCountdown(AUTO_REFRESH_INTERVAL);
+    }
+    return clearTimers;
+  }, [autoRefresh, startAutoRefresh, clearTimers, handleGlobalRefresh]);
+
+  const toggleAutoRefresh = () => setAutoRefresh((v) => !v);
+  const countdownSec = Math.ceil(countdown / 1000);
+
   const { pulling, pullDistance, reached } = usePullToRefresh(handleGlobalRefresh);
 
   return (
@@ -130,12 +171,34 @@ function ProtectedApp() {
               <ActionIcon onClick={toggleColorScheme} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Cambia tema">
                 {colorScheme === 'dark' ? <IconSun size={isMobile ? 22 : 18} /> : <IconMoon size={isMobile ? 22 : 18} />}
               </ActionIcon>
-              <ActionIcon variant="default" size={42} onClick={handleGlobalRefresh} hiddenFrom="sm" aria-label="Aggiorna">
-                <IconRefresh size={22} />
-              </ActionIcon>
-              <Button leftSection={<IconRefresh size={16} />} variant="default" onClick={handleGlobalRefresh} visibleFrom="sm">
-                Aggiorna
-              </Button>
+              <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
+                <ActionIcon
+                  variant={autoRefresh ? 'filled' : 'default'}
+                  color={autoRefresh ? 'blue' : undefined}
+                  size={isMobile ? 42 : 'lg'}
+                  onClick={handleGlobalRefresh}
+                  onDoubleClick={toggleAutoRefresh}
+                  aria-label="Aggiorna"
+                >
+                  <IconRefresh
+                    size={isMobile ? 22 : 18}
+                    style={autoRefresh ? { animation: 'spin 2s linear infinite' } : undefined}
+                  />
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh (60s)'} withArrow>
+                <ActionIcon
+                  variant={autoRefresh ? 'filled' : 'default'}
+                  color={autoRefresh ? 'blue' : undefined}
+                  size={isMobile ? 42 : 'lg'}
+                  onClick={toggleAutoRefresh}
+                  aria-label="Auto-refresh"
+                >
+                  {autoRefresh
+                    ? <IconPlayerStop size={isMobile ? 22 : 18} />
+                    : <IconPlayerPlay size={isMobile ? 22 : 18} />}
+                </ActionIcon>
+              </Tooltip>
               {clerkEnabled && <UserButton afterSignOutUrl="/" />}
             </Group>
           </Group>
