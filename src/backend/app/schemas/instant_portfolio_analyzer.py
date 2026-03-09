@@ -1,18 +1,25 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from .portfolio_doctor import PortfolioHealthCategoryScores
 
 
 class ParsedPositionInput(BaseModel):
-    identifier: str = Field(min_length=1, max_length=64)
-    value: float = Field(gt=0)
+    identifier: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9._-]+$")
+    value: float = Field(gt=0, le=1_000_000_000_000)
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def normalize_identifier(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
+        return value.strip()
 
 
 class InstantAnalyzeRequest(BaseModel):
     input_mode: Literal["text", "raw_text"] = "raw_text"
-    positions: list[ParsedPositionInput] = Field(default_factory=list)
-    raw_text: str | None = None
+    positions: list[ParsedPositionInput] = Field(default_factory=list, max_length=50)
+    raw_text: str | None = Field(default=None, max_length=5000)
 
 
 class InstantAnalyzeLineError(BaseModel):

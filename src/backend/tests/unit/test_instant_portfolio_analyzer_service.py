@@ -21,6 +21,13 @@ def test_parse_raw_text_returns_positions_and_line_errors():
     assert errors[1].error == "Invalid numeric value"
 
 
+def test_parse_raw_text_rejects_invalid_identifier_format():
+    positions, errors = parse_raw_text("VW/CE 10000")
+
+    assert not positions
+    assert errors[0].error == "Invalid identifier format"
+
+
 def test_parse_request_positions_for_text_mode():
     positions, errors = parse_request_positions(
         InstantAnalyzeRequest(

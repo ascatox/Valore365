@@ -241,6 +241,7 @@ def test_patch_transaction_route_bad_request(monkeypatch):
 
 
 def test_public_instant_portfolio_analyzer_route_bad_request_includes_details(monkeypatch):
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
     from app.services.instant_portfolio_analyzer import InstantPortfolioAnalysisError
 
     def _fake_analyze(repo, payload):
@@ -367,6 +368,8 @@ def test_portfolio_health_route_not_found(monkeypatch):
 
 
 def test_public_instant_portfolio_analyzer_route(monkeypatch):
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+
     def _fake_analyze(repo, payload):
         assert payload.input_mode == 'raw_text'
         return InstantAnalyzeResponse(
@@ -436,6 +439,8 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
 
 
 def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+
     def _fake_analyze(repo, payload):
         raise ValueError('No valid positions found')
 
@@ -450,6 +455,8 @@ def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):
 
 
 def test_public_instant_portfolio_analyzer_real_route_returns_structured_details():
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+
     router = APIRouter()
     instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo())
     app = FastAPI()
@@ -469,3 +476,53 @@ def test_public_instant_portfolio_analyzer_real_route_returns_structured_details
     assert payload['error']['message'] == 'No valid positions found'
     assert payload['error']['details']['parse_errors'][0]['line'] == 1
     assert payload['error']['details']['unresolved'][0]['identifier'] == 'UNKNOWN'
+
+
+def test_public_instant_portfolio_analyzer_real_route_rejects_too_many_positions():
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+
+    router = APIRouter()
+    instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo())
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(_: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
+
+    app.include_router(router, prefix='/api')
+    client = TestClient(app)
+
+    raw_text = "\n".join(f"VWCE {index}" for index in range(1, 53))
+    response = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': raw_text})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'
+    assert 'Too many positions submitted' in payload['error']['message']
+
+
+def test_public_instant_portfolio_analyzer_real_route_rate_limits_requests(monkeypatch):
+    monkeypatch.setattr(
+        instant_portfolio_api,
+        '_public_instant_rate_limiter',
+        instant_portfolio_api.SlidingWindowRateLimiter(max_requests=1, window_seconds=60),
+    )
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+
+    router = APIRouter()
+    instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo())
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(_: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
+
+    app.include_router(router, prefix='/api')
+    client = TestClient(app)
+
+    first = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': 'VWCE 10000'})
+    second = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': 'VWCE 10000'})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()['error']['code'] == 'rate_limited'

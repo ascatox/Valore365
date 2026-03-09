@@ -1,10 +1,12 @@
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
 from sqlalchemy import text
 
+from ..config import get_settings
 from ..repository import PortfolioRepository
 from ..schemas.instant_portfolio_analyzer import (
     InstantAnalyzeCta,
@@ -31,6 +33,8 @@ from .portfolio_doctor import (
     compute_overlap_score,
     compute_total_score,
 )
+
+IDENTIFIER_PATTERN = re.compile(r"^[A-Z0-9._-]{1,32}$")
 
 
 @dataclass
@@ -161,10 +165,20 @@ def parse_request_positions(payload: InstantAnalyzeRequest) -> tuple[list[tuple[
 def parse_raw_text(raw_text: str) -> tuple[list[tuple[ParsedPositionInput, int | None, str | None]], list[InstantAnalyzeLineError]]:
     results: list[tuple[ParsedPositionInput, int | None, str | None]] = []
     errors: list[InstantAnalyzeLineError] = []
+    max_line_length = get_settings().public_instant_analyzer_max_line_length
 
     for line_number, raw_line in enumerate(raw_text.splitlines(), start=1):
         line = raw_line.strip()
         if not line:
+            continue
+        if len(raw_line) > max_line_length:
+            errors.append(
+                InstantAnalyzeLineError(
+                    line=line_number,
+                    raw=raw_line,
+                    error=f"Line is too long (max {max_line_length} characters)",
+                )
+            )
             continue
         parts = line.split()
         if len(parts) < 2:
@@ -172,6 +186,9 @@ def parse_raw_text(raw_text: str) -> tuple[list[tuple[ParsedPositionInput, int |
             continue
 
         identifier = parts[0].strip().upper()
+        if not IDENTIFIER_PATTERN.fullmatch(identifier):
+            errors.append(InstantAnalyzeLineError(line=line_number, raw=raw_line, error="Invalid identifier format"))
+            continue
         value_token = parts[-1].replace(".", "").replace(",", ".")
         try:
             value = float(value_token)
