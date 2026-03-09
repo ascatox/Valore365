@@ -179,8 +179,8 @@ function ProtectedApp() {
               </Box>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
-                  variant={autoRefresh ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : undefined}
+                  variant={autoRefresh || isMobile ? 'filled' : 'default'}
+                  color={autoRefresh ? 'blue' : isMobile ? 'teal' : undefined}
                   size={isMobile ? 42 : 'lg'}
                   onClick={handleGlobalRefresh}
                   onDoubleClick={toggleAutoRefresh}
