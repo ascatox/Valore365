@@ -9,7 +9,7 @@ interface InstantAnalyzerInsightsProps {
 export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps) {
   return (
     <Stack gap="md">
-      <Card withBorder radius="xl" padding="lg">
+      <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#fffdf9' }}>
         <Group justify="space-between" mb="md">
           <Group gap="sm">
             <ThemeIcon color="orange" variant="light" radius="xl">
@@ -24,11 +24,11 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
             <Alert key={`${alert.code}-${alert.message}`} color={alert.severity === 'critical' ? 'red' : 'orange'} variant="light">
               {alert.message}
             </Alert>
-          )) : <Text c="dimmed">No major warnings detected in this snapshot.</Text>}
+          )) : <Text c="#475569">No major warnings detected in this snapshot.</Text>}
         </Stack>
       </Card>
 
-      <Card withBorder radius="xl" padding="lg">
+      <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#f8fcfb' }}>
         <Group justify="space-between" mb="md">
           <Group gap="sm">
             <ThemeIcon color="teal" variant="light" radius="xl">
@@ -43,7 +43,7 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
             <Alert key={`${suggestion.code}-${suggestion.message}`} color="teal" variant="light">
               {suggestion.message}
             </Alert>
-          )) : <Text c="dimmed">No immediate changes suggested.</Text>}
+          )) : <Text c="#475569">No immediate changes suggested.</Text>}
         </Stack>
       </Card>
     </Stack>

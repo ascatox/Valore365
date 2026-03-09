@@ -20,14 +20,23 @@ export function InstantAnalyzerForm({
   onReset,
 }: InstantAnalyzerFormProps) {
   return (
-    <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(180deg, #fffdf8 0%, #ffffff 100%)' }}>
+    <Card
+      radius="xl"
+      padding="xl"
+      withBorder
+      style={{
+        background: 'linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%)',
+        borderColor: 'rgba(15, 23, 42, 0.1)',
+        boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+      }}
+    >
       <Stack gap="lg">
         <div>
-          <Text tt="uppercase" fw={800} size="xs" c="dimmed">Paste your holdings</Text>
-          <Text size="sm" c="dimmed" mt={6}>
+          <Text tt="uppercase" fw={800} size="xs" c="#7c2d12">Paste your holdings</Text>
+          <Text size="sm" c="#334155" mt={6}>
             One line per position. Format: <code>IDENTIFIER VALUE</code>. Tickers and ISINs are supported. Example: <code>VWCE 10000</code>
           </Text>
-          <Text size="sm" c="dimmed" mt={6}>
+          <Text size="sm" c="#475569" mt={6}>
             If some lines cannot be resolved, the analyzer will still process the valid ones and flag the rest below.
           </Text>
         </div>
@@ -47,6 +56,8 @@ export function InstantAnalyzerForm({
             input: {
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
               backgroundColor: '#f8fafc',
+              color: '#0f172a',
+              borderColor: 'rgba(15, 23, 42, 0.12)',
             },
           }}
         />

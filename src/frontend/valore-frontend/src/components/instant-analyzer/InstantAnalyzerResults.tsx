@@ -22,7 +22,7 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
       <InstantAnalyzerScoreCard result={result} />
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
-        <Card withBorder radius="xl" padding="lg">
+        <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#fffefb' }}>
           <Group gap="sm" mb="md">
             <IconChartDonut3 size={18} />
             <Title order={4}>Key metrics</Title>
@@ -40,18 +40,18 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
           </Table>
         </Card>
 
-        <Card withBorder radius="xl" padding="lg">
-          <Title order={4} mb="md">Resolved positions</Title>
+        <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#f9fcff' }}>
+          <Title order={4} mb="md" c="#0f172a">Resolved positions</Title>
           <Stack gap="sm">
             {result.positions.map((position) => (
               <Group key={`${position.identifier}-${position.resolved_symbol}`} justify="space-between" align="flex-start">
                 <div>
-                  <Text fw={700}>{position.resolved_symbol}</Text>
-                  <Text size="sm" c="dimmed">{position.resolved_name}</Text>
+                  <Text fw={700} c="#0f172a">{position.resolved_symbol}</Text>
+                  <Text size="sm" c="#475569">{position.resolved_name}</Text>
                 </div>
                 <Stack gap={2} align="flex-end">
                   <Badge variant="light">{position.weight.toFixed(2)}%</Badge>
-                  <Text size="sm">EUR {position.value.toLocaleString('it-IT')}</Text>
+                  <Text size="sm" c="#1e293b">EUR {position.value.toLocaleString('it-IT')}</Text>
                 </Stack>
               </Group>
             ))}

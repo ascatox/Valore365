@@ -22,7 +22,7 @@ const EXAMPLES = [
 export function InstantAnalyzerExamples({ onSelectExample }: InstantAnalyzerExamplesProps) {
   return (
     <Stack gap="xs">
-      <Text fw={700} size="sm" c="dimmed">
+      <Text fw={700} size="sm" c="#334155">
         Prova un esempio
       </Text>
       <Group gap="xs">

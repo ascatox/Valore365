@@ -15,8 +15,8 @@ export function InstantAnalyzerInputIssues({
   }
 
   return (
-    <Card withBorder radius="xl" padding="lg">
-      <Title order={4} mb="md">Input issues</Title>
+    <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#fffdf8' }}>
+      <Title order={4} mb="md" c="#0f172a">Input issues</Title>
       <Stack gap="sm">
         {parseErrors.map((error) => (
           <Alert key={`parse-${error.line}-${error.raw}`} color="red" variant="light">
