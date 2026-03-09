@@ -65,7 +65,7 @@ export function InstantPortfolioAnalyzerPage() {
     <Box
       style={{
         minHeight: '100vh',
-        background: 'radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 24%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.16), transparent 28%), linear-gradient(180deg, #eef7ff 0%, #f6fffc 22%, #edf6f3 100%)',
+        background: 'radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 22%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.10), transparent 26%), linear-gradient(180deg, #fbfeff 0%, #ffffff 24%, #f7fcfa 100%)',
         padding: '48px 0 72px',
         color: '#0f172a',
       }}
