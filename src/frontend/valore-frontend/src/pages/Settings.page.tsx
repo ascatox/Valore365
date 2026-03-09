@@ -83,8 +83,14 @@ export function SettingsPage() {
 
     getCopilotStatus().then((st) => { if (active) setCopilotStatus(st); }).catch(() => {});
 
+    const onPrivacyChanged = (e: Event) => {
+      if (active) setPrivacyModeEnabled((e as CustomEvent).detail as boolean);
+    };
+    window.addEventListener('valore365:privacy-changed', onPrivacyChanged);
+
     return () => {
       active = false;
+      window.removeEventListener('valore365:privacy-changed', onPrivacyChanged);
     };
   }, []);
 
@@ -92,6 +98,7 @@ export function SettingsPage() {
     setPrivacyModeEnabled(checked);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, String(checked));
+      window.dispatchEvent(new CustomEvent('valore365:privacy-changed', { detail: checked }));
     }
   };
 

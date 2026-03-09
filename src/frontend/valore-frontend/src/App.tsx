@@ -25,11 +25,14 @@ import {
   IconSettings,
   IconChevronsLeft,
   IconChevronsRight,
+  IconEye,
+  IconEyeOff,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
 import { BrandMark } from './components/BrandMark';
+import { STORAGE_KEYS } from './components/dashboard/constants';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
 const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
@@ -71,6 +74,17 @@ function ProtectedApp() {
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [privacyMode, setPrivacyMode] = useState(() =>
+    window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true',
+  );
+
+  const togglePrivacyMode = () => {
+    const next = !privacyMode;
+    setPrivacyMode(next);
+    window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, String(next));
+    window.dispatchEvent(new CustomEvent('valore365:privacy-changed', { detail: next }));
+    window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
+  };
 
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -111,6 +125,9 @@ function ProtectedApp() {
               </Box>
             </Group>
             <Group>
+              <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
+                {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
+              </ActionIcon>
               <ActionIcon onClick={toggleColorScheme} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Cambia tema">
                 {colorScheme === 'dark' ? <IconSun size={isMobile ? 22 : 18} /> : <IconMoon size={isMobile ? 22 : 18} />}
               </ActionIcon>
