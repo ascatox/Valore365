@@ -1467,7 +1467,7 @@ export function PortfolioPage() {
               Nuova Transazione
             </Button>
             <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => setCsvImportOpened(true)} disabled={!selectedPortfolioId}>
-              Importa CSV
+              Importa
             </Button>
           </Group>
         )}
@@ -1564,7 +1564,7 @@ export function PortfolioPage() {
               disabled: !selectedPortfolioId,
             },
             {
-              label: 'Importa CSV',
+              label: 'Importa',
               description: 'Carica movimenti o storico dal file broker',
               icon: IconFileImport,
               onClick: () => setCsvImportOpened(true),
