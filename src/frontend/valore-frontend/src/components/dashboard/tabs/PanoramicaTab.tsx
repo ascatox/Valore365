@@ -137,12 +137,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
 
   const kpiItems = useMemo(() => [
     {
-      label: isMobile ? 'Valore Tot' : 'Valore Totale',
-      value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
-      icon: IconCoin,
-      iconColor: 'blue' as const,
-    },
-    {
       label: isMobile ? 'Oggi' : 'Var. Giornaliera',
       value: portfolioSummary
         ? isMobile
@@ -154,6 +148,12 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       iconColor: 'orange' as const,
       subtitle: portfolioSummary ? formatMoney(portfolioSummary.day_change, mvpCurrency, true) : undefined,
       subtitleColor: getVariationColor(portfolioSummary?.day_change ?? 0),
+    },
+    {
+      label: isMobile ? 'Valore Tot' : 'Valore Totale',
+      value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
+      icon: IconCoin,
+      iconColor: 'blue' as const,
     },
     {
       label: 'P/L Totale',
