@@ -154,9 +154,28 @@ performance_service = PerformanceService(repo)
 scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service, historical_service, repo)
 finance_client = make_finance_client(settings)
 
+CSV_IMPORT_ALLOWED_EXTENSIONS = (".csv", ".xlsx", ".xls")
+CSV_IMPORT_ALLOWED_CONTENT_TYPES = {
+    "text/csv",
+    "application/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/octet-stream",
+}
+
+
+def _format_file_size_limit(byte_count: int) -> str:
+    if byte_count >= 1024 * 1024:
+        return f"{byte_count // (1024 * 1024)} MB"
+    if byte_count >= 1024:
+        return f"{byte_count // 1024} KB"
+    return f"{byte_count} bytes"
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if settings.app_env != "dev" and not settings.clerk_auth_enabled:
+        raise RuntimeError("Refusing to start with Clerk auth disabled outside dev")
     scheduler.start()
     try:
         yield
@@ -1618,14 +1637,33 @@ async def csv_import_preview(
     _auth: AuthContext = Depends(require_auth),
 ) -> CsvImportPreviewResponse:
     try:
+        filename = file.filename or ""
+        if not filename.lower().endswith(CSV_IMPORT_ALLOWED_EXTENSIONS):
+            raise AppError(
+                code="bad_request",
+                message="Formato file non supportato. Usa CSV o Excel (XLSX).",
+                status_code=400,
+            )
+        if file.content_type and file.content_type not in CSV_IMPORT_ALLOWED_CONTENT_TYPES:
+            raise AppError(
+                code="bad_request",
+                message="Content-Type file non supportato.",
+                status_code=400,
+            )
         content = await file.read()
-        is_xlsx = file.filename and file.filename.lower().endswith((".xlsx", ".xls"))
+        if len(content) > settings.csv_import_max_upload_bytes:
+            raise AppError(
+                code="bad_request",
+                message=f"File troppo grande. Limite massimo {_format_file_size_limit(settings.csv_import_max_upload_bytes)}",
+                status_code=400,
+            )
+        is_xlsx = filename.lower().endswith((".xlsx", ".xls"))
         if is_xlsx:
             return csv_import_service.parse_and_validate(
                 portfolio_id=portfolio_id,
                 user_id=_auth.user_id,
                 file_bytes=content,
-                filename=file.filename,
+                filename=filename,
                 broker=broker,
             )
         file_content = content.decode("utf-8-sig")
@@ -1633,7 +1671,7 @@ async def csv_import_preview(
             portfolio_id=portfolio_id,
             user_id=_auth.user_id,
             file_content=file_content,
-            filename=file.filename,
+            filename=filename,
             broker=broker,
         )
     except ValueError as exc:

@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""
+    trusted_proxy_ips: str = ""
 
     pac_scheduler_enabled: bool = False
     pac_execution_hour: int = 8
@@ -70,6 +71,7 @@ class Settings(BaseSettings):
     public_instant_analyzer_max_positions: int = 50
     public_instant_analyzer_max_raw_text_chars: int = 5000
     public_instant_analyzer_max_line_length: int = 128
+    csv_import_max_upload_bytes: int = 5 * 1024 * 1024
 
     @property
     def clerk_authorized_parties_list(self) -> list[str]:
@@ -78,6 +80,10 @@ class Settings(BaseSettings):
     @property
     def cors_allowed_origins_list(self) -> list[str]:
         return [v.strip() for v in self.cors_allowed_origins.split(",") if v.strip()]
+
+    @property
+    def trusted_proxy_ips_list(self) -> list[str]:
+        return [v.strip() for v in self.trusted_proxy_ips.split(",") if v.strip()]
 
 
 @lru_cache(maxsize=1)

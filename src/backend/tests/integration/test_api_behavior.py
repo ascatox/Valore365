@@ -528,6 +528,84 @@ def test_public_instant_portfolio_analyzer_real_route_rate_limits_requests(monke
     assert second.json()['error']['code'] == 'rate_limited'
 
 
+def test_public_instant_portfolio_analyzer_does_not_trust_untrusted_forwarded_for(monkeypatch):
+    monkeypatch.setattr(
+        instant_portfolio_api,
+        '_public_instant_rate_limiter',
+        instant_portfolio_api.SlidingWindowRateLimiter(max_requests=1, window_seconds=60),
+    )
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+    monkeypatch.setattr(instant_portfolio_api.get_settings(), 'trusted_proxy_ips', '')
+
+    router = APIRouter()
+    instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo())
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(_: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
+
+    app.include_router(router, prefix='/api')
+    client = TestClient(app)
+
+    first = client.post(
+        '/api/public/portfolio/analyze',
+        json={'input_mode': 'raw_text', 'raw_text': 'VWCE 10000'},
+        headers={'x-forwarded-for': '1.1.1.1'},
+    )
+    second = client.post(
+        '/api/public/portfolio/analyze',
+        json={'input_mode': 'raw_text', 'raw_text': 'VWCE 10000'},
+        headers={'x-forwarded-for': '2.2.2.2'},
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()['error']['code'] == 'rate_limited'
+
+
+def test_csv_import_preview_rejects_oversized_file(monkeypatch):
+    monkeypatch.setattr(api_main.settings, 'csv_import_max_upload_bytes', 8)
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/portfolios/1/csv-import/preview',
+        files={'file': ('import.csv', b'123456789', 'text/csv')},
+        data={'broker': 'generic'},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'
+    assert 'File troppo grande' in payload['error']['message']
+
+
+def test_csv_import_preview_rejects_unsupported_extension():
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/portfolios/1/csv-import/preview',
+        files={'file': ('import.txt', b'test', 'text/plain')},
+        data={'broker': 'generic'},
+    )
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'
+    assert 'Formato file non supportato' in payload['error']['message']
+
+
+def test_app_refuses_to_start_without_auth_outside_dev(monkeypatch):
+    monkeypatch.setattr(api_main.settings, 'app_env', 'prod')
+    monkeypatch.setattr(api_main.settings, 'clerk_auth_enabled', False)
+
+    try:
+        with TestClient(api_main.app):
+            raise AssertionError('TestClient should not start successfully')
+    except RuntimeError as exc:
+        assert 'Clerk auth disabled' in str(exc)
+
+
 def test_csv_import_template_route(monkeypatch):
     monkeypatch.setattr(
         api_main.csv_import_service,

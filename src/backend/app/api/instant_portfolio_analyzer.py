@@ -38,10 +38,12 @@ class SlidingWindowRateLimiter:
 
 def _client_ip(request: Request) -> str:
     forwarded_for = request.headers.get("x-forwarded-for", "").strip()
-    if forwarded_for:
+    settings = get_settings()
+    remote_host = request.client.host if request.client and request.client.host else None
+    if forwarded_for and remote_host and remote_host in settings.trusted_proxy_ips_list:
         return forwarded_for.split(",")[0].strip()
-    if request.client and request.client.host:
-        return request.client.host
+    if remote_host:
+        return remote_host
     return "unknown"
 
 
