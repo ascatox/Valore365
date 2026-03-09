@@ -270,7 +270,7 @@ export function CsvImportModal({
 
             {resolvedPortfolioId && !preview && (
               <Alert color="teal" variant="light">
-                Portfolio pronto. Ora puoi caricare il file da importare.
+                Portafoglio esistente. Ora puoi caricare il file da importare.
               </Alert>
             )}
 
