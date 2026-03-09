@@ -1,6 +1,7 @@
 import { Alert, Badge, Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { IconArrowRight, IconChartDonut3 } from '@tabler/icons-react';
 import type { InstantAnalyzeResponse } from '../../services/api';
+import { InstantAnalyzerInputIssues } from './InstantAnalyzerInputIssues';
 import { InstantAnalyzerInsights } from './InstantAnalyzerInsights';
 import { InstantAnalyzerScoreCard } from './InstantAnalyzerScoreCard';
 
@@ -60,42 +61,31 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
 
       <InstantAnalyzerInsights result={result} />
 
-      {(result.unresolved.length > 0 || result.parse_errors.length > 0) && (
-        <Card withBorder radius="xl" padding="lg">
-          <Title order={4} mb="md">Input issues</Title>
-          <Stack gap="sm">
-            {result.parse_errors.map((error) => (
-              <Alert key={`parse-${error.line}-${error.raw}`} color="red" variant="light">
-                Line {error.line}: {error.error}
-              </Alert>
-            ))}
-            {result.unresolved.map((item) => (
-              <Alert key={`unresolved-${item.identifier}-${item.line ?? 'na'}`} color="yellow" variant="light">
-                {item.identifier}: {item.error}
-              </Alert>
-            ))}
-          </Stack>
+      <InstantAnalyzerInputIssues
+        parseErrors={result.parse_errors}
+        unresolved={result.unresolved}
+      />
+
+      {result.cta.show_signup && (
+        <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(135deg, #183153 0%, #245f73 100%)', color: 'white' }}>
+          <Group justify="space-between" align="center">
+            <div>
+              <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Next step</Text>
+              <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
+            </div>
+            <Button
+              component="a"
+              href={clerkEnabled ? '/sign-up' : '/portfolio'}
+              rightSection={<IconArrowRight size={16} />}
+              color="yellow"
+              variant="filled"
+              radius="xl"
+            >
+              Create free account
+            </Button>
+          </Group>
         </Card>
       )}
-
-      <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(135deg, #183153 0%, #245f73 100%)', color: 'white' }}>
-        <Group justify="space-between" align="center">
-          <div>
-            <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Next step</Text>
-            <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
-          </div>
-          <Button
-            component="a"
-            href={clerkEnabled ? '/sign-up' : '/portfolio'}
-            rightSection={<IconArrowRight size={16} />}
-            color="yellow"
-            variant="filled"
-            radius="xl"
-          >
-            Create free account
-          </Button>
-        </Group>
-      </Card>
     </Stack>
   );
 }

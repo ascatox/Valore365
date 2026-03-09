@@ -1,5 +1,19 @@
 # FEATURE: Instant Portfolio Analyzer (No Login) — Codex Ready
 
+## Implementation Status Snapshot
+
+Current repository status as of March 9, 2026:
+
+- public backend route implemented
+- parsing, unresolved handling, metrics, scoring, alerts, and suggestions implemented
+- frontend page and instant-analyzer components implemented
+- score breakdown exposed in API response and rendered in UI
+- structured error details returned for fully invalid input
+- frontend tests added for success, structured errors, and conditional CTA
+- backend unit/integration coverage added for the public analyzer flow
+
+Remaining work is mostly metadata expansion, UI polish, and broader test coverage rather than core feature scaffolding.
+
 ## Goal
 
 Build a **public, no-login portfolio analysis experience** that lets a visitor paste positions and instantly receive a **Portfolio Doctor** diagnosis.

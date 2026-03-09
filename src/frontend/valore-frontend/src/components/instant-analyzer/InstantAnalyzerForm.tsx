@@ -25,7 +25,10 @@ export function InstantAnalyzerForm({
         <div>
           <Text tt="uppercase" fw={800} size="xs" c="dimmed">Paste your holdings</Text>
           <Text size="sm" c="dimmed" mt={6}>
-            One line per position. Format: <code>IDENTIFIER VALUE</code>. Example: <code>VWCE 10000</code>
+            One line per position. Format: <code>IDENTIFIER VALUE</code>. Tickers and ISINs are supported. Example: <code>VWCE 10000</code>
+          </Text>
+          <Text size="sm" c="dimmed" mt={6}>
+            If some lines cannot be resolved, the analyzer will still process the valid ones and flag the rest below.
           </Text>
         </div>
 

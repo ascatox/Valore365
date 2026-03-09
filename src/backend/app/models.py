@@ -10,6 +10,7 @@ TransactionSide = Literal['buy', 'sell', 'deposit', 'withdrawal', 'dividend', 'f
 class ApiError(BaseModel):
     code: str
     message: str
+    details: dict[str, Any] | None = None
 
 
 class ErrorResponse(BaseModel):

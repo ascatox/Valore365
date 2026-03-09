@@ -51,6 +51,29 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
             <Text fw={700}>{result.summary.cost_efficiency}</Text>
           </Stack>
         </SimpleGrid>
+
+        <SimpleGrid cols={{ base: 2, md: 5 }} spacing="md">
+          <Stack gap={2}>
+            <Text size="xs" tt="uppercase" c="dimmed">Diversification</Text>
+            <Text fw={700}>{result.category_scores.diversification} / 25</Text>
+          </Stack>
+          <Stack gap={2}>
+            <Text size="xs" tt="uppercase" c="dimmed">Risk score</Text>
+            <Text fw={700}>{result.category_scores.risk} / 25</Text>
+          </Stack>
+          <Stack gap={2}>
+            <Text size="xs" tt="uppercase" c="dimmed">Concentration</Text>
+            <Text fw={700}>{result.category_scores.concentration} / 20</Text>
+          </Stack>
+          <Stack gap={2}>
+            <Text size="xs" tt="uppercase" c="dimmed">Overlap score</Text>
+            <Text fw={700}>{result.category_scores.overlap} / 15</Text>
+          </Stack>
+          <Stack gap={2}>
+            <Text size="xs" tt="uppercase" c="dimmed">Cost score</Text>
+            <Text fw={700}>{result.category_scores.cost_efficiency} / 15</Text>
+          </Stack>
+        </SimpleGrid>
       </Stack>
     </Card>
   );

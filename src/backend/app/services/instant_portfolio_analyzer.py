@@ -56,12 +56,31 @@ class ResolvedCatalogPosition:
     asset: CatalogAsset
 
 
+class InstantPortfolioAnalysisError(ValueError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        parse_errors: list[InstantAnalyzeLineError] | None = None,
+        unresolved: list[InstantAnalyzeUnresolvedItem] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.details = {
+            "parse_errors": [item.model_dump() for item in (parse_errors or [])],
+            "unresolved": [item.model_dump() for item in (unresolved or [])],
+        }
+
+
 def analyze_public_portfolio(repo: PortfolioRepository, payload: InstantAnalyzeRequest) -> InstantAnalyzeResponse:
     normalized_positions, parse_errors = parse_request_positions(payload)
     resolved_positions, unresolved = resolve_positions(repo, normalized_positions)
 
     if not resolved_positions:
-        raise ValueError("No valid positions found")
+        raise InstantPortfolioAnalysisError(
+            "No valid positions found",
+            parse_errors=parse_errors,
+            unresolved=unresolved,
+        )
 
     total_value = round(sum(position.value for position in resolved_positions), 2)
     holdings = build_analyzed_holdings(resolved_positions, total_value)
@@ -73,7 +92,7 @@ def analyze_public_portfolio(repo: PortfolioRepository, payload: InstantAnalyzeR
     )
     score = compute_total_score(category_scores)
     summary = build_summary(metrics, category_scores)
-    alerts = transform_alerts(build_alerts(metrics))
+    alerts = transform_alerts(build_alerts(metrics, holdings))
     suggestions = transform_suggestions(
         build_suggestions(
             metrics,
@@ -109,6 +128,7 @@ def analyze_public_portfolio(repo: PortfolioRepository, payload: InstantAnalyzeR
             portfolio_volatility=metrics.portfolio_volatility,
             weighted_ter=metrics.weighted_ter,
         ),
+        category_scores=category_scores,
         alerts=alerts,
         suggestions=suggestions,
         cta=InstantAnalyzeCta(

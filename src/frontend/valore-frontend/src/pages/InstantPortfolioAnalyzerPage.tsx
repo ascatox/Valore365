@@ -2,27 +2,59 @@ import { useState } from 'react';
 import { Alert, Box, Container, Grid, Group, Stack, Text, Title } from '@mantine/core';
 import { IconShieldCheck, IconSparkles, IconTargetArrow } from '@tabler/icons-react';
 import { InstantAnalyzerForm } from '../components/instant-analyzer/InstantAnalyzerForm';
+import { InstantAnalyzerInputIssues } from '../components/instant-analyzer/InstantAnalyzerInputIssues';
 import { InstantAnalyzerResults } from '../components/instant-analyzer/InstantAnalyzerResults';
-import { analyzeInstantPortfolio, type InstantAnalyzeResponse } from '../services/api';
+import {
+  ApiRequestError,
+  analyzeInstantPortfolio,
+  type InstantAnalyzeLineError,
+  type InstantAnalyzeResponse,
+  type InstantAnalyzeUnresolvedItem,
+} from '../services/api';
+
+interface InstantAnalyzerErrorDetails {
+  parseErrors: InstantAnalyzeLineError[];
+  unresolved: InstantAnalyzeUnresolvedItem[];
+}
+
+function readErrorDetails(error: unknown): InstantAnalyzerErrorDetails {
+  if (!(error instanceof ApiRequestError) || !error.details) {
+    return { parseErrors: [], unresolved: [] };
+  }
+
+  const parseErrors = Array.isArray(error.details.parse_errors)
+    ? (error.details.parse_errors as InstantAnalyzeLineError[])
+    : [];
+  const unresolved = Array.isArray(error.details.unresolved)
+    ? (error.details.unresolved as InstantAnalyzeUnresolvedItem[])
+    : [];
+
+  return { parseErrors, unresolved };
+}
 
 export function InstantPortfolioAnalyzerPage() {
   const [rawText, setRawText] = useState('VWCE 10000\nAGGH 5000\nEIMI 2000');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InstantAnalyzeResponse | null>(null);
+  const [errorDetails, setErrorDetails] = useState<InstantAnalyzerErrorDetails>({ parseErrors: [], unresolved: [] });
 
   const handleSubmit = async () => {
     if (!rawText.trim()) {
       setError('Paste at least one position before running the analysis.');
+      setErrorDetails({ parseErrors: [], unresolved: [] });
       return;
     }
     setLoading(true);
     setError(null);
+    setErrorDetails({ parseErrors: [], unresolved: [] });
     try {
       const response = await analyzeInstantPortfolio({ input_mode: 'raw_text', raw_text: rawText });
       setResult(response);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Unable to analyze this portfolio right now.');
+      setResult(null);
+      setErrorDetails(readErrorDetails(requestError));
     } finally {
       setLoading(false);
     }
@@ -69,6 +101,7 @@ export function InstantPortfolioAnalyzerPage() {
                   setRawText('');
                   setResult(null);
                   setError(null);
+                  setErrorDetails({ parseErrors: [], unresolved: [] });
                 }}
               />
             </Grid.Col>
@@ -77,9 +110,15 @@ export function InstantPortfolioAnalyzerPage() {
               {result ? (
                 <InstantAnalyzerResults result={result} />
               ) : (
-                <Alert color="blue" variant="light" radius="xl" title="What you will get">
-                  Score, diversification snapshot, overlap warnings, cost signals, and a signup CTA once the analysis is ready.
-                </Alert>
+                <Stack gap="lg">
+                  <Alert color="blue" variant="light" radius="xl" title="What you will get">
+                    Score, diversification snapshot, score breakdown, overlap warnings, cost signals, and a signup CTA once the analysis is ready.
+                  </Alert>
+                  <InstantAnalyzerInputIssues
+                    parseErrors={errorDetails.parseErrors}
+                    unresolved={errorDetails.unresolved}
+                  />
+                </Stack>
               )}
             </Grid.Col>
           </Grid>

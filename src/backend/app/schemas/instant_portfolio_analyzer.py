@@ -1,6 +1,7 @@
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from .portfolio_doctor import PortfolioHealthCategoryScores
 
 
 class ParsedPositionInput(BaseModel):
@@ -75,6 +76,7 @@ class InstantAnalyzeResponse(BaseModel):
     unresolved: list[InstantAnalyzeUnresolvedItem] = Field(default_factory=list)
     parse_errors: list[InstantAnalyzeLineError] = Field(default_factory=list)
     metrics: PortfolioAnalyzeMetrics
+    category_scores: PortfolioHealthCategoryScores
     alerts: list[PortfolioAnalyzeAlert] = Field(default_factory=list)
     suggestions: list[PortfolioAnalyzeSuggestion] = Field(default_factory=list)
     cta: InstantAnalyzeCta

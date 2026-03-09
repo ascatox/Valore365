@@ -1,8 +1,11 @@
+from fastapi import APIRouter, FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 import app.api.portfolio_health as portfolio_health_api
 import app.api.instant_portfolio_analyzer as instant_portfolio_api
 import app.main as api_main
+from app.errors import AppError
 from app.schemas.portfolio_doctor import (
     PortfolioHealthCategoryScores,
     PortfolioHealthMetrics,
@@ -11,7 +14,9 @@ from app.schemas.portfolio_doctor import (
 )
 from app.schemas.instant_portfolio_analyzer import (
     InstantAnalyzeCta,
+    InstantAnalyzeLineError,
     InstantAnalyzeResponse,
+    InstantAnalyzeUnresolvedItem,
     PortfolioAnalyzeAlert,
     PortfolioAnalyzeMetrics,
     PortfolioAnalyzeSuggestion,
@@ -235,6 +240,42 @@ def test_patch_transaction_route_bad_request(monkeypatch):
     assert payload['error']['code'] == 'bad_request'
 
 
+def test_public_instant_portfolio_analyzer_route_bad_request_includes_details(monkeypatch):
+    from app.services.instant_portfolio_analyzer import InstantPortfolioAnalysisError
+
+    def _fake_analyze(repo, payload):
+        raise InstantPortfolioAnalysisError(
+            'No valid positions found',
+            parse_errors=[
+                InstantAnalyzeLineError(
+                    line=1,
+                    raw='BAD',
+                    error='Expected format: IDENTIFIER VALUE',
+                )
+            ],
+            unresolved=[
+                InstantAnalyzeUnresolvedItem(
+                    identifier='UNKNOWN',
+                    raw='UNKNOWN 1000',
+                    line=2,
+                    error='Asset not found in the supported catalog',
+                )
+            ],
+        )
+
+    monkeypatch.setattr(instant_portfolio_api, 'analyze_public_portfolio', _fake_analyze)
+    client = TestClient(api_main.app)
+
+    response = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': 'BAD\nUNKNOWN 1000'})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'
+    assert payload['error']['message'] == 'No valid positions found'
+    assert payload['error']['details']['parse_errors'][0]['line'] == 1
+    assert payload['error']['details']['unresolved'][0]['identifier'] == 'UNKNOWN'
+
+
 def test_delete_transaction_route_not_found(monkeypatch):
     monkeypatch.setattr(api_main, 'repo', _FakeRepo())
     client = TestClient(api_main.app)
@@ -355,6 +396,13 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
                 portfolio_volatility=14.8,
                 weighted_ter=0.21,
             ),
+            category_scores=PortfolioHealthCategoryScores(
+                diversification=18,
+                risk=18,
+                concentration=8,
+                overlap=10,
+                cost_efficiency=12,
+            ),
             alerts=[
                 PortfolioAnalyzeAlert(
                     severity='warning',
@@ -382,6 +430,7 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload['summary']['score'] == 74
+    assert payload['category_scores']['diversification'] == 18
     assert payload['cta']['show_signup'] is True
     assert payload['positions'][0]['resolved_symbol'] == 'VWCE'
 
@@ -398,3 +447,25 @@ def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):
     assert response.status_code == 400
     payload = response.json()
     assert payload['error']['code'] == 'bad_request'
+
+
+def test_public_instant_portfolio_analyzer_real_route_returns_structured_details():
+    router = APIRouter()
+    instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo())
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(_: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
+
+    app.include_router(router, prefix='/api')
+    client = TestClient(app)
+
+    response = client.post('/api/public/portfolio/analyze', json={'input_mode': 'raw_text', 'raw_text': 'BAD\nUNKNOWN 1000'})
+
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload['error']['code'] == 'bad_request'
+    assert payload['error']['message'] == 'No valid positions found'
+    assert payload['error']['details']['parse_errors'][0]['line'] == 1
+    assert payload['error']['details']['unresolved'][0]['identifier'] == 'UNKNOWN'

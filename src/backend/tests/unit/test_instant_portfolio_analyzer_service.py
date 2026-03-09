@@ -59,4 +59,5 @@ def test_analyze_public_portfolio_uses_catalog_and_generates_score():
     assert response.summary.score > 0
     assert len(response.positions) == 3
     assert response.metrics.max_position_weight > 50
+    assert response.category_scores.diversification >= 0
     assert response.cta.show_signup is True

@@ -13,7 +13,32 @@ export interface ApiErrorPayload {
   error?: {
     code: string;
     message: string;
+    details?: Record<string, unknown> | null;
   };
+}
+
+export class ApiRequestError extends Error {
+  code: string | null;
+  status: number;
+  details: Record<string, unknown> | null;
+
+  constructor({
+    message,
+    code,
+    status,
+    details,
+  }: {
+    message: string;
+    code?: string | null;
+    status: number;
+    details?: Record<string, unknown> | null;
+  }) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.code = code ?? null;
+    this.status = status;
+    this.details = details ?? null;
+  }
 }
 
 export interface InstantAnalyzeRequest {
@@ -86,6 +111,7 @@ export interface InstantAnalyzeResponse {
   unresolved: InstantAnalyzeUnresolvedItem[];
   parse_errors: InstantAnalyzeLineError[];
   metrics: PortfolioAnalyzeMetrics;
+  category_scores: PortfolioHealthCategoryScores;
   alerts: PortfolioAnalyzeAlert[];
   suggestions: PortfolioAnalyzeSuggestion[];
   cta: InstantAnalyzeCta;
@@ -692,18 +718,22 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     let message = `HTTP ${response.status}`;
+    let code: string | null = null;
+    let details: Record<string, unknown> | null = null;
     try {
       const body = (await response.json()) as ApiErrorPayload;
       if (body?.error?.message) {
         message = body.error.message;
       }
+      code = body?.error?.code ?? null;
+      details = body?.error?.details ?? null;
     } catch {
       const text = await response.text().catch(() => '');
       if (text) {
         message = text;
       }
     }
-    throw new Error(message);
+    throw new ApiRequestError({ message, code, status: response.status, details });
   }
 
   return response.json() as Promise<T>;
