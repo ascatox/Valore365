@@ -70,8 +70,8 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:5173"
     public_instant_analyzer_rate_limit_requests: int = 10
     public_instant_analyzer_rate_limit_window_seconds: int = 60
-    public_instant_analyzer_max_positions: int = 50
-    public_instant_analyzer_max_raw_text_chars: int = 5000
+    public_instant_analyzer_max_positions: int = 500
+    public_instant_analyzer_max_raw_text_chars: int = 50000
     public_instant_analyzer_max_line_length: int = 128
     csv_import_max_upload_bytes: int = 5 * 1024 * 1024
 

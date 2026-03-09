@@ -18,8 +18,8 @@ class ParsedPositionInput(BaseModel):
 
 class InstantAnalyzeRequest(BaseModel):
     input_mode: Literal["text", "raw_text"] = "raw_text"
-    positions: list[ParsedPositionInput] = Field(default_factory=list, max_length=50)
-    raw_text: str | None = Field(default=None, max_length=5000)
+    positions: list[ParsedPositionInput] = Field(default_factory=list, max_length=500)
+    raw_text: str | None = Field(default=None, max_length=50000)
 
 
 class InstantAnalyzeLineError(BaseModel):
