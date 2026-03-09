@@ -21,15 +21,15 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
       padding="xl"
       withBorder
       style={{
-        background: 'linear-gradient(145deg, #fff7df 0%, #fffef9 58%, #eef6fb 100%)',
-        borderColor: 'rgba(15, 23, 42, 0.1)',
+        background: 'linear-gradient(145deg, #eef7ff 0%, #f7fffd 55%, #eafaf4 100%)',
+        borderColor: 'rgba(37, 99, 235, 0.12)',
         boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
       }}
     >
       <Stack gap="lg">
         <Group justify="space-between" align="flex-start">
           <div>
-            <Text tt="uppercase" fw={800} size="xs" c="#7c2d12">
+            <Text tt="uppercase" fw={800} size="xs" c="#2563eb">
               Salute del Portafoglio
             </Text>
             <Title order={2} c="#0f172a">{result.summary.score} / 100</Title>

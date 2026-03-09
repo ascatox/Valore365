@@ -25,14 +25,14 @@ export function InstantAnalyzerForm({
       padding="xl"
       withBorder
       style={{
-        background: 'linear-gradient(180deg, #fffaf0 0%, #fffdf8 100%)',
-        borderColor: 'rgba(15, 23, 42, 0.1)',
-        boxShadow: '0 18px 40px rgba(15, 23, 42, 0.08)',
+        background: 'linear-gradient(180deg, #f4fbff 0%, #f5fffb 100%)',
+        borderColor: 'rgba(37, 99, 235, 0.12)',
+        boxShadow: '0 18px 40px rgba(37, 99, 235, 0.08)',
       }}
     >
       <Stack gap="lg">
         <div>
-          <Text tt="uppercase" fw={800} size="xs" c="#7c2d12">Incolla le tue posizioni</Text>
+          <Text tt="uppercase" fw={800} size="xs" c="#0f766e">Incolla le tue posizioni</Text>
           <Text size="sm" c="#334155" mt={6}>
             Una riga per posizione. Formato: <code>IDENTIFICATIVO VALORE</code>. Sono supportati ticker e ISIN. Esempio: <code>VWCE 10000</code>
           </Text>
@@ -57,7 +57,7 @@ export function InstantAnalyzerForm({
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
               backgroundColor: '#f8fafc',
               color: '#0f172a',
-              borderColor: 'rgba(15, 23, 42, 0.12)',
+              borderColor: 'rgba(37, 99, 235, 0.14)',
             },
           }}
         />

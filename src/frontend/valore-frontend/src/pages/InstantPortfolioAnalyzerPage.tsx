@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Alert, Box, Container, Grid, Group, Stack, Text, Title } from '@mantine/core';
 import { IconShieldCheck, IconSparkles, IconTargetArrow } from '@tabler/icons-react';
-import { BrandMark } from '../components/BrandMark';
+import logoMark from '../assets/logo-mark.svg';
 import { InstantAnalyzerForm } from '../components/instant-analyzer/InstantAnalyzerForm';
 import { InstantAnalyzerInputIssues } from '../components/instant-analyzer/InstantAnalyzerInputIssues';
 import { InstantAnalyzerResults } from '../components/instant-analyzer/InstantAnalyzerResults';
@@ -65,29 +65,55 @@ export function InstantPortfolioAnalyzerPage() {
     <Box
       style={{
         minHeight: '100vh',
-        background: 'radial-gradient(circle at top left, rgba(245, 158, 11, 0.22), transparent 24%), linear-gradient(180deg, #f6efe2 0%, #f4f1ea 18%, #edf4f8 100%)',
+        background: 'radial-gradient(circle at top left, rgba(37, 99, 235, 0.18), transparent 24%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.16), transparent 28%), linear-gradient(180deg, #eef7ff 0%, #f6fffc 22%, #edf6f3 100%)',
         padding: '48px 0 72px',
         color: '#0f172a',
       }}
     >
       <Container size="xl">
         <Stack gap="xl">
-          <Group justify="space-between" align="center">
-            <BrandMark />
-          </Group>
-          <Stack gap="md" maw={780}>
+          <Stack gap="md" maw={860}>
+            <Group gap="lg" align="center" wrap="nowrap">
+              <Box
+                style={{
+                  width: 88,
+                  height: 88,
+                  minWidth: 88,
+                  borderRadius: 26,
+                  background: 'linear-gradient(180deg, #ffffff 0%, #f2fbf8 100%)',
+                  border: '1px solid rgba(37, 99, 235, 0.12)',
+                  boxShadow: '0 22px 44px rgba(15, 23, 42, 0.12)',
+                  padding: 12,
+                }}
+              >
+                <img
+                  src={logoMark}
+                  alt="Logo Valore365"
+                  style={{ width: '100%', height: '100%', display: 'block' }}
+                />
+              </Box>
+              <Stack gap={2}>
+                <Title order={2} c="#0f172a" style={{ fontSize: 'clamp(2.1rem, 5vw, 3.4rem)', lineHeight: 1 }}>
+                  Valore365
+                </Title>
+                <Text c="#2563eb" fw={700} size="lg">
+                  Instant Analyzer
+                </Text>
+              </Stack>
+            </Group>
+
             <Group gap="sm">
               <Group
                 gap={6}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.72)',
-                  border: '1px solid rgba(15, 23, 42, 0.08)',
+                  background: 'rgba(255, 255, 255, 0.78)',
+                  border: '1px solid rgba(37, 99, 235, 0.1)',
                   borderRadius: 999,
                   padding: '8px 14px',
-                  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+                  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.08)',
                 }}
               >
-                <IconSparkles size={18} color="#b45309" />
+                <IconSparkles size={18} color="#2563eb" />
                 <Text fw={700} c="#1e293b">Analisi istantanea pubblica</Text>
               </Group>
             </Group>

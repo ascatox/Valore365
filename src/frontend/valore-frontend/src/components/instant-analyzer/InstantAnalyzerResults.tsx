@@ -67,7 +67,7 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
       />
 
       {result.cta.show_signup && (
-        <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(135deg, #183153 0%, #245f73 100%)', color: 'white' }}>
+        <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(135deg, #1d4ed8 0%, #0f766e 100%)', color: 'white' }}>
           <Group justify="space-between" align="center">
             <div>
               <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Prossimo passo</Text>
