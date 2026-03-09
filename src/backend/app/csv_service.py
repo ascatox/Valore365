@@ -57,6 +57,24 @@ BANK_EXPORT_COLUMNS = [
     "commissioni amministrato",                  # 14
 ]
 
+FINECO_HEADER_COLUMNS = [
+    "operazione",
+    "data valuta",
+    "descrizione",
+    "titolo",
+    "isin",
+    "segno",
+    "quantita",
+    "divisa",
+    "prezzo",
+    "cambio",
+    "controvalore",
+    "commissioni fondi sw/ingr/uscita",
+    "commissioni fondi banca corrispondente",
+    "spese fondi sgr",
+    "commissioni amministrato",
+]
+
 GENERIC_TEMPLATE_COLUMNS = [
     "operazione",
     "isin",
@@ -88,7 +106,50 @@ BROKER_PROFILES: dict[str, dict[str, Any]] = {
 }
 
 
-def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0) -> list[dict[str, str]]:
+def _normalize_header_name(value: str | None) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def _split_delimited_line(line: str, delimiter: str) -> list[str]:
+    return [_normalize_header_name(part) for part in line.split(delimiter)]
+
+
+def _is_header_row(cells: list[str], required_columns: list[str]) -> bool:
+    normalized = {_normalize_header_name(cell) for cell in cells if _normalize_header_name(cell)}
+    required = {_normalize_header_name(column) for column in required_columns}
+    return required.issubset(normalized)
+
+
+def _find_header_row_index(rows: list[list[str]], required_columns: list[str], max_scan_rows: int = 15) -> int | None:
+    for index, row in enumerate(rows[:max_scan_rows]):
+        if _is_header_row(row, required_columns):
+            return index
+    return None
+
+
+def _prepare_fineco_csv_content(file_content: str, skip_rows: int) -> str:
+    lines = file_content.splitlines()
+    non_empty_lines = [line for line in lines if line.strip()]
+    if not non_empty_lines:
+        return file_content
+
+    header_index = _find_header_row_index(
+        [_split_delimited_line(line, ";") for line in non_empty_lines],
+        FINECO_HEADER_COLUMNS,
+    )
+    if header_index is not None:
+        return "\n".join(non_empty_lines[header_index:])
+
+    if skip_rows > 0 and len(non_empty_lines) > skip_rows:
+        candidate_lines = non_empty_lines[skip_rows:]
+    else:
+        candidate_lines = non_empty_lines
+
+    candidate_content = "\n".join(candidate_lines)
+    return CsvImportService._detect_and_normalize(candidate_content)
+
+
+def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0, broker: str = "generic") -> list[dict[str, str]]:
     """Read an XLSX file and return rows as list of dicts (same as csv.DictReader)."""
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     ws = wb.active
@@ -98,12 +159,17 @@ def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0) -> list[dict[str, str
     all_rows = list(ws.iter_rows(values_only=True))
     wb.close()
 
-    if len(all_rows) <= skip_rows:
-        raise ValueError("Il file Excel non contiene righe dati sufficienti")
+    normalized_rows = [[str(cell or "").strip() for cell in row] for row in all_rows]
+    required_columns = FINECO_HEADER_COLUMNS if broker == "fineco" else REQUIRED_COLUMNS
+    header_index = _find_header_row_index(normalized_rows, required_columns)
+    if header_index is None:
+        if len(all_rows) <= skip_rows:
+            raise ValueError("Il file Excel non contiene righe dati sufficienti")
+        header_index = skip_rows
 
-    header_row = all_rows[skip_rows]
+    header_row = all_rows[header_index]
     headers = [str(cell or "").strip() for cell in header_row]
-    data_rows = all_rows[skip_rows + 1:]
+    data_rows = all_rows[header_index + 1:]
 
     result: list[dict[str, str]] = []
     for row in data_rows:
@@ -247,16 +313,18 @@ class CsvImportService:
         is_xlsx = filename and filename.lower().endswith((".xlsx", ".xls"))
 
         if is_xlsx and file_bytes:
-            raw_rows = _read_xlsx_rows(file_bytes, skip_rows=skip_rows)
+            raw_rows = _read_xlsx_rows(file_bytes, skip_rows=skip_rows, broker=broker)
             if not raw_rows:
                 raise ValueError("File Excel vuoto o senza righe dati")
             normalized_fields = [f.strip().lower() for f in raw_rows[0].keys()]
         elif file_content:
-            # For CSV with broker skip_rows, skip leading lines
-            if skip_rows > 0:
-                lines = file_content.split("\n")
-                file_content = "\n".join(lines[skip_rows:])
-            file_content = self._detect_and_normalize(file_content)
+            if broker == "fineco":
+                file_content = _prepare_fineco_csv_content(file_content, skip_rows)
+            else:
+                if skip_rows > 0:
+                    lines = file_content.split("\n")
+                    file_content = "\n".join(lines[skip_rows:])
+                file_content = self._detect_and_normalize(file_content)
             forced_sep = profile.get("separator")
             delimiter = forced_sep if forced_sep else (";" if ";" in file_content.split("\n", 1)[0] else ",")
             reader = csv.DictReader(io.StringIO(file_content), delimiter=delimiter)
