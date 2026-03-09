@@ -30,15 +30,17 @@ import {
   IconChevronsRight,
   IconEye,
   IconEyeOff,
+  IconShieldLock,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
 import { BrandMark } from './components/BrandMark';
 import { STORAGE_KEYS } from './components/dashboard/constants';
-import { getAdminPortfolios } from './services/api';
+import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
+const AdminPage = lazy(() => import('./pages/Admin.page.tsx').then((module) => ({ default: module.AdminPage })));
 const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
 const FirePage = lazy(() => import('./pages/Fire.page.tsx').then((module) => ({ default: module.FirePage })));
 const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
@@ -81,6 +83,7 @@ function ProtectedApp() {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [hasPortfolios, setHasPortfolios] = useState<boolean | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [privacyMode, setPrivacyMode] = useState(() =>
     window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true',
   );
@@ -133,10 +136,38 @@ function ProtectedApp() {
   }, []);
 
   useEffect(() => {
-    if (hasPortfolios === false && location.pathname !== '/portfolio') {
+    let active = true;
+
+    const detectAdminAccess = async () => {
+      try {
+        await getAdminUsageSummary();
+        if (active) {
+          setIsAdmin(true);
+        }
+      } catch {
+        if (active) {
+          setIsAdmin(false);
+        }
+      }
+    };
+
+    void detectAdminAccess();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (hasPortfolios === false && location.pathname !== '/portfolio' && !(isAdmin && location.pathname === '/admin')) {
       navigate('/portfolio', { replace: true });
     }
-  }, [hasPortfolios, location.pathname, navigate]);
+  }, [hasPortfolios, isAdmin, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!isAdmin && location.pathname === '/admin') {
+      navigate('/portfolio', { replace: true });
+    }
+  }, [isAdmin, location.pathname, navigate]);
 
   const handleGlobalRefresh = useCallback(() => {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
@@ -292,6 +323,16 @@ function ProtectedApp() {
               disabled={lockNonPortfolioNavigation}
               onClick={close}
           />
+          {isAdmin && (
+            <NavLink
+                component={Link}
+                to="/admin"
+                label={navbarExpanded ? 'Admin' : undefined}
+                leftSection={<IconShieldLock size={16} />}
+                aria-label="Admin"
+                onClick={close}
+            />
+          )}
         </AppShell.Navbar>
 
         <AppShell.Main>
@@ -326,6 +367,7 @@ function ProtectedApp() {
               <Route path="/doctor" element={<DoctorPage />} />
               <Route path="/fire" element={<FirePage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </Container>
         </AppShell.Main>

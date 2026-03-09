@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, Box, Container, Grid, Group, Stack, Text, Title } from '@mantine/core';
 import { IconShieldCheck, IconSparkles, IconTargetArrow } from '@tabler/icons-react';
+import { BrandMark } from '../components/BrandMark';
 import { InstantAnalyzerForm } from '../components/instant-analyzer/InstantAnalyzerForm';
 import { InstantAnalyzerInputIssues } from '../components/instant-analyzer/InstantAnalyzerInputIssues';
 import { InstantAnalyzerResults } from '../components/instant-analyzer/InstantAnalyzerResults';
@@ -41,7 +42,7 @@ export function InstantPortfolioAnalyzerPage() {
 
   const handleSubmit = async () => {
     if (!rawText.trim()) {
-      setError('Paste at least one position before running the analysis.');
+      setError('Incolla almeno una posizione prima di avviare l’analisi.');
       setErrorDetails({ parseErrors: [], unresolved: [] });
       return;
     }
@@ -52,7 +53,7 @@ export function InstantPortfolioAnalyzerPage() {
       const response = await analyzeInstantPortfolio({ input_mode: 'raw_text', raw_text: rawText });
       setResult(response);
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Unable to analyze this portfolio right now.');
+      setError(requestError instanceof Error ? requestError.message : 'Impossibile analizzare questo portafoglio in questo momento.');
       setResult(null);
       setErrorDetails(readErrorDetails(requestError));
     } finally {
@@ -71,6 +72,9 @@ export function InstantPortfolioAnalyzerPage() {
     >
       <Container size="xl">
         <Stack gap="xl">
+          <Group justify="space-between" align="center">
+            <BrandMark />
+          </Group>
           <Stack gap="md" maw={780}>
             <Group gap="sm">
               <Group
@@ -84,18 +88,18 @@ export function InstantPortfolioAnalyzerPage() {
                 }}
               >
                 <IconSparkles size={18} color="#b45309" />
-                <Text fw={700} c="#1e293b">Public instant analysis</Text>
+                <Text fw={700} c="#1e293b">Analisi istantanea pubblica</Text>
               </Group>
             </Group>
             <Title order={1} c="#0f172a" style={{ fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', lineHeight: 1.02, letterSpacing: '-0.04em' }}>
-              Check your portfolio health in 30 seconds
+              Controlla la salute del tuo portafoglio in 30 secondi
             </Title>
             <Text size="xl" c="#334155" maw={720} style={{ lineHeight: 1.5 }}>
-              Paste your ETF and stock positions and get an instant health score, risk diagnosis, and diversification insights.
+              Incolla le tue posizioni in ETF e azioni e ottieni subito uno score, una diagnosi del rischio e indicazioni sulla diversificazione.
             </Text>
             <Group gap="xl" wrap="wrap" style={{ color: '#1e293b' }}>
-              <Group gap="xs"><IconTargetArrow size={18} color="#1d4ed8" /><Text fw={600}>Value-first onboarding</Text></Group>
-              <Group gap="xs"><IconShieldCheck size={18} color="#0f766e" /><Text fw={600}>No login required</Text></Group>
+              <Group gap="xs"><IconTargetArrow size={18} color="#1d4ed8" /><Text fw={600}>Valore prima del signup</Text></Group>
+              <Group gap="xs"><IconShieldCheck size={18} color="#0f766e" /><Text fw={600}>Nessun login richiesto</Text></Group>
             </Group>
           </Stack>
 
@@ -121,8 +125,8 @@ export function InstantPortfolioAnalyzerPage() {
                 <InstantAnalyzerResults result={result} />
               ) : (
                 <Stack gap="lg">
-                  <Alert color="blue" variant="light" radius="xl" title="What you will get">
-                    Score, diversification snapshot, score breakdown, overlap warnings, cost signals, and a signup CTA once the analysis is ready.
+                  <Alert color="blue" variant="light" radius="xl" title="Cosa otterrai">
+                    Score complessivo, quadro della diversificazione, breakdown dello score, avvisi su sovrapposizioni e costi, oltre alla CTA finale per creare un account.
                   </Alert>
                   <InstantAnalyzerInputIssues
                     parseErrors={errorDetails.parseErrors}

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 import jwt
-from fastapi import Header
+from fastapi import Depends, Header
 
 from .config import get_settings
 from .errors import AppError
@@ -20,7 +20,32 @@ _JWKS_CACHE_TTL = 3600.0  # 1 hour
 class AuthContext:
     user_id: str
     org_id: str | None = None
+    email: str | None = None
     claims: dict[str, Any] = field(default_factory=dict)
+
+
+def _extract_email_from_claims(claims: dict[str, Any]) -> str | None:
+    candidate_keys = ("email", "email_address", "primary_email", "primary_email_address")
+    for key in candidate_keys:
+        value = claims.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip().lower()
+        if isinstance(value, dict):
+            nested = value.get("email_address") or value.get("email")
+            if isinstance(nested, str) and nested.strip():
+                return nested.strip().lower()
+
+    email_addresses = claims.get("email_addresses")
+    if isinstance(email_addresses, list):
+        for item in email_addresses:
+            if isinstance(item, str) and item.strip():
+                return item.strip().lower()
+            if isinstance(item, dict):
+                nested = item.get("email_address") or item.get("email")
+                if isinstance(nested, str) and nested.strip():
+                    return nested.strip().lower()
+
+    return None
 
 
 def _fetch_jwks(url: str) -> list[dict[str, Any]]:
@@ -60,7 +85,7 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
     settings = get_settings()
 
     if not settings.clerk_auth_enabled:
-        return AuthContext(user_id="dev-user", org_id=None, claims={})
+        return AuthContext(user_id="dev-user", org_id=None, email=None, claims={})
 
     if not authorization or not authorization.startswith("Bearer "):
         raise AppError(code="auth_error", message="Missing or invalid Authorization header", status_code=401)
@@ -103,6 +128,7 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
         return AuthContext(
             user_id=claims["sub"],
             org_id=claims.get("org_id"),
+            email=_extract_email_from_claims(claims),
             claims=claims,
         )
 
@@ -110,3 +136,16 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
         raise AppError(code="auth_error", message="Token expired", status_code=401) from exc
     except jwt.InvalidTokenError as exc:
         raise AppError(code="auth_error", message="Invalid token", status_code=401) from exc
+
+
+def require_admin(auth: AuthContext = Depends(require_auth)) -> AuthContext:
+    settings = get_settings()
+    allowed_user_ids = set(settings.admin_user_ids_list)
+    allowed_emails = set(settings.admin_emails_list)
+
+    if auth.user_id in allowed_user_ids:
+        return auth
+    if auth.email and auth.email.lower() in allowed_emails:
+        return auth
+
+    raise AppError(code="forbidden", message="Admin access required", status_code=403)

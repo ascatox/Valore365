@@ -25,23 +25,23 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
         <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#fffefb' }}>
           <Group gap="sm" mb="md">
             <IconChartDonut3 size={18} />
-            <Title order={4}>Key metrics</Title>
+            <Title order={4}>Metriche chiave</Title>
           </Group>
           <Table withTableBorder withColumnBorders highlightOnHover>
             <Table.Tbody>
-              <Table.Tr><Table.Td>USA exposure</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Td>Europe exposure</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Td>Emerging exposure</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Td>Max position</Table.Td><Table.Td>{formatPct(result.metrics.max_position_weight)}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Td>Overlap score</Table.Td><Table.Td>{formatPct(result.metrics.overlap_score)}</Table.Td></Table.Tr>
-              <Table.Tr><Table.Td>Volatility</Table.Td><Table.Td>{formatPct(result.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Esposizione USA</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.usa)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Esposizione Europa</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.europe)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Esposizione Emergenti</Table.Td><Table.Td>{formatPct(result.metrics.geographic_exposure.emerging)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Posizione massima</Table.Td><Table.Td>{formatPct(result.metrics.max_position_weight)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Score overlap</Table.Td><Table.Td>{formatPct(result.metrics.overlap_score)}</Table.Td></Table.Tr>
+              <Table.Tr><Table.Td>Volatilità</Table.Td><Table.Td>{formatPct(result.metrics.portfolio_volatility)}</Table.Td></Table.Tr>
               <Table.Tr><Table.Td>Weighted TER</Table.Td><Table.Td>{formatPct(result.metrics.weighted_ter)}</Table.Td></Table.Tr>
             </Table.Tbody>
           </Table>
         </Card>
 
         <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#f9fcff' }}>
-          <Title order={4} mb="md" c="#0f172a">Resolved positions</Title>
+          <Title order={4} mb="md" c="#0f172a">Posizioni risolte</Title>
           <Stack gap="sm">
             {result.positions.map((position) => (
               <Group key={`${position.identifier}-${position.resolved_symbol}`} justify="space-between" align="flex-start">
@@ -70,7 +70,7 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
         <Card radius="xl" padding="xl" withBorder style={{ background: 'linear-gradient(135deg, #183153 0%, #245f73 100%)', color: 'white' }}>
           <Group justify="space-between" align="center">
             <div>
-              <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Next step</Text>
+              <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Prossimo passo</Text>
               <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
             </div>
             <Button
@@ -81,7 +81,7 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               variant="filled"
               radius="xl"
             >
-              Create free account
+              Crea account gratis
             </Button>
           </Group>
         </Card>

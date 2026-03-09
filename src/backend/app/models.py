@@ -42,6 +42,19 @@ class UserSettingsUpdate(BaseModel):
     fire_target_age: int | None = Field(default=None, ge=18, le=100)
 
 
+class AdminUsageSummary(BaseModel):
+    registered_users: int = Field(ge=0)
+    users_with_portfolios: int = Field(ge=0)
+    users_with_transactions: int = Field(ge=0)
+    users_with_imports: int = Field(ge=0)
+    portfolios_total: int = Field(ge=0)
+    transactions_total: int = Field(ge=0)
+    csv_import_batches_total: int = Field(ge=0)
+    portfolios_created_7d: int = Field(ge=0)
+    imports_started_7d: int = Field(ge=0)
+    public_instant_analyzer_tracked: bool = False
+
+
 class PortfolioCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     base_currency: str = Field(min_length=3, max_length=3, pattern='^[A-Z]{3}$')

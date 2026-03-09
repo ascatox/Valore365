@@ -142,6 +142,19 @@ export interface UserSettingsUpdateInput {
   fire_target_age?: number | null;
 }
 
+export interface AdminUsageSummary {
+  registered_users: number;
+  users_with_portfolios: number;
+  users_with_transactions: number;
+  users_with_imports: number;
+  portfolios_total: number;
+  transactions_total: number;
+  csv_import_batches_total: number;
+  portfolios_created_7d: number;
+  imports_started_7d: number;
+  public_instant_analyzer_tracked: boolean;
+}
+
 export interface Portfolio {
   id: number;
   name: string;
@@ -1396,4 +1409,8 @@ export const analyzeInstantPortfolio = async (payload: InstantAnalyzeRequest): P
     method: 'POST',
     body: JSON.stringify(payload),
   });
+};
+
+export const getAdminUsageSummary = async (): Promise<AdminUsageSummary> => {
+  return apiFetch<AdminUsageSummary>('/admin/usage-summary');
 };

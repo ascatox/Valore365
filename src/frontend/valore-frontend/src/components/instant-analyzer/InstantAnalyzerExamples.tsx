@@ -10,7 +10,7 @@ const EXAMPLES = [
     value: 'VWCE 10000\nAGGH 5000\nEIMI 2000',
   },
   {
-    label: 'World + S&P 500',
+    label: 'Mondo + S&P 500',
     value: 'SWDA 12000\nCSPX 6000\nAGGH 4000',
   },
   {

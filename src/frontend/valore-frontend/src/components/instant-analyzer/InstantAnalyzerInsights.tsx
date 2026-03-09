@@ -15,7 +15,7 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
             <ThemeIcon color="orange" variant="light" radius="xl">
               <IconAlertTriangle size={18} />
             </ThemeIcon>
-            <Title order={4}>Warnings</Title>
+            <Title order={4}>Avvisi</Title>
           </Group>
           <Badge variant="light">{result.alerts.length}</Badge>
         </Group>
@@ -24,7 +24,7 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
             <Alert key={`${alert.code}-${alert.message}`} color={alert.severity === 'critical' ? 'red' : 'orange'} variant="light">
               {alert.message}
             </Alert>
-          )) : <Text c="#475569">No major warnings detected in this snapshot.</Text>}
+          )) : <Text c="#475569">Nessun avviso rilevante in questa analisi.</Text>}
         </Stack>
       </Card>
 
@@ -34,7 +34,7 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
             <ThemeIcon color="teal" variant="light" radius="xl">
               <IconBulb size={18} />
             </ThemeIcon>
-            <Title order={4}>Suggestions</Title>
+            <Title order={4}>Suggerimenti</Title>
           </Group>
           <Badge variant="light">{result.suggestions.length}</Badge>
         </Group>
@@ -43,7 +43,7 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
             <Alert key={`${suggestion.code}-${suggestion.message}`} color="teal" variant="light">
               {suggestion.message}
             </Alert>
-          )) : <Text c="#475569">No immediate changes suggested.</Text>}
+          )) : <Text c="#475569">Nessuna modifica immediata suggerita.</Text>}
         </Stack>
       </Card>
     </Stack>

@@ -23,6 +23,7 @@ from app.schemas.instant_portfolio_analyzer import (
     PortfolioAnalyzeSummary,
     ResolvedPosition,
 )
+from app.models import AdminUsageSummary
 
 
 class _FakeRepo:
@@ -117,6 +118,20 @@ class _FakeRepo:
             raise ValueError('Transazione non trovata')
         return None
 
+    def get_admin_usage_summary(self):
+        return AdminUsageSummary(
+            registered_users=5,
+            users_with_portfolios=4,
+            users_with_transactions=3,
+            users_with_imports=2,
+            portfolios_total=7,
+            transactions_total=42,
+            csv_import_batches_total=6,
+            portfolios_created_7d=3,
+            imports_started_7d=2,
+            public_instant_analyzer_tracked=False,
+        )
+
 
 class _FailPricingService:
     def refresh_prices(self, portfolio_id=None, asset_scope='target', user_id=None):
@@ -191,6 +206,33 @@ def test_list_portfolios_route(monkeypatch):
     assert len(payload) == 2
     assert payload[0]['id'] == 2
     assert payload[0]['name'] == 'Portfolio B'
+
+
+def test_admin_usage_summary_route(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    monkeypatch.setattr(api_main.settings, 'admin_user_ids', 'dev-user')
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/admin/usage-summary')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['registered_users'] == 5
+    assert payload['users_with_imports'] == 2
+    assert payload['public_instant_analyzer_tracked'] is False
+
+
+def test_admin_usage_summary_route_forbidden_without_admin_access(monkeypatch):
+    monkeypatch.setattr(api_main, 'repo', _FakeRepo())
+    monkeypatch.setattr(api_main.settings, 'admin_user_ids', '')
+    monkeypatch.setattr(api_main.settings, 'admin_emails', '')
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/admin/usage-summary')
+
+    assert response.status_code == 403
+    payload = response.json()
+    assert payload['error']['code'] == 'forbidden'
 
 
 def test_idempotency_refresh_returns_cached(monkeypatch):

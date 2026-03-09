@@ -89,13 +89,15 @@ describe('InstantPortfolioAnalyzerPage', () => {
 
     renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: /analyze portfolio/i }));
+    expect(screen.getByAltText('Logo Valore365')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /analizza portafoglio/i }));
 
     expect(await screen.findByText('74 / 100')).toBeInTheDocument();
     expect(screen.getAllByText('18 / 25')).toHaveLength(2);
     expect(screen.getByText('Vanguard FTSE All-World UCITS ETF')).toBeInTheDocument();
     expect(screen.getByText('Your portfolio is heavily exposed to US markets (68%).')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /create free account/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /crea account gratis/i })).toBeInTheDocument();
   }, 10000);
 
   it('hides the signup CTA when the response disables it', async () => {
@@ -149,10 +151,10 @@ describe('InstantPortfolioAnalyzerPage', () => {
 
     renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: /analyze portfolio/i }));
+    await userEvent.click(screen.getByRole('button', { name: /analizza portafoglio/i }));
 
     expect(await screen.findByText('74 / 100')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: /create free account/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /crea account gratis/i })).not.toBeInTheDocument();
   }, 10000);
 
   it('shows parse and unresolved issues from API error details', async () => {
@@ -183,10 +185,10 @@ describe('InstantPortfolioAnalyzerPage', () => {
 
     renderPage();
 
-    await userEvent.click(screen.getByRole('button', { name: /analyze portfolio/i }));
+    await userEvent.click(screen.getByRole('button', { name: /analizza portafoglio/i }));
 
     expect(await screen.findByText('No valid positions found')).toBeInTheDocument();
-    expect(screen.getByText('Line 1: Expected format: IDENTIFIER VALUE')).toBeInTheDocument();
+    expect(screen.getByText('Riga 1: Expected format: IDENTIFIER VALUE')).toBeInTheDocument();
     expect(screen.getByText('UNKNOWN: Asset not found in the supported catalog')).toBeInTheDocument();
   }, 10000);
 });

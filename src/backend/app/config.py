@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""
+    admin_emails: str = ""
+    admin_user_ids: str = ""
     trusted_proxy_ips: str = ""
 
     pac_scheduler_enabled: bool = False
@@ -84,6 +86,14 @@ class Settings(BaseSettings):
     @property
     def trusted_proxy_ips_list(self) -> list[str]:
         return [v.strip() for v in self.trusted_proxy_ips.split(",") if v.strip()]
+
+    @property
+    def admin_emails_list(self) -> list[str]:
+        return [v.strip().lower() for v in self.admin_emails.split(",") if v.strip()]
+
+    @property
+    def admin_user_ids_list(self) -> list[str]:
+        return [v.strip() for v in self.admin_user_ids.split(",") if v.strip()]
 
 
 @lru_cache(maxsize=1)

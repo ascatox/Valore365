@@ -17,6 +17,7 @@ from sqlalchemy.engine import Engine
 from .price_validation import check_staleness
 
 from .models import (
+    AdminUsageSummary,
     AllocationItem,
     AssetCreate,
     AssetProviderSymbolCreate,
@@ -95,6 +96,55 @@ class PositionDelta:
 class PortfolioRepository:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
+
+    def get_admin_usage_summary(self) -> AdminUsageSummary:
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    with registered_users as (
+                        select distinct user_id as uid
+                        from app_user_settings
+                        where user_id <> 'dev-user'
+                        union
+                        select distinct owner_user_id as uid
+                        from portfolios
+                        where owner_user_id <> 'dev-user'
+                        union
+                        select distinct owner_user_id as uid
+                        from transactions
+                        where owner_user_id <> 'dev-user'
+                        union
+                        select distinct owner_user_id as uid
+                        from csv_import_batches
+                        where owner_user_id <> 'dev-user'
+                    )
+                    select
+                        (select count(*)::int from registered_users) as registered_users,
+                        (select count(distinct owner_user_id)::int from portfolios where owner_user_id <> 'dev-user') as users_with_portfolios,
+                        (select count(distinct owner_user_id)::int from transactions where owner_user_id <> 'dev-user') as users_with_transactions,
+                        (select count(distinct owner_user_id)::int from csv_import_batches where owner_user_id <> 'dev-user') as users_with_imports,
+                        (select count(*)::int from portfolios where owner_user_id <> 'dev-user') as portfolios_total,
+                        (select count(*)::int from transactions where owner_user_id <> 'dev-user') as transactions_total,
+                        (select count(*)::int from csv_import_batches where owner_user_id <> 'dev-user') as csv_import_batches_total,
+                        (select count(*)::int from portfolios where owner_user_id <> 'dev-user' and created_at >= now() - interval '7 days') as portfolios_created_7d,
+                        (select count(*)::int from csv_import_batches where owner_user_id <> 'dev-user' and created_at >= now() - interval '7 days') as imports_started_7d
+                    """
+                )
+            ).mappings().one()
+
+        return AdminUsageSummary(
+            registered_users=int(row["registered_users"] or 0),
+            users_with_portfolios=int(row["users_with_portfolios"] or 0),
+            users_with_transactions=int(row["users_with_transactions"] or 0),
+            users_with_imports=int(row["users_with_imports"] or 0),
+            portfolios_total=int(row["portfolios_total"] or 0),
+            transactions_total=int(row["transactions_total"] or 0),
+            csv_import_batches_total=int(row["csv_import_batches_total"] or 0),
+            portfolios_created_7d=int(row["portfolios_created_7d"] or 0),
+            imports_started_7d=int(row["imports_started_7d"] or 0),
+            public_instant_analyzer_tracked=False,
+        )
 
     def get_user_settings(self, user_id: str) -> UserSettingsRead:
         normalized_user_id = (user_id or "").strip()

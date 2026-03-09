@@ -6,10 +6,10 @@ interface InstantAnalyzerScoreCardProps {
 }
 
 function summaryTone(score: number): { label: string; color: string } {
-  if (score >= 80) return { label: 'Excellent', color: 'teal' };
-  if (score >= 70) return { label: 'Good', color: 'blue' };
-  if (score >= 60) return { label: 'Average', color: 'yellow' };
-  return { label: 'Weak', color: 'red' };
+  if (score >= 80) return { label: 'Eccellente', color: 'teal' };
+  if (score >= 70) return { label: 'Buono', color: 'blue' };
+  if (score >= 60) return { label: 'Medio', color: 'yellow' };
+  return { label: 'Debole', color: 'red' };
 }
 
 export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardProps) {
@@ -30,7 +30,7 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
         <Group justify="space-between" align="flex-start">
           <div>
             <Text tt="uppercase" fw={800} size="xs" c="#7c2d12">
-              Portfolio Health
+              Salute del Portafoglio
             </Text>
             <Title order={2} c="#0f172a">{result.summary.score} / 100</Title>
             <Text c="#475569">Valore analizzato: EUR {result.summary.total_value.toLocaleString('it-IT')}</Text>
@@ -44,11 +44,11 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
 
         <SimpleGrid cols={{ base: 2, md: 4 }} spacing="md">
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Risk</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Rischio</Text>
             <Text fw={700} c="#0f172a">{result.summary.risk_level}</Text>
           </Stack>
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Diversification</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Diversificazione</Text>
             <Text fw={700} c="#0f172a">{result.summary.diversification}</Text>
           </Stack>
           <Stack gap={2}>
@@ -56,30 +56,30 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
             <Text fw={700} c="#0f172a">{result.summary.overlap}</Text>
           </Stack>
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Costs</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Costi</Text>
             <Text fw={700} c="#0f172a">{result.summary.cost_efficiency}</Text>
           </Stack>
         </SimpleGrid>
 
         <SimpleGrid cols={{ base: 2, md: 5 }} spacing="md">
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Diversification</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Diversificazione</Text>
             <Text fw={700} c="#0f172a">{result.category_scores.diversification} / 25</Text>
           </Stack>
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Risk score</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Score rischio</Text>
             <Text fw={700} c="#0f172a">{result.category_scores.risk} / 25</Text>
           </Stack>
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Concentration</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Concentrazione</Text>
             <Text fw={700} c="#0f172a">{result.category_scores.concentration} / 20</Text>
           </Stack>
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Overlap score</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Score overlap</Text>
             <Text fw={700} c="#0f172a">{result.category_scores.overlap} / 15</Text>
           </Stack>
           <Stack gap={2}>
-            <Text size="xs" tt="uppercase" c="#64748b">Cost score</Text>
+            <Text size="xs" tt="uppercase" c="#64748b">Score costi</Text>
             <Text fw={700} c="#0f172a">{result.category_scores.cost_efficiency} / 15</Text>
           </Stack>
         </SimpleGrid>

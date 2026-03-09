@@ -47,7 +47,7 @@ class SafeJSONResponse(JSONResponse):
 
 from fastapi import UploadFile, File, Form
 
-from .auth import AuthContext, require_auth
+from .auth import AuthContext, require_admin, require_auth
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
 from .api.portfolio_health import register_portfolio_health_routes
 from .config import get_settings
@@ -58,6 +58,7 @@ from .finance_client import make_finance_client, QUOTE_TYPE_MAP
 from .historical_service import HistoricalIngestionService
 from .models import (
     AllocationItem,
+    AdminUsageSummary,
     AssetCoverageItem,
     AssetLatestQuoteResponse,
     AssetCreate,
@@ -225,6 +226,11 @@ register_portfolio_health_routes(router, repo)
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/admin/usage-summary", response_model=AdminUsageSummary, responses={403: {"model": ErrorResponse}})
+def get_admin_usage_summary(_auth: AuthContext = Depends(require_admin)) -> AdminUsageSummary:
+    return repo.get_admin_usage_summary()
 
 
 def ensure_target_allocation_enabled() -> None:

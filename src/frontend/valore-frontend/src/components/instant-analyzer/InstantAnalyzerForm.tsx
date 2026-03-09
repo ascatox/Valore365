@@ -32,12 +32,12 @@ export function InstantAnalyzerForm({
     >
       <Stack gap="lg">
         <div>
-          <Text tt="uppercase" fw={800} size="xs" c="#7c2d12">Paste your holdings</Text>
+          <Text tt="uppercase" fw={800} size="xs" c="#7c2d12">Incolla le tue posizioni</Text>
           <Text size="sm" c="#334155" mt={6}>
-            One line per position. Format: <code>IDENTIFIER VALUE</code>. Tickers and ISINs are supported. Example: <code>VWCE 10000</code>
+            Una riga per posizione. Formato: <code>IDENTIFICATIVO VALORE</code>. Sono supportati ticker e ISIN. Esempio: <code>VWCE 10000</code>
           </Text>
           <Text size="sm" c="#475569" mt={6}>
-            If some lines cannot be resolved, the analyzer will still process the valid ones and flag the rest below.
+            Se alcune righe non possono essere risolte, l’analizzatore elaborera comunque quelle valide e segnalerà le altre qui sotto.
           </Text>
         </div>
 
@@ -67,10 +67,10 @@ export function InstantAnalyzerForm({
         <Group justify="space-between" wrap="wrap">
           <Group gap="xs">
             <Button variant="default" leftSection={<IconClipboardText size={16} />} onClick={() => onChange(value.trim())}>
-              Clean spacing
+              Pulisci spazi
             </Button>
             <Button variant="subtle" color="gray" leftSection={<IconTrash size={16} />} onClick={onReset}>
-              Reset
+              Azzera
             </Button>
           </Group>
           <Button
@@ -80,7 +80,7 @@ export function InstantAnalyzerForm({
             leftSection={<IconSearch size={16} />}
             onClick={onSubmit}
           >
-            Analyze Portfolio
+            Analizza Portafoglio
           </Button>
         </Group>
       </Stack>
