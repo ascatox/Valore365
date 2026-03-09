@@ -134,13 +134,15 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                 >
                   <Group justify="space-between" wrap="nowrap" mb={4}>
                     <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
-                      Oggi
+                      Var. Giorn.
                     </Text>
                     <IconTrendingUp size={14} color={dayColor === 'green' ? '#16a34a' : dayColor === 'red' ? '#dc2626' : (isDark ? theme.colors.gray[4] : '#64748b')} />
                   </Group>
                   <Text fw={800} size="sm" c={dayColor}>{formatPct(position.day_change_pct)}</Text>
                 </Box>
+              </Group>
 
+              <Group grow>
                 <Box
                   style={{
                     borderRadius: 18,
