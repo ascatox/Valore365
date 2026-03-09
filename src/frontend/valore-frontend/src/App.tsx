@@ -146,7 +146,7 @@ function ProtectedApp() {
       >
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
-            <Group wrap="nowrap" gap={isMobile ? 6 : 'sm'}>
+            <Group wrap="nowrap">
               <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="md" />
               <ActionIcon
                 visibleFrom="sm"
@@ -163,19 +163,13 @@ function ProtectedApp() {
               <Box hiddenFrom="sm">
                 <BrandMark compact />
               </Box>
-
+            </Group>
+            <Group gap={isMobile ? 6 : 'xs'} wrap="nowrap">
               <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
                 <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 32 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
                   {privacyMode ? <IconEyeOff size={18} /> : <IconEye size={18} />}
                 </ActionIcon>
               </Tooltip>
-              <Box visibleFrom="sm">
-                <Tooltip label={colorScheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'} withArrow>
-                  <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
-                    {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
-                  </ActionIcon>
-                </Tooltip>
-              </Box>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
@@ -204,8 +198,8 @@ function ProtectedApp() {
                     : <IconPlayerPlay size={18} />}
                 </ActionIcon>
               </Tooltip>
+              {clerkEnabled && <UserButton afterSignOutUrl="/" />}
             </Group>
-            {clerkEnabled && <UserButton afterSignOutUrl="/" />}
           </Group>
         </AppShell.Header>
 
