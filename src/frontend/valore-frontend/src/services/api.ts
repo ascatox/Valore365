@@ -912,6 +912,12 @@ export const backfillPortfolioDailyPrices = async (
   );
 };
 
+export const reclassifyPortfolioAssets = async (
+  portfolioId: number,
+): Promise<{ updated: Array<{ symbol: string; old: string; new: string }>; total_checked: number }> => {
+  return apiFetch(`/portfolios/${portfolioId}/reclassify-assets`, { method: 'POST' });
+};
+
 export const getPortfolioTargetAllocation = async (portfolioId: number): Promise<PortfolioTargetAllocationItem[]> => {
   return apiFetch<PortfolioTargetAllocationItem[]>(`/portfolios/${portfolioId}/target-allocation`);
 };

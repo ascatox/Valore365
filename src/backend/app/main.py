@@ -53,7 +53,7 @@ from .config import get_settings
 from .csv_service import CsvImportService
 from .db import engine
 from .errors import AppError
-from .finance_client import make_finance_client
+from .finance_client import make_finance_client, QUOTE_TYPE_MAP
 from .historical_service import HistoricalIngestionService
 from .models import (
     AllocationItem,
@@ -488,12 +488,22 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
     else:
+        # Detect asset type from provider
+        detected_type = "stock"
+        try:
+            client = make_finance_client()
+            info = client.get_asset_info(symbol)
+            if info.quote_type:
+                detected_type = QUOTE_TYPE_MAP.get(info.quote_type.upper(), "stock")
+        except Exception:
+            pass
+
         try:
             resolved_asset = repo.create_asset(
                 AssetCreate(
                     symbol=symbol,
                     name=(payload.name or symbol).strip() or symbol,
-                    asset_type="stock",
+                    asset_type=detected_type,
                     exchange_code=None,
                     exchange_name=payload.exchange,
                     quote_currency=base_ccy,
@@ -695,6 +705,35 @@ def refresh_prices(
         return response
     except ValueError as exc:
         raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
+
+
+@router.post("/portfolios/{portfolio_id}/reclassify-assets", responses={400: {"model": ErrorResponse}})
+def reclassify_assets(
+    portfolio_id: int,
+    _auth: AuthContext = Depends(require_auth),
+) -> dict[str, Any]:
+    try:
+        asset_ids = repo.get_portfolio_asset_ids(portfolio_id, _auth.user_id)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+    client = make_finance_client()
+    updated: list[dict[str, str]] = []
+    for aid in asset_ids:
+        try:
+            asset = repo.get_asset(aid)
+        except ValueError:
+            continue
+        try:
+            info = client.get_asset_info(asset.symbol)
+        except Exception:
+            continue
+        if info.quote_type:
+            new_type = QUOTE_TYPE_MAP.get(info.quote_type.upper(), "stock")
+            if new_type != asset.asset_type:
+                repo.update_asset_type(aid, new_type)
+                updated.append({"symbol": asset.symbol, "old": asset.asset_type, "new": new_type})
+    return {"updated": updated, "total_checked": len(asset_ids)}
 
 
 @router.post("/prices/backfill-daily", response_model=DailyBackfillResponse, responses={400: {"model": ErrorResponse}})

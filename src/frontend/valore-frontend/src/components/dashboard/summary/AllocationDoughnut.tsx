@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Badge, Card, Group, Text } from '@mantine/core';
 import { useComputedColorScheme } from '@mantine/core';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
@@ -11,16 +12,20 @@ interface AllocationDoughnutProps {
   data: AllocationDoughnutItem[];
   height?: number;
   centerLabel?: string;
+  headerRight?: ReactNode;
 }
 
-export function AllocationDoughnut({ title, data, height = 240, centerLabel }: AllocationDoughnutProps) {
+export function AllocationDoughnut({ title, data, height = 240, centerLabel, headerRight }: AllocationDoughnutProps) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
   if (!data.length) {
     return (
       <Card withBorder radius="md" p="md" shadow="sm">
-        <Text fw={600} size="sm" mb="sm">{title}</Text>
+        <Group justify="space-between" mb="sm">
+          <Text fw={600} size="sm">{title}</Text>
+          {headerRight}
+        </Group>
         <Group h={height} justify="center">
           <Text c="dimmed" size="sm">Nessun dato disponibile</Text>
         </Group>
@@ -30,7 +35,10 @@ export function AllocationDoughnut({ title, data, height = 240, centerLabel }: A
 
   return (
     <Card withBorder radius="md" p="md" shadow="sm">
-      <Text fw={600} size="sm" mb="sm">{title}</Text>
+      <Group justify="space-between" mb="sm">
+        <Text fw={600} size="sm">{title}</Text>
+        {headerRight}
+      </Group>
       <div style={{ height, position: 'relative' }}>
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>

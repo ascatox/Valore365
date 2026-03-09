@@ -66,6 +66,18 @@ class ProviderIntradayBar:
     close: float
 
 
+QUOTE_TYPE_MAP: dict[str, str] = {
+    "EQUITY": "stock",
+    "ETF": "etf",
+    "MUTUALFUND": "fund",
+    "BOND": "bond",
+    "CRYPTOCURRENCY": "crypto",
+    "MONEYMARKET": "cash",
+    "INDEX": "etf",
+    "COMMODITY": "etf",
+}
+
+
 @dataclass
 class ProviderAssetInfo:
     symbol: str
@@ -85,6 +97,7 @@ class ProviderAssetInfo:
     current_price: float | None
     previous_close: float | None
     description: str | None
+    quote_type: str | None = None
 
 
 class TwelveDataClient:
@@ -611,6 +624,7 @@ class YahooFinanceClient:
             current_price=_num('currentPrice') or _num('regularMarketPrice'),
             previous_close=_num('previousClose') or _num('regularMarketPreviousClose'),
             description=info.get('longBusinessSummary'),
+            quote_type=info.get('quoteType'),
         )
 
     def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:

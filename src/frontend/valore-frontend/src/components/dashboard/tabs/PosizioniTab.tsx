@@ -1,8 +1,10 @@
-import { useMemo } from 'react';
-import { Badge, Card, Group, Loader, SimpleGrid, Stack, Text } from '@mantine/core';
+import { useMemo, useState } from 'react';
+import { ActionIcon, Badge, Card, Group, Loader, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
 import { HoldingsTable } from '../holdings/HoldingsTable';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { usePortfolioSummary, usePortfolioPositions, useTargetAllocation } from '../hooks/queries';
+import { reclassifyPortfolioAssets } from '../../../services/api';
 import type { AllocationDoughnutItem } from '../types';
 
 const ASSET_TYPE_LABELS: Record<string, string> = {
@@ -20,9 +22,10 @@ interface PosizioniTabProps {
 
 export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
   const { data: summary } = usePortfolioSummary(portfolioId);
-  const { data: positions = [], isLoading } = usePortfolioPositions(portfolioId);
+  const { data: positions = [], isLoading, refetch } = usePortfolioPositions(portfolioId);
   const { data: targetAllocation = [] } = useTargetAllocation(portfolioId);
   const currency = summary?.base_currency ?? 'EUR';
+  const [reclassifying, setReclassifying] = useState(false);
 
   const targetMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -60,6 +63,17 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
     return items;
   }, [positions]);
 
+  const handleReclassify = async () => {
+    if (!portfolioId || reclassifying) return;
+    setReclassifying(true);
+    try {
+      await reclassifyPortfolioAssets(portfolioId);
+      await refetch();
+    } finally {
+      setReclassifying(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Group>
@@ -85,6 +99,18 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
             title="Allocazione per tipo"
             data={allocationByType}
             centerLabel={`${positions.length}`}
+            headerRight={
+              <Tooltip label="Reclassifica tipi da yFinance" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  size="sm"
+                  loading={reclassifying}
+                  onClick={handleReclassify}
+                >
+                  <IconRefresh size={14} />
+                </ActionIcon>
+              </Tooltip>
+            }
           />
           <AllocationDoughnut
             title="Allocazione per titolo"

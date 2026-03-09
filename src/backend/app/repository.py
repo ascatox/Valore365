@@ -1055,6 +1055,30 @@ class PortfolioRepository:
             raise ValueError("Impossibile creare asset")
         return self.get_asset(int(row.id))
 
+    def update_asset_type(self, asset_id: int, asset_type: str) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("update assets set asset_type = :asset_type where id = :id"),
+                {"asset_type": asset_type, "id": asset_id},
+            )
+
+    def get_portfolio_asset_ids(self, portfolio_id: int, user_id: str) -> list[int]:
+        with self.engine.begin() as conn:
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
+            if portfolio is None:
+                raise ValueError("Portfolio non trovato")
+            rows = conn.execute(
+                text(
+                    """
+                    select distinct asset_id
+                    from transactions
+                    where portfolio_id = :pid and asset_id is not null
+                    """
+                ),
+                {"pid": portfolio_id},
+            ).fetchall()
+            return [int(r[0]) for r in rows]
+
     def get_asset(self, asset_id: int) -> AssetRead:
         with self.engine.begin() as conn:
             row = conn.execute(
