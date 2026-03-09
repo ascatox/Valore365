@@ -1114,11 +1114,13 @@ export interface CsvImportCommitResponse {
 export const uploadCsvImportPreview = async (
   portfolioId: number,
   file: File,
+  broker = 'generic',
 ): Promise<CsvImportPreviewResponse> => {
   const token = await _getToken();
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('broker', broker);
   const response = await fetch(`${API_URL}/portfolios/${portfolioId}/csv-import/preview`, {
     method: 'POST',
     headers: { ...authHeaders },

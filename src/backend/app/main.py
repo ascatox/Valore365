@@ -44,7 +44,7 @@ class SafeJSONResponse(JSONResponse):
             cls=_SafeEncoder,
         ).encode("utf-8")
 
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form
 
 from .auth import AuthContext, require_auth
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
@@ -1560,16 +1560,27 @@ def get_cash_flow_timeline(portfolio_id: int, _auth: AuthContext = Depends(requi
 async def csv_import_preview(
     portfolio_id: int,
     file: UploadFile = File(...),
+    broker: str = Form("generic"),
     _auth: AuthContext = Depends(require_auth),
 ) -> CsvImportPreviewResponse:
     try:
         content = await file.read()
+        is_xlsx = file.filename and file.filename.lower().endswith((".xlsx", ".xls"))
+        if is_xlsx:
+            return csv_import_service.parse_and_validate(
+                portfolio_id=portfolio_id,
+                user_id=_auth.user_id,
+                file_bytes=content,
+                filename=file.filename,
+                broker=broker,
+            )
         file_content = content.decode("utf-8-sig")
         return csv_import_service.parse_and_validate(
             portfolio_id=portfolio_id,
             user_id=_auth.user_id,
             file_content=file_content,
             filename=file.filename,
+            broker=broker,
         )
     except ValueError as exc:
         message = str(exc)

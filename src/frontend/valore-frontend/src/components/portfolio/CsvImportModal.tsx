@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Avatar,
   Badge,
   Button,
   Group,
   Modal,
+  Select,
   Stack,
   Table,
   Text,
@@ -19,6 +21,10 @@ import {
   type CsvImportCommitResponse,
 } from '../../services/api';
 
+const BROKER_OPTIONS = [
+  { value: 'fineco', label: 'Fineco', logo: '/logos/fineco.svg' },
+];
+
 interface CsvImportModalProps {
   opened: boolean;
   onClose: () => void;
@@ -26,13 +32,25 @@ interface CsvImportModalProps {
   onImportComplete?: () => void;
 }
 
+function BrokerSelectOption({ logo, label }: { logo: string; label: string }) {
+  return (
+    <Group gap="sm" wrap="nowrap">
+      <Avatar src={logo} size={24} radius="sm" />
+      <Text size="sm">{label}</Text>
+    </Group>
+  );
+}
+
 export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete }: CsvImportModalProps) {
   const navigate = useNavigate();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
+  const [broker, setBroker] = useState<string>('fineco');
   const [preview, setPreview] = useState<CsvImportPreviewResponse | null>(null);
   const [result, setResult] = useState<CsvImportCommitResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const selectedBroker = BROKER_OPTIONS.find((b) => b.value === broker);
 
   const handleClose = () => {
     if (preview && step === 'preview') {
@@ -49,7 +67,7 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
     try {
       setLoading(true);
       setError(null);
-      const data = await uploadCsvImportPreview(portfolioId, file);
+      const data = await uploadCsvImportPreview(portfolioId, file, broker);
       setPreview(data);
       setStep('preview');
     } catch (err) {
@@ -79,21 +97,33 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
     <Modal
       opened={opened}
       onClose={handleClose}
-      title="Importa Transazioni da CSV"
+      title="Importa Operazioni"
       size="xl"
     >
       <Stack>
         {step === 'upload' && (
           <>
+            <Select
+              label="Broker"
+              placeholder="Seleziona il broker"
+              data={BROKER_OPTIONS.map((b) => ({ value: b.value, label: b.label }))}
+              value={broker}
+              onChange={(v) => v && setBroker(v)}
+              allowDeselect={false}
+              renderOption={({ option }) => {
+                const b = BROKER_OPTIONS.find((x) => x.value === option.value);
+                return b ? <BrokerSelectOption logo={b.logo} label={b.label} /> : <Text size="sm">{option.label}</Text>;
+              }}
+              leftSection={selectedBroker ? <Avatar src={selectedBroker.logo} size={20} radius="sm" /> : undefined}
+            />
+
             <Text size="sm" c="dimmed">
-              Formato CSV atteso: Operazione, Data valuta, Descrizione, Titolo, Isin, Segno, Quantita, Divisa, Prezzo, Cambio, Controvalore, Commissioni Fondi Sw/Ingr/Uscita, Commissioni Fondi Banca Corrispondente, Spese Fondi Sgr, Commissioni amministrato
+              Seleziona il file esportato dal tuo broker. Sono supportati i formati CSV e Excel (XLSX).
             </Text>
-            <Text size="xs" c="dimmed">
-              Segno: A = acquisto, V = vendita. Numeri in formato italiano (1.234,56).
-            </Text>
+
             <input
               type="file"
-              accept=".csv"
+              accept=".csv,.xlsx,.xls"
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) handleFileUpload(file);
@@ -108,6 +138,15 @@ export function CsvImportModal({ opened, onClose, portfolioId, onImportComplete 
         {step === 'preview' && preview && (
           <>
             <Group>
+              {selectedBroker && (
+                <Badge
+                  size="lg"
+                  variant="light"
+                  leftSection={<Avatar src={selectedBroker.logo} size={16} radius="sm" />}
+                >
+                  {selectedBroker.label}
+                </Badge>
+              )}
               <Badge color="blue" size="lg">Totale: {preview.total_rows}</Badge>
               <Badge color="green" size="lg">Valide: {preview.valid_rows}</Badge>
               {preview.error_rows > 0 && (

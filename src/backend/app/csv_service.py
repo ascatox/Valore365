@@ -3,6 +3,9 @@ import io
 import logging
 import re
 from datetime import datetime
+from typing import Any
+
+import openpyxl
 
 from .models import (
     AssetCreate,
@@ -46,6 +49,52 @@ BANK_EXPORT_COLUMNS = [
     "spese fondi sgr",                           # 13
     "commissioni amministrato",                  # 14
 ]
+
+
+BROKER_PROFILES: dict[str, dict[str, Any]] = {
+    "fineco": {
+        "label": "Fineco",
+        "skip_rows": 7,
+        "separator": ";",
+    },
+    "generic": {
+        "label": "Generico",
+        "skip_rows": 0,
+        "separator": None,  # auto-detect
+    },
+}
+
+
+def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0) -> list[dict[str, str]]:
+    """Read an XLSX file and return rows as list of dicts (same as csv.DictReader)."""
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    ws = wb.active
+    if ws is None:
+        raise ValueError("Il file Excel non contiene fogli")
+
+    all_rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+
+    if len(all_rows) <= skip_rows:
+        raise ValueError("Il file Excel non contiene righe dati sufficienti")
+
+    header_row = all_rows[skip_rows]
+    headers = [str(cell or "").strip() for cell in header_row]
+    data_rows = all_rows[skip_rows + 1:]
+
+    result: list[dict[str, str]] = []
+    for row in data_rows:
+        if all(cell is None or str(cell).strip() == "" for cell in row):
+            continue
+        row_dict: dict[str, str] = {}
+        for i, header in enumerate(headers):
+            if not header:
+                continue
+            val = row[i] if i < len(row) else None
+            row_dict[header] = str(val) if val is not None else ""
+        result.append(row_dict)
+
+    return result
 
 
 def _parse_italian_number(s: str) -> float | None:
@@ -144,15 +193,39 @@ class CsvImportService:
         return file_content
 
     def parse_and_validate(
-        self, portfolio_id: int, user_id: str, file_content: str, filename: str | None = None
+        self,
+        portfolio_id: int,
+        user_id: str,
+        file_content: str | None = None,
+        filename: str | None = None,
+        file_bytes: bytes | None = None,
+        broker: str = "generic",
     ) -> CsvImportPreviewResponse:
-        file_content = self._detect_and_normalize(file_content)
-        delimiter = ";" if ";" in file_content.split("\n", 1)[0] else ","
-        reader = csv.DictReader(io.StringIO(file_content), delimiter=delimiter)
-        if reader.fieldnames is None:
-            raise ValueError("File CSV vuoto o intestazioni mancanti")
+        profile = BROKER_PROFILES.get(broker, BROKER_PROFILES["generic"])
+        skip_rows = profile.get("skip_rows", 0)
+        is_xlsx = filename and filename.lower().endswith((".xlsx", ".xls"))
 
-        normalized_fields = [f.strip().lower() for f in reader.fieldnames]
+        if is_xlsx and file_bytes:
+            raw_rows = _read_xlsx_rows(file_bytes, skip_rows=skip_rows)
+            if not raw_rows:
+                raise ValueError("File Excel vuoto o senza righe dati")
+            normalized_fields = [f.strip().lower() for f in raw_rows[0].keys()]
+        elif file_content:
+            # For CSV with broker skip_rows, skip leading lines
+            if skip_rows > 0:
+                lines = file_content.split("\n")
+                file_content = "\n".join(lines[skip_rows:])
+            file_content = self._detect_and_normalize(file_content)
+            forced_sep = profile.get("separator")
+            delimiter = forced_sep if forced_sep else (";" if ";" in file_content.split("\n", 1)[0] else ",")
+            reader = csv.DictReader(io.StringIO(file_content), delimiter=delimiter)
+            if reader.fieldnames is None:
+                raise ValueError("File CSV vuoto o intestazioni mancanti")
+            normalized_fields = [f.strip().lower() for f in reader.fieldnames]
+            raw_rows = list(reader)
+        else:
+            raise ValueError("Nessun contenuto file fornito")
+
         missing = [c for c in REQUIRED_COLUMNS if c not in normalized_fields]
         if missing:
             raise ValueError(f"Colonne obbligatorie mancanti: {', '.join(missing)}")
@@ -161,8 +234,8 @@ class CsvImportService:
         valid_count = 0
         error_count = 0
 
-        for idx, raw_row in enumerate(reader, start=1):
-            row_data = {k.strip().lower(): (v.strip() if v else "") for k, v in raw_row.items()}
+        for idx, raw_row in enumerate(raw_rows, start=1):
+            row_data = {k.strip().lower(): (str(v).strip() if v else "") for k, v in raw_row.items()}
             logger.info("Row %d raw_row: %s", idx, dict(raw_row))
             logger.info("Row %d row_data: %s", idx, row_data)
             errors: list[str] = []
