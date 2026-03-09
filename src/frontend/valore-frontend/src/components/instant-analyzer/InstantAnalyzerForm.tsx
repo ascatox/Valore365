@@ -43,7 +43,7 @@ export function InstantAnalyzerForm({
             Incolla le tue posizioni
           </Text>
           <Text size="sm" c={isDark ? theme.colors.gray[4] : '#334155'} mt={6}>
-            Una riga per posizione. Formato: <code>IDENTIFICATIVO VALORE</code>. Sono supportati ticker e ISIN. Esempio: <code>VWCE 10000</code>
+            Una riga per posizione. Formato: <code>TICKER QUANTITÀ</code>. Sono supportati ticker e ISIN. Esempio: <code>VWCE 10000</code>
           </Text>
           <Text size="sm" c={isDark ? theme.colors.gray[5] : '#475569'} mt={6}>
             Se alcune righe non possono essere risolte, l'analizzatore elaborera comunque quelle valide e segnalerà le altre qui sotto.

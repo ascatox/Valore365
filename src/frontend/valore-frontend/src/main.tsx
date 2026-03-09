@@ -69,7 +69,7 @@ function Root() {
       <ClerkProvider publishableKey={clerkPubKey}>
         <ClerkTokenBridge />
         <QueryClientProvider client={queryClient}>
-          <MantineProvider theme={theme} defaultColorScheme="auto">
+          <MantineProvider theme={theme} defaultColorScheme="light">
             <App />
           </MantineProvider>
         </QueryClientProvider>
@@ -79,7 +79,7 @@ function Root() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={theme} defaultColorScheme="auto">
+      <MantineProvider theme={theme} defaultColorScheme="light">
         <App />
       </MantineProvider>
     </QueryClientProvider>
