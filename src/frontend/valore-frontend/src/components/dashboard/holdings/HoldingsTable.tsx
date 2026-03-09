@@ -179,10 +179,10 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
                 <Table.Tr key={p.asset_id}>
                   <Table.Td>
                     <Group gap={4} wrap="nowrap">
-                      <Text fw={500} size="sm">{p.symbol}</Text>
+                      <Text fw={500} size="sm" lineClamp={1}>{p.name}</Text>
                       <StaleIcon position={p} />
                     </Group>
-                    <Text size="xs" c="dimmed" lineClamp={1}>{p.name}</Text>
+                    <Text size="xs" c="dimmed">{p.symbol}</Text>
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
                     <Text size="sm">{formatNum(p.quantity)}</Text>
