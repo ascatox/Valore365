@@ -164,23 +164,23 @@ function ProtectedApp() {
                 <BrandMark compact />
               </Box>
             </Group>
-            <Group gap={isMobile ? 6 : 'xs'} wrap="nowrap">
+            <Group gap="xs" wrap="nowrap">
               <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
-                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 32 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
-                  {privacyMode ? <IconEyeOff size={18} /> : <IconEye size={18} />}
+                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
+                  {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
                   color={autoRefresh ? 'blue' : undefined}
-                  size={isMobile ? 32 : 'lg'}
+                  size={isMobile ? 42 : 'lg'}
                   onClick={handleGlobalRefresh}
                   onDoubleClick={toggleAutoRefresh}
                   aria-label="Aggiorna"
                 >
                   <IconRefresh
-                    size={18}
+                    size={isMobile ? 22 : 18}
                     style={autoRefresh ? { animation: 'spin 2s linear infinite' } : undefined}
                   />
                 </ActionIcon>
@@ -189,13 +189,13 @@ function ProtectedApp() {
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
                   color={autoRefresh ? 'blue' : undefined}
-                  size={isMobile ? 32 : 'lg'}
+                  size={isMobile ? 42 : 'lg'}
                   onClick={toggleAutoRefresh}
                   aria-label="Auto-refresh"
                 >
                   {autoRefresh
-                    ? <IconPlayerStop size={18} />
-                    : <IconPlayerPlay size={18} />}
+                    ? <IconPlayerStop size={isMobile ? 22 : 18} />
+                    : <IconPlayerPlay size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
               {clerkEnabled && <UserButton afterSignOutUrl="/" />}
