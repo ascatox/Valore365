@@ -202,6 +202,7 @@ class Position(BaseModel):
     asset_id: int
     symbol: str
     name: str
+    asset_type: str = "stock"
     quantity: float
     avg_cost: float
     market_price: float

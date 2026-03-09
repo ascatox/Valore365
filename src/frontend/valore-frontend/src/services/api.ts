@@ -305,6 +305,7 @@ export interface Position {
   asset_id: number;
   symbol: string;
   name: string;
+  asset_type: string;
   quantity: number;
   avg_cost: number;
   market_price: number;

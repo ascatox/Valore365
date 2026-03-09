@@ -1807,6 +1807,7 @@ class PortfolioRepository:
                 asset_details = assets.get(aid, {})
                 symbol = asset_details.get("symbol", f"ASSET-{aid}")
                 name = asset_details.get("name", "")
+                asset_type = asset_details.get("asset_type", "stock")
 
                 stale = check_staleness(
                     asset_id=aid,
@@ -1826,6 +1827,7 @@ class PortfolioRepository:
                         asset_id=aid,
                         symbol=symbol,
                         name=name,
+                        asset_type=asset_type,
                         quantity=round(_finite(qty), 8),
                         avg_cost=round(_finite(avg_cost), 4),
                         market_price=round(_finite(market_price), 4),
@@ -3477,14 +3479,14 @@ class PortfolioRepository:
         rows = conn.execute(
             text(
                 """
-                select id, symbol, name
+                select id, symbol, name, asset_type
                 from assets
                 where id = any(:asset_ids)
                 """
             ),
             {"asset_ids": asset_ids},
         ).mappings().all()
-        return {int(r["id"]): {"symbol": str(r["symbol"]), "name": str(r["name"])} for r in rows}
+        return {int(r["id"]): {"symbol": str(r["symbol"]), "name": str(r["name"]), "asset_type": str(r["asset_type"])} for r in rows}
 
     def _get_asset_meta(self, conn, asset_ids: list[int]) -> dict[int, AssetMeta]:
         rows = conn.execute(
