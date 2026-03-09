@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Avatar,
@@ -87,6 +87,13 @@ export function CsvImportModal({
   const [creatingPortfolio, setCreatingPortfolio] = useState(false);
 
   const selectedBroker = BROKER_OPTIONS.find((b) => b.value === broker);
+
+  useEffect(() => {
+    if (!opened) {
+      return;
+    }
+    setResolvedPortfolioId(portfolioId);
+  }, [opened, portfolioId]);
 
   const handleClose = () => {
     if (preview && step === 'preview') {
