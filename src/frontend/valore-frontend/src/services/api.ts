@@ -152,6 +152,9 @@ export interface AdminUsageSummary {
   csv_import_batches_total: number;
   portfolios_created_7d: number;
   imports_started_7d: number;
+  analyzer_runs_total: number;
+  analyzer_runs_7d: number;
+  analyzer_unique_visitors_7d: number;
   public_instant_analyzer_tracked: boolean;
 }
 

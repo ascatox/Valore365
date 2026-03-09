@@ -143,6 +143,20 @@ create table app_users (
 create index idx_app_users_email on app_users(email);
 create index idx_app_users_last_seen_at on app_users(last_seen_at desc);
 
+create table public_instant_analyzer_events (
+  id bigserial primary key,
+  client_ip_hash varchar(64),
+  input_mode varchar(32) not null,
+  positions_count int not null default 0,
+  success boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create index idx_public_instant_analyzer_events_created_at
+  on public_instant_analyzer_events(created_at desc);
+create index idx_public_instant_analyzer_events_client_ip_hash
+  on public_instant_analyzer_events(client_ip_hash);
+
 create table portfolio_target_allocations (
   portfolio_id bigint not null references portfolios(id) on delete cascade,
   asset_id bigint not null references assets(id),

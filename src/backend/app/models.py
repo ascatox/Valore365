@@ -52,7 +52,10 @@ class AdminUsageSummary(BaseModel):
     csv_import_batches_total: int = Field(ge=0)
     portfolios_created_7d: int = Field(ge=0)
     imports_started_7d: int = Field(ge=0)
-    public_instant_analyzer_tracked: bool = False
+    analyzer_runs_total: int = Field(ge=0)
+    analyzer_runs_7d: int = Field(ge=0)
+    analyzer_unique_visitors_7d: int = Field(ge=0)
+    public_instant_analyzer_tracked: bool = True
 
 
 class PortfolioCreate(BaseModel):

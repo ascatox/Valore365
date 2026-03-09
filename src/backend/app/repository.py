@@ -97,6 +97,42 @@ class PortfolioRepository:
     def __init__(self, engine: Engine) -> None:
         self.engine = engine
 
+    def record_public_instant_analyzer_event(
+        self,
+        *,
+        client_ip_hash: str | None,
+        input_mode: str,
+        positions_count: int,
+        success: bool,
+    ) -> None:
+        with self.engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    insert into public_instant_analyzer_events (
+                      client_ip_hash,
+                      input_mode,
+                      positions_count,
+                      success,
+                      created_at
+                    )
+                    values (
+                      :client_ip_hash,
+                      :input_mode,
+                      :positions_count,
+                      :success,
+                      now()
+                    )
+                    """
+                ),
+                {
+                    "client_ip_hash": client_ip_hash,
+                    "input_mode": input_mode,
+                    "positions_count": positions_count,
+                    "success": success,
+                },
+            )
+
     def get_admin_usage_summary(self) -> AdminUsageSummary:
         with self.engine.begin() as conn:
             row = conn.execute(
@@ -116,7 +152,10 @@ class PortfolioRepository:
                         (select count(*)::int from transactions where owner_user_id <> 'dev-user') as transactions_total,
                         (select count(*)::int from csv_import_batches where owner_user_id <> 'dev-user') as csv_import_batches_total,
                         (select count(*)::int from portfolios where owner_user_id <> 'dev-user' and created_at >= now() - interval '7 days') as portfolios_created_7d,
-                        (select count(*)::int from csv_import_batches where owner_user_id <> 'dev-user' and created_at >= now() - interval '7 days') as imports_started_7d
+                        (select count(*)::int from csv_import_batches where owner_user_id <> 'dev-user' and created_at >= now() - interval '7 days') as imports_started_7d,
+                        (select count(*)::int from public_instant_analyzer_events) as analyzer_runs_total,
+                        (select count(*)::int from public_instant_analyzer_events where created_at >= now() - interval '7 days') as analyzer_runs_7d,
+                        (select count(distinct client_ip_hash)::int from public_instant_analyzer_events where created_at >= now() - interval '7 days' and client_ip_hash is not null) as analyzer_unique_visitors_7d
                     """
                 )
             ).mappings().one()
@@ -131,7 +170,10 @@ class PortfolioRepository:
             csv_import_batches_total=int(row["csv_import_batches_total"] or 0),
             portfolios_created_7d=int(row["portfolios_created_7d"] or 0),
             imports_started_7d=int(row["imports_started_7d"] or 0),
-            public_instant_analyzer_tracked=False,
+            analyzer_runs_total=int(row["analyzer_runs_total"] or 0),
+            analyzer_runs_7d=int(row["analyzer_runs_7d"] or 0),
+            analyzer_unique_visitors_7d=int(row["analyzer_unique_visitors_7d"] or 0),
+            public_instant_analyzer_tracked=True,
         )
 
     def get_user_settings(self, user_id: str) -> UserSettingsRead:

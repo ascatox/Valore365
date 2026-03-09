@@ -10,6 +10,7 @@ import {
   IconFileImport,
   IconCalendar,
   IconSparkles,
+  IconUsersGroup,
 } from '@tabler/icons-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -25,6 +26,9 @@ const METRIC_ICONS: Record<string, { icon: typeof IconUsers; color: string }> = 
   csv_import_batches_total: { icon: IconFileImport, color: 'pink' },
   portfolios_created_7d: { icon: IconCalendar, color: 'lime' },
   imports_started_7d: { icon: IconCalendar, color: 'yellow' },
+  analyzer_runs_total: { icon: IconSparkles, color: 'blue' },
+  analyzer_runs_7d: { icon: IconSparkles, color: 'teal' },
+  analyzer_unique_visitors_7d: { icon: IconUsersGroup, color: 'green' },
 };
 
 function MetricCard({ label, value, metricKey }: { label: string; value: number; metricKey: string }) {
@@ -114,6 +118,9 @@ export function AdminPage() {
               <MetricCard label="Import batch totali" value={summary.csv_import_batches_total} metricKey="csv_import_batches_total" />
               <MetricCard label="Portfolio creati 7 giorni" value={summary.portfolios_created_7d} metricKey="portfolios_created_7d" />
               <MetricCard label="Import avviati 7 giorni" value={summary.imports_started_7d} metricKey="imports_started_7d" />
+              <MetricCard label="Analyzer usi totali" value={summary.analyzer_runs_total} metricKey="analyzer_runs_total" />
+              <MetricCard label="Analyzer usi 7 giorni" value={summary.analyzer_runs_7d} metricKey="analyzer_runs_7d" />
+              <MetricCard label="Visitatori unici analyzer 7 giorni" value={summary.analyzer_unique_visitors_7d} metricKey="analyzer_unique_visitors_7d" />
             </SimpleGrid>
 
             <Card
@@ -135,7 +142,7 @@ export function AdminPage() {
                   <Text fw={700} c={isDark ? 'white' : undefined}>Lettura attuale</Text>
                 </Group>
                 <Text c="dimmed">
-                  Questi numeri misurano l'uso autenticato dell'app: account che hanno creato portfolio, inserito transazioni o avviato import.
+                  Questi numeri combinano l'uso autenticato dell'app con il tracking del public instant analyzer.
                 </Text>
                 <Group gap="xs">
                   <ThemeIcon

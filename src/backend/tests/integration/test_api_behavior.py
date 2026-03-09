@@ -129,7 +129,10 @@ class _FakeRepo:
             csv_import_batches_total=6,
             portfolios_created_7d=3,
             imports_started_7d=2,
-            public_instant_analyzer_tracked=False,
+            analyzer_runs_total=11,
+            analyzer_runs_7d=5,
+            analyzer_unique_visitors_7d=4,
+            public_instant_analyzer_tracked=True,
         )
 
 
@@ -219,7 +222,8 @@ def test_admin_usage_summary_route(monkeypatch):
     payload = response.json()
     assert payload['registered_users'] == 5
     assert payload['users_with_imports'] == 2
-    assert payload['public_instant_analyzer_tracked'] is False
+    assert payload['analyzer_runs_total'] == 11
+    assert payload['public_instant_analyzer_tracked'] is True
 
 
 def test_admin_usage_summary_route_forbidden_without_admin_access(monkeypatch):
@@ -520,8 +524,9 @@ def test_public_instant_portfolio_analyzer_real_route_returns_structured_details
     assert payload['error']['details']['unresolved'][0]['identifier'] == 'UNKNOWN'
 
 
-def test_public_instant_portfolio_analyzer_real_route_rejects_too_many_positions():
+def test_public_instant_portfolio_analyzer_real_route_rejects_too_many_positions(monkeypatch):
     instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+    monkeypatch.setattr(instant_portfolio_api.get_settings(), 'public_instant_analyzer_max_positions', 50)
 
     router = APIRouter()
     instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo())

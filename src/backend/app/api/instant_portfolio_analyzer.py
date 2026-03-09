@@ -1,3 +1,4 @@
+import hashlib
 import threading
 import time
 from collections import defaultdict, deque
@@ -77,6 +78,19 @@ def _validate_public_payload(payload: InstantAnalyzeRequest) -> None:
         )
 
 
+def _positions_count(payload: InstantAnalyzeRequest) -> int:
+    if payload.input_mode == "raw_text":
+        raw_text = payload.raw_text or ""
+        return len([line for line in raw_text.splitlines() if line.strip()])
+    return len(payload.positions)
+
+
+def _hash_client_ip(client_ip: str) -> str | None:
+    if not client_ip or client_ip == "unknown":
+        return None
+    return hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+
+
 _settings = get_settings()
 _public_instant_rate_limiter = SlidingWindowRateLimiter(
     max_requests=_settings.public_instant_analyzer_rate_limit_requests,
@@ -95,16 +109,58 @@ def register_instant_portfolio_analyzer_routes(router: APIRouter, repo: Portfoli
         responses={400: {"model": ErrorResponse}, 429: {"model": ErrorResponse}},
     )
     def analyze_portfolio(payload: InstantAnalyzeRequest, request: Request) -> InstantAnalyzeResponse:
-        if not _public_instant_rate_limiter.allow(_client_ip(request)):
+        client_ip = _client_ip(request)
+        if not _public_instant_rate_limiter.allow(client_ip):
             raise AppError(
                 code="rate_limited",
                 message="Too many analysis requests. Please try again later.",
                 status_code=429,
             )
-        _validate_public_payload(payload)
+        positions_count = _positions_count(payload)
+
         try:
-            return analyze_public_portfolio(repo, payload)
+            _validate_public_payload(payload)
+            response = analyze_public_portfolio(repo, payload)
+            try:
+                repo.record_public_instant_analyzer_event(
+                    client_ip_hash=_hash_client_ip(client_ip),
+                    input_mode=payload.input_mode,
+                    positions_count=positions_count,
+                    success=True,
+                )
+            except Exception:
+                pass
+            return response
         except InstantPortfolioAnalysisError as exc:
+            try:
+                repo.record_public_instant_analyzer_event(
+                    client_ip_hash=_hash_client_ip(client_ip),
+                    input_mode=payload.input_mode,
+                    positions_count=positions_count,
+                    success=False,
+                )
+            except Exception:
+                pass
             raise AppError(code="bad_request", message=str(exc), status_code=400, details=exc.details) from exc
         except ValueError as exc:
+            try:
+                repo.record_public_instant_analyzer_event(
+                    client_ip_hash=_hash_client_ip(client_ip),
+                    input_mode=payload.input_mode,
+                    positions_count=positions_count,
+                    success=False,
+                )
+            except Exception:
+                pass
             raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
+        except AppError:
+            try:
+                repo.record_public_instant_analyzer_event(
+                    client_ip_hash=_hash_client_ip(client_ip),
+                    input_mode=payload.input_mode,
+                    positions_count=positions_count,
+                    success=False,
+                )
+            except Exception:
+                pass
+            raise
