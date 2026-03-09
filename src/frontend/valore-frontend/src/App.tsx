@@ -170,11 +170,13 @@ function ProtectedApp() {
                   {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
-              <Tooltip label={colorScheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'} withArrow>
-                <ActionIcon onClick={toggleColorScheme} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Cambia tema">
-                  {colorScheme === 'dark' ? <IconSun size={isMobile ? 22 : 18} /> : <IconMoon size={isMobile ? 22 : 18} />}
-                </ActionIcon>
-              </Tooltip>
+              <Box visibleFrom="sm">
+                <Tooltip label={colorScheme === 'dark' ? 'Tema chiaro' : 'Tema scuro'} withArrow>
+                  <ActionIcon onClick={toggleColorScheme} variant="default" size="lg" aria-label="Cambia tema">
+                    {colorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+                  </ActionIcon>
+                </Tooltip>
+              </Box>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
