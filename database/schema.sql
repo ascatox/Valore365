@@ -131,6 +131,18 @@ create table app_user_settings (
   updated_at timestamptz not null default now()
 );
 
+create table app_users (
+  user_id varchar(255) primary key,
+  email varchar(320),
+  last_sign_in_at timestamptz,
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index idx_app_users_email on app_users(email);
+create index idx_app_users_last_seen_at on app_users(last_seen_at desc);
+
 create table portfolio_target_allocations (
   portfolio_id bigint not null references portfolios(id) on delete cascade,
   asset_id bigint not null references assets(id),

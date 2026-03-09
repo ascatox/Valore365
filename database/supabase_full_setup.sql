@@ -138,6 +138,18 @@ create table app_user_settings (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists app_users (
+  user_id varchar(255) primary key,
+  email varchar(320),
+  last_sign_in_at timestamptz,
+  last_seen_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_app_users_email on app_users(email);
+create index if not exists idx_app_users_last_seen_at on app_users(last_seen_at desc);
+
 -- ============================================================
 -- 2. SEED (dati iniziali)
 -- ============================================================
@@ -214,6 +226,9 @@ set provider = 'yfinance'
 where provider = 'twelvedata';
 
 -- 20260226_01_app_user_settings
+-- (tabella gia creata nello schema, skip)
+
+-- 20260309_01_app_users
 -- (tabella gia creata nello schema, skip)
 
 -- 20260226_02_add_owner_user_id (colonne gia nello schema, ma safe con IF NOT EXISTS)

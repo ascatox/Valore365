@@ -1,13 +1,16 @@
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 import jwt
 from fastapi import Depends, Header
+from sqlalchemy import text
 
 from .config import get_settings
+from .db import engine
 from .errors import AppError
 
 logger = logging.getLogger(__name__)
@@ -46,6 +49,48 @@ def _extract_email_from_claims(claims: dict[str, Any]) -> str | None:
                     return nested.strip().lower()
 
     return None
+
+
+def _extract_last_sign_in_at(claims: dict[str, Any]) -> datetime | None:
+    for key in ("last_sign_in_at", "lastSignInAt"):
+        value = claims.get(key)
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(float(value), tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
+                return None
+        if isinstance(value, str) and value.strip():
+            try:
+                normalized = value.replace("Z", "+00:00")
+                return datetime.fromisoformat(normalized)
+            except ValueError:
+                return None
+    return None
+
+
+def _sync_app_user(user_id: str, email: str | None, last_sign_in_at: datetime | None) -> None:
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    insert into app_users (user_id, email, last_sign_in_at, last_seen_at, updated_at)
+                    values (:user_id, :email, :last_sign_in_at, now(), now())
+                    on conflict (user_id) do update set
+                      email = coalesce(excluded.email, app_users.email),
+                      last_sign_in_at = coalesce(excluded.last_sign_in_at, app_users.last_sign_in_at),
+                      last_seen_at = now(),
+                      updated_at = now()
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "email": email,
+                    "last_sign_in_at": last_sign_in_at,
+                },
+            )
+    except Exception:
+        logger.exception("Failed to sync app user for %s", user_id)
 
 
 def _fetch_jwks(url: str) -> list[dict[str, Any]]:
@@ -125,10 +170,13 @@ def require_auth(authorization: str | None = Header(default=None)) -> AuthContex
                     status_code=401,
                 )
 
+        email = _extract_email_from_claims(claims)
+        _sync_app_user(claims["sub"], email, _extract_last_sign_in_at(claims))
+
         return AuthContext(
             user_id=claims["sub"],
             org_id=claims.get("org_id"),
-            email=_extract_email_from_claims(claims),
+            email=email,
             claims=claims,
         )
 

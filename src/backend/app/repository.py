@@ -104,20 +104,8 @@ class PortfolioRepository:
                     """
                     with registered_users as (
                         select distinct user_id as uid
-                        from app_user_settings
+                        from app_users
                         where user_id <> 'dev-user'
-                        union
-                        select distinct owner_user_id as uid
-                        from portfolios
-                        where owner_user_id <> 'dev-user'
-                        union
-                        select distinct owner_user_id as uid
-                        from transactions
-                        where owner_user_id <> 'dev-user'
-                        union
-                        select distinct owner_user_id as uid
-                        from csv_import_batches
-                        where owner_user_id <> 'dev-user'
                     )
                     select
                         (select count(*)::int from registered_users) as registered_users,
