@@ -143,9 +143,11 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       iconColor: 'blue' as const,
     },
     {
-      label: isMobile ? 'Var. Giorn' : 'Var. Giornaliera',
+      label: isMobile ? 'Oggi' : 'Var. Giornaliera',
       value: portfolioSummary
-        ? `${formatMoney(portfolioSummary.day_change, mvpCurrency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
+        ? isMobile
+          ? formatPct(portfolioSummary.day_change_pct)
+          : `${formatMoney(portfolioSummary.day_change, mvpCurrency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
         : 'N/D',
       color: getVariationColor(portfolioSummary?.day_change ?? 0),
       icon: IconArrowUpRight,
