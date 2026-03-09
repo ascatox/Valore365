@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="src/frontend/valore-frontend/src/assets/logo-mark.svg" alt="Logo Valore365" width="120">
+</p>
+
 # Valore365
 
 SaaS di portfolio tracking personale (no execution) 📈
