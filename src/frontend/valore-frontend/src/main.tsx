@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { Drawer, MantineProvider, Modal, NumberInput, createTheme } from '@mantine/core';
+import { ColorSchemeScript, Drawer, MantineProvider, Modal, NumberInput, createTheme } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
@@ -69,7 +69,7 @@ function Root() {
       <ClerkProvider publishableKey={clerkPubKey}>
         <ClerkTokenBridge />
         <QueryClientProvider client={queryClient}>
-          <MantineProvider theme={theme}>
+          <MantineProvider theme={theme} defaultColorScheme="auto">
             <App />
           </MantineProvider>
         </QueryClientProvider>
@@ -79,7 +79,7 @@ function Root() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <MantineProvider theme={theme}>
+      <MantineProvider theme={theme} defaultColorScheme="auto">
         <App />
       </MantineProvider>
     </QueryClientProvider>
