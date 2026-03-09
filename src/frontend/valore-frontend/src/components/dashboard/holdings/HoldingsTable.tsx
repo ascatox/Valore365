@@ -7,7 +7,7 @@ import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatt
 import { AssetInfoModal } from './AssetInfoModal';
 import { MobileHoldingsCards } from '../../mobile/MobileHoldingsCards';
 
-type SortKey = 'symbol' | 'quantity' | 'market_price' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'weight' | 'first_trade_at';
+type SortKey = 'symbol' | 'quantity' | 'market_price' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'day_change_pct' | 'weight' | 'first_trade_at';
 
 interface HoldingsTableProps {
   positions: Position[];
@@ -31,6 +31,7 @@ const BASE_COLUMNS: ColumnDef[] = [
   { label: 'Valore', key: 'market_value', align: 'right', sortable: true },
   { label: 'P/L', key: 'unrealized_pl', align: 'right', sortable: true },
   { label: 'P/L %', key: 'unrealized_pl_pct', align: 'right', sortable: true },
+  { label: 'Var. Giorn.', key: 'day_change_pct', align: 'right', sortable: true },
   { label: 'Peso Titolo', key: 'weight', align: 'right', sortable: true },
   { label: 'Prima Op.', key: 'first_trade_at', align: 'right', visibleFrom: 'md', sortable: true },
 ];
@@ -48,6 +49,7 @@ function getSortValue(p: Position, key: SortKey): number | string {
     case 'market_value': return p.market_value;
     case 'unrealized_pl': return p.unrealized_pl;
     case 'unrealized_pl_pct': return p.unrealized_pl_pct;
+    case 'day_change_pct': return p.day_change_pct;
     case 'weight': return p.weight;
     case 'first_trade_at': return p.first_trade_at ?? '';
     default: return 0;
@@ -202,6 +204,11 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
                     </Text>
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }}>
+                    <Text c={getVariationColor(p.day_change_pct)} fw={500} size="sm">
+                      {formatPct(p.day_change_pct)}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td style={{ textAlign: 'right' }}>
                     <Group gap="xs" wrap="nowrap" justify="flex-end">
                       <Progress value={p.weight} size="sm" w={60} color="blue" visibleFrom="sm" />
                       <Text size="xs">{formatNum(p.weight, 1)}%</Text>
@@ -257,6 +264,13 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
                   <Text fw={700} size="sm" c={getVariationColor(totals.totalPlPct)}>
                     {formatPct(totals.totalPlPct)}
                   </Text>
+                </Table.Td>
+                <Table.Td style={{ textAlign: 'right' }}>
+                  {summary?.day_change_pct != null && (
+                    <Text fw={700} size="sm" c={getVariationColor(summary.day_change_pct)}>
+                      {formatPct(summary.day_change_pct)}
+                    </Text>
+                  )}
                 </Table.Td>
                 <Table.Td style={{ textAlign: 'right' }}>
                   <Text fw={700} size="xs">100%</Text>
