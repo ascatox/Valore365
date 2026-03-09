@@ -1,6 +1,4 @@
-<p align="left">
-  <img src="src/frontend/valore-frontend/src/assets/logo-mark.svg" alt="Logo Valore365" width="120">
-</p>
+  <img src="src/frontend/valore-frontend/src/assets/logo-mark.svg" alt="Logo Valore365" width="40">
 
 # Valore365
 
