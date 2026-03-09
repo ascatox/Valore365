@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { Alert, Box, Container, Grid, Group, Stack, Text, Title } from '@mantine/core';
+import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconShieldCheck, IconSparkles, IconTargetArrow } from '@tabler/icons-react';
 import logoMark from '../assets/logo-mark.svg';
 import { InstantAnalyzerForm } from '../components/instant-analyzer/InstantAnalyzerForm';
@@ -40,9 +42,14 @@ export function InstantPortfolioAnalyzerPage() {
   const [result, setResult] = useState<InstantAnalyzeResponse | null>(null);
   const [errorDetails, setErrorDetails] = useState<InstantAnalyzerErrorDetails>({ parseErrors: [], unresolved: [] });
 
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
+
   const handleSubmit = async () => {
     if (!rawText.trim()) {
-      setError('Incolla almeno una posizione prima di avviare l’analisi.');
+      setError('Incolla almeno una posizione prima di avviare l\'analisi.');
       setErrorDetails({ parseErrors: [], unresolved: [] });
       return;
     }
@@ -65,25 +72,28 @@ export function InstantPortfolioAnalyzerPage() {
     <Box
       style={{
         minHeight: '100vh',
-        background: 'radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 22%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.10), transparent 26%), linear-gradient(180deg, #fbfeff 0%, #ffffff 24%, #f7fcfa 100%)',
-        padding: '48px 0 72px',
-        color: '#0f172a',
+        background: isDark
+          ? `radial-gradient(circle at top left, rgba(37, 99, 235, 0.08), transparent 22%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.08), transparent 26%), linear-gradient(180deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 100%)`
+          : 'radial-gradient(circle at top left, rgba(37, 99, 235, 0.10), transparent 22%), radial-gradient(circle at top right, rgba(16, 185, 129, 0.10), transparent 26%), linear-gradient(180deg, #fbfeff 0%, #ffffff 24%, #f7fcfa 100%)',
+        padding: isMobile ? '24px 0 48px' : '48px 0 72px',
       }}
     >
       <Container size="xl">
         <Stack gap="xl">
           <Stack gap="md" maw={860}>
-            <Group gap="lg" align="center" wrap="nowrap">
+            <Group gap={isMobile ? 'md' : 'lg'} align="center" wrap="nowrap">
               <Box
                 style={{
-                  width: 88,
-                  height: 88,
-                  minWidth: 88,
-                  borderRadius: 26,
-                  background: 'linear-gradient(180deg, #ffffff 0%, #f2fbf8 100%)',
-                  border: '1px solid rgba(37, 99, 235, 0.12)',
-                  boxShadow: '0 22px 44px rgba(15, 23, 42, 0.12)',
-                  padding: 12,
+                  width: isMobile ? 56 : 88,
+                  height: isMobile ? 56 : 88,
+                  minWidth: isMobile ? 56 : 88,
+                  borderRadius: isMobile ? 18 : 26,
+                  background: isDark
+                    ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[5]} 100%)`
+                    : 'linear-gradient(180deg, #ffffff 0%, #f2fbf8 100%)',
+                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(37, 99, 235, 0.12)',
+                  boxShadow: isDark ? '0 22px 44px rgba(0, 0, 0, 0.2)' : '0 22px 44px rgba(15, 23, 42, 0.12)',
+                  padding: isMobile ? 8 : 12,
                 }}
               >
                 <img
@@ -93,10 +103,10 @@ export function InstantPortfolioAnalyzerPage() {
                 />
               </Box>
               <Stack gap={2}>
-                <Title order={2} c="#0f172a" style={{ fontSize: 'clamp(2.1rem, 5vw, 3.4rem)', lineHeight: 1 }}>
+                <Title order={2} c={isDark ? 'white' : '#0f172a'} style={{ fontSize: isMobile ? '1.6rem' : 'clamp(2.1rem, 5vw, 3.4rem)', lineHeight: 1 }}>
                   Valore365
                 </Title>
-                <Text c="#2563eb" fw={700} size="lg">
+                <Text c={isDark ? theme.colors.blue[3] : '#2563eb'} fw={700} size={isMobile ? 'md' : 'lg'}>
                   Instant Analyzer
                 </Text>
               </Stack>
@@ -106,26 +116,41 @@ export function InstantPortfolioAnalyzerPage() {
               <Group
                 gap={6}
                 style={{
-                  background: 'rgba(255, 255, 255, 0.78)',
-                  border: '1px solid rgba(37, 99, 235, 0.1)',
+                  background: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(255, 255, 255, 0.78)',
+                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(37, 99, 235, 0.1)',
                   borderRadius: 999,
                   padding: '8px 14px',
-                  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.08)',
+                  boxShadow: isDark ? '0 10px 24px rgba(0, 0, 0, 0.2)' : '0 10px 24px rgba(15, 23, 42, 0.08)',
                 }}
               >
-                <IconSparkles size={18} color="#2563eb" />
-                <Text fw={700} c="#1e293b">Analisi istantanea pubblica</Text>
+                <IconSparkles size={18} color={isDark ? theme.colors.blue[3] : '#2563eb'} />
+                <Text fw={700} c={isDark ? theme.colors.gray[2] : '#1e293b'} size={isMobile ? 'sm' : undefined}>
+                  Analisi istantanea pubblica
+                </Text>
               </Group>
             </Group>
-            <Title order={1} c="#0f172a" style={{ fontSize: 'clamp(2.5rem, 6vw, 4.5rem)', lineHeight: 1.02, letterSpacing: '-0.04em' }}>
+            <Title
+              order={1}
+              c={isDark ? 'white' : '#0f172a'}
+              style={{
+                fontSize: isMobile ? '1.8rem' : 'clamp(2.5rem, 6vw, 4.5rem)',
+                lineHeight: 1.02,
+                letterSpacing: '-0.04em',
+              }}
+            >
               Controlla la salute del tuo portafoglio in 30 secondi
             </Title>
-            <Text size="xl" c="#334155" maw={720} style={{ lineHeight: 1.5 }}>
+            <Text
+              size={isMobile ? 'md' : 'xl'}
+              c={isDark ? theme.colors.gray[4] : '#334155'}
+              maw={720}
+              style={{ lineHeight: 1.5 }}
+            >
               Incolla le tue posizioni in ETF e azioni e ottieni subito uno score, una diagnosi del rischio e indicazioni sulla diversificazione.
             </Text>
-            <Group gap="xl" wrap="wrap" style={{ color: '#1e293b' }}>
-              <Group gap="xs"><IconTargetArrow size={18} color="#1d4ed8" /><Text fw={600}>Valore prima del signup</Text></Group>
-              <Group gap="xs"><IconShieldCheck size={18} color="#0f766e" /><Text fw={600}>Nessun login richiesto</Text></Group>
+            <Group gap="xl" wrap="wrap" c={isDark ? theme.colors.gray[3] : '#1e293b'}>
+              <Group gap="xs"><IconTargetArrow size={18} color={isDark ? theme.colors.blue[4] : '#1d4ed8'} /><Text fw={600} size={isMobile ? 'sm' : undefined}>Valore prima del signup</Text></Group>
+              <Group gap="xs"><IconShieldCheck size={18} color={isDark ? theme.colors.teal[4] : '#0f766e'} /><Text fw={600} size={isMobile ? 'sm' : undefined}>Nessun login richiesto</Text></Group>
             </Group>
           </Stack>
 

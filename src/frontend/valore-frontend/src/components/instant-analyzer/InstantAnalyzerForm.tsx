@@ -1,4 +1,5 @@
 import { Alert, Button, Card, Group, Stack, Text, Textarea } from '@mantine/core';
+import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconClipboardText, IconSearch, IconTrash } from '@tabler/icons-react';
 import { InstantAnalyzerExamples } from './InstantAnalyzerExamples';
 
@@ -19,25 +20,33 @@ export function InstantAnalyzerForm({
   onSubmit,
   onReset,
 }: InstantAnalyzerFormProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   return (
     <Card
       radius="xl"
       padding="xl"
       withBorder
       style={{
-        background: 'linear-gradient(180deg, #f4fbff 0%, #f5fffb 100%)',
-        borderColor: 'rgba(37, 99, 235, 0.12)',
-        boxShadow: '0 18px 40px rgba(37, 99, 235, 0.08)',
+        background: isDark
+          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+          : 'linear-gradient(180deg, #f4fbff 0%, #f5fffb 100%)',
+        borderColor: isDark ? theme.colors.dark[4] : 'rgba(37, 99, 235, 0.12)',
+        boxShadow: isDark ? '0 18px 40px rgba(0, 0, 0, 0.28)' : '0 18px 40px rgba(37, 99, 235, 0.08)',
       }}
     >
       <Stack gap="lg">
         <div>
-          <Text tt="uppercase" fw={800} size="xs" c="#0f766e">Incolla le tue posizioni</Text>
-          <Text size="sm" c="#334155" mt={6}>
+          <Text tt="uppercase" fw={800} size="xs" c={isDark ? theme.colors.teal[3] : '#0f766e'}>
+            Incolla le tue posizioni
+          </Text>
+          <Text size="sm" c={isDark ? theme.colors.gray[4] : '#334155'} mt={6}>
             Una riga per posizione. Formato: <code>IDENTIFICATIVO VALORE</code>. Sono supportati ticker e ISIN. Esempio: <code>VWCE 10000</code>
           </Text>
-          <Text size="sm" c="#475569" mt={6}>
-            Se alcune righe non possono essere risolte, l’analizzatore elaborera comunque quelle valide e segnalerà le altre qui sotto.
+          <Text size="sm" c={isDark ? theme.colors.gray[5] : '#475569'} mt={6}>
+            Se alcune righe non possono essere risolte, l'analizzatore elaborera comunque quelle valide e segnalerà le altre qui sotto.
           </Text>
         </div>
 
@@ -55,9 +64,9 @@ export function InstantAnalyzerForm({
           styles={{
             input: {
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
-              backgroundColor: '#f8fafc',
-              color: '#0f172a',
-              borderColor: 'rgba(37, 99, 235, 0.14)',
+              backgroundColor: isDark ? theme.colors.dark[5] : '#f8fafc',
+              color: isDark ? theme.white : '#0f172a',
+              borderColor: isDark ? theme.colors.dark[4] : 'rgba(37, 99, 235, 0.14)',
             },
           }}
         />

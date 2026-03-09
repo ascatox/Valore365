@@ -1,4 +1,5 @@
 import { Alert, Card, Stack, Title } from '@mantine/core';
+import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { InstantAnalyzeLineError, InstantAnalyzeUnresolvedItem } from '../../services/api';
 
 interface InstantAnalyzerInputIssuesProps {
@@ -10,13 +11,25 @@ export function InstantAnalyzerInputIssues({
   parseErrors,
   unresolved,
 }: InstantAnalyzerInputIssuesProps) {
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
+
   if (!parseErrors.length && !unresolved.length) {
     return null;
   }
 
   return (
-    <Card withBorder radius="xl" padding="lg" style={{ borderColor: 'rgba(15, 23, 42, 0.1)', background: '#fffdf8' }}>
-      <Title order={4} mb="md" c="#0f172a">Problemi di input</Title>
+    <Card
+      withBorder
+      radius="xl"
+      padding="lg"
+      style={{
+        borderColor: isDark ? theme.colors.dark[4] : 'rgba(15, 23, 42, 0.1)',
+        background: isDark ? theme.colors.dark[6] : '#fffdf8',
+      }}
+    >
+      <Title order={4} mb="md" c={isDark ? 'white' : '#0f172a'}>Problemi di input</Title>
       <Stack gap="sm">
         {parseErrors.map((error) => (
           <Alert key={`parse-${error.line}-${error.raw}`} color="red" variant="light">
