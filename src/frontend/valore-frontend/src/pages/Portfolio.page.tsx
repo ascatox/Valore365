@@ -1614,6 +1614,7 @@ export function PortfolioPage() {
         <MobileBottomNav
           items={mobileTabItems}
           value={portfolioView === 'target' ? 'target' : null}
+          bottomOffset={86}
           onChange={(value) => {
             if (value === 'target' && ENABLE_TARGET_ALLOCATION) {
               setPortfolioView((current) => (current === 'target' ? 'transactions' : 'target'));
@@ -1628,7 +1629,7 @@ export function PortfolioPage() {
           onOpen={() => setMobileActionSheetOpened(true)}
           onClose={() => setMobileActionSheetOpened(false)}
           title="Azioni portfolio"
-          bottomOffset={86}
+          bottomOffset={12}
           badge={selectedPortfolio ? selectedPortfolio.name : 'Seleziona portafoglio'}
           primaryAction={{
             label: portfolioView === 'target' ? 'Aggiungi asset' : 'Nuova transazione',
