@@ -32,6 +32,7 @@ import { TargetAllocationCsvImportModal } from '../components/portfolio/TargetAl
 import { PacRuleDrawer } from '../components/portfolio/PacRuleDrawer.tsx';
 import { PacSection } from '../components/portfolio/PacSection.tsx';
 import { MobileActionSheet } from '../components/mobile/MobileActionSheet.tsx';
+import { MobileBottomNav } from '../components/mobile/MobileBottomNav.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
 import { TargetAllocationSection } from '../components/portfolio/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/TransactionsSection.tsx';
@@ -1382,10 +1383,14 @@ export function PortfolioPage() {
 
   const txGrossTotal = formatGrossTotal(txQuantity, txPrice);
   const editGrossTotal = formatGrossTotal(editQuantity, editPrice);
+  const mobileTabItems = [
+    { value: 'transactions', label: 'Transazioni', icon: IconArrowsExchange },
+    ...(ENABLE_TARGET_ALLOCATION ? [{ value: 'target', label: 'Target', icon: IconTarget }] : []),
+  ];
 
   return (
     <>
-      <PageLayout mobileBottomPadding={isMobile ? 96 : undefined} style={isMobile ? { paddingTop: 4 } : undefined}>
+      <PageLayout mobileBottomPadding={isMobile ? 180 : undefined} style={isMobile ? { paddingTop: 4 } : undefined}>
       <PageHeader
         eyebrow="Gestione movimenti, liquidita e target"
         title="Portfolio"
@@ -1427,42 +1432,28 @@ export function PortfolioPage() {
           variant="default"
           style={isMobile ? { width: '100%' } : undefined}
         >
-          <Tabs.List
-            style={isMobile ? {
-              flexWrap: 'nowrap',
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'none',
-              paddingBottom: 0,
-              gap: 0,
-            } : {
-              flexWrap: 'nowrap',
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              WebkitOverflowScrolling: 'touch',
-              scrollbarWidth: 'none',
-              paddingBottom: 0,
-              gap: 0,
-            }}
-          >
-            <Tabs.Tab
-              value="transactions"
-              leftSection={<IconArrowsExchange size={16} />}
-              style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : undefined}
+          {!isMobile && (
+            <Tabs.List
+              style={{
+                flexWrap: 'nowrap',
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'none',
+                paddingBottom: 0,
+                gap: 0,
+              }}
             >
-              <Text span>Transazioni</Text>
-            </Tabs.Tab>
-            {ENABLE_TARGET_ALLOCATION && (
-              <Tabs.Tab
-                value="target"
-                leftSection={<IconTarget size={16} />}
-                style={isMobile ? { flex: '1 1 0', minWidth: 0, justifyContent: 'center' } : undefined}
-              >
-                <Text span>Allocazione target</Text>
+              <Tabs.Tab value="transactions" leftSection={<IconArrowsExchange size={16} />}>
+                <Text span>Transazioni</Text>
               </Tabs.Tab>
-            )}
-          </Tabs.List>
+              {ENABLE_TARGET_ALLOCATION && (
+                <Tabs.Tab value="target" leftSection={<IconTarget size={16} />}>
+                  <Text span>Allocazione target</Text>
+                </Tabs.Tab>
+              )}
+            </Tabs.List>
+          )}
         </Tabs>
         {portfolioView === 'transactions' && !isMobile && (
           <Group gap="xs">
@@ -1621,11 +1612,20 @@ export function PortfolioPage() {
       </PageLayout>
 
       {isMobile && (
+        <MobileBottomNav
+          items={mobileTabItems}
+          value={portfolioView}
+          onChange={(value) => setPortfolioView((!ENABLE_TARGET_ALLOCATION && value === 'target' ? 'transactions' : value) as 'transactions' | 'target')}
+        />
+      )}
+
+      {isMobile && (
         <MobileActionSheet
           opened={mobileActionSheetOpened}
           onOpen={() => setMobileActionSheetOpened(true)}
           onClose={() => setMobileActionSheetOpened(false)}
           title="Azioni portfolio"
+          bottomOffset={86}
           badge={selectedPortfolio ? selectedPortfolio.name : 'Seleziona portafoglio'}
           primaryAction={{
             label: portfolioView === 'target' ? 'Aggiungi asset' : 'Nuova transazione',

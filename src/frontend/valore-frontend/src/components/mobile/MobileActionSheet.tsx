@@ -16,6 +16,7 @@ interface MobileActionSheetProps {
   onOpen: () => void;
   onClose: () => void;
   title: string;
+  bottomOffset?: number;
   badge?: string;
   primaryAction?: {
     label: string;
@@ -30,6 +31,7 @@ export function MobileActionSheet({
   onOpen,
   onClose,
   title,
+  bottomOffset = 12,
   badge,
   primaryAction,
   items,
@@ -47,7 +49,7 @@ export function MobileActionSheet({
           position: 'fixed',
           left: 12,
           right: 12,
-          bottom: 12,
+          bottom: bottomOffset,
           zIndex: 44,
           padding: 8,
           borderRadius: 24,
