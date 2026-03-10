@@ -313,6 +313,7 @@ export function SettingsPage() {
                   { value: 'openai', label: 'OpenAI (GPT-4o, GPT-4o-mini, ...)' },
                   { value: 'anthropic', label: 'Anthropic (Claude Sonnet, Haiku, ...)' },
                   { value: 'gemini', label: 'Google Gemini (Gemini 2.0 Flash, ...)' },
+                  { value: 'openrouter', label: 'OpenRouter (DeepSeek, Llama, Mistral, ...)' },
                 ]}
                 clearable
                 style={{ maxWidth: 400 }}
@@ -323,7 +324,7 @@ export function SettingsPage() {
                 placeholder="Lascia vuoto per il default del provider"
                 value={copilotModel}
                 onChange={(e) => setCopilotModel(e.currentTarget.value)}
-                description={copilotProvider === 'openai' ? 'Default: gpt-4o-mini' : copilotProvider === 'anthropic' ? 'Default: claude-sonnet-4-20250514' : copilotProvider === 'gemini' ? 'Default: gemini-2.0-flash' : ''}
+                description={copilotProvider === 'openai' ? 'Default: gpt-4o-mini' : copilotProvider === 'anthropic' ? 'Default: claude-sonnet-4-20250514' : copilotProvider === 'gemini' ? 'Default: gemini-2.0-flash' : copilotProvider === 'openrouter' ? 'Default: deepseek/deepseek-chat' : ''}
                 style={{ maxWidth: 400 }}
               />
 
