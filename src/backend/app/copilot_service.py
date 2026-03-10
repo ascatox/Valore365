@@ -24,6 +24,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-20250514",
     "gemini": "gemini-2.0-flash",
+    "openrouter": "deepseek/deepseek-chat",
     "local": "llama3.2:3b",
 }
 
@@ -288,6 +289,8 @@ def _get_server_api_key(settings: Settings) -> str:
         return settings.anthropic_api_key
     elif provider == "gemini":
         return settings.gemini_api_key
+    elif provider == "openrouter":
+        return settings.openrouter_api_key
     elif provider == "local":
         return settings.copilot_local_api_key or "not-needed"
     return ""
@@ -327,6 +330,8 @@ def stream_copilot_response(
             yield from _stream_anthropic(api_key, model, system_prompt, messages)
         elif provider == "gemini":
             yield from _stream_gemini(api_key, model, system_prompt, messages)
+        elif provider == "openrouter":
+            yield from _stream_openrouter(api_key, model, system_prompt, messages)
         elif provider == "local":
             yield from _stream_local(config.local_url, api_key, model, system_prompt, messages)
         else:
@@ -391,6 +396,29 @@ def _stream_gemini(
     # Gemini returns full response, emit as single chunk
     if response.text:
         yield f"data: {json.dumps({'type': 'text_delta', 'content': response.text}, ensure_ascii=False)}\n\n"
+
+
+def _stream_openrouter(
+    api_key: str, model: str, system_prompt: str, messages: list[CopilotMessage],
+) -> Generator[str, None, None]:
+    """Stream from OpenRouter (OpenAI-compatible API)."""
+    import openai
+
+    client = openai.OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=api_key,
+    )
+    openai_messages = [{"role": "system", "content": system_prompt}]
+    for msg in messages:
+        openai_messages.append({"role": msg.role, "content": msg.content})
+
+    stream = client.chat.completions.create(
+        model=model, max_tokens=2048, stream=True, messages=openai_messages,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta if chunk.choices else None
+        if delta and delta.content:
+            yield f"data: {json.dumps({'type': 'text_delta', 'content': delta.content}, ensure_ascii=False)}\n\n"
 
 
 def _stream_local(

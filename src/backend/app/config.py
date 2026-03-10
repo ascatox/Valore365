@@ -47,12 +47,13 @@ class Settings(BaseSettings):
     enable_target_allocation: bool = True
 
     # Copilot (AI assistant) — multi-provider
-    # provider: "openai" | "anthropic" | "gemini" | "local"
+    # provider: "openai" | "anthropic" | "gemini" | "openrouter" | "local"
     copilot_provider: str = ""
     copilot_model: str = ""  # empty = auto-default per provider
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     gemini_api_key: str = ""
+    openrouter_api_key: str = ""
     # Local LLM (Ollama, LM Studio, llama.cpp, vLLM) — OpenAI-compatible API
     copilot_local_url: str = "http://localhost:11434/v1"
     copilot_local_api_key: str = "not-needed"
