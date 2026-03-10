@@ -1383,10 +1383,9 @@ export function PortfolioPage() {
 
   const txGrossTotal = formatGrossTotal(txQuantity, txPrice);
   const editGrossTotal = formatGrossTotal(editQuantity, editPrice);
-  const mobileTabItems = [
-    { value: 'transactions', label: 'Transazioni', icon: IconArrowsExchange },
-    ...(ENABLE_TARGET_ALLOCATION ? [{ value: 'target', label: 'Target', icon: IconTarget }] : []),
-  ];
+  const mobileTabItems = ENABLE_TARGET_ALLOCATION
+    ? [{ value: 'target', label: 'Target', icon: IconTarget }]
+    : [];
 
   return (
     <>
@@ -1614,8 +1613,12 @@ export function PortfolioPage() {
       {isMobile && (
         <MobileBottomNav
           items={mobileTabItems}
-          value={portfolioView}
-          onChange={(value) => setPortfolioView((!ENABLE_TARGET_ALLOCATION && value === 'target' ? 'transactions' : value) as 'transactions' | 'target')}
+          value={portfolioView === 'target' ? 'target' : null}
+          onChange={(value) => {
+            if (value === 'target' && ENABLE_TARGET_ALLOCATION) {
+              setPortfolioView((current) => (current === 'target' ? 'transactions' : 'target'));
+            }
+          }}
         />
       )}
 
