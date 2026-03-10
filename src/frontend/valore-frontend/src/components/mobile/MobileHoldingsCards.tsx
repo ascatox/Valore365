@@ -73,7 +73,9 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
               <Group justify="space-between" align="flex-start" wrap="nowrap">
                 <Box style={{ minWidth: 0 }}>
                   <Group gap={6} wrap="wrap" mb={6}>
-                    <Text fw={800} size="lg" c={isDark ? theme.white : '#0f172a'}>{position.symbol}</Text>
+                    <Text fw={800} size="lg" c={isDark ? theme.white : '#0f172a'}>
+                      {position.name || position.symbol}
+                    </Text>
                     {position.price_stale && (
                       <Tooltip
                         label={`Prezzo non aggiornato${position.price_date ? ` (ultimo: ${formatPriceDate(position.price_date)})` : ''}`}
@@ -85,7 +87,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                       </Tooltip>
                     )}
                   </Group>
-                  <Text size="sm" c="dimmed" lineClamp={2}>{position.name}</Text>
+                  <Text size="sm" c="dimmed" lineClamp={2}>{position.symbol}</Text>
                 </Box>
 
                 <Box
