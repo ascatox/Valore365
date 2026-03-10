@@ -122,10 +122,6 @@ Questo approccio mantiene l’analisi **affidabile e verificabile**.
 
 # 🖼 Screenshot
 
-*(aggiungere screenshot della dashboard)*
-
-Esempi consigliati:
-
 ![Dashboard](docs/images/dashboard.png)
 ![Dashboard](docs/images/doctor.png)
 ![Copilot](docs/images/copilot.png)
