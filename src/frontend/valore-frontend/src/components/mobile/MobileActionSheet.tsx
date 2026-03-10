@@ -1,4 +1,4 @@
-import { Badge, Box, Button, Drawer, Group, Stack, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Badge, Box, Button, Drawer, Group, Portal, Stack, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { TablerIconsProps } from '@tabler/icons-react';
 import { IconBolt, IconChevronUp } from '@tabler/icons-react';
 
@@ -42,6 +42,7 @@ export function MobileActionSheet({
 
   return (
     <>
+      <Portal>
       <Group
         wrap="nowrap"
         gap="xs"
@@ -103,6 +104,7 @@ export function MobileActionSheet({
           </Group>
         </UnstyledButton>
       </Group>
+      </Portal>
 
       <Drawer
         opened={opened}

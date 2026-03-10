@@ -1,4 +1,4 @@
-import { Group, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { TablerIconsProps } from '@tabler/icons-react';
 
 interface MobileBottomNavItem {
@@ -19,6 +19,7 @@ export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps
   const isDark = colorScheme === 'dark';
 
   return (
+    <Portal>
     <Group
       justify="space-between"
       wrap="nowrap"
@@ -63,5 +64,6 @@ export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps
         );
       })}
     </Group>
+    </Portal>
   );
 }
