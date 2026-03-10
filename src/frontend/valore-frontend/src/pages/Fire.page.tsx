@@ -8,6 +8,7 @@ import {
   Loader,
   NumberInput,
   Progress,
+  SegmentedControl,
   SimpleGrid,
   Stack,
   Table,
@@ -22,7 +23,7 @@ import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
-import { useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
+import { useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
 import { updateUserSettings } from '../services/api';
 
 const PRIVACY_MASK = '******';
@@ -86,9 +87,16 @@ function projectionToValue(indexValue: number, investedValue: number, cashBalanc
   return (indexValue / 100) * investedValue + cashBalance;
 }
 
+type FireMode = 'accumulation' | 'decumulation';
+
 export function FirePage() {
   const queryClient = useQueryClient();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [fireMode, setFireMode] = useState<FireMode>(() => {
+    if (typeof window === 'undefined') return 'accumulation';
+    const savedMode = window.localStorage.getItem(STORAGE_KEYS.fireMode);
+    return savedMode === 'decumulation' ? 'decumulation' : 'accumulation';
+  });
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
@@ -105,6 +113,10 @@ export function FirePage() {
   const [safeWithdrawalRate, setSafeWithdrawalRate] = useState<number | string>(4);
   const [currentAge, setCurrentAge] = useState<number | string>('');
   const [targetAge, setTargetAge] = useState<number | string>('');
+  const [annualWithdrawal, setAnnualWithdrawal] = useState<number | string>(0);
+  const [decumulationYears, setDecumulationYears] = useState<number | string>(30);
+  const [inflationRate, setInflationRate] = useState<number | string>(2);
+  const [otherIncomeAnnual, setOtherIncomeAnnual] = useState<number | string>(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -124,12 +136,18 @@ export function FirePage() {
   }, [selectedPortfolioId]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.fireMode, fireMode);
+  }, [fireMode]);
+
+  useEffect(() => {
     if (!userSettings) return;
     setAnnualExpenses(userSettings.fire_annual_expenses ?? 0);
     setAnnualContribution(userSettings.fire_annual_contribution ?? 0);
     setSafeWithdrawalRate(userSettings.fire_safe_withdrawal_rate ?? 4);
     setCurrentAge(userSettings.fire_current_age ?? '');
     setTargetAge(userSettings.fire_target_age ?? '');
+    setAnnualWithdrawal(userSettings.fire_annual_expenses ?? 0);
   }, [userSettings]);
 
   const settingsMutation = useMutation({
@@ -159,6 +177,11 @@ export function FirePage() {
   const swrValue = typeof safeWithdrawalRate === 'number' ? safeWithdrawalRate : Number(safeWithdrawalRate || 0);
   const currentAgeValue = typeof currentAge === 'number' ? currentAge : Number(currentAge || 0);
   const targetAgeValue = typeof targetAge === 'number' ? targetAge : Number(targetAge || 0);
+  const annualWithdrawalValue = typeof annualWithdrawal === 'number' ? annualWithdrawal : Number(annualWithdrawal || 0);
+  const decumulationYearsValue = typeof decumulationYears === 'number' ? decumulationYears : Number(decumulationYears || 0);
+  const inflationRateValue = typeof inflationRate === 'number' ? inflationRate : Number(inflationRate || 0);
+  const otherIncomeAnnualValue = typeof otherIncomeAnnual === 'number' ? otherIncomeAnnual : Number(otherIncomeAnnual || 0);
+  const decumulationEnabled = fireMode === 'decumulation' && annualWithdrawalValue > 0 && decumulationYearsValue > 0;
   const hasAgePlan = currentAgeValue > 0 && targetAgeValue > currentAgeValue;
   const fireNumber = expensesValue > 0 && swrValue > 0 ? expensesValue / (swrValue / 100) : null;
   const coveragePct = fireNumber && fireNumber > 0 ? (totalNetWorth / fireNumber) * 100 : null;
@@ -191,6 +214,26 @@ export function FirePage() {
       })
       .slice(0, 5);
   }, [cashBalance, fireNumber, investedValue, monteCarlo]);
+  const { data: decumulationData, isLoading: decumulationLoading, error: decumulationError } = useDecumulationPlan(
+    portfolioId,
+    {
+      annualWithdrawal: Math.max(0, annualWithdrawalValue),
+      years: Math.max(1, decumulationYearsValue),
+      inflationRatePct: inflationRateValue,
+      otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
+      currentAge: currentAgeValue > 0 ? currentAgeValue : null,
+    },
+    decumulationEnabled,
+  );
+
+  const decumulationPlan = decumulationData?.projections ?? [];
+  const sustainableWithdrawal = decumulationData?.sustainable_withdrawal ?? null;
+  const capitalDurationYears = decumulationData?.depletion_year_p50 ?? decumulationPlan.length;
+  const decumulationSuccess = (decumulationData?.success_rate_pct ?? 0) >= 70;
+  const firstCriticalYear = decumulationPlan.find((year) => year.p50_effective_withdrawal_rate_pct >= swrValue) ?? null;
+  const withdrawalCoveragePct = annualWithdrawalValue > 0 && decumulationData
+    ? Math.min(999, ((decumulationData.annual_other_income + decumulationData.sustainable_withdrawal) / annualWithdrawalValue) * 100)
+    : null;
 
   const handleSave = () => {
     setSaveMessage(null);
@@ -225,6 +268,23 @@ export function FirePage() {
         {(summaryError instanceof Error) && <Alert color="red">{summaryError.message}</Alert>}
         {saveMessage && <Alert color="teal">{saveMessage}</Alert>}
         {saveError && <Alert color="red">{saveError}</Alert>}
+        {(decumulationError instanceof Error) && fireMode === 'decumulation' && <Alert color="red">{decumulationError.message}</Alert>}
+
+        <Group justify="space-between" align="center" wrap="wrap">
+          <SegmentedControl
+            value={fireMode}
+            onChange={(value) => setFireMode(value as FireMode)}
+            data={[
+              { label: 'Accumulo', value: 'accumulation' },
+              { label: 'Decumulo', value: 'decumulation' },
+            ]}
+          />
+          <Text size="sm" c="dimmed">
+            {fireMode === 'accumulation'
+              ? 'Modalità orientata al raggiungimento della soglia FIRE.'
+              : 'Modalità orientata alla sostenibilità dei prelievi nel tempo.'}
+          </Text>
+        </Group>
 
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
           <Card
@@ -236,32 +296,75 @@ export function FirePage() {
             <Stack gap="lg">
               <Group justify="space-between" align="flex-start" wrap="wrap">
                 <div>
-                  <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.72 }}>FIRE Target</Text>
+                  <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.72 }}>
+                    {fireMode === 'accumulation' ? 'FIRE Target' : 'Piano di Decumulo'}
+                  </Text>
                   <Title order={1} mt={6} c="white" style={{ fontSize: 'clamp(2.8rem, 7vw, 5rem)', lineHeight: 0.95 }}>
-                    {fireNumber != null ? formatMoney(fireNumber, currency) : '—'}
+                    {fireMode === 'accumulation'
+                      ? (fireNumber != null ? formatMoney(fireNumber, currency) : '—')
+                      : (sustainableWithdrawal != null ? formatMoney(sustainableWithdrawal, currency) : '—')}
                   </Title>
                   <Text c="rgba(255,255,255,0.82)" mt="sm" size="lg">
-                    Patrimonio attuale {formatMoney(totalNetWorth, currency)}
+                    {fireMode === 'accumulation'
+                      ? `Patrimonio attuale ${formatMoney(totalNetWorth, currency)}`
+                      : `Capitale iniziale ${formatMoney(totalNetWorth, currency)}`}
                   </Text>
                 </div>
-                <Badge size="xl" radius="sm" color={coveragePct != null && coveragePct >= 100 ? 'teal' : 'red'} variant="filled">
-                  {isPrivacyModeEnabled() ? PRIVACY_MASK : coveragePct != null ? `${Math.min(999, coveragePct).toFixed(0)}% coperto` : 'Configura il piano'}
+                <Badge
+                  size="xl"
+                  radius="sm"
+                  color={
+                    fireMode === 'accumulation'
+                      ? (coveragePct != null && coveragePct >= 100 ? 'teal' : 'red')
+                      : (decumulationSuccess ? 'teal' : 'yellow')
+                  }
+                  variant="filled"
+                >
+                  {isPrivacyModeEnabled()
+                    ? PRIVACY_MASK
+                    : fireMode === 'accumulation'
+                      ? (coveragePct != null ? `${Math.min(999, coveragePct).toFixed(0)}% coperto` : 'Configura il piano')
+                      : (decumulationSuccess ? 'Piano sostenibile' : 'Piano da rivedere')}
                 </Badge>
               </Group>
 
               <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-                <HeroMetric label="Spesa annua" value={expensesValue > 0 ? formatMoney(expensesValue, currency) : '—'} />
-                <HeroMetric label="SWR" value={swrValue > 0 ? formatPct(swrValue, 2) : '—'} />
-                <HeroMetric label="Gap" value={fireGap != null ? formatMoney(fireGap, currency) : '—'} />
-                <HeroMetric label="ETA" value={estimatedYearsToFire != null ? `${Math.ceil(estimatedYearsToFire)} anni` : 'N/D'} />
+                {fireMode === 'accumulation' ? (
+                  <>
+                    <HeroMetric label="Spesa annua" value={expensesValue > 0 ? formatMoney(expensesValue, currency) : '—'} />
+                    <HeroMetric label="SWR" value={swrValue > 0 ? formatPct(swrValue, 2) : '—'} />
+                    <HeroMetric label="Gap" value={fireGap != null ? formatMoney(fireGap, currency) : '—'} />
+                    <HeroMetric label="ETA" value={estimatedYearsToFire != null ? `${Math.ceil(estimatedYearsToFire)} anni` : 'N/D'} />
+                  </>
+                ) : (
+                  <>
+                    <HeroMetric label="Prelievo" value={annualWithdrawalValue > 0 ? formatMoney(annualWithdrawalValue, currency) : '—'} />
+                    <HeroMetric label="Altri redditi" value={formatMoney(otherIncomeAnnualValue, currency)} />
+                    <HeroMetric label="Inflazione" value={formatPct(inflationRateValue, 1)} />
+                    <HeroMetric label="Durata" value={capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D'} />
+                  </>
+                )}
               </SimpleGrid>
 
               <Stack gap={8}>
                 <Group justify="space-between">
-                  <Text size="sm" c="rgba(255,255,255,0.82)">Avanzamento verso la soglia FIRE</Text>
-                  <Text size="sm" fw={700} c="white">{isPrivacyModeEnabled() ? PRIVACY_MASK : coveragePct != null ? `${Math.min(100, coveragePct).toFixed(1)}%` : 'N/D'}</Text>
+                  <Text size="sm" c="rgba(255,255,255,0.82)">
+                    {fireMode === 'accumulation' ? 'Avanzamento verso la soglia FIRE' : 'Copertura del prelievo richiesto'}
+                  </Text>
+                  <Text size="sm" fw={700} c="white">
+                    {isPrivacyModeEnabled()
+                      ? PRIVACY_MASK
+                      : fireMode === 'accumulation'
+                        ? (coveragePct != null ? `${Math.min(100, coveragePct).toFixed(1)}%` : 'N/D')
+                        : (withdrawalCoveragePct != null ? `${Math.min(100, withdrawalCoveragePct).toFixed(1)}%` : 'N/D')}
+                  </Text>
                 </Group>
-                <Progress value={Math.max(0, Math.min(100, coveragePct ?? 0))} color="red" radius="xl" size="lg" />
+                <Progress
+                  value={Math.max(0, Math.min(100, fireMode === 'accumulation' ? (coveragePct ?? 0) : (withdrawalCoveragePct ?? 0)))}
+                  color={fireMode === 'accumulation' ? 'red' : 'teal'}
+                  radius="xl"
+                  size="lg"
+                />
               </Stack>
             </Stack>
           </Card>
@@ -272,24 +375,60 @@ export function FirePage() {
                 <ThemeIcon color="red" variant="light" radius="xl">
                   <IconTarget size={18} />
                 </ThemeIcon>
-                <Title order={4}>Ipotesi del piano</Title>
+                <Title order={4}>{fireMode === 'accumulation' ? 'Ipotesi del piano' : 'Ipotesi di decumulo'}</Title>
               </Group>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                <NumberInput label="Spesa annua target" value={annualExpenses} onChange={setAnnualExpenses} min={0} thousandSeparator="." decimalSeparator="," />
-                <NumberInput label="Contributo annuo" value={annualContribution} onChange={setAnnualContribution} min={0} thousandSeparator="." decimalSeparator="," />
-                <NumberInput
-                  label="Safe withdrawal rate (%)"
-                  value={safeWithdrawalRate}
-                  onChange={setSafeWithdrawalRate}
-                  min={0.1}
-                  max={20}
-                  step={0.01}
-                  decimalScale={2}
-                  fixedDecimalScale
-                />
-                <NumberInput label="Età attuale" value={currentAge} onChange={setCurrentAge} min={18} max={100} allowDecimal={false} />
-                <NumberInput label="Età FIRE target" value={targetAge} onChange={setTargetAge} min={18} max={100} allowDecimal={false} />
-              </SimpleGrid>
+              {fireMode === 'accumulation' ? (
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                  <NumberInput label="Spesa annua target" value={annualExpenses} onChange={setAnnualExpenses} min={0} thousandSeparator="." decimalSeparator="," />
+                  <NumberInput label="Contributo annuo" value={annualContribution} onChange={setAnnualContribution} min={0} thousandSeparator="." decimalSeparator="," />
+                  <NumberInput
+                    label="Safe withdrawal rate (%)"
+                    value={safeWithdrawalRate}
+                    onChange={setSafeWithdrawalRate}
+                    min={0.1}
+                    max={20}
+                    step={0.01}
+                    decimalScale={2}
+                    fixedDecimalScale
+                  />
+                  <NumberInput label="Età attuale" value={currentAge} onChange={setCurrentAge} min={18} max={100} allowDecimal={false} />
+                  <NumberInput label="Età FIRE target" value={targetAge} onChange={setTargetAge} min={18} max={100} allowDecimal={false} />
+                </SimpleGrid>
+              ) : (
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                  <NumberInput label="Prelievo annuo lordo" value={annualWithdrawal} onChange={setAnnualWithdrawal} min={0} thousandSeparator="." decimalSeparator="," />
+                  <NumberInput label="Altri redditi annui" value={otherIncomeAnnual} onChange={setOtherIncomeAnnual} min={0} thousandSeparator="." decimalSeparator="," />
+                  <NumberInput
+                    label="Orizzonte di decumulo (anni)"
+                    value={decumulationYears}
+                    onChange={setDecumulationYears}
+                    min={1}
+                    max={80}
+                    allowDecimal={false}
+                  />
+                  <NumberInput
+                    label="Inflazione spesa (%)"
+                    value={inflationRate}
+                    onChange={setInflationRate}
+                    min={0}
+                    max={20}
+                    step={0.1}
+                    decimalScale={1}
+                    fixedDecimalScale
+                  />
+                  <NumberInput label="Età attuale" value={currentAge} onChange={setCurrentAge} min={18} max={100} allowDecimal={false} />
+                  <NumberInput
+                    label="Safe withdrawal rate di guardrail (%)"
+                    value={safeWithdrawalRate}
+                    onChange={setSafeWithdrawalRate}
+                    min={0.1}
+                    max={20}
+                    step={0.01}
+                    decimalScale={2}
+                    fixedDecimalScale
+                  />
+                </SimpleGrid>
+              )}
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">
                   Rendimento atteso usato per le stime deterministiche: {formatPct(expectedReturnPct, 1)} annuo.
@@ -302,7 +441,7 @@ export function FirePage() {
           </Card>
         </SimpleGrid>
 
-        {(summaryLoading || monteCarloLoading) && portfolioId != null && (
+        {(summaryLoading || monteCarloLoading || decumulationLoading) && portfolioId != null && (
           <Card withBorder radius="xl" padding="xl">
             <Group justify="center" py="xl">
               <Loader />
@@ -311,34 +450,69 @@ export function FirePage() {
         )}
 
         <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }} spacing="lg">
-          <StatCard
-            icon={IconWallet}
-            color="red"
-            label="Patrimonio investibile"
-            value={formatMoney(totalNetWorth, currency)}
-            note={`${formatMoney(investedValue, currency)} investiti + ${formatMoney(cashBalance, currency)} liquidità`}
-          />
-          <StatCard
-            icon={IconFlame}
-            color="orange"
-            label="Anni stimati al FIRE"
-            value={estimatedYearsToFire != null ? `${estimatedYearsToFire.toFixed(1)} anni` : 'N/D'}
-            note={estimatedFireAge != null ? `Età stimata ${estimatedFireAge.toFixed(1)}` : 'Configura spesa e SWR'}
-          />
-          <StatCard
-            icon={IconTrendingUp}
-            color="teal"
-            label="Contributo richiesto"
-            value={requiredContribution != null ? formatMoney(requiredContribution, currency) : 'N/D'}
-            note={hasAgePlan ? 'Contributo annuo per arrivare entro l’età target' : 'Inserisci età attuale e target'}
-          />
-          <StatCard
-            icon={IconTarget}
-            color="blue"
-            label="Capitale target"
-            value={fireNumber != null ? formatMoney(fireNumber, currency) : 'N/D'}
-            note={expensesValue > 0 ? `${formatMoney(expensesValue, currency)} / anno con SWR ${formatPct(swrValue, 2)}` : 'Imposta la spesa annua'}
-          />
+          {fireMode === 'accumulation' ? (
+            <>
+              <StatCard
+                icon={IconWallet}
+                color="red"
+                label="Patrimonio investibile"
+                value={formatMoney(totalNetWorth, currency)}
+                note={`${formatMoney(investedValue, currency)} investiti + ${formatMoney(cashBalance, currency)} liquidità`}
+              />
+              <StatCard
+                icon={IconFlame}
+                color="orange"
+                label="Anni stimati al FIRE"
+                value={estimatedYearsToFire != null ? `${estimatedYearsToFire.toFixed(1)} anni` : 'N/D'}
+                note={estimatedFireAge != null ? `Età stimata ${estimatedFireAge.toFixed(1)}` : 'Configura spesa e SWR'}
+              />
+              <StatCard
+                icon={IconTrendingUp}
+                color="teal"
+                label="Contributo richiesto"
+                value={requiredContribution != null ? formatMoney(requiredContribution, currency) : 'N/D'}
+                note={hasAgePlan ? 'Contributo annuo per arrivare entro l’età target' : 'Inserisci età attuale e target'}
+              />
+              <StatCard
+                icon={IconTarget}
+                color="blue"
+                label="Capitale target"
+                value={fireNumber != null ? formatMoney(fireNumber, currency) : 'N/D'}
+                note={expensesValue > 0 ? `${formatMoney(expensesValue, currency)} / anno con SWR ${formatPct(swrValue, 2)}` : 'Imposta la spesa annua'}
+              />
+            </>
+          ) : (
+            <>
+              <StatCard
+                icon={IconWallet}
+                color="red"
+                label="Capitale iniziale"
+                value={formatMoney(totalNetWorth, currency)}
+                note={`${formatMoney(investedValue, currency)} investiti + ${formatMoney(cashBalance, currency)} liquidità`}
+              />
+              <StatCard
+                icon={IconFlame}
+                color="orange"
+                label="Durata stimata"
+                value={capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D'}
+                note={decumulationData?.depletion_year_p50 ? 'Esaurimento mediano entro l’orizzonte simulato' : 'Capitale mediano ancora positivo a fine orizzonte'}
+              />
+              <StatCard
+                icon={IconTrendingUp}
+                color="teal"
+                label="Reddito sostenibile"
+                value={sustainableWithdrawal != null ? formatMoney(sustainableWithdrawal, currency) : 'N/D'}
+                note={`Success rate ${formatPct(decumulationData?.success_rate_pct, 1)}`}
+              />
+              <StatCard
+                icon={IconTarget}
+                color="blue"
+                label="Primo anno critico"
+                value={firstCriticalYear ? `Anno ${firstCriticalYear.year}` : 'Nessuno'}
+                note={firstCriticalYear ? `WR mediano ${formatPct(firstCriticalYear.p50_effective_withdrawal_rate_pct, 2)}` : `Guardrail ${formatPct(swrValue, 2)}`}
+              />
+            </>
+          )}
         </SimpleGrid>
 
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
@@ -348,18 +522,26 @@ export function FirePage() {
                 <ThemeIcon color="red" variant="light" radius="xl">
                   <IconFlame size={18} />
                 </ThemeIcon>
-                <Title order={4}>Lettura del piano</Title>
+                <Title order={4}>{fireMode === 'accumulation' ? 'Lettura del piano' : 'Lettura del decumulo'}</Title>
               </Group>
               <Text c="dimmed">
-                {fireNumber == null
-                  ? 'Inserisci una spesa annua e un withdrawal rate per ottenere la soglia FIRE.'
-                  : fireGap === 0
-                    ? 'Il portafoglio ha gia raggiunto o superato la soglia FIRE impostata.'
-                    : estimatedYearsToFire != null
-                      ? `Con il contributo annuo attuale e il rendimento medio stimato, la soglia FIRE viene raggiunta in circa ${estimatedYearsToFire.toFixed(1)} anni.`
-                      : 'Con i dati attuali non è possibile stimare una traiettoria affidabile verso la soglia FIRE.'}
+                {fireMode === 'accumulation'
+                  ? (fireNumber == null
+                    ? 'Inserisci una spesa annua e un withdrawal rate per ottenere la soglia FIRE.'
+                    : fireGap === 0
+                      ? 'Il portafoglio ha gia raggiunto o superato la soglia FIRE impostata.'
+                      : estimatedYearsToFire != null
+                        ? `Con il contributo annuo attuale e il rendimento medio stimato, la soglia FIRE viene raggiunta in circa ${estimatedYearsToFire.toFixed(1)} anni.`
+                        : 'Con i dati attuali non è possibile stimare una traiettoria affidabile verso la soglia FIRE.')
+                  : (annualWithdrawalValue <= 0
+                    ? 'Inserisci un prelievo annuo per valutare la sostenibilità del decumulo.'
+                    : decumulationPlan.length === 0
+                      ? 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo di decumulo.'
+                      : decumulationSuccess
+                        ? `Con le ipotesi correnti la probabilità di chiudere l’orizzonte con capitale residuo è circa ${decumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
+                        : `Con le ipotesi correnti la probabilità di esaurimento entro l’orizzonte è circa ${decumulationData?.depletion_probability_pct?.toFixed(1) ?? '0'}%.`)}
               </Text>
-              {hasAgePlan && targetAgeValue > 0 && (
+              {fireMode === 'accumulation' && hasAgePlan && targetAgeValue > 0 && (
                 <Alert color={estimatedFireAge != null && estimatedFireAge <= targetAgeValue ? 'teal' : 'yellow'} variant="light">
                   {estimatedFireAge != null
                     ? (estimatedFireAge <= targetAgeValue
@@ -374,8 +556,20 @@ export function FirePage() {
                   <Table.Tr><Table.Td>Base currency</Table.Td><Table.Td>{currency}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Rendimento atteso</Table.Td><Table.Td>{formatPct(expectedReturnPct, 1)}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Volatilità attesa</Table.Td><Table.Td>{formatPct(monteCarlo?.annualized_volatility_pct, 1)}</Table.Td></Table.Tr>
-                  <Table.Tr><Table.Td>Spesa annua</Table.Td><Table.Td>{expensesValue > 0 ? formatMoney(expensesValue, currency) : 'N/D'}</Table.Td></Table.Tr>
-                  <Table.Tr><Table.Td>Contributo annuo</Table.Td><Table.Td>{formatMoney(contributionValue, currency)}</Table.Td></Table.Tr>
+                  {fireMode === 'accumulation' ? (
+                    <>
+                      <Table.Tr><Table.Td>Spesa annua</Table.Td><Table.Td>{expensesValue > 0 ? formatMoney(expensesValue, currency) : 'N/D'}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Contributo annuo</Table.Td><Table.Td>{formatMoney(contributionValue, currency)}</Table.Td></Table.Tr>
+                    </>
+                  ) : (
+                    <>
+                      <Table.Tr><Table.Td>Prelievo annuo</Table.Td><Table.Td>{annualWithdrawalValue > 0 ? formatMoney(annualWithdrawalValue, currency) : 'N/D'}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Altri redditi annui</Table.Td><Table.Td>{formatMoney(otherIncomeAnnualValue, currency)}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Inflazione spesa</Table.Td><Table.Td>{formatPct(inflationRateValue, 1)}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Orizzonte</Table.Td><Table.Td>{decumulationYearsValue > 0 ? `${decumulationYearsValue} anni` : 'N/D'}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Success rate</Table.Td><Table.Td>{formatPct(decumulationData?.success_rate_pct, 1)}</Table.Td></Table.Tr>
+                    </>
+                  )}
                 </Table.Tbody>
               </Table>
             </Stack>
@@ -387,33 +581,94 @@ export function FirePage() {
                 <ThemeIcon color="orange" variant="light" radius="xl">
                   <IconTrendingUp size={18} />
                 </ThemeIcon>
-                <Title order={4}>Scenari Monte Carlo</Title>
+                <Title order={4}>{fireMode === 'accumulation' ? 'Scenari Monte Carlo' : 'Timeline di decumulo'}</Title>
               </Group>
               <Text size="sm" c="dimmed">
-                Lettura delle proiezioni sul capitale già investito. I valori sotto non includono nuovi versamenti futuri.
+                {fireMode === 'accumulation'
+                  ? 'Lettura delle proiezioni sul capitale già investito. I valori sotto non includono nuovi versamenti futuri.'
+                  : 'Simulazione Monte Carlo anno per anno del capitale residuo, con prelievi indicizzati all’inflazione.'}
               </Text>
-              {fireNumber == null || horizonScenarios.length === 0 ? (
+              {fireMode === 'accumulation' ? (
+                fireNumber == null || horizonScenarios.length === 0 ? (
+                  <Alert color="yellow" variant="light">
+                    Servono una soglia FIRE configurata e dati Monte Carlo disponibili per confrontare gli orizzonti.
+                  </Alert>
+                ) : isMobile ? (
+                  <Stack gap="sm">
+                    {horizonScenarios.map((scenario) => (
+                      <Card key={scenario.year} withBorder radius="lg" padding="md">
+                        <Stack gap="xs">
+                          <Group justify="space-between" align="flex-start">
+                            <div>
+                              <Text size="xs" tt="uppercase" fw={800} c="dimmed">Orizzonte</Text>
+                              <Text fw={700}>{scenario.year} anni</Text>
+                            </div>
+                            <Badge color={scenario.onTrack ? 'teal' : (scenario.stretch ? 'yellow' : 'red')} variant="light">
+                              {scenario.onTrack ? 'Target centrale raggiunto' : (scenario.stretch ? 'Scenario alto' : 'Sotto soglia')}
+                            </Badge>
+                          </Group>
+                          <SimpleGrid cols={3} spacing="sm">
+                            <ScenarioMetric label="P25" value={formatMoney(scenario.p25Value, currency)} />
+                            <ScenarioMetric label="P50" value={formatMoney(scenario.p50Value, currency)} />
+                            <ScenarioMetric label="P75" value={formatMoney(scenario.p75Value, currency)} />
+                          </SimpleGrid>
+                        </Stack>
+                      </Card>
+                    ))}
+                  </Stack>
+                ) : (
+                  <Table withTableBorder withColumnBorders>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Orizzonte</Table.Th>
+                        <Table.Th>P25</Table.Th>
+                        <Table.Th>P50</Table.Th>
+                        <Table.Th>P75</Table.Th>
+                        <Table.Th>Esito</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {horizonScenarios.map((scenario) => (
+                        <Table.Tr key={scenario.year}>
+                          <Table.Td>{scenario.year} anni</Table.Td>
+                          <Table.Td>{formatMoney(scenario.p25Value, currency)}</Table.Td>
+                          <Table.Td>{formatMoney(scenario.p50Value, currency)}</Table.Td>
+                          <Table.Td>{formatMoney(scenario.p75Value, currency)}</Table.Td>
+                          <Table.Td>
+                            <Badge color={scenario.onTrack ? 'teal' : (scenario.stretch ? 'yellow' : 'red')} variant="light">
+                              {scenario.onTrack ? 'Target centrale raggiunto' : (scenario.stretch ? 'Possibile nello scenario alto' : 'Sotto soglia')}
+                            </Badge>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                )
+              ) : decumulationPlan.length === 0 ? (
                 <Alert color="yellow" variant="light">
-                  Servono una soglia FIRE configurata e dati Monte Carlo disponibili per confrontare gli orizzonti.
+                  Inserisci prelievo annuo e orizzonte per costruire una timeline di decumulo.
                 </Alert>
               ) : isMobile ? (
                 <Stack gap="sm">
-                  {horizonScenarios.map((scenario) => (
-                    <Card key={scenario.year} withBorder radius="lg" padding="md">
+                  {decumulationPlan.slice(0, 8).map((year) => (
+                    <Card key={year.year} withBorder radius="lg" padding="md">
                       <Stack gap="xs">
                         <Group justify="space-between" align="flex-start">
                           <div>
-                            <Text size="xs" tt="uppercase" fw={800} c="dimmed">Orizzonte</Text>
-                            <Text fw={700}>{scenario.year} anni</Text>
+                            <Text size="xs" tt="uppercase" fw={800} c="dimmed">Anno</Text>
+                            <Text fw={700}>
+                              {year.year}
+                              {year.age != null ? ` · età ${year.age}` : ''}
+                            </Text>
                           </div>
-                          <Badge color={scenario.onTrack ? 'teal' : (scenario.stretch ? 'yellow' : 'red')} variant="light">
-                            {scenario.onTrack ? 'Target centrale raggiunto' : (scenario.stretch ? 'Scenario alto' : 'Sotto soglia')}
+                          <Badge color={year.depletion_probability_pct >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
+                            {year.depletion_probability_pct >= 50 ? 'Rischio alto' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Anno critico' : 'Sostenibile')}
                           </Badge>
                         </Group>
                         <SimpleGrid cols={3} spacing="sm">
-                          <ScenarioMetric label="P25" value={formatMoney(scenario.p25Value, currency)} />
-                          <ScenarioMetric label="P50" value={formatMoney(scenario.p50Value, currency)} />
-                          <ScenarioMetric label="P75" value={formatMoney(scenario.p75Value, currency)} />
+                          <ScenarioMetric label="Prelievo" value={formatMoney(year.net_withdrawal, currency)} />
+                          <ScenarioMetric label="P50 Finale" value={formatMoney(year.p50_ending_capital, currency)} />
+                          <ScenarioMetric label="Rischio" value={formatPct(year.depletion_probability_pct, 1)} />
                         </SimpleGrid>
                       </Stack>
                     </Card>
@@ -423,23 +678,27 @@ export function FirePage() {
                 <Table withTableBorder withColumnBorders>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Orizzonte</Table.Th>
-                      <Table.Th>P25</Table.Th>
-                      <Table.Th>P50</Table.Th>
-                      <Table.Th>P75</Table.Th>
+                      <Table.Th>Anno</Table.Th>
+                      <Table.Th>Età</Table.Th>
+                      <Table.Th>Prelievo lordo</Table.Th>
+                      <Table.Th>Prelievo netto</Table.Th>
+                      <Table.Th>WR mediano</Table.Th>
+                      <Table.Th>Capitale finale P50</Table.Th>
                       <Table.Th>Esito</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {horizonScenarios.map((scenario) => (
-                      <Table.Tr key={scenario.year}>
-                        <Table.Td>{scenario.year} anni</Table.Td>
-                        <Table.Td>{formatMoney(scenario.p25Value, currency)}</Table.Td>
-                        <Table.Td>{formatMoney(scenario.p50Value, currency)}</Table.Td>
-                        <Table.Td>{formatMoney(scenario.p75Value, currency)}</Table.Td>
+                    {decumulationPlan.map((year) => (
+                      <Table.Tr key={year.year}>
+                        <Table.Td>{year.year}</Table.Td>
+                        <Table.Td>{year.age ?? 'N/D'}</Table.Td>
+                        <Table.Td>{formatMoney(year.gross_withdrawal, currency)}</Table.Td>
+                        <Table.Td>{formatMoney(year.net_withdrawal, currency)}</Table.Td>
+                        <Table.Td>{formatPct(year.p50_effective_withdrawal_rate_pct, 2)}</Table.Td>
+                        <Table.Td>{formatMoney(year.p50_ending_capital, currency)}</Table.Td>
                         <Table.Td>
-                          <Badge color={scenario.onTrack ? 'teal' : (scenario.stretch ? 'yellow' : 'red')} variant="light">
-                            {scenario.onTrack ? 'Target centrale raggiunto' : (scenario.stretch ? 'Possibile nello scenario alto' : 'Sotto soglia')}
+                          <Badge color={year.depletion_probability_pct >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
+                            {year.depletion_probability_pct >= 50 ? 'Fragile' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Critico' : 'OK')}
                           </Badge>
                         </Table.Td>
                       </Table.Tr>

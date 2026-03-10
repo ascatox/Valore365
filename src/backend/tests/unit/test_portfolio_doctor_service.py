@@ -1,6 +1,9 @@
 from app.schemas.portfolio_doctor import PortfolioHealthMetrics
 from app.services.portfolio_doctor import (
     AnalyzedHolding,
+    _build_decumulation_projections,
+    _simulate_decumulation_paths,
+    _solve_sustainable_withdrawal,
     build_alerts,
     build_etf_overlap_details,
     build_position_concentration_details,
@@ -132,3 +135,41 @@ def test_etf_overlap_details_return_top_pairs():
     first_pair = details["pairs"][0]
     assert first_pair["left"]["symbol"] in {"VWCE", "CSPX", "EQQQ"}
     assert first_pair["estimated_overlap_pct"] >= 40
+
+
+def test_sustainable_withdrawal_stays_positive_with_real_return():
+    sustainable = _solve_sustainable_withdrawal(
+        initial_capital=1_000_000,
+        years=30,
+        annual_return_pct=5.0,
+        inflation_rate_pct=2.0,
+        other_income_annual=10_000,
+    )
+
+    assert sustainable > 0
+    assert sustainable > 10_000
+
+
+def test_decumulation_paths_deplete_with_zero_return_and_high_withdrawals():
+    paths = _simulate_decumulation_paths(
+        initial_capital=100_000,
+        annual_withdrawal=30_000,
+        years=5,
+        inflation_rate_pct=0.0,
+        other_income_annual=0.0,
+        mu_annual=0.0,
+        sigma_annual=0.0,
+    )
+
+    projections = _build_decumulation_projections(
+        paths=paths,
+        years=5,
+        annual_withdrawal=30_000,
+        inflation_rate_pct=0.0,
+        other_income_annual=0.0,
+        current_age=50,
+    )
+
+    assert projections[0].p50_ending_capital == 70000
+    assert projections[3].p50_ending_capital == 0
+    assert projections[3].depletion_probability_pct == 100

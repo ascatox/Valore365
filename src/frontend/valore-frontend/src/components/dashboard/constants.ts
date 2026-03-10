@@ -17,4 +17,5 @@ export const STORAGE_KEYS = {
   activeTab: 'valore365.dashboard.activeTab',
   brokerDefaultFee: 'valore365.settings.brokerDefaultFee',
   privacyModeEnabled: 'valore365.settings.privacyModeEnabled',
+  fireMode: 'valore365.fire.mode',
 } as const;

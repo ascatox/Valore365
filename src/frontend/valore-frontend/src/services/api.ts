@@ -231,6 +231,38 @@ export interface MonteCarloProjectionResponse {
   annualized_volatility_pct: number;
 }
 
+export interface DecumulationYearProjection {
+  year: number;
+  age: number | null;
+  gross_withdrawal: number;
+  net_withdrawal: number;
+  p25_ending_capital: number;
+  p50_ending_capital: number;
+  p75_ending_capital: number;
+  p50_effective_withdrawal_rate_pct: number;
+  depletion_probability_pct: number;
+}
+
+export interface DecumulationPlanResponse {
+  portfolio_id: number;
+  initial_capital: number;
+  annual_withdrawal: number;
+  annual_other_income: number;
+  inflation_rate_pct: number;
+  horizon_years: number;
+  num_simulations: number;
+  annualized_mean_return_pct: number;
+  annualized_volatility_pct: number;
+  sustainable_withdrawal: number;
+  success_rate_pct: number;
+  depletion_probability_pct: number;
+  p25_terminal_value: number;
+  p50_terminal_value: number;
+  p75_terminal_value: number;
+  depletion_year_p50: number | null;
+  projections: DecumulationYearProjection[];
+}
+
 export interface PortfolioCreateInput {
   name: string;
   base_currency: string;
@@ -813,6 +845,28 @@ export const getPortfolioHealth = async (portfolioId: number): Promise<Portfolio
 
 export const getMonteCarloProjection = async (portfolioId: number): Promise<MonteCarloProjectionResponse> => {
   return apiFetch<MonteCarloProjectionResponse>(`/portfolios/${portfolioId}/monte-carlo`);
+};
+
+export const getDecumulationPlan = async (
+  portfolioId: number,
+  params: {
+    annualWithdrawal: number;
+    years: number;
+    inflationRatePct?: number;
+    otherIncomeAnnual?: number;
+    currentAge?: number | null;
+  },
+): Promise<DecumulationPlanResponse> => {
+  const query = new URLSearchParams({
+    annual_withdrawal: String(params.annualWithdrawal),
+    years: String(params.years),
+    inflation_rate_pct: String(params.inflationRatePct ?? 2),
+    other_income_annual: String(params.otherIncomeAnnual ?? 0),
+  });
+  if (params.currentAge != null && Number.isFinite(params.currentAge)) {
+    query.set('current_age', String(params.currentAge));
+  }
+  return apiFetch<DecumulationPlanResponse>(`/portfolios/${portfolioId}/decumulation?${query.toString()}`);
 };
 
 export const getPerformanceSummary = async (

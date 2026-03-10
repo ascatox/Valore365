@@ -3,6 +3,7 @@ import {
   getAdminPortfolios,
   getAssetPriceTimeseries,
   backfillBenchmarkPrices,
+  getDecumulationPlan,
   getBenchmarks,
   getGainTimeseries,
   getMarketQuotes,
@@ -68,6 +69,24 @@ export function useMonteCarloProjection(portfolioId: number | null) {
     queryKey: ['monte-carlo-projection', portfolioId],
     queryFn: () => getMonteCarloProjection(portfolioId!),
     enabled: portfolioId != null,
+  });
+}
+
+export function useDecumulationPlan(
+  portfolioId: number | null,
+  params: {
+    annualWithdrawal: number;
+    years: number;
+    inflationRatePct: number;
+    otherIncomeAnnual: number;
+    currentAge: number | null;
+  },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['decumulation-plan', portfolioId, params],
+    queryFn: () => getDecumulationPlan(portfolioId!, params),
+    enabled: portfolioId != null && enabled,
   });
 }
 
