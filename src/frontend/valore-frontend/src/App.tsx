@@ -1,6 +1,7 @@
 import { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
 import {
   AppShell,
+  Badge,
   Box,
   Burger,
   Group,
@@ -31,6 +32,7 @@ import {
   IconEye,
   IconEyeOff,
   IconShieldLock,
+  IconDeviceMobile,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
@@ -345,6 +347,20 @@ function ProtectedApp() {
               />
             </Tooltip>
           )}
+          <Box style={{ marginTop: 'auto', paddingTop: 16 }}>
+            <Tooltip label="Ottimizzata per mobile" position="right" withArrow disabled={navbarExpanded}>
+              <Badge
+                variant="light"
+                color="teal"
+                size={navbarExpanded ? 'md' : 'xs'}
+                leftSection={<IconDeviceMobile size={14} />}
+                fullWidth={navbarExpanded}
+                style={!navbarExpanded ? { padding: 4, display: 'flex', justifyContent: 'center' } : undefined}
+              >
+                {navbarExpanded ? 'Mobile ready' : undefined}
+              </Badge>
+            </Tooltip>
+          </Box>
         </AppShell.Navbar>
 
         <AppShell.Main>
