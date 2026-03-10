@@ -2,6 +2,8 @@ from app.schemas.portfolio_doctor import PortfolioHealthMetrics
 from app.services.portfolio_doctor import (
     AnalyzedHolding,
     _build_decumulation_projections,
+    _normalize_portfolio_ids,
+    _rebalance_holdings_by_market_value,
     _simulate_decumulation_paths,
     _solve_sustainable_withdrawal,
     build_alerts,
@@ -173,3 +175,26 @@ def test_decumulation_paths_deplete_with_zero_return_and_high_withdrawals():
     assert projections[0].p50_ending_capital == 70000
     assert projections[3].p50_ending_capital == 0
     assert projections[3].depletion_probability_pct == 100
+
+
+def test_normalize_portfolio_ids_deduplicates_and_discards_invalid_values():
+    normalized = _normalize_portfolio_ids([3, 0, 3, -4, 5, 7, 5])
+
+    assert normalized == [3, 5, 7]
+
+
+def test_rebalance_holdings_by_market_value_reweights_across_portfolios():
+    holdings = [
+      _holding(1, "VWCE", "Vanguard FTSE All-World UCITS ETF", "etf", 60.0, "EUR"),
+      _holding(2, "BOND", "Global Aggregate Bond", "bond", 40.0, "EUR"),
+      _holding(3, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 100.0, "USD"),
+    ]
+
+    rebalanced = _rebalance_holdings_by_market_value(holdings)
+
+    assert len(rebalanced) == 3
+    total_weight = sum(holding.weight_pct for holding in rebalanced)
+    assert round(total_weight, 6) == 100.0
+    assert round(rebalanced[0].weight_pct, 1) == 30.0
+    assert round(rebalanced[1].weight_pct, 1) == 20.0
+    assert round(rebalanced[2].weight_pct, 1) == 50.0

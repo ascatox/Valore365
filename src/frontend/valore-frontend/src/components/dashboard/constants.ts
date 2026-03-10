@@ -18,4 +18,6 @@ export const STORAGE_KEYS = {
   brokerDefaultFee: 'valore365.settings.brokerDefaultFee',
   privacyModeEnabled: 'valore365.settings.privacyModeEnabled',
   fireMode: 'valore365.fire.mode',
+  fireScopeMode: 'valore365.fire.scopeMode',
+  fireAggregatePortfolioIds: 'valore365.fire.aggregatePortfolioIds',
 } as const;

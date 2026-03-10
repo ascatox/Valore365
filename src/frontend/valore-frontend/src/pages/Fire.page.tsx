@@ -4,8 +4,11 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
+  Divider,
   Group,
   Loader,
+  Modal,
   NumberInput,
   Progress,
   SegmentedControl,
@@ -18,14 +21,14 @@ import {
   Title,
 } from '@mantine/core';
 import { IconFlame, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useMediaQuery } from '@mantine/hooks';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
-import { useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
-import { updateUserSettings } from '../services/api';
+import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
+import { getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
 
 const PRIVACY_MASK = '******';
 
@@ -89,6 +92,7 @@ function projectionToValue(indexValue: number, investedValue: number, cashBalanc
 }
 
 type FireMode = 'accumulation' | 'decumulation';
+type FireScopeMode = 'single' | 'aggregate';
 
 export function FirePage() {
   const queryClient = useQueryClient();
@@ -101,6 +105,23 @@ export function FirePage() {
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
+  });
+  const [fireScopeMode, setFireScopeMode] = useState<FireScopeMode>(() => {
+    if (typeof window === 'undefined') return 'single';
+    const savedMode = window.localStorage.getItem(STORAGE_KEYS.fireScopeMode);
+    return savedMode === 'aggregate' ? 'aggregate' : 'single';
+  });
+  const [aggregateSelectionOpened, setAggregateSelectionOpened] = useState(false);
+  const [aggregatePortfolioIds, setAggregatePortfolioIds] = useState<string[]>(() => {
+    if (typeof window === 'undefined') return [];
+    const saved = window.localStorage.getItem(STORAGE_KEYS.fireAggregatePortfolioIds);
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === 'string') : [];
+    } catch {
+      return [];
+    }
   });
 
   const { data: portfolios = [], isLoading: portfoliosLoading } = usePortfolios();
@@ -142,6 +163,16 @@ export function FirePage() {
   }, [fireMode]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.fireScopeMode, fireScopeMode);
+  }, [fireScopeMode]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(STORAGE_KEYS.fireAggregatePortfolioIds, JSON.stringify(aggregatePortfolioIds));
+  }, [aggregatePortfolioIds]);
+
+  useEffect(() => {
     if (!userSettings) return;
     setAnnualExpenses(userSettings.fire_annual_expenses ?? 0);
     setAnnualContribution(userSettings.fire_annual_contribution ?? 0);
@@ -168,10 +199,157 @@ export function FirePage() {
     () => portfolios.find((portfolio) => String(portfolio.id) === selectedPortfolioId) ?? null,
     [portfolios, selectedPortfolioId],
   );
+  const availableAggregatePortfolios = useMemo(
+    () => portfolios.filter((portfolio) => portfolio.base_currency === (selectedPortfolio?.base_currency ?? portfolios[0]?.base_currency)),
+    [portfolios, selectedPortfolio],
+  );
 
-  const currency = summary?.base_currency ?? selectedPortfolio?.base_currency ?? 'EUR';
-  const investedValue = summary?.market_value ?? 0;
-  const cashBalance = summary?.cash_balance ?? selectedPortfolio?.cash_balance ?? 0;
+  useEffect(() => {
+    if (!availableAggregatePortfolios.length) return;
+    setAggregatePortfolioIds((previous) => {
+      const existing = previous.filter((portfolioId) => availableAggregatePortfolios.some((portfolio) => String(portfolio.id) === portfolioId));
+      if (existing.length > 0) return existing;
+      if (selectedPortfolioId && availableAggregatePortfolios.some((portfolio) => String(portfolio.id) === selectedPortfolioId)) {
+        return [selectedPortfolioId];
+      }
+      return [String(availableAggregatePortfolios[0].id)];
+    });
+  }, [availableAggregatePortfolios, selectedPortfolioId]);
+
+  useEffect(() => {
+    if (portfolios.length < 2 && fireScopeMode === 'aggregate') {
+      setFireScopeMode('single');
+    }
+  }, [fireScopeMode, portfolios.length]);
+
+  const aggregateSummaryQueries = useQueries({
+    queries: fireScopeMode === 'aggregate'
+      ? aggregatePortfolioIds.map((portfolioId) => ({
+        queryKey: ['portfolio-summary', Number(portfolioId)],
+        queryFn: () => getPortfolioSummary(Number(portfolioId)),
+        enabled: aggregatePortfolioIds.length > 0,
+      }))
+      : [],
+  });
+
+  const aggregateMonteCarloQueries = useQueries({
+    queries: fireScopeMode === 'aggregate'
+      ? aggregatePortfolioIds.map((portfolioId) => ({
+        queryKey: ['monte-carlo-projection', Number(portfolioId)],
+        queryFn: () => getMonteCarloProjection(Number(portfolioId)),
+        enabled: aggregatePortfolioIds.length > 0,
+      }))
+      : [],
+  });
+
+  const selectedAggregatePortfolios = useMemo(
+    () => aggregatePortfolioIds
+      .map((portfolioId) => portfolios.find((portfolio) => String(portfolio.id) === portfolioId) ?? null)
+      .filter((portfolio): portfolio is NonNullable<typeof portfolio> => portfolio != null),
+    [aggregatePortfolioIds, portfolios],
+  );
+
+  const aggregateSummaries = useMemo(
+    () => aggregateSummaryQueries
+      .map((query) => query.data ?? null)
+      .filter((summaryData): summaryData is PortfolioSummary => summaryData != null),
+    [aggregateSummaryQueries],
+  );
+
+  const aggregateMonteCarlo = useMemo(
+    () => aggregateMonteCarloQueries
+      .map((query) => query.data ?? null)
+      .filter((projection): projection is MonteCarloProjectionResponse => projection != null),
+    [aggregateMonteCarloQueries],
+  );
+
+  const aggregateSummaryLoading = aggregateSummaryQueries.some((query) => query.isLoading);
+  const aggregateMonteCarloLoading = aggregateMonteCarloQueries.some((query) => query.isLoading);
+  const aggregateSummaryError = aggregateSummaryQueries.find((query) => query.error)?.error;
+  const aggregateMonteCarloError = aggregateMonteCarloQueries.find((query) => query.error)?.error;
+
+  const aggregateSummary = useMemo(() => {
+    if (fireScopeMode !== 'aggregate' || !selectedAggregatePortfolios.length) return null;
+    return aggregateSummaries.reduce<PortfolioSummary>((accumulator, current) => ({
+      portfolio_id: 0,
+      base_currency: current.base_currency,
+      market_value: accumulator.market_value + current.market_value,
+      cost_basis: accumulator.cost_basis + current.cost_basis,
+      unrealized_pl: accumulator.unrealized_pl + current.unrealized_pl,
+      unrealized_pl_pct: 0,
+      day_change: accumulator.day_change + current.day_change,
+      day_change_pct: 0,
+      cash_balance: accumulator.cash_balance + current.cash_balance,
+    }), {
+      portfolio_id: 0,
+      base_currency: selectedAggregatePortfolios[0]?.base_currency ?? 'EUR',
+      market_value: 0,
+      cost_basis: 0,
+      unrealized_pl: 0,
+      unrealized_pl_pct: 0,
+      day_change: 0,
+      day_change_pct: 0,
+      cash_balance: 0,
+    });
+  }, [aggregateSummaries, fireScopeMode, selectedAggregatePortfolios]);
+
+  const aggregateExpectedReturnPct = useMemo(() => {
+    if (!aggregateMonteCarlo.length || !aggregateSummaries.length) return null;
+    const totals = aggregateSummaries.reduce((sum, item) => sum + item.market_value + item.cash_balance, 0);
+    if (totals <= 0) return null;
+    return aggregateMonteCarlo.reduce((sum, projection) => {
+      const matchingSummary = aggregateSummaries.find((summaryData) => summaryData.portfolio_id === projection.portfolio_id);
+      const weight = matchingSummary ? (matchingSummary.market_value + matchingSummary.cash_balance) / totals : 0;
+      return sum + projection.annualized_mean_return_pct * weight;
+    }, 0);
+  }, [aggregateMonteCarlo, aggregateSummaries]);
+
+  const aggregateVolatilityPct = useMemo(() => {
+    if (!aggregateMonteCarlo.length || !aggregateSummaries.length) return null;
+    const totals = aggregateSummaries.reduce((sum, item) => sum + item.market_value + item.cash_balance, 0);
+    if (totals <= 0) return null;
+    return aggregateMonteCarlo.reduce((sum, projection) => {
+      const matchingSummary = aggregateSummaries.find((summaryData) => summaryData.portfolio_id === projection.portfolio_id);
+      const weight = matchingSummary ? (matchingSummary.market_value + matchingSummary.cash_balance) / totals : 0;
+      return sum + projection.annualized_volatility_pct * weight;
+    }, 0);
+  }, [aggregateMonteCarlo, aggregateSummaries]);
+
+  const aggregateHorizonScenarios = useMemo(() => {
+    if (!aggregateMonteCarlo.length || fireNumber == null || !aggregateSummary) return [];
+    const years = Array.from(new Set(
+      aggregateMonteCarlo.flatMap((projection) => projection.projections.map((yearProjection) => yearProjection.year)),
+    ))
+      .filter((year) => year > 0)
+      .sort((left, right) => left - right)
+      .slice(0, 5);
+
+    return years.map((year) => {
+      const totals = aggregateMonteCarlo.reduce((accumulator, projection) => {
+        const summaryData = aggregateSummaries.find((item) => item.portfolio_id === projection.portfolio_id);
+        const yearlyProjection = projection.projections.find((item) => item.year === year);
+        if (!summaryData || !yearlyProjection) return accumulator;
+        return {
+          p25Value: accumulator.p25Value + projectionToValue(yearlyProjection.p25, summaryData.market_value, summaryData.cash_balance),
+          p50Value: accumulator.p50Value + projectionToValue(yearlyProjection.p50, summaryData.market_value, summaryData.cash_balance),
+          p75Value: accumulator.p75Value + projectionToValue(yearlyProjection.p75, summaryData.market_value, summaryData.cash_balance),
+        };
+      }, { p25Value: 0, p50Value: 0, p75Value: 0 });
+
+      return {
+        year,
+        ...totals,
+        onTrack: totals.p50Value >= fireNumber,
+        stretch: totals.p75Value >= fireNumber,
+      };
+    });
+  }, [aggregateMonteCarlo, aggregateSummaries, aggregateSummary, fireNumber]);
+
+  const activeSummary = fireScopeMode === 'aggregate' ? aggregateSummary : (summary ?? null);
+  const aggregateModeEnabled = fireScopeMode === 'aggregate' && selectedAggregatePortfolios.length > 0;
+  const currency = activeSummary?.base_currency ?? selectedPortfolio?.base_currency ?? selectedAggregatePortfolios[0]?.base_currency ?? 'EUR';
+  const investedValue = activeSummary?.market_value ?? 0;
+  const cashBalance = activeSummary?.cash_balance ?? (fireScopeMode === 'aggregate' ? 0 : (selectedPortfolio?.cash_balance ?? 0));
   const totalNetWorth = investedValue + cashBalance;
   const expensesValue = typeof annualExpenses === 'number' ? annualExpenses : Number(annualExpenses || 0);
   const contributionValue = typeof annualContribution === 'number' ? annualContribution : Number(annualContribution || 0);
@@ -187,7 +365,7 @@ export function FirePage() {
   const fireNumber = expensesValue > 0 && swrValue > 0 ? expensesValue / (swrValue / 100) : null;
   const coveragePct = fireNumber && fireNumber > 0 ? (totalNetWorth / fireNumber) * 100 : null;
   const fireGap = fireNumber != null ? Math.max(0, fireNumber - totalNetWorth) : null;
-  const expectedReturnPct = monteCarlo?.annualized_mean_return_pct ?? 5;
+  const expectedReturnPct = aggregateModeEnabled ? (aggregateExpectedReturnPct ?? 5) : (monteCarlo?.annualized_mean_return_pct ?? 5);
   const estimatedYearsToFire = fireNumber != null
     ? solveYearsToTarget(fireNumber, totalNetWorth, contributionValue, expectedReturnPct)
     : null;
@@ -196,7 +374,7 @@ export function FirePage() {
     ? solveRequiredContribution(fireNumber, totalNetWorth, targetAgeValue - currentAgeValue, expectedReturnPct)
     : null;
 
-  const horizonScenarios = useMemo(() => {
+  const singleHorizonScenarios = useMemo(() => {
     if (!monteCarlo || fireNumber == null) return [];
     return monteCarlo.projections
       .filter((projection) => projection.year > 0)
@@ -215,6 +393,7 @@ export function FirePage() {
       })
       .slice(0, 5);
   }, [cashBalance, fireNumber, investedValue, monteCarlo]);
+  const horizonScenarios = aggregateModeEnabled ? aggregateHorizonScenarios : singleHorizonScenarios;
   const { data: decumulationData, isLoading: decumulationLoading, error: decumulationError } = useDecumulationPlan(
     portfolioId,
     {
@@ -224,17 +403,50 @@ export function FirePage() {
       otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
       currentAge: currentAgeValue > 0 ? currentAgeValue : null,
     },
-    decumulationEnabled,
+    decumulationEnabled && !aggregateModeEnabled,
+  );
+  const aggregatePortfolioIdNumbers = useMemo(
+    () => selectedAggregatePortfolios.map((portfolio) => portfolio.id),
+    [selectedAggregatePortfolios],
+  );
+  const {
+    data: aggregateDecumulationData,
+    isLoading: aggregateDecumulationLoading,
+    error: aggregateDecumulationError,
+  } = useAggregateDecumulationPlan(
+    aggregatePortfolioIdNumbers,
+    {
+      annualWithdrawal: Math.max(0, annualWithdrawalValue),
+      years: Math.max(1, decumulationYearsValue),
+      inflationRatePct: inflationRateValue,
+      otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
+      currentAge: currentAgeValue > 0 ? currentAgeValue : null,
+    },
+    decumulationEnabled && aggregateModeEnabled,
   );
 
-  const decumulationPlan = decumulationData?.projections ?? [];
-  const sustainableWithdrawal = decumulationData?.sustainable_withdrawal ?? null;
-  const capitalDurationYears = decumulationData?.depletion_year_p50 ?? decumulationPlan.length;
-  const decumulationSuccess = (decumulationData?.success_rate_pct ?? 0) >= 70;
+  const activeDecumulationData = aggregateModeEnabled ? aggregateDecumulationData : decumulationData;
+  const decumulationPlan = activeDecumulationData?.projections ?? [];
+  const sustainableWithdrawal = activeDecumulationData?.sustainable_withdrawal ?? null;
+  const capitalDurationYears = aggregateModeEnabled
+    ? (aggregateDecumulationData?.depletion_year_p50 ?? decumulationPlan.length)
+    : (decumulationData?.depletion_year_p50 ?? decumulationPlan.length);
+  const decumulationSuccess = aggregateModeEnabled
+    ? ((aggregateDecumulationData?.success_rate_pct ?? 0) >= 70)
+    : ((decumulationData?.success_rate_pct ?? 0) >= 70);
   const firstCriticalYear = decumulationPlan.find((year) => year.p50_effective_withdrawal_rate_pct >= swrValue) ?? null;
-  const withdrawalCoveragePct = annualWithdrawalValue > 0 && decumulationData
-    ? Math.min(999, ((decumulationData.annual_other_income + decumulationData.sustainable_withdrawal) / annualWithdrawalValue) * 100)
+  const withdrawalCoveragePct = annualWithdrawalValue > 0
+    ? Math.min(999, (((activeDecumulationData?.annual_other_income ?? 0) + (sustainableWithdrawal ?? 0)) / annualWithdrawalValue) * 100)
     : null;
+
+  const summaryLoadingState = aggregateModeEnabled ? aggregateSummaryLoading : summaryLoading;
+  const monteCarloLoadingState = aggregateModeEnabled ? aggregateMonteCarloLoading : monteCarloLoading;
+  const summaryErrorState = aggregateModeEnabled ? aggregateSummaryError : summaryError;
+  const activeVolatilityPct = aggregateModeEnabled ? aggregateVolatilityPct : (monteCarlo?.annualized_volatility_pct ?? null);
+  const fireScopeLabel = aggregateModeEnabled
+    ? `${selectedAggregatePortfolios.length} portafogli inclusi`
+    : (selectedPortfolio?.name ?? 'N/D');
+  const incompatiblePortfolioCount = portfolios.length - availableAggregatePortfolios.length;
 
   const handleSave = () => {
     setSaveMessage(null);
@@ -256,20 +468,50 @@ export function FirePage() {
           title="FIRE"
           description="Stimatore operativo per Financial Independence, con soglia FIRE, traiettoria attesa e scenari di raggiungimento."
           actions={(
-            <PortfolioSwitcher
-              portfolios={portfolios}
-              value={selectedPortfolioId}
-              onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-              loading={portfoliosLoading}
-              style={{ width: '100%', maxWidth: 360 }}
-            />
+            fireScopeMode === 'single' ? (
+              <PortfolioSwitcher
+                portfolios={portfolios}
+                value={selectedPortfolioId}
+                onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+                loading={portfoliosLoading}
+                style={{ width: '100%', maxWidth: 360 }}
+              />
+            ) : (
+              <Button variant="default" onClick={() => setAggregateSelectionOpened(true)}>
+                {`Perimetro FIRE: ${selectedAggregatePortfolios.length}`}
+              </Button>
+            )
           )}
         />
 
-        {(summaryError instanceof Error) && <Alert color="red">{summaryError.message}</Alert>}
+        {(summaryErrorState instanceof Error) && <Alert color="red">{summaryErrorState.message}</Alert>}
+        {(aggregateMonteCarloError instanceof Error) && fireScopeMode === 'aggregate' && fireMode === 'accumulation' && <Alert color="red">{aggregateMonteCarloError.message}</Alert>}
         {saveMessage && <Alert color="teal">{saveMessage}</Alert>}
         {saveError && <Alert color="red">{saveError}</Alert>}
-        {(decumulationError instanceof Error) && fireMode === 'decumulation' && <Alert color="red">{decumulationError.message}</Alert>}
+        {((aggregateModeEnabled ? aggregateDecumulationError : decumulationError) instanceof Error) && fireMode === 'decumulation' && (
+          <Alert color="red">{(aggregateModeEnabled ? aggregateDecumulationError : decumulationError)?.message}</Alert>
+        )}
+        {aggregateModeEnabled && incompatiblePortfolioCount > 0 && (
+          <Alert color="yellow" variant="light">
+            Il perimetro aggregato supporta per ora solo portafogli con la stessa valuta base. {incompatiblePortfolioCount} portafogli restano esclusi dalla selezione.
+          </Alert>
+        )}
+
+        <Group justify="space-between" align="center" wrap="wrap">
+          <SegmentedControl
+            value={fireScopeMode}
+            onChange={(value) => setFireScopeMode(value as FireScopeMode)}
+            data={[
+              { label: 'Portafoglio', value: 'single' },
+              { label: 'Aggregato', value: 'aggregate', disabled: portfolios.length < 2 },
+            ]}
+          />
+          <Text size="sm" c="dimmed">
+            {fireScopeMode === 'single'
+              ? 'Vista FIRE su un singolo portafoglio.'
+              : `${selectedAggregatePortfolios.length} portafogli nel perimetro FIRE.`}
+          </Text>
+        </Group>
 
         <Group justify="space-between" align="center" wrap="wrap">
           {isMobile ? (
@@ -332,6 +574,9 @@ export function FirePage() {
                     {fireMode === 'accumulation'
                       ? `Patrimonio attuale ${formatMoney(totalNetWorth, currency)}`
                       : `Capitale iniziale ${formatMoney(totalNetWorth, currency)}`}
+                  </Text>
+                  <Text c="rgba(255,255,255,0.72)" mt={6} size="sm">
+                    {fireScopeMode === 'aggregate' ? `Perimetro FIRE aggregato · ${fireScopeLabel}` : `Portafoglio attivo · ${fireScopeLabel}`}
                   </Text>
                 </div>
                 <Badge
@@ -456,6 +701,7 @@ export function FirePage() {
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">
                   Rendimento atteso usato per le stime deterministiche: {formatPct(expectedReturnPct, 1)} annuo.
+                  {aggregateModeEnabled && fireMode === 'decumulation' ? ' In modalità aggregata il decumulo usa un Monte Carlo reale sul perimetro selezionato.' : ''}
                 </Text>
                 <Button color="red" onClick={handleSave} loading={settingsMutation.isPending || settingsLoading}>
                   Salva piano FIRE
@@ -465,7 +711,7 @@ export function FirePage() {
           </Card>
         </SimpleGrid>
 
-        {(summaryLoading || monteCarloLoading || decumulationLoading) && portfolioId != null && (
+        {(summaryLoadingState || monteCarloLoadingState || decumulationLoading || aggregateDecumulationLoading) && (portfolioId != null || aggregateModeEnabled) && (
           <Card withBorder radius="xl" padding="xl">
             <Group justify="center" py="xl">
               <Loader />
@@ -519,14 +765,14 @@ export function FirePage() {
                 color="orange"
                 label="Durata stimata"
                 value={capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D'}
-                note={decumulationData?.depletion_year_p50 ? 'Esaurimento mediano entro l’orizzonte simulato' : 'Capitale mediano ancora positivo a fine orizzonte'}
+                note={activeDecumulationData?.depletion_year_p50 ? 'Esaurimento mediano entro l’orizzonte simulato' : 'Capitale mediano ancora positivo a fine orizzonte'}
               />
               <StatCard
                 icon={IconTrendingUp}
                 color="teal"
                 label="Reddito sostenibile"
                 value={sustainableWithdrawal != null ? formatMoney(sustainableWithdrawal, currency) : 'N/D'}
-                note={`Success rate ${formatPct(decumulationData?.success_rate_pct, 1)}`}
+                note={`Success rate ${formatPct(activeDecumulationData?.success_rate_pct, 1)}`}
               />
               <StatCard
                 icon={IconTarget}
@@ -558,12 +804,16 @@ export function FirePage() {
                         ? `Con il contributo annuo attuale e il rendimento medio stimato, la soglia FIRE viene raggiunta in circa ${estimatedYearsToFire.toFixed(1)} anni.`
                         : 'Con i dati attuali non è possibile stimare una traiettoria affidabile verso la soglia FIRE.')
                   : (annualWithdrawalValue <= 0
-                    ? 'Inserisci un prelievo annuo per valutare la sostenibilità del decumulo.'
+                      ? 'Inserisci un prelievo annuo per valutare la sostenibilità del decumulo.'
                     : decumulationPlan.length === 0
-                      ? 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo di decumulo.'
+                    ? (aggregateModeEnabled
+                        ? 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo aggregata di decumulo.'
+                        : 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo di decumulo.')
                       : decumulationSuccess
-                        ? `Con le ipotesi correnti la probabilità di chiudere l’orizzonte con capitale residuo è circa ${decumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
-                        : `Con le ipotesi correnti la probabilità di esaurimento entro l’orizzonte è circa ${decumulationData?.depletion_probability_pct?.toFixed(1) ?? '0'}%.`)}
+                        ? (aggregateModeEnabled
+                          ? `Con le ipotesi correnti la probabilità di chiudere l’orizzonte con capitale residuo sul perimetro aggregato è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
+                          : `Con le ipotesi correnti la probabilità di chiudere l’orizzonte con capitale residuo è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`)
+                        : `Con le ipotesi correnti la probabilità di esaurimento entro l’orizzonte è circa ${activeDecumulationData?.depletion_probability_pct?.toFixed(1) ?? '0'}%.`)}
               </Text>
               {fireMode === 'accumulation' && hasAgePlan && targetAgeValue > 0 && (
                 <Alert color={estimatedFireAge != null && estimatedFireAge <= targetAgeValue ? 'teal' : 'yellow'} variant="light">
@@ -576,10 +826,10 @@ export function FirePage() {
               )}
               <Table withTableBorder withColumnBorders>
                 <Table.Tbody>
-                  <Table.Tr><Table.Td>Portafoglio selezionato</Table.Td><Table.Td>{selectedPortfolio?.name ?? 'N/D'}</Table.Td></Table.Tr>
+                  <Table.Tr><Table.Td>Perimetro FIRE</Table.Td><Table.Td>{fireScopeLabel}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Base currency</Table.Td><Table.Td>{currency}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Rendimento atteso</Table.Td><Table.Td>{formatPct(expectedReturnPct, 1)}</Table.Td></Table.Tr>
-                  <Table.Tr><Table.Td>Volatilità attesa</Table.Td><Table.Td>{formatPct(monteCarlo?.annualized_volatility_pct, 1)}</Table.Td></Table.Tr>
+                  <Table.Tr><Table.Td>Volatilità attesa</Table.Td><Table.Td>{formatPct(activeVolatilityPct, 1)}</Table.Td></Table.Tr>
                   {fireMode === 'accumulation' ? (
                     <>
                       <Table.Tr><Table.Td>Spesa annua</Table.Td><Table.Td>{expensesValue > 0 ? formatMoney(expensesValue, currency) : 'N/D'}</Table.Td></Table.Tr>
@@ -591,11 +841,25 @@ export function FirePage() {
                       <Table.Tr><Table.Td>Altri redditi annui</Table.Td><Table.Td>{formatMoney(otherIncomeAnnualValue, currency)}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Inflazione spesa</Table.Td><Table.Td>{formatPct(inflationRateValue, 1)}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Orizzonte</Table.Td><Table.Td>{decumulationYearsValue > 0 ? `${decumulationYearsValue} anni` : 'N/D'}</Table.Td></Table.Tr>
-                      <Table.Tr><Table.Td>Success rate</Table.Td><Table.Td>{formatPct(decumulationData?.success_rate_pct, 1)}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Success rate</Table.Td><Table.Td>{formatPct(activeDecumulationData?.success_rate_pct, 1)}</Table.Td></Table.Tr>
                     </>
                   )}
                 </Table.Tbody>
               </Table>
+              {aggregateModeEnabled && (
+                <>
+                  <Divider />
+                  <Stack gap="xs">
+                    <Text size="sm" fw={700}>Composizione perimetro FIRE</Text>
+                    {selectedAggregatePortfolios.map((portfolio) => (
+                      <Group key={portfolio.id} justify="space-between" wrap="nowrap">
+                        <Text size="sm">{portfolio.name}</Text>
+                        <Text size="sm" c="dimmed">{portfolio.base_currency}</Text>
+                      </Group>
+                    ))}
+                  </Stack>
+                </>
+              )}
             </Stack>
           </Card>
 
@@ -607,11 +871,11 @@ export function FirePage() {
                 </ThemeIcon>
                 <Title order={4}>{fireMode === 'accumulation' ? 'Scenari Monte Carlo' : 'Timeline di decumulo'}</Title>
               </Group>
-              <Text size="sm" c="dimmed">
+                <Text size="sm" c="dimmed">
                 {fireMode === 'accumulation'
                   ? 'Lettura delle proiezioni sul capitale già investito. I valori sotto non includono nuovi versamenti futuri.'
                   : 'Simulazione Monte Carlo anno per anno del capitale residuo, con prelievi indicizzati all’inflazione.'}
-              </Text>
+                </Text>
               {fireMode === 'accumulation' ? (
                 fireNumber == null || horizonScenarios.length === 0 ? (
                   <Alert color="yellow" variant="light">
@@ -734,6 +998,65 @@ export function FirePage() {
           </Card>
         </SimpleGrid>
       </Stack>
+      <Modal
+        opened={aggregateSelectionOpened}
+        onClose={() => setAggregateSelectionOpened(false)}
+        title="Perimetro FIRE aggregato"
+        size="lg"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Seleziona i portafogli da includere nel calcolo FIRE aggregato. In questa fase sono supportati solo portafogli con la stessa valuta base.
+          </Text>
+          <Group gap="sm">
+            <Button
+              variant="default"
+              size="xs"
+              onClick={() => setAggregatePortfolioIds(availableAggregatePortfolios.map((portfolio) => String(portfolio.id)))}
+            >
+              Seleziona tutti
+            </Button>
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={() => setAggregatePortfolioIds(selectedPortfolioId ? [selectedPortfolioId] : [])}
+            >
+              Solo attivo
+            </Button>
+          </Group>
+          <Stack gap="xs">
+            {availableAggregatePortfolios.map((portfolio) => {
+              const portfolioId = String(portfolio.id);
+              const checked = aggregatePortfolioIds.includes(portfolioId);
+              return (
+                <Checkbox
+                  key={portfolio.id}
+                  checked={checked}
+                  onChange={(event) => {
+                    if (event.currentTarget.checked) {
+                      setAggregatePortfolioIds((previous) => Array.from(new Set([...previous, portfolioId])));
+                      return;
+                    }
+                    setAggregatePortfolioIds((previous) => {
+                      const next = previous.filter((value) => value !== portfolioId);
+                      return next.length > 0 ? next : previous;
+                    });
+                  }}
+                  label={`${portfolio.name} · ${portfolio.base_currency}`}
+                  description={`Cash ${formatMoney(portfolio.cash_balance ?? 0, portfolio.base_currency)}`}
+                />
+              );
+            })}
+          </Stack>
+          <Alert color="red" variant="light">
+            Patrimonio FIRE incluso: {selectedAggregatePortfolios.length} portafogli · {formatMoney(totalNetWorth, currency)}
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setAggregateSelectionOpened(false)}>Chiudi</Button>
+          </Group>
+        </Stack>
+      </Modal>
     </PageLayout>
   );
 }

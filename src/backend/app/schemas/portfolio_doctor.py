@@ -96,3 +96,24 @@ class DecumulationPlanResponse(BaseModel):
     p75_terminal_value: float = Field(ge=0)
     depletion_year_p50: int | None = Field(default=None, ge=1)
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
+
+
+class AggregateDecumulationPlanResponse(BaseModel):
+    portfolio_ids: list[int] = Field(default_factory=list, min_length=1)
+    base_currency: str = Field(min_length=1)
+    initial_capital: float = Field(ge=0)
+    annual_withdrawal: float = Field(ge=0)
+    annual_other_income: float = Field(ge=0)
+    inflation_rate_pct: float = Field(ge=0)
+    horizon_years: int = Field(ge=1)
+    num_simulations: int = Field(ge=0)
+    annualized_mean_return_pct: float
+    annualized_volatility_pct: float
+    sustainable_withdrawal: float = Field(ge=0)
+    success_rate_pct: float = Field(ge=0, le=100)
+    depletion_probability_pct: float = Field(ge=0, le=100)
+    p25_terminal_value: float = Field(ge=0)
+    p50_terminal_value: float = Field(ge=0)
+    p75_terminal_value: float = Field(ge=0)
+    depletion_year_p50: int | None = Field(default=None, ge=1)
+    projections: list[DecumulationYearProjection] = Field(default_factory=list)

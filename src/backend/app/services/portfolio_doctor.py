@@ -9,6 +9,7 @@ from sqlalchemy import text
 
 from ..repository import PortfolioRepository
 from ..schemas.portfolio_doctor import (
+    AggregateDecumulationPlanResponse,
     DecumulationPlanResponse,
     DecumulationYearProjection,
     MonteCarloProjectionResponse,
@@ -798,6 +799,99 @@ def run_decumulation_plan(
     )
 
 
+def run_aggregate_decumulation_plan(
+    repo: PortfolioRepository,
+    portfolio_ids: list[int],
+    annual_withdrawal: float,
+    years: int,
+    inflation_rate_pct: float,
+    other_income_annual: float = 0.0,
+    current_age: int | None = None,
+    user_id: str | None = None,
+) -> AggregateDecumulationPlanResponse:
+    if not user_id:
+        raise ValueError("Utente non valido")
+
+    normalized_ids = _normalize_portfolio_ids(portfolio_ids)
+    if not normalized_ids:
+        raise ValueError("Seleziona almeno un portafoglio")
+
+    portfolios = {portfolio.id: portfolio for portfolio in repo.list_portfolios(user_id)}
+    missing_ids = [portfolio_id for portfolio_id in normalized_ids if portfolio_id not in portfolios]
+    if missing_ids:
+        raise ValueError("Uno o più portafogli non sono disponibili")
+
+    base_currencies = {portfolios[portfolio_id].base_currency for portfolio_id in normalized_ids}
+    if len(base_currencies) != 1:
+        raise ValueError("I portafogli aggregati devono avere la stessa valuta base")
+    base_currency = next(iter(base_currencies))
+
+    summaries = [repo.get_summary(portfolio_id, user_id) for portfolio_id in normalized_ids]
+    initial_capital = sum(max(0.0, float(summary.market_value) + float(summary.cash_balance)) for summary in summaries)
+    holdings = _load_aggregate_holdings(repo, normalized_ids, user_id)
+    mu_annual, sigma_annual = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0)
+    sustainable_withdrawal = _solve_sustainable_withdrawal(
+        initial_capital=initial_capital,
+        years=years,
+        annual_return_pct=mu_annual * 100,
+        inflation_rate_pct=inflation_rate_pct,
+        other_income_annual=other_income_annual,
+    )
+
+    if initial_capital <= 0:
+        return _empty_aggregate_decumulation_response(
+            portfolio_ids=normalized_ids,
+            base_currency=base_currency,
+            annual_withdrawal=annual_withdrawal,
+            years=years,
+            inflation_rate_pct=inflation_rate_pct,
+            other_income_annual=other_income_annual,
+            current_age=current_age,
+        )
+
+    paths = _simulate_decumulation_paths(
+        initial_capital=initial_capital,
+        annual_withdrawal=annual_withdrawal,
+        years=years,
+        inflation_rate_pct=inflation_rate_pct,
+        other_income_annual=other_income_annual,
+        mu_annual=mu_annual,
+        sigma_annual=sigma_annual,
+    )
+    final_values = sorted(path["ending_capitals"][-1] for path in paths)
+    success_count = sum(1 for path in paths if path["ending_capitals"][-1] > 0)
+    projections = _build_decumulation_projections(
+        paths=paths,
+        years=years,
+        annual_withdrawal=annual_withdrawal,
+        inflation_rate_pct=inflation_rate_pct,
+        other_income_annual=other_income_annual,
+        current_age=current_age,
+    )
+    depletion_year_p50 = next((projection.year for projection in projections if projection.p50_ending_capital <= 0), None)
+
+    return AggregateDecumulationPlanResponse(
+        portfolio_ids=normalized_ids,
+        base_currency=base_currency,
+        initial_capital=round(initial_capital, 2),
+        annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
+        annual_other_income=round(max(0.0, other_income_annual), 2),
+        inflation_rate_pct=round(max(0.0, inflation_rate_pct), 2),
+        horizon_years=years,
+        num_simulations=NUM_SIMULATIONS,
+        annualized_mean_return_pct=round(mu_annual * 100, 2),
+        annualized_volatility_pct=round(sigma_annual * 100, 2),
+        sustainable_withdrawal=round(max(0.0, sustainable_withdrawal), 2),
+        success_rate_pct=round((success_count / NUM_SIMULATIONS) * 100, 1),
+        depletion_probability_pct=round(((NUM_SIMULATIONS - success_count) / NUM_SIMULATIONS) * 100, 1),
+        p25_terminal_value=round(_percentile(final_values, 25), 2),
+        p50_terminal_value=round(_percentile(final_values, 50), 2),
+        p75_terminal_value=round(_percentile(final_values, 75), 2),
+        depletion_year_p50=depletion_year_p50,
+        projections=projections,
+    )
+
+
 def _compute_portfolio_return_params(
     repo: PortfolioRepository,
     holdings: list[AnalyzedHolding],
@@ -857,6 +951,48 @@ def _compute_portfolio_return_params(
         return 0.0, 0.0
 
     return weighted_mu / covered_weight, weighted_sigma / covered_weight
+
+
+def _normalize_portfolio_ids(portfolio_ids: list[int]) -> list[int]:
+    normalized: list[int] = []
+    for portfolio_id in portfolio_ids:
+        if portfolio_id <= 0 or portfolio_id in normalized:
+            continue
+        normalized.append(portfolio_id)
+    return normalized
+
+
+def _load_aggregate_holdings(
+    repo: PortfolioRepository,
+    portfolio_ids: list[int],
+    user_id: str,
+) -> list[AnalyzedHolding]:
+    holdings: list[AnalyzedHolding] = []
+    for portfolio_id in portfolio_ids:
+        holdings.extend(_load_holdings(repo, portfolio_id, user_id))
+    return _rebalance_holdings_by_market_value(holdings)
+
+
+def _rebalance_holdings_by_market_value(holdings: list[AnalyzedHolding]) -> list[AnalyzedHolding]:
+    total_market_value = sum(max(0.0, holding.market_value) for holding in holdings)
+    if total_market_value <= 0:
+        return []
+
+    rebalanced: list[AnalyzedHolding] = []
+    for holding in holdings:
+        market_value = max(0.0, holding.market_value)
+        rebalanced.append(
+            AnalyzedHolding(
+                asset_id=holding.asset_id,
+                symbol=holding.symbol,
+                name=holding.name,
+                asset_type=holding.asset_type,
+                quote_currency=holding.quote_currency,
+                market_value=market_value,
+                weight_pct=(market_value / total_market_value) * 100.0,
+            )
+        )
+    return rebalanced
 
 
 def _simulate_paths(
@@ -1044,6 +1180,52 @@ def _empty_decumulation_response(
     ]
     return DecumulationPlanResponse(
         portfolio_id=portfolio_id,
+        initial_capital=0.0,
+        annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
+        annual_other_income=round(max(0.0, other_income_annual), 2),
+        inflation_rate_pct=round(max(0.0, inflation_rate_pct), 2),
+        horizon_years=years,
+        num_simulations=0,
+        annualized_mean_return_pct=0.0,
+        annualized_volatility_pct=0.0,
+        sustainable_withdrawal=0.0,
+        success_rate_pct=0.0,
+        depletion_probability_pct=100.0,
+        p25_terminal_value=0.0,
+        p50_terminal_value=0.0,
+        p75_terminal_value=0.0,
+        depletion_year_p50=1 if years > 0 else None,
+        projections=projections,
+    )
+
+
+def _empty_aggregate_decumulation_response(
+    *,
+    portfolio_ids: list[int],
+    base_currency: str,
+    annual_withdrawal: float,
+    years: int,
+    inflation_rate_pct: float,
+    other_income_annual: float,
+    current_age: int | None,
+) -> AggregateDecumulationPlanResponse:
+    projections = [
+        DecumulationYearProjection(
+            year=year,
+            age=(current_age + year) if current_age else None,
+            gross_withdrawal=round(max(0.0, annual_withdrawal) * ((1 + max(0.0, inflation_rate_pct) / 100.0) ** (year - 1)), 2),
+            net_withdrawal=round(max(0.0, max(0.0, annual_withdrawal) - max(0.0, other_income_annual)), 2),
+            p25_ending_capital=0.0,
+            p50_ending_capital=0.0,
+            p75_ending_capital=0.0,
+            p50_effective_withdrawal_rate_pct=0.0,
+            depletion_probability_pct=100.0,
+        )
+        for year in range(1, years + 1)
+    ]
+    return AggregateDecumulationPlanResponse(
+        portfolio_ids=portfolio_ids,
+        base_currency=base_currency,
         initial_capital=0.0,
         annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
         annual_other_income=round(max(0.0, other_income_annual), 2),

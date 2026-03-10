@@ -263,6 +263,27 @@ export interface DecumulationPlanResponse {
   projections: DecumulationYearProjection[];
 }
 
+export interface AggregateDecumulationPlanResponse {
+  portfolio_ids: number[];
+  base_currency: string;
+  initial_capital: number;
+  annual_withdrawal: number;
+  annual_other_income: number;
+  inflation_rate_pct: number;
+  horizon_years: number;
+  num_simulations: number;
+  annualized_mean_return_pct: number;
+  annualized_volatility_pct: number;
+  sustainable_withdrawal: number;
+  success_rate_pct: number;
+  depletion_probability_pct: number;
+  p25_terminal_value: number;
+  p50_terminal_value: number;
+  p75_terminal_value: number;
+  depletion_year_p50: number | null;
+  projections: DecumulationYearProjection[];
+}
+
 export interface PortfolioCreateInput {
   name: string;
   base_currency: string;
@@ -867,6 +888,29 @@ export const getDecumulationPlan = async (
     query.set('current_age', String(params.currentAge));
   }
   return apiFetch<DecumulationPlanResponse>(`/portfolios/${portfolioId}/decumulation?${query.toString()}`);
+};
+
+export const getAggregateDecumulationPlan = async (
+  portfolioIds: number[],
+  params: {
+    annualWithdrawal: number;
+    years: number;
+    inflationRatePct?: number;
+    otherIncomeAnnual?: number;
+    currentAge?: number | null;
+  },
+): Promise<AggregateDecumulationPlanResponse> => {
+  const query = new URLSearchParams({
+    annual_withdrawal: String(params.annualWithdrawal),
+    years: String(params.years),
+    inflation_rate_pct: String(params.inflationRatePct ?? 2),
+    other_income_annual: String(params.otherIncomeAnnual ?? 0),
+  });
+  portfolioIds.forEach((portfolioId) => query.append('portfolio_ids', String(portfolioId)));
+  if (params.currentAge != null && Number.isFinite(params.currentAge)) {
+    query.set('current_age', String(params.currentAge));
+  }
+  return apiFetch<AggregateDecumulationPlanResponse>(`/portfolios/aggregate/decumulation?${query.toString()}`);
 };
 
 export const getPerformanceSummary = async (

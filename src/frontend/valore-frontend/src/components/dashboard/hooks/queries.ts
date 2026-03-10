@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  getAdminPortfolios,
-  getAssetPriceTimeseries,
   backfillBenchmarkPrices,
+  getAdminPortfolios,
+  getAggregateDecumulationPlan,
+  getAssetPriceTimeseries,
   getDecumulationPlan,
   getBenchmarks,
   getGainTimeseries,
@@ -87,6 +88,24 @@ export function useDecumulationPlan(
     queryKey: ['decumulation-plan', portfolioId, params],
     queryFn: () => getDecumulationPlan(portfolioId!, params),
     enabled: portfolioId != null && enabled,
+  });
+}
+
+export function useAggregateDecumulationPlan(
+  portfolioIds: number[],
+  params: {
+    annualWithdrawal: number;
+    years: number;
+    inflationRatePct: number;
+    otherIncomeAnnual: number;
+    currentAge: number | null;
+  },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['aggregate-decumulation-plan', portfolioIds, params],
+    queryFn: () => getAggregateDecumulationPlan(portfolioIds, params),
+    enabled: portfolioIds.length > 0 && enabled,
   });
 }
 
