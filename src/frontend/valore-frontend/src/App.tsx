@@ -279,59 +279,71 @@ function ProtectedApp() {
         </AppShell.Header>
 
         <AppShell.Navbar p="md">
-          <NavLink
-              component={Link}
-              to="/"
-              label={navbarExpanded ? 'Dashboard' : undefined}
-              leftSection={<IconLayoutDashboard size={16} />}
-              aria-label="Dashboard"
-              disabled={lockNonPortfolioNavigation}
-              onClick={close}
-          />
-          <NavLink
-              component={Link}
-              to="/portfolio"
-              label={navbarExpanded ? 'Portfolio' : undefined}
-              leftSection={<IconBriefcase size={16} />}
-              aria-label="Portfolio"
-              onClick={close}
-          />
-          <NavLink
-              component={Link}
-              to="/doctor"
-              label={navbarExpanded ? 'Doctor' : undefined}
-              leftSection={<IconHeartRateMonitor size={16} />}
-              aria-label="Doctor"
-              disabled={lockNonPortfolioNavigation}
-              onClick={close}
-          />
-          <NavLink
-              component={Link}
-              to="/fire"
-              label={navbarExpanded ? 'FIRE' : undefined}
-              leftSection={<IconFlame size={16} />}
-              aria-label="FIRE"
-              disabled={lockNonPortfolioNavigation}
-              onClick={close}
-          />
-          <NavLink
-              component={Link}
-              to="/settings"
-              label={navbarExpanded ? 'Impostazioni' : undefined}
-              leftSection={<IconSettings size={16} />}
-              aria-label="Impostazioni"
-              disabled={lockNonPortfolioNavigation}
-              onClick={close}
-          />
-          {isAdmin && (
+          <Tooltip label="Dashboard" position="right" withArrow disabled={navbarExpanded}>
             <NavLink
                 component={Link}
-                to="/admin"
-                label={navbarExpanded ? 'Admin' : undefined}
-                leftSection={<IconShieldLock size={16} />}
-                aria-label="Admin"
+                to="/"
+                label={navbarExpanded ? 'Dashboard' : undefined}
+                leftSection={<IconLayoutDashboard size={16} />}
+                aria-label="Dashboard"
+                disabled={lockNonPortfolioNavigation}
                 onClick={close}
             />
+          </Tooltip>
+          <Tooltip label="Portfolio" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/portfolio"
+                label={navbarExpanded ? 'Portfolio' : undefined}
+                leftSection={<IconBriefcase size={16} />}
+                aria-label="Portfolio"
+                onClick={close}
+            />
+          </Tooltip>
+          <Tooltip label="Doctor" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/doctor"
+                label={navbarExpanded ? 'Doctor' : undefined}
+                leftSection={<IconHeartRateMonitor size={16} />}
+                aria-label="Doctor"
+                disabled={lockNonPortfolioNavigation}
+                onClick={close}
+            />
+          </Tooltip>
+          <Tooltip label="FIRE" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/fire"
+                label={navbarExpanded ? 'FIRE' : undefined}
+                leftSection={<IconFlame size={16} />}
+                aria-label="FIRE"
+                disabled={lockNonPortfolioNavigation}
+                onClick={close}
+            />
+          </Tooltip>
+          <Tooltip label="Impostazioni" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/settings"
+                label={navbarExpanded ? 'Impostazioni' : undefined}
+                leftSection={<IconSettings size={16} />}
+                aria-label="Impostazioni"
+                disabled={lockNonPortfolioNavigation}
+                onClick={close}
+            />
+          </Tooltip>
+          {isAdmin && (
+            <Tooltip label="Admin" position="right" withArrow disabled={navbarExpanded}>
+              <NavLink
+                  component={Link}
+                  to="/admin"
+                  label={navbarExpanded ? 'Admin' : undefined}
+                  leftSection={<IconShieldLock size={16} />}
+                  aria-label="Admin"
+                  onClick={close}
+              />
+            </Tooltip>
           )}
         </AppShell.Navbar>
 
