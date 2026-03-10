@@ -26,6 +26,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
 import { getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
@@ -462,7 +463,7 @@ export function FirePage() {
 
   return (
     <PageLayout variant="fire">
-      <Stack gap="lg">
+      <Stack gap="lg" pb={isMobile ? 96 : 0}>
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
           title="FIRE"
@@ -514,16 +515,7 @@ export function FirePage() {
         </Group>
 
         <Group justify="space-between" align="center" wrap="wrap">
-          {isMobile ? (
-            <SegmentedControl
-              value={fireMode}
-              onChange={(value) => setFireMode(value as FireMode)}
-              data={[
-                { label: 'Accumulo', value: 'accumulation' },
-                { label: 'Decumulo', value: 'decumulation' },
-              ]}
-            />
-          ) : (
+          {!isMobile && (
             <Tabs value={fireMode} onChange={(value) => setFireMode((value as FireMode) ?? 'accumulation')} variant="default">
               <Tabs.List
                 style={{
@@ -997,6 +989,17 @@ export function FirePage() {
             </Stack>
           </Card>
         </SimpleGrid>
+
+        {isMobile && (
+          <MobileBottomNav
+            items={[
+              { value: 'accumulation', label: 'Accumulo', icon: IconTrendingUp },
+              { value: 'decumulation', label: 'Decumulo', icon: IconWallet },
+            ]}
+            value={fireMode}
+            onChange={(value) => setFireMode(value as FireMode)}
+          />
+        )}
       </Stack>
       <Modal
         opened={aggregateSelectionOpened}
