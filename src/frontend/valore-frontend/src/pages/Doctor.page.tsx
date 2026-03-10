@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -24,11 +24,13 @@ import {
   IconChartBubble,
   IconCheck,
   IconCopy,
+  IconDownload,
   IconHeartRateMonitor,
   IconLink,
   IconShare,
   IconSparkles,
 } from '@tabler/icons-react';
+import { toBlob } from 'html-to-image';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
@@ -68,6 +70,8 @@ export function DoctorPage() {
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
   });
   const [detailsAlert, setDetailsAlert] = useState<PortfolioHealthAlert | null>(null);
+  const [copyImageState, setCopyImageState] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+  const profileCardRef = useRef<HTMLDivElement | null>(null);
 
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
@@ -115,6 +119,39 @@ export function DoctorPage() {
     || (healthError instanceof Error ? healthError.message : null);
   const baseCurrency = selectedPortfolio?.base_currency ?? summary?.base_currency ?? 'EUR';
 
+  async function handleCopyProfileImage() {
+    if (!profileCardRef.current || typeof window === 'undefined') {
+      setCopyImageState('error');
+      return;
+    }
+
+    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+      setCopyImageState('error');
+      return;
+    }
+
+    try {
+      setCopyImageState('copying');
+      const blob = await toBlob(profileCardRef.current, {
+        cacheBust: true,
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      });
+
+      if (!blob) throw new Error('Image export failed');
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          [blob.type || 'image/png']: blob,
+        }),
+      ]);
+      setCopyImageState('copied');
+      window.setTimeout(() => setCopyImageState('idle'), 2000);
+    } catch {
+      setCopyImageState('error');
+      window.setTimeout(() => setCopyImageState('idle'), 2500);
+    }
+  }
+
   return (
     <PageLayout variant="editorial">
       <Container fluid>
@@ -155,6 +192,7 @@ export function DoctorPage() {
               <Grid gutter="lg" align="stretch">
                 <Grid.Col span={{ base: 12, xl: 8 }}>
                   <Card
+                    ref={profileCardRef}
                     radius="xl"
                     padding={{ base: 'md', sm: 'xl' }}
                     withBorder
@@ -211,6 +249,20 @@ export function DoctorPage() {
                             </Button>
                           )}
                         </CopyButton>
+                        <Button
+                          variant="outline"
+                          color="gray"
+                          leftSection={copyImageState === 'copied' ? <IconCheck size={16} /> : <IconDownload size={16} />}
+                          onClick={handleCopyProfileImage}
+                          radius="xl"
+                          loading={copyImageState === 'copying'}
+                        >
+                          {copyImageState === 'copied'
+                            ? 'Immagine copiata'
+                            : copyImageState === 'error'
+                              ? 'Copia non disponibile'
+                              : 'Copia immagine'}
+                        </Button>
                         <Badge variant="light" color="yellow" leftSection={<IconShare size={12} />} style={{ whiteSpace: 'normal', height: 'auto', lineHeight: 1.4 }}>
                           Pensato per la condivisione via screenshot
                         </Badge>
