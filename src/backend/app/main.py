@@ -203,7 +203,7 @@ else:
     _cors_kwargs: dict[str, Any] = dict(
         allow_origins=settings.cors_allowed_origins_list,
         allow_credentials=True,
-        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["*"],
     )
     if settings.cors_allowed_origin_regex:
