@@ -204,7 +204,7 @@ else:
         allow_origins=settings.cors_allowed_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
+        allow_headers=["*"],
     )
     if settings.cors_allowed_origin_regex:
         _cors_kwargs["allow_origin_regex"] = settings.cors_allowed_origin_regex
