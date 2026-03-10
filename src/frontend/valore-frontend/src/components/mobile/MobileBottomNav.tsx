@@ -19,6 +19,8 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
+  if (items.length === 0) return null;
+
   return (
     <Portal>
     <Group
