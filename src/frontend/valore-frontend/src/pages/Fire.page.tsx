@@ -12,6 +12,7 @@ import {
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
   ThemeIcon,
   Title,
@@ -271,14 +272,37 @@ export function FirePage() {
         {(decumulationError instanceof Error) && fireMode === 'decumulation' && <Alert color="red">{decumulationError.message}</Alert>}
 
         <Group justify="space-between" align="center" wrap="wrap">
-          <SegmentedControl
-            value={fireMode}
-            onChange={(value) => setFireMode(value as FireMode)}
-            data={[
-              { label: 'Accumulo', value: 'accumulation' },
-              { label: 'Decumulo', value: 'decumulation' },
-            ]}
-          />
+          {isMobile ? (
+            <SegmentedControl
+              value={fireMode}
+              onChange={(value) => setFireMode(value as FireMode)}
+              data={[
+                { label: 'Accumulo', value: 'accumulation' },
+                { label: 'Decumulo', value: 'decumulation' },
+              ]}
+            />
+          ) : (
+            <Tabs value={fireMode} onChange={(value) => setFireMode((value as FireMode) ?? 'accumulation')} variant="default">
+              <Tabs.List
+                style={{
+                  flexWrap: 'nowrap',
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
+                  WebkitOverflowScrolling: 'touch',
+                  scrollbarWidth: 'none',
+                  paddingBottom: 0,
+                  gap: 0,
+                }}
+              >
+                <Tabs.Tab value="accumulation">
+                  <Text span>Accumulo</Text>
+                </Tabs.Tab>
+                <Tabs.Tab value="decumulation">
+                  <Text span>Decumulo</Text>
+                </Tabs.Tab>
+              </Tabs.List>
+            </Tabs>
+          )}
           <Text size="sm" c="dimmed">
             {fireMode === 'accumulation'
               ? 'Modalità orientata al raggiungimento della soglia FIRE.'
