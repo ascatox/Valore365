@@ -126,11 +126,9 @@ Questo approccio mantiene l’analisi **affidabile e verificabile**.
 
 Esempi consigliati:
 
-
-docs/images/dashboard.png
-docs/images/doctor.png
-docs/images/copilot.png
-
+![Dashboard](docs/images/dashboard.png)
+![Dashboard](docs/images/doctor.png)
+![Copilot](docs/images/copilot.png)
 
 ---
 
