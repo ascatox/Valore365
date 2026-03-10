@@ -200,13 +200,15 @@ if settings.app_env == "dev":
         allow_headers=["*"],
     )
 else:
-    app.add_middleware(
-        CORSMiddleware,
+    _cors_kwargs: dict[str, Any] = dict(
         allow_origins=settings.cors_allowed_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
     )
+    if settings.cors_allowed_origin_regex:
+        _cors_kwargs["allow_origin_regex"] = settings.cors_allowed_origin_regex
+    app.add_middleware(CORSMiddleware, **_cors_kwargs)
 
 # Request logging (runs after CORS)
 app.add_middleware(RequestLoggingMiddleware)

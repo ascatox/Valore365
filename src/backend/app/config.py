@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     price_validation_fx_max_rate: float = 10000.0
 
     cors_allowed_origins: str = "http://localhost:5173"
+    cors_allowed_origin_regex: str = ""
     public_instant_analyzer_rate_limit_requests: int = 10
     public_instant_analyzer_rate_limit_window_seconds: int = 60
     public_instant_analyzer_max_positions: int = 500
