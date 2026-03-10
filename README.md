@@ -1,5 +1,5 @@
- <img src="src/frontend/valore-frontend/src/assets/logo-mark.svg" alt="Logo Valore365" width="40">
-# 🚀 Valore365
+ 
+# <img src="src/frontend/valore-frontend/src/assets/logo-mark.svg" alt="Logo Valore365" width="40"> Valore365
 
 ![Python](https://img.shields.io/badge/backend-FastAPI-blue)
 ![React](https://img.shields.io/badge/frontend-React-blue)
