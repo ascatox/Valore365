@@ -11,7 +11,7 @@ export function BrandMark({ compact = false }: BrandMarkProps) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const mobileBoost = compact && isMobile ? 5 : 0;
+  const mobileBoost = compact && isMobile ? 2 : 0;
   const logoSize = (compact ? 26 : 30) + mobileBoost;
   const logoRadius = (compact ? 8 : 10) + (mobileBoost > 0 ? 1 : 0);
 
