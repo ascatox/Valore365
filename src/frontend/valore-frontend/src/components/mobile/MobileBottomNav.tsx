@@ -33,8 +33,8 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
         right: 12,
         bottom: bottomOffset,
         zIndex: 45,
-        padding: 8,
-        borderRadius: 24,
+        padding: 6,
+        borderRadius: 20,
         background: isDark ? 'rgba(30,41,59,0.94)' : 'rgba(255,255,255,0.94)',
         backdropFilter: 'blur(16px)',
         border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
@@ -51,16 +51,16 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
             style={{
               flex: '1 1 0',
               minWidth: 0,
-              borderRadius: 18,
-              padding: '10px 6px',
+              borderRadius: 16,
+              padding: '8px 4px',
               background: isActive ? 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)' : 'transparent',
               color: isActive ? '#ffffff' : (isDark ? theme.colors.gray[3] : '#475569'),
               textAlign: 'center',
               transition: 'all 140ms ease',
             }}
           >
-            <Icon size={18} style={{ margin: '0 auto 4px auto', display: 'block' }} />
-            <Text size="xs" fw={700} truncate="end">
+            <Icon size={16} style={{ margin: '0 auto 3px auto', display: 'block' }} />
+            <Text size="xs" fw={700} truncate="end" style={{ lineHeight: 1.1 }}>
               {item.label}
             </Text>
           </UnstyledButton>
