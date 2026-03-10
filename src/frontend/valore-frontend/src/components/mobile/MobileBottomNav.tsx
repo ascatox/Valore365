@@ -11,9 +11,10 @@ interface MobileBottomNavProps {
   items: MobileBottomNavItem[];
   value: string | null;
   onChange: (value: string) => void;
+  bottomOffset?: number;
 }
 
-export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps) {
+export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: MobileBottomNavProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -28,7 +29,7 @@ export function MobileBottomNav({ items, value, onChange }: MobileBottomNavProps
         position: 'fixed',
         left: 12,
         right: 12,
-        bottom: 12,
+        bottom: bottomOffset,
         zIndex: 45,
         padding: 8,
         borderRadius: 24,
