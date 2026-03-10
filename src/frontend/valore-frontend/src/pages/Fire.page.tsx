@@ -267,6 +267,18 @@ export function FirePage() {
   const aggregateMonteCarloLoading = aggregateMonteCarloQueries.some((query) => query.isLoading);
   const aggregateSummaryError = aggregateSummaryQueries.find((query) => query.error)?.error;
   const aggregateMonteCarloError = aggregateMonteCarloQueries.find((query) => query.error)?.error;
+  const expensesValue = typeof annualExpenses === 'number' ? annualExpenses : Number(annualExpenses || 0);
+  const contributionValue = typeof annualContribution === 'number' ? annualContribution : Number(annualContribution || 0);
+  const swrValue = typeof safeWithdrawalRate === 'number' ? safeWithdrawalRate : Number(safeWithdrawalRate || 0);
+  const currentAgeValue = typeof currentAge === 'number' ? currentAge : Number(currentAge || 0);
+  const targetAgeValue = typeof targetAge === 'number' ? targetAge : Number(targetAge || 0);
+  const annualWithdrawalValue = typeof annualWithdrawal === 'number' ? annualWithdrawal : Number(annualWithdrawal || 0);
+  const decumulationYearsValue = typeof decumulationYears === 'number' ? decumulationYears : Number(decumulationYears || 0);
+  const inflationRateValue = typeof inflationRate === 'number' ? inflationRate : Number(inflationRate || 0);
+  const otherIncomeAnnualValue = typeof otherIncomeAnnual === 'number' ? otherIncomeAnnual : Number(otherIncomeAnnual || 0);
+  const decumulationEnabled = fireMode === 'decumulation' && annualWithdrawalValue > 0 && decumulationYearsValue > 0;
+  const hasAgePlan = currentAgeValue > 0 && targetAgeValue > currentAgeValue;
+  const fireNumber = expensesValue > 0 && swrValue > 0 ? expensesValue / (swrValue / 100) : null;
 
   const aggregateSummary = useMemo(() => {
     if (fireScopeMode !== 'aggregate' || !selectedAggregatePortfolios.length) return null;
@@ -292,6 +304,14 @@ export function FirePage() {
       cash_balance: 0,
     });
   }, [aggregateSummaries, fireScopeMode, selectedAggregatePortfolios]);
+  const activeSummary = fireScopeMode === 'aggregate' ? aggregateSummary : (summary ?? null);
+  const aggregateModeEnabled = fireScopeMode === 'aggregate' && selectedAggregatePortfolios.length > 0;
+  const currency = activeSummary?.base_currency ?? selectedPortfolio?.base_currency ?? selectedAggregatePortfolios[0]?.base_currency ?? 'EUR';
+  const investedValue = activeSummary?.market_value ?? 0;
+  const cashBalance = activeSummary?.cash_balance ?? (fireScopeMode === 'aggregate' ? 0 : (selectedPortfolio?.cash_balance ?? 0));
+  const totalNetWorth = investedValue + cashBalance;
+  const coveragePct = fireNumber && fireNumber > 0 ? (totalNetWorth / fireNumber) * 100 : null;
+  const fireGap = fireNumber != null ? Math.max(0, fireNumber - totalNetWorth) : null;
 
   const aggregateExpectedReturnPct = useMemo(() => {
     if (!aggregateMonteCarlo.length || !aggregateSummaries.length) return null;
@@ -345,26 +365,6 @@ export function FirePage() {
     });
   }, [aggregateMonteCarlo, aggregateSummaries, aggregateSummary, fireNumber]);
 
-  const activeSummary = fireScopeMode === 'aggregate' ? aggregateSummary : (summary ?? null);
-  const aggregateModeEnabled = fireScopeMode === 'aggregate' && selectedAggregatePortfolios.length > 0;
-  const currency = activeSummary?.base_currency ?? selectedPortfolio?.base_currency ?? selectedAggregatePortfolios[0]?.base_currency ?? 'EUR';
-  const investedValue = activeSummary?.market_value ?? 0;
-  const cashBalance = activeSummary?.cash_balance ?? (fireScopeMode === 'aggregate' ? 0 : (selectedPortfolio?.cash_balance ?? 0));
-  const totalNetWorth = investedValue + cashBalance;
-  const expensesValue = typeof annualExpenses === 'number' ? annualExpenses : Number(annualExpenses || 0);
-  const contributionValue = typeof annualContribution === 'number' ? annualContribution : Number(annualContribution || 0);
-  const swrValue = typeof safeWithdrawalRate === 'number' ? safeWithdrawalRate : Number(safeWithdrawalRate || 0);
-  const currentAgeValue = typeof currentAge === 'number' ? currentAge : Number(currentAge || 0);
-  const targetAgeValue = typeof targetAge === 'number' ? targetAge : Number(targetAge || 0);
-  const annualWithdrawalValue = typeof annualWithdrawal === 'number' ? annualWithdrawal : Number(annualWithdrawal || 0);
-  const decumulationYearsValue = typeof decumulationYears === 'number' ? decumulationYears : Number(decumulationYears || 0);
-  const inflationRateValue = typeof inflationRate === 'number' ? inflationRate : Number(inflationRate || 0);
-  const otherIncomeAnnualValue = typeof otherIncomeAnnual === 'number' ? otherIncomeAnnual : Number(otherIncomeAnnual || 0);
-  const decumulationEnabled = fireMode === 'decumulation' && annualWithdrawalValue > 0 && decumulationYearsValue > 0;
-  const hasAgePlan = currentAgeValue > 0 && targetAgeValue > currentAgeValue;
-  const fireNumber = expensesValue > 0 && swrValue > 0 ? expensesValue / (swrValue / 100) : null;
-  const coveragePct = fireNumber && fireNumber > 0 ? (totalNetWorth / fireNumber) * 100 : null;
-  const fireGap = fireNumber != null ? Math.max(0, fireNumber - totalNetWorth) : null;
   const expectedReturnPct = aggregateModeEnabled ? (aggregateExpectedReturnPct ?? 5) : (monteCarlo?.annualized_mean_return_pct ?? 5);
   const estimatedYearsToFire = fireNumber != null
     ? solveYearsToTarget(fireNumber, totalNetWorth, contributionValue, expectedReturnPct)
