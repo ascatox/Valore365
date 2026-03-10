@@ -28,6 +28,9 @@ interface CopilotChatProps {
   opened: boolean;
   onClose: () => void;
   portfolioId: number | null;
+  title?: string;
+  quickPrompts?: string[];
+  emptyStateDescription?: string;
 }
 
 const QUICK_PROMPTS = [
@@ -39,7 +42,14 @@ const QUICK_PROMPTS = [
   'Spiega la performance recente',
 ];
 
-export function CopilotChat({ opened, onClose, portfolioId }: CopilotChatProps) {
+export function CopilotChat({
+  opened,
+  onClose,
+  portfolioId,
+  title = 'Portfolio Copilot',
+  quickPrompts = QUICK_PROMPTS,
+  emptyStateDescription = 'Chiedimi qualsiasi cosa sul tuo portafoglio. Ecco qualche spunto:',
+}: CopilotChatProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -175,7 +185,7 @@ export function CopilotChat({ opened, onClose, portfolioId }: CopilotChatProps) 
       title={
         <Group gap="xs">
           <IconRobot size={20} />
-          <Text fw={700}>Portfolio Copilot</Text>
+          <Text fw={700}>{title}</Text>
           <Badge size="xs" variant="light" color="teal">AI</Badge>
         </Group>
       }
@@ -207,10 +217,10 @@ export function CopilotChat({ opened, onClose, portfolioId }: CopilotChatProps) 
               <IconRobot size={28} color={isDark ? theme.colors.teal[3] : theme.colors.teal[7]} />
             </Box>
             <Text size="sm" c="dimmed" ta="center" maw={300}>
-              Chiedimi qualsiasi cosa sul tuo portafoglio. Ecco qualche spunto:
+              {emptyStateDescription}
             </Text>
             <Stack gap="xs" w="100%" maw={340}>
-              {QUICK_PROMPTS.map((prompt) => (
+              {quickPrompts.map((prompt) => (
                 <Button
                   key={prompt}
                   variant="light"

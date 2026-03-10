@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from .config import Settings
 from .performance_service import PerformanceService
 from .repository import PortfolioRepository
+from .services.portfolio_doctor import analyze_portfolio_health, run_monte_carlo_projection
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,44 @@ def build_portfolio_snapshot(
         "positions": pos_list,
         "performance": perf_data,
     }
+
+    try:
+        doctor = analyze_portfolio_health(repo, portfolio_id, user_id)
+        snapshot["doctor"] = {
+            "score": doctor.score,
+            "risk_level": doctor.summary.risk_level,
+            "diversification": doctor.summary.diversification,
+            "overlap": doctor.summary.overlap,
+            "cost_efficiency": doctor.summary.cost_efficiency,
+            "max_position_weight": round(doctor.metrics.max_position_weight, 2),
+            "overlap_score": round(doctor.metrics.overlap_score, 2),
+            "portfolio_volatility": round(doctor.metrics.portfolio_volatility, 2) if doctor.metrics.portfolio_volatility is not None else None,
+            "weighted_ter": round(doctor.metrics.weighted_ter, 2) if doctor.metrics.weighted_ter is not None else None,
+            "top_alerts": [alert.message for alert in doctor.alerts[:5]],
+            "top_suggestions": [suggestion.message for suggestion in doctor.suggestions[:5]],
+        }
+    except Exception:
+        pass
+
+    try:
+        monte_carlo = run_monte_carlo_projection(repo, portfolio_id, user_id)
+        snapshot["doctor_monte_carlo"] = {
+            "annualized_mean_return_pct": round(monte_carlo.annualized_mean_return_pct, 2),
+            "annualized_volatility_pct": round(monte_carlo.annualized_volatility_pct, 2),
+            "horizons": monte_carlo.horizons,
+            "projections": [
+                {
+                    "year": projection.year,
+                    "p25": projection.p25,
+                    "p50": projection.p50,
+                    "p75": projection.p75,
+                }
+                for projection in monte_carlo.projections[:10]
+                if projection.year > 0
+            ],
+        }
+    except Exception:
+        pass
 
     if drift_list:
         snapshot["target_drift"] = drift_list

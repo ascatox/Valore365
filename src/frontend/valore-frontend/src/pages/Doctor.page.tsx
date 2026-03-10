@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Box,
@@ -27,10 +29,12 @@ import {
   IconDownload,
   IconHeartRateMonitor,
   IconLink,
+  IconRobot,
   IconShare,
   IconSparkles,
 } from '@tabler/icons-react';
 import { toBlob } from 'html-to-image';
+import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
@@ -38,6 +42,7 @@ import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetails
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { getCopilotStatus } from '../services/api';
 import type { PortfolioHealthAlert } from '../services/api';
 
 const PRIVACY_MASK = '******';
@@ -65,13 +70,16 @@ function humanize(value: string): string {
 }
 
 export function DoctorPage() {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
   });
   const [detailsAlert, setDetailsAlert] = useState<PortfolioHealthAlert | null>(null);
   const [copyImageState, setCopyImageState] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
+  const [copilotAvailable, setCopilotAvailable] = useState(false);
   const profileCardRef = useRef<HTMLDivElement | null>(null);
+  const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
 
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
@@ -92,6 +100,10 @@ export function DoctorPage() {
       window.localStorage.setItem(STORAGE_KEYS.selectedPortfolioId, selectedPortfolioId);
     }
   }, [selectedPortfolioId]);
+
+  useEffect(() => {
+    getCopilotStatus().then((status) => setCopilotAvailable(status.available)).catch(() => {});
+  }, []);
 
   const selectedPortfolio = useMemo(
     () => portfolios.find((portfolio) => String(portfolio.id) === selectedPortfolioId) ?? null,
@@ -118,6 +130,14 @@ export function DoctorPage() {
   const pageError = (portfoliosError instanceof Error ? portfoliosError.message : null)
     || (healthError instanceof Error ? healthError.message : null);
   const baseCurrency = selectedPortfolio?.base_currency ?? summary?.base_currency ?? 'EUR';
+  const doctorQuickPrompts = useMemo(() => ([
+    'Spiega il punteggio Doctor in modo operativo',
+    'Quali sono i 3 rischi principali di questo portafoglio?',
+    'Come ridurresti la concentrazione senza stravolgere il portafoglio?',
+    'Interpretami overlap, volatilita e costi',
+    'Dimmi un piano d azione in 30 giorni basato sul report Doctor',
+    `Riassumi il referto Doctor di ${selectedPortfolio?.name ?? 'questo portafoglio'}`,
+  ]), [selectedPortfolio?.name]);
 
   async function handleCopyProfileImage() {
     if (!profileCardRef.current || typeof window === 'undefined') {
@@ -263,6 +283,17 @@ export function DoctorPage() {
                               ? 'Copia non disponibile'
                               : 'Copia immagine'}
                         </Button>
+                        {copilotAvailable && (
+                          <Button
+                            variant="light"
+                            color="teal"
+                            leftSection={<IconRobot size={16} />}
+                            onClick={openCopilot}
+                            radius="xl"
+                          >
+                            Apri Doctor Copilot
+                          </Button>
+                        )}
                         <Badge variant="light" color="yellow" leftSection={<IconShare size={12} />} style={{ whiteSpace: 'normal', height: 'auto', lineHeight: 1.4 }}>
                           Pensato per la condivisione via screenshot
                         </Badge>
@@ -399,6 +430,35 @@ export function DoctorPage() {
           )}
         </Stack>
       </Container>
+
+      {copilotAvailable && (
+        <ActionIcon
+          variant="filled"
+          color="teal"
+          size={52}
+          radius="xl"
+          onClick={openCopilot}
+          aria-label="Apri Doctor Copilot"
+          style={{
+            position: 'fixed',
+            bottom: isMobile ? 24 : 24,
+            right: 24,
+            zIndex: 100,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <IconRobot size={24} />
+        </ActionIcon>
+      )}
+
+      <CopilotChat
+        opened={copilotOpened}
+        onClose={closeCopilot}
+        portfolioId={portfolioId}
+        title="Doctor Copilot"
+        quickPrompts={doctorQuickPrompts}
+        emptyStateDescription="Interpreto il referto Doctor, spiego rischi e priorita operative del portafoglio."
+      />
     </PageLayout>
   );
 }
