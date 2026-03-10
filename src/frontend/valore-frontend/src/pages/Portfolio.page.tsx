@@ -1622,7 +1622,7 @@ export function PortfolioPage() {
         />
       )}
 
-      {isMobile && portfolioView === 'transactions' && (
+      {isMobile && (
         <MobileActionSheet
           opened={mobileActionSheetOpened}
           onOpen={() => setMobileActionSheetOpened(true)}
