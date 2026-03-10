@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 
-from ..auth import AuthContext, require_auth
+from ..auth import AuthContext
+from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
 from ..models import ErrorResponse
 from ..repository import PortfolioRepository
@@ -16,7 +17,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
     )
     def get_portfolio_health(
         portfolio_id: int,
-        _auth: AuthContext = Depends(require_auth),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> PortfolioHealthResponse:
         try:
             return analyze_portfolio_health(repo, portfolio_id, _auth.user_id)
@@ -30,7 +31,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
     )
     def get_monte_carlo_projection(
         portfolio_id: int,
-        _auth: AuthContext = Depends(require_auth),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> MonteCarloProjectionResponse:
         try:
             return run_monte_carlo_projection(repo, portfolio_id, _auth.user_id)
@@ -49,7 +50,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         inflation_rate_pct: float = Query(default=2.0, ge=0, le=20),
         other_income_annual: float = Query(default=0.0, ge=0),
         current_age: int | None = Query(default=None, ge=18, le=100),
-        _auth: AuthContext = Depends(require_auth),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> DecumulationPlanResponse:
         try:
             return run_decumulation_plan(

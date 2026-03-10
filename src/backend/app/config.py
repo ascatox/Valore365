@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     public_instant_analyzer_max_line_length: int = 128
     csv_import_max_upload_bytes: int = 5 * 1024 * 1024
 
+    # Per-user rate limiting for authenticated endpoints
+    authenticated_rate_limit_requests: int = 120
+    authenticated_rate_limit_window_seconds: int = 60
+
     @property
     def clerk_authorized_parties_list(self) -> list[str]:
         return [value.strip() for value in self.clerk_authorized_parties.split(",") if value.strip()]

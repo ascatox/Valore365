@@ -47,7 +47,9 @@ class SafeJSONResponse(JSONResponse):
 
 from fastapi import UploadFile, File, Form
 
-from .auth import AuthContext, require_admin, require_auth
+from .auth import AuthContext, require_admin
+from .middleware import RequestLoggingMiddleware
+from .rate_limit import require_auth_rate_limited
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
 from .api.portfolio_health import register_portfolio_health_routes
 from .config import get_settings
@@ -186,6 +188,9 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Valore365 API", version="0.6.0", lifespan=lifespan, default_response_class=SafeJSONResponse)
 
+# --- Middleware stack (added in reverse order: last added = first executed) ---
+
+# CORS
 if settings.app_env == "dev":
     app.add_middleware(
         CORSMiddleware,
@@ -197,12 +202,14 @@ if settings.app_env == "dev":
 else:
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"https://.*\.vercel\.app",
         allow_origins=settings.cors_allowed_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["*"],
+        allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
     )
+
+# Request logging (runs after CORS)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.exception_handler(AppError)
@@ -224,8 +231,17 @@ register_portfolio_health_routes(router, repo)
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+def health() -> dict[str, Any]:
+    """Liveness + readiness: pings DB to verify connectivity."""
+    db_ok = True
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        db_ok = False
+
+    status = "ok" if db_ok else "degraded"
+    return {"status": status, "db": "ok" if db_ok else "unreachable"}
 
 
 @router.get("/admin/usage-summary", response_model=AdminUsageSummary, responses={403: {"model": ErrorResponse}})
@@ -244,7 +260,7 @@ def ensure_target_allocation_enabled() -> None:
 
 
 @router.get("/settings/user", response_model=UserSettingsRead)
-def get_user_settings(_auth: AuthContext = Depends(require_auth)) -> UserSettingsRead:
+def get_user_settings(_auth: AuthContext = Depends(require_auth_rate_limited)) -> UserSettingsRead:
     try:
         return repo.get_user_settings(_auth.user_id)
     except ValueError as exc:
@@ -252,7 +268,7 @@ def get_user_settings(_auth: AuthContext = Depends(require_auth)) -> UserSetting
 
 
 @router.put("/settings/user", response_model=UserSettingsRead, responses={400: {"model": ErrorResponse}})
-def update_user_settings(payload: UserSettingsUpdate, _auth: AuthContext = Depends(require_auth)) -> UserSettingsRead:
+def update_user_settings(payload: UserSettingsUpdate, _auth: AuthContext = Depends(require_auth_rate_limited)) -> UserSettingsRead:
     try:
         api_key_enc: str | None = None
         if payload.copilot_api_key is not None:
@@ -268,7 +284,7 @@ def update_user_settings(payload: UserSettingsUpdate, _auth: AuthContext = Depen
 
 
 @router.post("/portfolios", response_model=PortfolioRead, responses={400: {"model": ErrorResponse}})
-def create_portfolio(payload: PortfolioCreate, _auth: AuthContext = Depends(require_auth)) -> PortfolioRead:
+def create_portfolio(payload: PortfolioCreate, _auth: AuthContext = Depends(require_auth_rate_limited)) -> PortfolioRead:
     try:
         return repo.create_portfolio(payload, _auth.user_id)
     except ValueError as exc:
@@ -276,7 +292,7 @@ def create_portfolio(payload: PortfolioCreate, _auth: AuthContext = Depends(requ
 
 
 @router.get("/portfolios", response_model=list[PortfolioRead], responses={400: {"model": ErrorResponse}})
-def list_portfolios(_auth: AuthContext = Depends(require_auth)) -> list[PortfolioRead]:
+def list_portfolios(_auth: AuthContext = Depends(require_auth_rate_limited)) -> list[PortfolioRead]:
     return repo.list_portfolios(_auth.user_id)
 
 
@@ -288,7 +304,7 @@ def list_portfolios(_auth: AuthContext = Depends(require_auth)) -> list[Portfoli
 def update_portfolio(
     portfolio_id: int,
     payload: PortfolioUpdate,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PortfolioRead:
     try:
         return repo.update_portfolio(portfolio_id, payload, _auth.user_id)
@@ -307,7 +323,7 @@ def update_portfolio(
 def clone_portfolio(
     portfolio_id: int,
     payload: PortfolioCloneRequest,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PortfolioCloneResponse:
     try:
         return repo.clone_portfolio(portfolio_id, payload, _auth.user_id)
@@ -322,7 +338,7 @@ def clone_portfolio(
     "/portfolios/{portfolio_id}",
     responses={404: {"model": ErrorResponse}},
 )
-def delete_portfolio(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+def delete_portfolio(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> dict[str, str]:
     try:
         repo.delete_portfolio(portfolio_id, _auth.user_id)
         return {"status": "ok"}
@@ -331,7 +347,7 @@ def delete_portfolio(portfolio_id: int, _auth: AuthContext = Depends(require_aut
 
 
 @router.post("/assets", response_model=AssetRead, responses={400: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
-def create_asset(payload: AssetCreate, _auth: AuthContext = Depends(require_auth)) -> AssetRead:
+def create_asset(payload: AssetCreate, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetRead:
     try:
         return repo.create_asset(payload)
     except ValueError as exc:
@@ -342,7 +358,7 @@ def create_asset(payload: AssetCreate, _auth: AuthContext = Depends(require_auth
 
 
 @router.get("/assets/search")
-def search_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> dict[str, list[dict[str, str]]]:
+def search_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth_rate_limited)) -> dict[str, list[dict[str, str]]]:
     return {"assets": repo.search_assets(q)}
 
 
@@ -351,7 +367,7 @@ def get_asset_price_timeseries(
     asset_id: int,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> list[AssetPricePoint]:
     rows = repo.get_asset_price_timeseries(asset_id, start_date, end_date)
     return [AssetPricePoint(date=r["date"], close=r["close"]) for r in rows]
@@ -363,7 +379,7 @@ BENCHMARK_SYMBOLS = [
 
 
 @router.get("/benchmarks", response_model=list[BenchmarkItem])
-def get_benchmarks(_auth: AuthContext = Depends(require_auth)) -> list[BenchmarkItem]:
+def get_benchmarks(_auth: AuthContext = Depends(require_auth_rate_limited)) -> list[BenchmarkItem]:
     result: list[BenchmarkItem] = []
     for bench in BENCHMARK_SYMBOLS:
         asset = repo.get_asset_by_symbol(bench["symbol"])
@@ -412,7 +428,7 @@ def backfill_benchmark_prices(
     asset_id: int,
     portfolio_id: int = Query(...),
     days: int = Query(default=365, ge=30, le=2000),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> dict:
     try:
         historical_service.backfill_single_asset(
@@ -427,7 +443,7 @@ def backfill_benchmark_prices(
 
 
 @router.get("/assets/discover", response_model=AssetDiscoverResponse)
-def discover_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> AssetDiscoverResponse:
+def discover_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetDiscoverResponse:
     db_items = repo.search_assets(q)
     try:
         provider_items = finance_client.search_symbols(q)
@@ -482,7 +498,7 @@ def discover_assets(q: str = Query(min_length=1), _auth: AuthContext = Depends(r
     response_model=AssetEnsureResponse,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
 )
-def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(require_auth)) -> AssetEnsureResponse:
+def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetEnsureResponse:
     if payload.source == "db":
         if payload.asset_id is None:
             raise AppError(code="bad_request", message="asset_id obbligatorio per source=db", status_code=400)
@@ -569,7 +585,7 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
 
 
 @router.get("/assets/{asset_id}", response_model=AssetRead, responses={404: {"model": ErrorResponse}})
-def get_asset(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetRead:
+def get_asset(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetRead:
     try:
         return repo.get_asset(asset_id)
     except ValueError as exc:
@@ -577,7 +593,7 @@ def get_asset(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> Asse
 
 
 @router.get("/assets/{asset_id}/info", response_model=AssetInfoResponse, responses={404: {"model": ErrorResponse}})
-def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetInfoResponse:
+def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetInfoResponse:
     try:
         pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
     except ValueError as exc:
@@ -646,7 +662,7 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth)) ->
 )
 def create_asset_provider_symbol(
     payload: AssetProviderSymbolCreate,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> AssetProviderSymbolRead:
     try:
         return repo.create_asset_provider_symbol(payload)
@@ -662,7 +678,7 @@ def create_asset_provider_symbol(
     response_model=list[TransactionListItem],
     responses={404: {"model": ErrorResponse}},
 )
-def list_transactions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[TransactionListItem]:
+def list_transactions(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[TransactionListItem]:
     try:
         return repo.list_transactions(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -670,7 +686,7 @@ def list_transactions(portfolio_id: int, _auth: AuthContext = Depends(require_au
 
 
 @router.post("/transactions", response_model=TransactionRead, responses={400: {"model": ErrorResponse}})
-def create_transaction(payload: TransactionCreate, _auth: AuthContext = Depends(require_auth)) -> TransactionRead:
+def create_transaction(payload: TransactionCreate, _auth: AuthContext = Depends(require_auth_rate_limited)) -> TransactionRead:
     try:
         result = repo.create_transaction(payload, _auth.user_id)
         threading.Thread(
@@ -691,7 +707,7 @@ def create_transaction(payload: TransactionCreate, _auth: AuthContext = Depends(
 def update_transaction(
     transaction_id: int,
     payload: TransactionUpdate,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> TransactionRead:
     try:
         return repo.update_transaction(transaction_id, payload, _auth.user_id)
@@ -706,7 +722,7 @@ def update_transaction(
     "/transactions/{transaction_id}",
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )
-def delete_transaction(transaction_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+def delete_transaction(transaction_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> dict[str, str]:
     try:
         repo.delete_transaction(transaction_id, _auth.user_id)
         return {"status": "ok"}
@@ -722,7 +738,7 @@ def refresh_prices(
     portfolio_id: int | None = None,
     asset_scope: str = Query(default="target", pattern="^(target|transactions|all)$"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PriceRefreshResponse:
     if asset_scope == "target":
         ensure_target_allocation_enabled()
@@ -745,7 +761,7 @@ def refresh_prices(
 @router.post("/portfolios/{portfolio_id}/reclassify-assets", responses={400: {"model": ErrorResponse}})
 def reclassify_assets(
     portfolio_id: int,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> dict[str, Any]:
     try:
         asset_ids = repo.get_portfolio_asset_ids(portfolio_id, _auth.user_id)
@@ -777,7 +793,7 @@ def backfill_daily_prices(
     days: int = Query(default=365, ge=30, le=2000),
     asset_scope: str = Query(default="target", pattern="^(target|transactions|all)$"),
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> DailyBackfillResponse:
     if asset_scope == "target":
         ensure_target_allocation_enabled()
@@ -800,7 +816,7 @@ def backfill_daily_prices(
 @router.get(
     "/portfolios/{portfolio_id}/positions", response_model=list[Position], responses={404: {"model": ErrorResponse}}
 )
-def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[Position]:
+def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[Position]:
     try:
         return repo.get_positions(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -808,7 +824,7 @@ def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth))
 
 
 @router.get("/portfolios/{portfolio_id}/summary", response_model=PortfolioSummary, responses={404: {"model": ErrorResponse}})
-def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> PortfolioSummary:
+def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> PortfolioSummary:
     try:
         return repo.get_summary(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -823,7 +839,7 @@ def get_summary(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -
 def get_performance_summary(
     portfolio_id: int,
     period: str = Query(default="1y", pattern="^(1m|3m|6m|ytd|1y|3y|all)$"),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PerformanceSummary:
     try:
         return performance_service.get_performance_summary(portfolio_id, _auth.user_id, period)
@@ -843,7 +859,7 @@ def get_performance_twr(
     portfolio_id: int,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> TWRResult:
     try:
         return performance_service.calculate_twr(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
@@ -863,7 +879,7 @@ def get_performance_twr_timeseries(
     portfolio_id: int,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> list[TWRTimeseriesPoint]:
     try:
         return performance_service.get_twr_timeseries(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
@@ -883,7 +899,7 @@ def get_performance_gain_timeseries(
     portfolio_id: int,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> list[GainTimeseriesPoint]:
     try:
         return performance_service.get_gain_timeseries(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
@@ -903,7 +919,7 @@ def get_performance_mwr_timeseries(
     portfolio_id: int,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> list[MWRTimeseriesPoint]:
     try:
         return performance_service.get_mwr_timeseries(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
@@ -923,7 +939,7 @@ def get_performance_mwr(
     portfolio_id: int,
     start_date: date | None = Query(default=None),
     end_date: date | None = Query(default=None),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> MWRResult:
     try:
         return performance_service.calculate_mwr(portfolio_id, _auth.user_id, start_date=start_date, end_date=end_date)
@@ -939,7 +955,7 @@ def get_performance_mwr(
     response_model=list[PortfolioTargetAllocationItem],
     responses={404: {"model": ErrorResponse}},
 )
-def get_target_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PortfolioTargetAllocationItem]:
+def get_target_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[PortfolioTargetAllocationItem]:
     ensure_target_allocation_enabled()
     try:
         return repo.list_portfolio_target_allocations(portfolio_id, _auth.user_id)
@@ -953,7 +969,7 @@ def get_target_allocation(portfolio_id: int, _auth: AuthContext = Depends(requir
     responses={404: {"model": ErrorResponse}},
 )
 def get_target_performance(
-    portfolio_id: int, _auth: AuthContext = Depends(require_auth)
+    portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)
 ) -> PortfolioTargetPerformanceResponse:
     ensure_target_allocation_enabled()
     try:
@@ -970,7 +986,7 @@ def get_target_performance(
 def get_target_performance_intraday(
     portfolio_id: int,
     date: date,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PortfolioTargetIntradayResponse:
     ensure_target_allocation_enabled()
     try:
@@ -986,7 +1002,7 @@ def get_target_performance_intraday(
 )
 def get_target_asset_performance(
     portfolio_id: int,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PortfolioTargetAssetPerformanceResponse:
     ensure_target_allocation_enabled()
     try:
@@ -1003,7 +1019,7 @@ def get_target_asset_performance(
 def get_target_asset_intraday_performance(
     portfolio_id: int,
     date: date,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PortfolioTargetAssetIntradayPerformanceResponse:
     ensure_target_allocation_enabled()
     try:
@@ -1020,7 +1036,7 @@ def get_target_asset_intraday_performance(
 def upsert_target_allocation(
     portfolio_id: int,
     payload: PortfolioTargetAllocationUpsert,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PortfolioTargetAllocationItem:
     ensure_target_allocation_enabled()
     try:
@@ -1042,7 +1058,7 @@ def upsert_target_allocation(
     "/portfolios/{portfolio_id}/target-allocation/{asset_id}",
     responses={404: {"model": ErrorResponse}},
 )
-def delete_target_allocation(portfolio_id: int, asset_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+def delete_target_allocation(portfolio_id: int, asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> dict[str, str]:
     ensure_target_allocation_enabled()
     try:
         repo.delete_portfolio_target_allocation(portfolio_id, asset_id, _auth.user_id)
@@ -1060,7 +1076,7 @@ def get_data_coverage(
     portfolio_id: int,
     days: int = Query(default=365, ge=1, le=2000),
     threshold_pct: float = Query(default=80, ge=0, le=100),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> DataCoverageResponse:
     ensure_target_allocation_enabled()
     try:
@@ -1086,7 +1102,7 @@ def get_data_coverage(
 def rebalance_preview(
     portfolio_id: int,
     payload: RebalancePreviewRequest,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> RebalancePreviewResponse:
     ensure_target_allocation_enabled()
     try:
@@ -1317,7 +1333,7 @@ def rebalance_preview(
 def rebalance_commit(
     portfolio_id: int,
     payload: RebalanceCommitRequest,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> RebalanceCommitResponse:
     ensure_target_allocation_enabled()
     try:
@@ -1385,7 +1401,7 @@ def get_timeseries(
     portfolio_id: int,
     range: str = Query(default="1y", pattern="^1y$"),
     interval: str = Query(default="1d", pattern="^1d$"),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> list[TimeSeriesPoint]:
     try:
         return repo.get_timeseries(portfolio_id, range_value=range, interval=interval, user_id=_auth.user_id)
@@ -1403,7 +1419,7 @@ def get_timeseries(
 )
 def get_intraday_timeseries(
     portfolio_id: int,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> list[IntradayTimeseriesPoint]:
     try:
         return repo.get_intraday_timeseries(portfolio_id, _auth.user_id, finance_client)
@@ -1419,7 +1435,7 @@ def get_intraday_timeseries(
     response_model=list[AllocationItem],
     responses={404: {"model": ErrorResponse}},
 )
-def get_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[AllocationItem]:
+def get_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[AllocationItem]:
     try:
         return repo.get_allocation(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -1428,7 +1444,7 @@ def get_allocation(portfolio_id: int, _auth: AuthContext = Depends(require_auth)
 
 @router.get("/symbols")
 def search_symbols(
-    q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)
+    q: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth_rate_limited)
 ) -> dict[str, list[dict[str, str | None]]]:
     symbols_list = finance_client.search_symbols(q)
     return {"symbols": [asdict(s) for s in symbols_list]}
@@ -1439,7 +1455,7 @@ def search_symbols(
     response_model=AssetLatestQuoteResponse,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )
-def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_auth)) -> AssetLatestQuoteResponse:
+def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetLatestQuoteResponse:
     try:
         pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
         quote = finance_client.get_quote(pricing_asset.provider_symbol)
@@ -1492,7 +1508,7 @@ MARKET_SYMBOLS: dict[str, dict[str, list[tuple[str, str]]]] = {
 
 
 @router.get("/markets/quotes", response_model=MarketQuotesResponse)
-def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuotesResponse:
+def get_market_quotes(_auth: AuthContext = Depends(require_auth_rate_limited)) -> MarketQuotesResponse:
     categories: list[MarketCategory] = []
     delay = settings.finance_symbol_request_delay_seconds
     first_call = True
@@ -1549,7 +1565,7 @@ def get_market_quotes(_auth: AuthContext = Depends(require_auth)) -> MarketQuote
 
 
 @router.get("/markets/symbol-info", response_model=AssetInfoResponse, responses={404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
-def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth)) -> AssetInfoResponse:
+def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetInfoResponse:
     """Return detailed info for a market symbol (index, commodity, crypto, etc.)."""
     try:
         info = finance_client.get_asset_info(symbol)
@@ -1598,7 +1614,7 @@ def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext
 # ---- Feature 2: Cash Movements ----
 
 @router.post("/cash-movements", response_model=TransactionRead, responses={400: {"model": ErrorResponse}})
-def create_cash_movement(payload: CashMovementCreate, _auth: AuthContext = Depends(require_auth)) -> TransactionRead:
+def create_cash_movement(payload: CashMovementCreate, _auth: AuthContext = Depends(require_auth_rate_limited)) -> TransactionRead:
     try:
         return repo.create_cash_movement(payload, _auth.user_id)
     except ValueError as exc:
@@ -1610,7 +1626,7 @@ def create_cash_movement(payload: CashMovementCreate, _auth: AuthContext = Depen
     response_model=CashBalanceResponse,
     responses={404: {"model": ErrorResponse}},
 )
-def get_cash_balance(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> CashBalanceResponse:
+def get_cash_balance(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> CashBalanceResponse:
     try:
         return repo.get_computed_cash_balance(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -1622,7 +1638,7 @@ def get_cash_balance(portfolio_id: int, _auth: AuthContext = Depends(require_aut
     response_model=CashFlowTimelineResponse,
     responses={404: {"model": ErrorResponse}},
 )
-def get_cash_flow_timeline(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> CashFlowTimelineResponse:
+def get_cash_flow_timeline(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> CashFlowTimelineResponse:
     try:
         return repo.get_cash_flow_timeline(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -1640,7 +1656,7 @@ async def csv_import_preview(
     portfolio_id: int,
     file: UploadFile = File(...),
     broker: str = Form("generic"),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> CsvImportPreviewResponse:
     try:
         filename = file.filename or ""
@@ -1693,7 +1709,7 @@ async def csv_import_preview(
 )
 def csv_import_template(
     broker: str = Query("generic"),
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> StreamingResponse:
     try:
         content, filename = csv_import_service.build_template_xlsx(broker)
@@ -1711,7 +1727,7 @@ def csv_import_template(
     response_model=CsvImportCommitResponse,
     responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
 )
-def csv_import_commit(batch_id: int, _auth: AuthContext = Depends(require_auth)) -> CsvImportCommitResponse:
+def csv_import_commit(batch_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> CsvImportCommitResponse:
     try:
         return csv_import_service.commit_batch(batch_id, _auth.user_id)
     except ValueError as exc:
@@ -1722,7 +1738,7 @@ def csv_import_commit(batch_id: int, _auth: AuthContext = Depends(require_auth))
 
 
 @router.delete("/csv-import/{batch_id}", responses={404: {"model": ErrorResponse}})
-def csv_import_cancel(batch_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+def csv_import_cancel(batch_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> dict[str, str]:
     try:
         repo.cancel_csv_import_batch(batch_id, _auth.user_id)
         return {"status": "ok"}
@@ -1740,7 +1756,7 @@ def csv_import_cancel(batch_id: int, _auth: AuthContext = Depends(require_auth))
 def create_pac_rule(
     portfolio_id: int,
     payload: PacRuleCreate,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PacRuleRead:
     if payload.portfolio_id != portfolio_id:
         raise AppError(code="bad_request", message="portfolio_id nel path e nel body non corrispondono", status_code=400)
@@ -1760,7 +1776,7 @@ def create_pac_rule(
     response_model=list[PacRuleRead],
     responses={404: {"model": ErrorResponse}},
 )
-def list_pac_rules(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PacRuleRead]:
+def list_pac_rules(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[PacRuleRead]:
     try:
         return repo.list_pac_rules(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -1772,7 +1788,7 @@ def list_pac_rules(portfolio_id: int, _auth: AuthContext = Depends(require_auth)
     response_model=PacRuleRead,
     responses={404: {"model": ErrorResponse}},
 )
-def get_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> PacRuleRead:
+def get_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> PacRuleRead:
     try:
         return repo.get_pac_rule(rule_id, _auth.user_id)
     except ValueError as exc:
@@ -1787,7 +1803,7 @@ def get_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> Pa
 def update_pac_rule(
     rule_id: int,
     payload: PacRuleUpdate,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> PacRuleRead:
     try:
         rule = repo.update_pac_rule(rule_id, payload, _auth.user_id)
@@ -1801,7 +1817,7 @@ def update_pac_rule(
 
 
 @router.delete("/pac-rules/{rule_id}", responses={404: {"model": ErrorResponse}})
-def delete_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> dict[str, str]:
+def delete_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> dict[str, str]:
     try:
         repo.delete_pac_rule(rule_id, _auth.user_id)
         return {"status": "ok"}
@@ -1814,7 +1830,7 @@ def delete_pac_rule(rule_id: int, _auth: AuthContext = Depends(require_auth)) ->
     response_model=list[PacExecutionRead],
     responses={404: {"model": ErrorResponse}},
 )
-def list_pac_executions(rule_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PacExecutionRead]:
+def list_pac_executions(rule_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[PacExecutionRead]:
     try:
         return repo.list_pac_executions(rule_id, _auth.user_id)
     except ValueError as exc:
@@ -1826,7 +1842,7 @@ def list_pac_executions(rule_id: int, _auth: AuthContext = Depends(require_auth)
     response_model=list[PacExecutionRead],
     responses={404: {"model": ErrorResponse}},
 )
-def list_pending_pac_executions(portfolio_id: int, _auth: AuthContext = Depends(require_auth)) -> list[PacExecutionRead]:
+def list_pending_pac_executions(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[PacExecutionRead]:
     try:
         return repo.list_pending_pac_executions(portfolio_id, _auth.user_id)
     except ValueError as exc:
@@ -1840,7 +1856,7 @@ def list_pending_pac_executions(portfolio_id: int, _auth: AuthContext = Depends(
 def confirm_pac_execution(
     execution_id: int,
     payload: PacExecutionConfirm,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> dict[str, str]:
     try:
         # Get execution details
@@ -1903,7 +1919,7 @@ def confirm_pac_execution(
 )
 def skip_pac_execution(
     execution_id: int,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ) -> dict[str, str]:
     try:
         repo.skip_pac_execution(execution_id, _auth.user_id)
@@ -1920,7 +1936,7 @@ def skip_pac_execution(
 # ---------------------------------------------------------------------------
 
 @router.get("/copilot/status")
-def copilot_status(_auth: AuthContext = Depends(require_auth)) -> dict:
+def copilot_status(_auth: AuthContext = Depends(require_auth_rate_limited)) -> dict:
     user_settings = repo.get_user_settings(_auth.user_id)
     user_key_enc = repo.get_user_copilot_api_key_enc(_auth.user_id)
     config = resolve_copilot_config(
@@ -1940,7 +1956,7 @@ def copilot_status(_auth: AuthContext = Depends(require_auth)) -> dict:
 @router.post("/copilot/chat")
 def copilot_chat(
     payload: CopilotChatRequest,
-    _auth: AuthContext = Depends(require_auth),
+    _auth: AuthContext = Depends(require_auth_rate_limited),
 ):
     from fastapi.responses import StreamingResponse
 
