@@ -514,8 +514,8 @@ export function FirePage() {
           </Text>
         </Group>
 
-        <Group justify="space-between" align="center" wrap="wrap">
-          {!isMobile && (
+        {!isMobile && (
+          <Group justify="space-between" align="center" wrap="wrap">
             <Tabs value={fireMode} onChange={(value) => setFireMode((value as FireMode) ?? 'accumulation')} variant="default">
               <Tabs.List
                 style={{
@@ -536,13 +536,13 @@ export function FirePage() {
                 </Tabs.Tab>
               </Tabs.List>
             </Tabs>
-          )}
-          <Text size="sm" c="dimmed">
-            {fireMode === 'accumulation'
-              ? 'Modalità orientata al raggiungimento della soglia FIRE.'
-              : 'Modalità orientata alla sostenibilità dei prelievi nel tempo.'}
-          </Text>
-        </Group>
+            <Text size="sm" c="dimmed">
+              {fireMode === 'accumulation'
+                ? 'Modalità orientata al raggiungimento della soglia FIRE.'
+                : 'Modalità orientata alla sostenibilità dei prelievi nel tempo.'}
+            </Text>
+          </Group>
+        )}
 
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
           <Card
@@ -998,6 +998,7 @@ export function FirePage() {
             ]}
             value={fireMode}
             onChange={(value) => setFireMode(value as FireMode)}
+            bottomOffset={12}
           />
         )}
       </Stack>
