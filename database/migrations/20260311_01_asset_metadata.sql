@@ -1,5 +1,5 @@
 -- Asset metadata from yFinance (TER, sector, market cap, etc.)
-create table asset_metadata (
+create table if not exists asset_metadata (
   asset_id bigint primary key references assets(id) on delete cascade,
   -- ETF/Fund fields
   expense_ratio numeric,
