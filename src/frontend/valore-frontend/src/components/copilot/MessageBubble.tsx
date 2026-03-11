@@ -109,7 +109,7 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
         px="md"
         py="sm"
         style={{
-          maxWidth: '80%',
+          maxWidth: isUser ? '80%' : '92%',
           background: isUser
             ? (isDark ? theme.colors.blue[8] : theme.colors.blue[5])
             : (isDark ? theme.colors.dark[6] : theme.colors.gray[0]),

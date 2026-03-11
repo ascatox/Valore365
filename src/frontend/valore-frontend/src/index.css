@@ -82,13 +82,33 @@ button:focus-visible {
 .copilot-markdown h1:first-child,
 .copilot-markdown h2:first-child,
 .copilot-markdown h3:first-child { margin-top: 0; }
-.copilot-markdown table { border-collapse: collapse; width: 100%; margin: 0.5em 0; font-size: 0.9em; }
+.copilot-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5em 0;
+  font-size: 0.82em;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.copilot-markdown thead { position: sticky; top: 0; }
 .copilot-markdown th, .copilot-markdown td {
   border: 1px solid var(--mantine-color-default-border);
-  padding: 0.3em 0.6em;
+  padding: 0.4em 0.6em;
   text-align: left;
+  white-space: nowrap;
 }
-.copilot-markdown th { font-weight: 600; }
+.copilot-markdown td:first-child { white-space: normal; min-width: 100px; }
+.copilot-markdown th {
+  font-weight: 600;
+  background: rgba(128, 128, 128, 0.08);
+}
+[data-mantine-color-scheme='dark'] .copilot-markdown th {
+  background: rgba(255, 255, 255, 0.06);
+}
+.copilot-markdown tr:hover td {
+  background: rgba(128, 128, 128, 0.05);
+}
 .copilot-markdown code {
   background: rgba(128, 128, 128, 0.15);
   padding: 0.1em 0.3em;
