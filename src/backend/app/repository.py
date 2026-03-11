@@ -61,6 +61,7 @@ from .models import (
     TransactionListItem,
     TransactionRead,
     TransactionUpdate,
+    AssetMetadataRead,
     UserSettingsRead,
     UserSettingsUpdate,
 )
@@ -3646,3 +3647,187 @@ class PortfolioRepository:
             {"asset_ids": asset_ids},
         ).mappings().all()
         return {int(r["asset_id"]): (r["price_date"], float(r["close"])) for r in rows}
+
+    # ------------------------------------------------------------------
+    # Asset metadata (yFinance info)
+    # ------------------------------------------------------------------
+
+    def upsert_asset_metadata(self, asset_id: int, data: dict) -> None:
+        """Insert or update asset metadata from yFinance info dict."""
+        import json as _json
+        raw_info = data.get("raw_info")
+        raw_json = _json.dumps(raw_info) if raw_info else None
+
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("""
+                    insert into asset_metadata (
+                        asset_id, expense_ratio, fund_family, total_assets, category,
+                        sector, industry, country, market_cap,
+                        trailing_pe, forward_pe, dividend_yield, dividend_rate,
+                        beta, fifty_two_week_high, fifty_two_week_low, avg_volume,
+                        profit_margins, return_on_equity, revenue_growth, earnings_growth,
+                        description, website, logo_url, raw_info, updated_at
+                    ) values (
+                        :asset_id, :expense_ratio, :fund_family, :total_assets, :category,
+                        :sector, :industry, :country, :market_cap,
+                        :trailing_pe, :forward_pe, :dividend_yield, :dividend_rate,
+                        :beta, :fifty_two_week_high, :fifty_two_week_low, :avg_volume,
+                        :profit_margins, :return_on_equity, :revenue_growth, :earnings_growth,
+                        :description, :website, :logo_url, :raw_info::jsonb, now()
+                    )
+                    on conflict (asset_id) do update set
+                        expense_ratio = excluded.expense_ratio,
+                        fund_family = excluded.fund_family,
+                        total_assets = excluded.total_assets,
+                        category = excluded.category,
+                        sector = excluded.sector,
+                        industry = excluded.industry,
+                        country = excluded.country,
+                        market_cap = excluded.market_cap,
+                        trailing_pe = excluded.trailing_pe,
+                        forward_pe = excluded.forward_pe,
+                        dividend_yield = excluded.dividend_yield,
+                        dividend_rate = excluded.dividend_rate,
+                        beta = excluded.beta,
+                        fifty_two_week_high = excluded.fifty_two_week_high,
+                        fifty_two_week_low = excluded.fifty_two_week_low,
+                        avg_volume = excluded.avg_volume,
+                        profit_margins = excluded.profit_margins,
+                        return_on_equity = excluded.return_on_equity,
+                        revenue_growth = excluded.revenue_growth,
+                        earnings_growth = excluded.earnings_growth,
+                        description = excluded.description,
+                        website = excluded.website,
+                        logo_url = excluded.logo_url,
+                        raw_info = excluded.raw_info,
+                        updated_at = now()
+                """),
+                {
+                    "asset_id": asset_id,
+                    "expense_ratio": data.get("expense_ratio"),
+                    "fund_family": data.get("fund_family"),
+                    "total_assets": data.get("total_assets"),
+                    "category": data.get("category"),
+                    "sector": data.get("sector"),
+                    "industry": data.get("industry"),
+                    "country": data.get("country"),
+                    "market_cap": data.get("market_cap"),
+                    "trailing_pe": data.get("trailing_pe"),
+                    "forward_pe": data.get("forward_pe"),
+                    "dividend_yield": data.get("dividend_yield"),
+                    "dividend_rate": data.get("dividend_rate"),
+                    "beta": data.get("beta"),
+                    "fifty_two_week_high": data.get("fifty_two_week_high"),
+                    "fifty_two_week_low": data.get("fifty_two_week_low"),
+                    "avg_volume": data.get("avg_volume"),
+                    "profit_margins": data.get("profit_margins"),
+                    "return_on_equity": data.get("return_on_equity"),
+                    "revenue_growth": data.get("revenue_growth"),
+                    "earnings_growth": data.get("earnings_growth"),
+                    "description": data.get("description"),
+                    "website": data.get("website"),
+                    "logo_url": data.get("logo_url"),
+                    "raw_info": raw_json,
+                },
+            )
+
+    def get_asset_metadata(self, asset_id: int) -> AssetMetadataRead | None:
+        """Get stored metadata for an asset."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("""
+                    select asset_id, expense_ratio, fund_family, total_assets, category,
+                           sector, industry, country, market_cap,
+                           trailing_pe, forward_pe, dividend_yield, dividend_rate,
+                           beta, fifty_two_week_high, fifty_two_week_low, avg_volume,
+                           profit_margins, return_on_equity, revenue_growth, earnings_growth,
+                           description, website, logo_url, raw_info, updated_at
+                    from asset_metadata
+                    where asset_id = :asset_id
+                """),
+                {"asset_id": asset_id},
+            ).mappings().fetchone()
+
+        if row is None:
+            return None
+
+        return AssetMetadataRead(
+            asset_id=int(row["asset_id"]),
+            expense_ratio=float(row["expense_ratio"]) if row["expense_ratio"] is not None else None,
+            fund_family=row["fund_family"],
+            total_assets=float(row["total_assets"]) if row["total_assets"] is not None else None,
+            category=row["category"],
+            sector=row["sector"],
+            industry=row["industry"],
+            country=row["country"],
+            market_cap=float(row["market_cap"]) if row["market_cap"] is not None else None,
+            trailing_pe=float(row["trailing_pe"]) if row["trailing_pe"] is not None else None,
+            forward_pe=float(row["forward_pe"]) if row["forward_pe"] is not None else None,
+            dividend_yield=float(row["dividend_yield"]) if row["dividend_yield"] is not None else None,
+            dividend_rate=float(row["dividend_rate"]) if row["dividend_rate"] is not None else None,
+            beta=float(row["beta"]) if row["beta"] is not None else None,
+            fifty_two_week_high=float(row["fifty_two_week_high"]) if row["fifty_two_week_high"] is not None else None,
+            fifty_two_week_low=float(row["fifty_two_week_low"]) if row["fifty_two_week_low"] is not None else None,
+            avg_volume=float(row["avg_volume"]) if row["avg_volume"] is not None else None,
+            profit_margins=float(row["profit_margins"]) if row["profit_margins"] is not None else None,
+            return_on_equity=float(row["return_on_equity"]) if row["return_on_equity"] is not None else None,
+            revenue_growth=float(row["revenue_growth"]) if row["revenue_growth"] is not None else None,
+            earnings_growth=float(row["earnings_growth"]) if row["earnings_growth"] is not None else None,
+            description=row["description"],
+            website=row["website"],
+            logo_url=row["logo_url"],
+            raw_info=row["raw_info"],
+            updated_at=row["updated_at"],
+        )
+
+    def get_asset_metadata_bulk(self, asset_ids: list[int]) -> dict[int, AssetMetadataRead]:
+        """Get metadata for multiple assets at once."""
+        if not asset_ids:
+            return {}
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text("""
+                    select asset_id, expense_ratio, fund_family, total_assets, category,
+                           sector, industry, country, market_cap,
+                           trailing_pe, forward_pe, dividend_yield, dividend_rate,
+                           beta, fifty_two_week_high, fifty_two_week_low, avg_volume,
+                           profit_margins, return_on_equity, revenue_growth, earnings_growth,
+                           description, website, logo_url, updated_at
+                    from asset_metadata
+                    where asset_id = any(:ids)
+                """),
+                {"ids": asset_ids},
+            ).mappings().all()
+
+        result = {}
+        for row in rows:
+            aid = int(row["asset_id"])
+            result[aid] = AssetMetadataRead(
+                asset_id=aid,
+                expense_ratio=float(row["expense_ratio"]) if row["expense_ratio"] is not None else None,
+                fund_family=row["fund_family"],
+                total_assets=float(row["total_assets"]) if row["total_assets"] is not None else None,
+                category=row["category"],
+                sector=row["sector"],
+                industry=row["industry"],
+                country=row["country"],
+                market_cap=float(row["market_cap"]) if row["market_cap"] is not None else None,
+                trailing_pe=float(row["trailing_pe"]) if row["trailing_pe"] is not None else None,
+                forward_pe=float(row["forward_pe"]) if row["forward_pe"] is not None else None,
+                dividend_yield=float(row["dividend_yield"]) if row["dividend_yield"] is not None else None,
+                dividend_rate=float(row["dividend_rate"]) if row["dividend_rate"] is not None else None,
+                beta=float(row["beta"]) if row["beta"] is not None else None,
+                fifty_two_week_high=float(row["fifty_two_week_high"]) if row["fifty_two_week_high"] is not None else None,
+                fifty_two_week_low=float(row["fifty_two_week_low"]) if row["fifty_two_week_low"] is not None else None,
+                avg_volume=float(row["avg_volume"]) if row["avg_volume"] is not None else None,
+                profit_margins=float(row["profit_margins"]) if row["profit_margins"] is not None else None,
+                return_on_equity=float(row["return_on_equity"]) if row["return_on_equity"] is not None else None,
+                revenue_growth=float(row["revenue_growth"]) if row["revenue_growth"] is not None else None,
+                earnings_growth=float(row["earnings_growth"]) if row["earnings_growth"] is not None else None,
+                description=row["description"],
+                website=row["website"],
+                logo_url=row["logo_url"],
+                updated_at=row["updated_at"],
+            )
+        return result

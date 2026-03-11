@@ -98,6 +98,21 @@ class ProviderAssetInfo:
     previous_close: float | None
     description: str | None
     quote_type: str | None = None
+    # ETF/Fund specific
+    expense_ratio: float | None = None
+    fund_family: str | None = None
+    total_assets: float | None = None
+    category: str | None = None
+    # Additional stock fields
+    dividend_rate: float | None = None
+    profit_margins: float | None = None
+    return_on_equity: float | None = None
+    revenue_growth: float | None = None
+    earnings_growth: float | None = None
+    website: str | None = None
+    logo_url: str | None = None
+    # Full raw info dict
+    raw_info: dict | None = None
 
 
 class TwelveDataClient:
@@ -606,6 +621,19 @@ class YahooFinanceClient:
             except (TypeError, ValueError):
                 return None
 
+        # Build a sanitized copy of raw info (remove non-serializable values)
+        raw_clean: dict = {}
+        for k, v in info.items():
+            if isinstance(v, (str, int, float, bool, type(None))):
+                raw_clean[k] = v
+            elif isinstance(v, (list, dict)):
+                try:
+                    import json
+                    json.dumps(v)
+                    raw_clean[k] = v
+                except (TypeError, ValueError):
+                    pass
+
         return ProviderAssetInfo(
             symbol=symbol,
             name=info.get('longName') or info.get('shortName'),
@@ -625,6 +653,18 @@ class YahooFinanceClient:
             previous_close=_num('previousClose') or _num('regularMarketPreviousClose'),
             description=info.get('longBusinessSummary'),
             quote_type=info.get('quoteType'),
+            expense_ratio=_num('expenseRatio'),
+            fund_family=info.get('fundFamily'),
+            total_assets=_num('totalAssets'),
+            category=info.get('category'),
+            dividend_rate=_num('dividendRate'),
+            profit_margins=_num('profitMargins'),
+            return_on_equity=_num('returnOnEquity'),
+            revenue_growth=_num('revenueGrowth'),
+            earnings_growth=_num('earningsQuarterlyGrowth'),
+            website=info.get('website'),
+            logo_url=info.get('logo_url'),
+            raw_info=raw_clean if raw_clean else None,
         )
 
     def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:

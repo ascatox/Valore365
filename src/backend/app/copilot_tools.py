@@ -216,8 +216,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "search_asset_info",
         "description": (
-            "Cerca informazioni su un asset per simbolo. "
-            "Restituisce nome, tipo, valuta, ultimo prezzo."
+            "Cerca informazioni dettagliate su un asset per simbolo. "
+            "Restituisce: nome, tipo, valuta, ISIN, TER (expense_ratio), settore, "
+            "industria, paese, market cap, P/E, dividend yield, beta, 52w high/low, "
+            "volumi, margini, fund family, categoria e descrizione."
         ),
         "parameters": {
             "type": "object",
@@ -749,7 +751,7 @@ def _search_asset_info(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     _portfolio_id: int, _user_id: str,
 ) -> dict:
-    """T13: Search asset info by symbol."""
+    """T13: Search asset info by symbol — returns rich metadata from DB."""
     symbol = args.get("symbol", "")
     if not symbol:
         return {"error": "Simbolo mancante"}
@@ -758,20 +760,37 @@ def _search_asset_info(
     if not asset:
         return {"error": f"Asset non trovato per il simbolo: {symbol}"}
 
-    result = {
+    result: dict = {
         "symbol": asset["symbol"],
         "name": asset["name"],
     }
 
-    # Try to get more details
     try:
         asset_detail = repo.get_asset(asset["id"])
-        if hasattr(asset_detail, "asset_type"):
-            result["type"] = asset_detail.asset_type
-        if hasattr(asset_detail, "currency"):
-            result["currency"] = asset_detail.currency
-        if hasattr(asset_detail, "market_price"):
-            result["last_price"] = asset_detail.market_price
+        result["type"] = asset_detail.asset_type
+        result["currency"] = asset_detail.quote_currency
+        result["isin"] = asset_detail.isin
+    except Exception:
+        pass
+
+    # Fetch stored metadata (TER, sector, etc.)
+    try:
+        meta = repo.get_asset_metadata(asset["id"])
+        if meta:
+            for field in [
+                "expense_ratio", "fund_family", "total_assets", "category",
+                "sector", "industry", "country", "market_cap",
+                "trailing_pe", "forward_pe", "dividend_yield", "dividend_rate",
+                "beta", "fifty_two_week_high", "fifty_two_week_low", "avg_volume",
+                "profit_margins", "return_on_equity", "revenue_growth", "earnings_growth",
+                "website",
+            ]:
+                val = getattr(meta, field, None)
+                if val is not None:
+                    result[field] = val
+            if meta.description:
+                # Truncate description to save tokens
+                result["description"] = meta.description[:300]
     except Exception:
         pass
 

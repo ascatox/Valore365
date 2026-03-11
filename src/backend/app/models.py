@@ -154,6 +154,35 @@ class AssetProviderSymbolRead(AssetProviderSymbolCreate):
     pass
 
 
+class AssetMetadataRead(BaseModel):
+    asset_id: int
+    expense_ratio: float | None = None
+    fund_family: str | None = None
+    total_assets: float | None = None
+    category: str | None = None
+    sector: str | None = None
+    industry: str | None = None
+    country: str | None = None
+    market_cap: float | None = None
+    trailing_pe: float | None = None
+    forward_pe: float | None = None
+    dividend_yield: float | None = None
+    dividend_rate: float | None = None
+    beta: float | None = None
+    fifty_two_week_high: float | None = None
+    fifty_two_week_low: float | None = None
+    avg_volume: float | None = None
+    profit_margins: float | None = None
+    return_on_equity: float | None = None
+    revenue_growth: float | None = None
+    earnings_growth: float | None = None
+    description: str | None = None
+    website: str | None = None
+    logo_url: str | None = None
+    raw_info: dict[str, Any] | None = None
+    updated_at: datetime | None = None
+
+
 class AssetDiscoverItem(BaseModel):
     key: str
     source: Literal['db', 'provider']
@@ -214,6 +243,17 @@ class AssetInfoResponse(BaseModel):
     day_change_pct: float | None = None
     description: str | None = None
     price_history_5y: list[AssetInfoPricePoint] = []
+    # New fields from yFinance
+    expense_ratio: float | None = None
+    fund_family: str | None = None
+    total_assets: float | None = None
+    category: str | None = None
+    dividend_rate: float | None = None
+    profit_margins: float | None = None
+    return_on_equity: float | None = None
+    revenue_growth: float | None = None
+    earnings_growth: float | None = None
+    website: str | None = None
 
 
 class Position(BaseModel):

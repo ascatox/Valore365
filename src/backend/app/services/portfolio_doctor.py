@@ -58,7 +58,7 @@ def analyze_portfolio_health(
     max_position_weight = compute_max_position_weight(holdings)
     overlap_score = compute_overlap_score(holdings)
     portfolio_volatility = compute_portfolio_volatility(repo, holdings)
-    weighted_ter = compute_weighted_ter(holdings)
+    weighted_ter = compute_weighted_ter(holdings, repo=repo)
     top3_weight = round(sum(h.weight_pct for h in holdings[:3]), 2)
     equity_weight = round(sum(h.weight_pct for h in holdings if _is_equity_like(h)), 2)
 
@@ -342,11 +342,26 @@ def compute_portfolio_volatility(repo: PortfolioRepository, holdings: list[Analy
     return round(weighted_volatility / covered_weight, 1)
 
 
-def compute_weighted_ter(holdings: list[AnalyzedHolding]) -> float | None:
+def compute_weighted_ter(
+    holdings: list[AnalyzedHolding],
+    repo: PortfolioRepository | None = None,
+) -> float | None:
+    # Try to fetch TER from DB metadata in bulk
+    db_ter: dict[int, float] = {}
+    if repo:
+        try:
+            asset_ids = [h.asset_id for h in holdings]
+            meta_map = repo.get_asset_metadata_bulk(asset_ids)
+            for aid, meta in meta_map.items():
+                if meta.expense_ratio is not None:
+                    db_ter[aid] = meta.expense_ratio * 100  # yFinance returns 0.0022, we use percent 0.22
+        except Exception:
+            pass
+
     weighted_cost = 0.0
     covered_weight = 0.0
     for holding in holdings:
-        ter = infer_ter(holding)
+        ter = db_ter.get(holding.asset_id) or infer_ter(holding)
         if ter is None:
             continue
         weight_fraction = holding.weight_pct / 100.0
@@ -358,6 +373,7 @@ def compute_weighted_ter(holdings: list[AnalyzedHolding]) -> float | None:
 
 
 def infer_ter(holding: AnalyzedHolding) -> float | None:
+    """Fallback TER inference via pattern matching when DB metadata is missing."""
     asset_type = holding.asset_type.lower()
     if asset_type in {"stock", "bond", "cash"}:
         return 0.0

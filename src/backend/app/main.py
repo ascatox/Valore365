@@ -65,6 +65,7 @@ from .models import (
     AssetLatestQuoteResponse,
     AssetCreate,
     AssetInfoPricePoint,
+    AssetMetadataRead,
     AssetInfoResponse,
     AssetPricePoint,
     BenchmarkItem,
@@ -177,10 +178,52 @@ def _format_file_size_limit(byte_count: int) -> str:
     return f"{byte_count} bytes"
 
 
+def _apply_pending_migrations():
+    """Apply new SQL migrations that haven't been applied yet (idempotent)."""
+    from .db import engine as _engine
+    try:
+        with _engine.begin() as conn:
+            # Create asset_metadata if not exists
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS asset_metadata (
+                    asset_id bigint PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+                    expense_ratio numeric,
+                    fund_family text,
+                    total_assets numeric,
+                    category text,
+                    sector text,
+                    industry text,
+                    country text,
+                    market_cap numeric,
+                    trailing_pe numeric,
+                    forward_pe numeric,
+                    dividend_yield numeric,
+                    dividend_rate numeric,
+                    beta numeric,
+                    fifty_two_week_high numeric,
+                    fifty_two_week_low numeric,
+                    avg_volume numeric,
+                    profit_margins numeric,
+                    return_on_equity numeric,
+                    revenue_growth numeric,
+                    earnings_growth numeric,
+                    description text,
+                    website text,
+                    logo_url text,
+                    raw_info jsonb,
+                    updated_at timestamptz NOT NULL DEFAULT now()
+                )
+            """))
+        logging.getLogger(__name__).info("asset_metadata table ensured")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Migration check failed: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     if settings.app_env != "dev" and not settings.clerk_auth_enabled:
         raise RuntimeError("Refusing to start with Clerk auth disabled outside dev")
+    _apply_pending_migrations()
     scheduler.start()
     try:
         yield
@@ -633,6 +676,13 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth_rate
         db_asset_type = db_asset.asset_type
     except ValueError:
         pass
+    # Auto-save metadata to DB on every info fetch
+    try:
+        from dataclasses import asdict as _asdict
+        repo.upsert_asset_metadata(asset_id, _asdict(info))
+    except Exception:
+        pass  # Don't fail the request if metadata save fails
+
     return AssetInfoResponse(
         asset_id=asset_id,
         symbol=pricing_asset.symbol,
@@ -656,7 +706,63 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth_rate
         day_change_pct=day_change_pct,
         description=info.description,
         price_history_5y=price_history,
+        expense_ratio=info.expense_ratio,
+        fund_family=info.fund_family,
+        total_assets=info.total_assets,
+        category=info.category,
+        dividend_rate=info.dividend_rate,
+        profit_margins=info.profit_margins,
+        return_on_equity=info.return_on_equity,
+        revenue_growth=info.revenue_growth,
+        earnings_growth=info.earnings_growth,
+        website=info.website,
     )
+
+
+@router.get("/assets/{asset_id}/metadata", response_model=AssetMetadataRead | None)
+def get_asset_metadata(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)):
+    """Get stored yFinance metadata for an asset."""
+    return repo.get_asset_metadata(asset_id)
+
+
+@router.post("/assets/{asset_id}/metadata/refresh", response_model=AssetMetadataRead)
+def refresh_asset_metadata(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)):
+    """Fetch fresh metadata from yFinance and store it."""
+    try:
+        pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
+    except ValueError as exc:
+        raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+    try:
+        info = finance_client.get_asset_info(pricing_asset.provider_symbol)
+    except Exception as exc:
+        raise AppError(code="provider_error", message=f"Impossibile ottenere info: {exc}", status_code=502) from exc
+    from dataclasses import asdict as _asdict
+    data = _asdict(info)
+    repo.upsert_asset_metadata(asset_id, data)
+    result = repo.get_asset_metadata(asset_id)
+    if result is None:
+        raise AppError(code="internal_error", message="Metadata non salvata", status_code=500)
+    return result
+
+
+@router.post("/assets/metadata/refresh-all")
+def refresh_all_asset_metadata(
+    _auth: AuthContext = Depends(require_auth_rate_limited),
+):
+    """Refresh metadata for all active assets from yFinance. Runs synchronously."""
+    assets = repo.get_assets_for_price_refresh(provider=settings.finance_provider)
+    updated = 0
+    errors = []
+    for pa in assets:
+        try:
+            info = finance_client.get_asset_info(pa.provider_symbol)
+            from dataclasses import asdict as _asdict
+            data = _asdict(info)
+            repo.upsert_asset_metadata(pa.asset_id, data)
+            updated += 1
+        except Exception as exc:
+            errors.append({"asset_id": pa.asset_id, "symbol": pa.symbol, "error": str(exc)})
+    return {"updated": updated, "errors": errors}
 
 
 @router.post(
@@ -783,6 +889,12 @@ def reclassify_assets(
             info = client.get_asset_info(asset.symbol)
         except Exception:
             continue
+        # Auto-save metadata
+        try:
+            from dataclasses import asdict as _asdict
+            repo.upsert_asset_metadata(aid, _asdict(info))
+        except Exception:
+            pass
         if info.quote_type:
             new_type = QUOTE_TYPE_MAP.get(info.quote_type.upper(), "stock")
             if new_type != asset.asset_type:

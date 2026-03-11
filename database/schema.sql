@@ -36,6 +36,35 @@ create table asset_provider_symbols (
   unique (provider, provider_symbol)
 );
 
+create table asset_metadata (
+  asset_id bigint primary key references assets(id) on delete cascade,
+  expense_ratio numeric,
+  fund_family text,
+  total_assets numeric,
+  category text,
+  sector text,
+  industry text,
+  country text,
+  market_cap numeric,
+  trailing_pe numeric,
+  forward_pe numeric,
+  dividend_yield numeric,
+  dividend_rate numeric,
+  beta numeric,
+  fifty_two_week_high numeric,
+  fifty_two_week_low numeric,
+  avg_volume numeric,
+  profit_margins numeric,
+  return_on_equity numeric,
+  revenue_growth numeric,
+  earnings_growth numeric,
+  description text,
+  website text,
+  logo_url text,
+  raw_info jsonb,
+  updated_at timestamptz not null default now()
+);
+
 create table transactions (
   id bigserial primary key,
   portfolio_id bigint not null references portfolios(id) on delete cascade,
