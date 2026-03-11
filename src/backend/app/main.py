@@ -132,10 +132,12 @@ from .models import (
 from .copilot_service import (
     CopilotChatRequest,
     build_portfolio_snapshot,
+    build_portfolio_snapshot_light,
     encrypt_api_key,
     is_copilot_available,
     resolve_copilot_config,
     stream_copilot_response,
+    stream_copilot_response_agentic,
     _get_model,
 )
 from .pac_service import PacExecutionService
@@ -1977,12 +1979,24 @@ def copilot_chat(
             status_code=503,
         )
 
-    snapshot = build_portfolio_snapshot(
-        repo, performance_service, payload.portfolio_id, _auth.user_id,
-    )
+    # Use agentic flow for providers that support tool calling
+    if config.provider in ("openai", "anthropic", "gemini", "openrouter"):
+        snapshot = build_portfolio_snapshot_light(
+            repo, payload.portfolio_id, _auth.user_id,
+        )
+        generator = stream_copilot_response_agentic(
+            config, snapshot, payload.messages,
+            repo, performance_service, payload.portfolio_id, _auth.user_id,
+        )
+    else:
+        # Fallback for local providers without tool calling
+        snapshot = build_portfolio_snapshot(
+            repo, performance_service, payload.portfolio_id, _auth.user_id,
+        )
+        generator = stream_copilot_response(config, snapshot, payload.messages)
 
     return StreamingResponse(
-        stream_copilot_response(config, snapshot, payload.messages),
+        generator,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -34,12 +34,12 @@ interface CopilotChatProps {
 }
 
 const QUICK_PROMPTS = [
-  'Riassumi questo portafoglio',
-  "Perche' oggi e' in calo?",
-  'Mostra i rischi di concentrazione',
-  'Quanto cash ho disponibile?',
-  'Quanto sono lontano dal target?',
-  'Spiega la performance recente',
+  'Riassumi il portafoglio',
+  'Sono lontano dal target?',
+  'Quanto devo investire per ribilanciare?',
+  'Ho 200\u20AC/mese, come li distribuisco?',
+  'Il mio portafoglio e\u0027 sano?',
+  'Cosa succede se vendo il titolo piu\u0027 pesante?',
 ];
 
 export function CopilotChat({
@@ -58,6 +58,7 @@ export function CopilotChat({
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const prevPortfolioRef = useRef<number | null>(portfolioId);
@@ -139,7 +140,10 @@ export function CopilotChat({
           const payload = line.slice(6);
           try {
             const event = JSON.parse(payload);
-            if (event.type === 'text_delta') {
+            if (event.type === 'thinking') {
+              setThinkingStatus(event.content);
+            } else if (event.type === 'text_delta') {
+              setThinkingStatus(null);
               accumulated += event.content;
               setMessages((prev) => {
                 const updated = [...prev];
@@ -147,7 +151,10 @@ export function CopilotChat({
                 return updated;
               });
             } else if (event.type === 'error') {
+              setThinkingStatus(null);
               setError(event.content);
+            } else if (event.type === 'done') {
+              setThinkingStatus(null);
             }
           } catch {
             // skip malformed SSE
@@ -160,6 +167,7 @@ export function CopilotChat({
       }
     } finally {
       setStreaming(false);
+      setThinkingStatus(null);
       abortRef.current = null;
     }
   }, [messages, portfolioId, streaming]);
@@ -244,6 +252,11 @@ export function CopilotChat({
                 role={msg.role}
                 content={msg.content}
                 streaming={streaming && i === messages.length - 1 && msg.role === 'assistant'}
+                thinkingStatus={
+                  streaming && i === messages.length - 1 && msg.role === 'assistant'
+                    ? thinkingStatus
+                    : null
+                }
               />
             ))}
           </Stack>

@@ -5,9 +5,10 @@ interface MessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
   streaming?: boolean;
+  thinkingStatus?: string | null;
 }
 
-export function MessageBubble({ role, content, streaming }: MessageBubbleProps) {
+export function MessageBubble({ role, content, streaming, thinkingStatus }: MessageBubbleProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -56,12 +57,27 @@ export function MessageBubble({ role, content, streaming }: MessageBubbleProps) 
           borderBottomLeftRadius: !isUser ? 4 : undefined,
         }}
       >
-        <Text
-          size="sm"
-          style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}
-        >
-          {content || (streaming ? '...' : '')}
-        </Text>
+        {thinkingStatus && !content ? (
+          <Text
+            size="sm"
+            c="dimmed"
+            style={{
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.5,
+              fontStyle: 'italic',
+              animation: 'pulse 1.5s ease-in-out infinite',
+            }}
+          >
+            {thinkingStatus}
+          </Text>
+        ) : (
+          <Text
+            size="sm"
+            style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}
+          >
+            {content || (streaming ? '...' : '')}
+          </Text>
+        )}
       </Paper>
     </Box>
   );

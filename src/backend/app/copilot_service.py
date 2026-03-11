@@ -1,20 +1,29 @@
-"""Portfolio Copilot – MVP explain-only with multi-provider LLM streaming."""
+"""Portfolio Copilot – Multi-provider LLM streaming with agentic tool calling (Fase 2)."""
 
 from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Generator
 
 from pydantic import BaseModel
 
 from .config import Settings
+from .copilot_tools import TOOL_DEFINITIONS, execute_tool, format_tools_for_provider
 from .performance_service import PerformanceService
 from .repository import PortfolioRepository
 from .services.portfolio_doctor import analyze_portfolio_health, run_monte_carlo_projection
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Agentic constants
+# ---------------------------------------------------------------------------
+
+MAX_TOOL_ROUNDS = 5
+AGENTIC_TIMEOUT_S = 30
 
 # ---------------------------------------------------------------------------
 # Default models per provider
@@ -70,7 +79,82 @@ Ecco i dati del portafoglio dell'utente:
 """
 
 # ---------------------------------------------------------------------------
-# Snapshot builder
+# Agentic system prompt (Fase 2)
+# ---------------------------------------------------------------------------
+
+SYSTEM_PROMPT_AGENTIC = """\
+Sei il Portfolio Copilot di Valore365, un assistente che aiuta persone comuni
+a capire e ottimizzare i propri piccoli portafogli di investimento.
+
+Il tuo utente tipico NON e' un professionista della finanza. Parla in modo
+semplice, concreto e amichevole. Usa analogie quotidiane quando servono.
+
+Hai accesso a diversi strumenti (tool) per ottenere dati dal portafoglio
+dell'utente. Usali quando serve per dare risposte precise e basate sui dati.
+
+Regole:
+- Rispondi SOLO in italiano
+- Usa SOLO dati ottenuti dai tool o dallo snapshot, MAI inventare numeri
+- Non dare consulenza finanziaria personalizzata — dai informazioni e calcoli
+- Quando suggerisci operazioni, mostra sempre i numeri concreti (importi, quote)
+- Se l'utente chiede qualcosa che non puoi calcolare, dillo onestamente
+- Spiega i concetti finanziari in modo semplice quando li usi
+  (es. "Il drift e' quanto sei lontano dal tuo piano originale")
+- Alla fine aggiungi: "⚠️ Supporto informativo, non consulenza finanziaria."
+
+Formato risposta:
+- Vai dritto al punto, niente introduzioni lunghe
+- Usa **grassetto** per numeri importanti
+- Usa tabelle quando confronti piu' asset
+- Se suggerisci azioni, elencale come checklist
+
+Ecco un riepilogo base del portafoglio:
+
+{context}
+"""
+
+# ---------------------------------------------------------------------------
+# Lightweight snapshot builder (for agentic mode — less tokens)
+# ---------------------------------------------------------------------------
+
+def build_portfolio_snapshot_light(
+    repo: PortfolioRepository,
+    portfolio_id: int,
+    user_id: str,
+) -> dict:
+    """Build a minimal snapshot for the agentic system prompt.
+    Detailed data is fetched on-demand via tool calls."""
+    summary = repo.get_summary(portfolio_id, user_id)
+
+    snapshot = {
+        "portfolio": {
+            "name": f"Portfolio #{portfolio_id}",
+            "base_currency": summary.base_currency,
+            "market_value": round(summary.market_value, 2),
+            "cost_basis": round(summary.cost_basis, 2),
+            "unrealized_pl": round(summary.unrealized_pl, 2),
+            "unrealized_pl_pct": round(summary.unrealized_pl_pct, 2),
+            "day_change": round(summary.day_change, 2),
+            "day_change_pct": round(summary.day_change_pct, 2),
+            "cash_balance": round(summary.cash_balance, 2),
+        },
+    }
+
+    # Resolve actual portfolio name
+    try:
+        portfolios = repo.list_portfolios(user_id)
+        for p in portfolios:
+            if p.id == portfolio_id:
+                snapshot["portfolio"]["name"] = p.name
+                break
+    except Exception:
+        pass
+
+    return snapshot
+
+
+# ---------------------------------------------------------------------------
+# Snapshot builder (full — for non-agentic / fallback mode)
 # ---------------------------------------------------------------------------
 
 def build_portfolio_snapshot(
@@ -344,6 +428,410 @@ def stream_copilot_response(
         error_event = json.dumps({"type": "error", "content": str(exc)}, ensure_ascii=False)
         yield f"data: {error_event}\n\n"
 
+
+# ---------------------------------------------------------------------------
+# Agentic streaming (Fase 2) — tool calling loop
+# ---------------------------------------------------------------------------
+
+def stream_copilot_response_agentic(
+    config: CopilotConfig,
+    snapshot: dict,
+    messages: list[CopilotMessage],
+    repo: PortfolioRepository,
+    perf_service: PerformanceService,
+    portfolio_id: int,
+    user_id: str,
+) -> Generator[str, None, None]:
+    """Stream LLM response with tool-calling loop. Max MAX_TOOL_ROUNDS rounds."""
+    system_prompt = SYSTEM_PROMPT_AGENTIC.format(
+        context=json.dumps(snapshot, ensure_ascii=False, indent=2)
+    )
+    provider = config.provider
+    tools = format_tools_for_provider(provider)
+    start_time = time.monotonic()
+
+    # Build initial message list in provider format
+    conv_messages = [{"role": m.role, "content": m.content} for m in messages]
+
+    try:
+        for round_num in range(MAX_TOOL_ROUNDS):
+            # Timeout check
+            elapsed = time.monotonic() - start_time
+            if elapsed > AGENTIC_TIMEOUT_S:
+                yield _sse("error", "Timeout: la richiesta ha impiegato troppo tempo.")
+                return
+
+            # Call LLM with tools (non-streaming to inspect tool calls)
+            tool_calls, text_content = _call_llm_with_tools(
+                config, system_prompt, conv_messages, tools,
+            )
+
+            if tool_calls:
+                # Emit thinking status
+                yield _sse("thinking", f"Sto analizzando i dati ({round_num + 1})...")
+
+                # Build assistant message with tool calls
+                assistant_msg = _build_assistant_tool_message(provider, tool_calls, text_content)
+                conv_messages.append(assistant_msg)
+
+                # Execute each tool and append results
+                for tc in tool_calls:
+                    result = execute_tool(
+                        tc["name"], tc["args"],
+                        repo, perf_service, portfolio_id, user_id,
+                    )
+                    tool_result_msg = _build_tool_result_message(provider, tc["id"], tc["name"], result)
+                    conv_messages.append(tool_result_msg)
+
+                continue  # next round
+
+            # No tool calls -> stream the final text response
+            if text_content:
+                # We already have the text, emit it
+                yield _sse("text_delta", text_content)
+            else:
+                # Stream final response
+                yield from _stream_final_response(config, system_prompt, conv_messages)
+
+            yield _sse("done", "")
+            return
+
+        # Exhausted all rounds — do a final streaming call without tools
+        yield _sse("thinking", "Sto preparando la risposta finale...")
+        yield from _stream_final_response(config, system_prompt, conv_messages)
+        yield _sse("done", "")
+
+    except Exception as exc:
+        logger.exception("Copilot agentic streaming error")
+        yield _sse("error", str(exc))
+
+
+def _sse(event_type: str, content: str) -> str:
+    """Format an SSE event."""
+    return f"data: {json.dumps({'type': event_type, 'content': content}, ensure_ascii=False)}\n\n"
+
+
+def _call_llm_with_tools(
+    config: CopilotConfig,
+    system_prompt: str,
+    messages: list[dict],
+    tools: list[dict],
+) -> tuple[list[dict], str]:
+    """Call LLM with tools (non-streaming). Returns (tool_calls, text_content).
+
+    Each tool_call dict: {"id": str, "name": str, "args": dict}
+    """
+    provider = config.provider
+
+    if provider == "openai":
+        return _call_openai_with_tools(config.api_key, config.model, system_prompt, messages, tools)
+    elif provider == "anthropic":
+        return _call_anthropic_with_tools(config.api_key, config.model, system_prompt, messages, tools)
+    elif provider == "gemini":
+        return _call_gemini_with_tools(config.api_key, config.model, system_prompt, messages, tools)
+    elif provider == "openrouter":
+        return _call_openai_with_tools(
+            config.api_key, config.model, system_prompt, messages, tools,
+            base_url="https://openrouter.ai/api/v1",
+        )
+    else:
+        raise ValueError(f"Provider '{provider}' non supporta tool calling")
+
+
+def _call_openai_with_tools(
+    api_key: str, model: str, system_prompt: str,
+    messages: list[dict], tools: list[dict],
+    base_url: str | None = None,
+) -> tuple[list[dict], str]:
+    """OpenAI / OpenRouter tool calling."""
+    import openai
+
+    kwargs = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = openai.OpenAI(**kwargs)
+
+    oai_messages = [{"role": "system", "content": system_prompt}]
+    for msg in messages:
+        oai_messages.append(msg)
+
+    response = client.chat.completions.create(
+        model=model, max_tokens=2048, messages=oai_messages, tools=tools,
+    )
+    choice = response.choices[0]
+    text_content = choice.message.content or ""
+
+    tool_calls = []
+    if choice.message.tool_calls:
+        for tc in choice.message.tool_calls:
+            tool_calls.append({
+                "id": tc.id,
+                "name": tc.function.name,
+                "args": json.loads(tc.function.arguments) if tc.function.arguments else {},
+            })
+
+    return tool_calls, text_content
+
+
+def _call_anthropic_with_tools(
+    api_key: str, model: str, system_prompt: str,
+    messages: list[dict], tools: list[dict],
+) -> tuple[list[dict], str]:
+    """Anthropic tool calling."""
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    response = client.messages.create(
+        model=model, max_tokens=2048, system=system_prompt,
+        messages=messages, tools=tools,
+    )
+
+    tool_calls = []
+    text_content = ""
+
+    for block in response.content:
+        if block.type == "text":
+            text_content += block.text
+        elif block.type == "tool_use":
+            tool_calls.append({
+                "id": block.id,
+                "name": block.name,
+                "args": block.input if isinstance(block.input, dict) else {},
+            })
+
+    return tool_calls, text_content
+
+
+def _call_gemini_with_tools(
+    api_key: str, model: str, system_prompt: str,
+    messages: list[dict], tools: list[dict],
+) -> tuple[list[dict], str]:
+    """Gemini tool calling."""
+    from google import genai
+    from google.genai import types
+
+    client = genai.Client(api_key=api_key)
+
+    # Build Gemini tool declarations
+    function_declarations = []
+    for t in tools:
+        func = t.get("function", t)
+        fd = types.FunctionDeclaration(
+            name=func["name"],
+            description=func["description"],
+            parameters=func.get("parameters", {}),
+        )
+        function_declarations.append(fd)
+
+    gemini_tools = [types.Tool(function_declarations=function_declarations)]
+
+    contents = [
+        {"role": "user", "parts": [{"text": system_prompt}]},
+        {"role": "model", "parts": [{"text": "Capito, sono pronto ad aiutarti."}]},
+    ]
+    for msg in messages:
+        role = "user" if msg.get("role") == "user" else "model"
+        parts = msg.get("parts", [{"text": msg.get("content", "")}])
+        contents.append({"role": role, "parts": parts})
+
+    response = client.models.generate_content(
+        model=model, contents=contents,
+        config=types.GenerateContentConfig(
+            max_output_tokens=2048,
+            tools=gemini_tools,
+        ),
+    )
+
+    tool_calls = []
+    text_content = ""
+
+    if response.candidates:
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, "function_call") and part.function_call:
+                fc = part.function_call
+                tool_calls.append({
+                    "id": fc.name,  # Gemini uses name as id
+                    "name": fc.name,
+                    "args": dict(fc.args) if fc.args else {},
+                })
+            elif hasattr(part, "text") and part.text:
+                text_content += part.text
+
+    return tool_calls, text_content
+
+
+def _build_assistant_tool_message(provider: str, tool_calls: list[dict], text_content: str) -> dict:
+    """Build the assistant message that contains tool calls, for conversation history."""
+    if provider == "anthropic":
+        content = []
+        if text_content:
+            content.append({"type": "text", "text": text_content})
+        for tc in tool_calls:
+            content.append({
+                "type": "tool_use",
+                "id": tc["id"],
+                "name": tc["name"],
+                "input": tc["args"],
+            })
+        return {"role": "assistant", "content": content}
+
+    elif provider == "gemini":
+        parts = []
+        if text_content:
+            parts.append({"text": text_content})
+        for tc in tool_calls:
+            parts.append({
+                "function_call": {"name": tc["name"], "args": tc["args"]},
+            })
+        return {"role": "model", "parts": parts}
+
+    else:  # openai / openrouter
+        msg: dict = {
+            "role": "assistant",
+            "content": text_content or None,
+            "tool_calls": [
+                {
+                    "id": tc["id"],
+                    "type": "function",
+                    "function": {
+                        "name": tc["name"],
+                        "arguments": json.dumps(tc["args"]),
+                    },
+                }
+                for tc in tool_calls
+            ],
+        }
+        return msg
+
+
+def _build_tool_result_message(provider: str, tool_id: str, tool_name: str, result: dict) -> dict:
+    """Build the tool result message for conversation history."""
+    result_str = json.dumps(result, ensure_ascii=False)
+
+    if provider == "anthropic":
+        return {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": result_str,
+                }
+            ],
+        }
+
+    elif provider == "gemini":
+        return {
+            "role": "user",
+            "parts": [
+                {
+                    "function_response": {
+                        "name": tool_name,
+                        "response": result,
+                    },
+                }
+            ],
+        }
+
+    else:  # openai / openrouter
+        return {
+            "role": "tool",
+            "tool_call_id": tool_id,
+            "content": result_str,
+        }
+
+
+def _stream_final_response(
+    config: CopilotConfig,
+    system_prompt: str,
+    messages: list[dict],
+) -> Generator[str, None, None]:
+    """Stream the final text response (no tools) from the LLM."""
+    provider = config.provider
+    api_key = config.api_key
+    model = config.model
+
+    # Convert messages to CopilotMessage-like for reuse of existing streaming
+    # For the final response, we pass the full conversation including tool results
+    if provider == "openai":
+        yield from _stream_openai_raw(api_key, model, system_prompt, messages)
+    elif provider == "anthropic":
+        yield from _stream_anthropic_raw(api_key, model, system_prompt, messages)
+    elif provider == "gemini":
+        yield from _stream_gemini_raw(api_key, model, system_prompt, messages)
+    elif provider == "openrouter":
+        yield from _stream_openai_raw(
+            api_key, model, system_prompt, messages,
+            base_url="https://openrouter.ai/api/v1",
+        )
+
+
+def _stream_openai_raw(
+    api_key: str, model: str, system_prompt: str,
+    messages: list[dict], base_url: str | None = None,
+) -> Generator[str, None, None]:
+    """Stream final response from OpenAI/OpenRouter with full message history."""
+    import openai
+
+    kwargs = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = openai.OpenAI(**kwargs)
+
+    oai_messages = [{"role": "system", "content": system_prompt}]
+    oai_messages.extend(messages)
+
+    stream = client.chat.completions.create(
+        model=model, max_tokens=2048, stream=True, messages=oai_messages,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta if chunk.choices else None
+        if delta and delta.content:
+            yield _sse("text_delta", delta.content)
+
+
+def _stream_anthropic_raw(
+    api_key: str, model: str, system_prompt: str,
+    messages: list[dict],
+) -> Generator[str, None, None]:
+    """Stream final response from Anthropic with full message history."""
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+
+    with client.messages.stream(
+        model=model, max_tokens=2048, system=system_prompt, messages=messages,
+    ) as stream:
+        for text in stream.text_stream:
+            yield _sse("text_delta", text)
+
+
+def _stream_gemini_raw(
+    api_key: str, model: str, system_prompt: str,
+    messages: list[dict],
+) -> Generator[str, None, None]:
+    """Stream final response from Gemini with full message history."""
+    from google import genai
+
+    client = genai.Client(api_key=api_key)
+
+    contents = [
+        {"role": "user", "parts": [{"text": system_prompt}]},
+        {"role": "model", "parts": [{"text": "Capito, sono pronto ad aiutarti."}]},
+    ]
+    contents.extend(messages)
+
+    response = client.models.generate_content(
+        model=model, contents=contents, config={"max_output_tokens": 2048},
+    )
+    if response.text:
+        yield _sse("text_delta", response.text)
+
+
+# ---------------------------------------------------------------------------
+# Legacy streaming (non-agentic — Fase 1, used as fallback)
+# ---------------------------------------------------------------------------
 
 def _stream_openai(
     api_key: str, model: str, system_prompt: str, messages: list[CopilotMessage],
