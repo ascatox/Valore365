@@ -1,5 +1,5 @@
-import { Button, Card, Group, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
-import { IconBriefcase, IconRobot, IconShieldCheck, IconTargetArrow } from '@tabler/icons-react';
+import { Anchor, Button, Card, Group, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
+import { IconBriefcase, IconRobot, IconShieldCheck, IconTargetArrow, IconWorld } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -64,6 +64,23 @@ export function AboutPage() {
               Per investitori che vogliono seguire il proprio patrimonio con piu&apos; dettaglio operativo rispetto a un semplice tracker,
               senza perdere leggibilita&apos; su mobile e senza disperdere le informazioni tra strumenti separati.
             </Text>
+          </Stack>
+        </Card>
+
+        <Card withBorder radius="xl" padding="xl">
+          <Stack gap="sm">
+            <Group gap="sm">
+              <ThemeIcon radius="xl" size="lg" color="grape" variant="light">
+                <IconWorld size={18} />
+              </ThemeIcon>
+              <Title order={4}>Autore</Title>
+            </Group>
+            <Text c="dimmed">
+              Valore365 e&apos; curato da <Text span fw={700} c="inherit">Antonio Scatoloni</Text>.
+            </Text>
+            <Anchor href="https://www.antonioscatoloni.it" target="_blank" rel="noreferrer">
+              antonioscatoloni.it
+            </Anchor>
           </Stack>
         </Card>
       </Stack>
