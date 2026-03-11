@@ -83,32 +83,47 @@ Ecco i dati del portafoglio dell'utente:
 # ---------------------------------------------------------------------------
 
 SYSTEM_PROMPT_AGENTIC = """\
-Sei il Portfolio Copilot di Valore365, un assistente che aiuta persone comuni
-a capire e ottimizzare i propri piccoli portafogli di investimento.
+Sei il Portfolio Copilot di Valore365, un assistente esperto di finanza personale \
+che aiuta persone comuni a capire e ottimizzare i propri portafogli di investimento.
 
-Il tuo utente tipico NON e' un professionista della finanza. Parla in modo
-semplice, concreto e amichevole. Usa analogie quotidiane quando servono.
+Il tuo utente tipico NON e' un professionista della finanza. Il tuo compito e':
+- Analizzare i dati del portafoglio in modo approfondito
+- Spiegare in italiano semplice cosa significano i numeri
+- Dare suggerimenti concreti e azionabili con importi precisi
+- Usare analogie quotidiane per concetti complessi
 
-Hai accesso a diversi strumenti (tool) per ottenere dati dal portafoglio
-dell'utente. Usali quando serve per dare risposte precise e basate sui dati.
+Hai accesso a strumenti (tool) per ottenere dati aggiuntivi dal portafoglio. \
+USALI PROATTIVAMENTE: quando l'utente chiede qualcosa, chiama i tool necessari \
+per avere tutti i dati prima di rispondere. Non limitarti allo snapshot iniziale \
+se servono dati piu' dettagliati.
+
+Esempi di quando usare i tool:
+- "Come ribilancio?" → chiama calculate_rebalance_orders
+- "Il portafoglio e' sano?" → chiama get_portfolio_health
+- "Cosa succede se vendo X?" → chiama calculate_what_if
+- "Ho N euro al mese" → chiama calculate_pac_contribution
+- "Ultime operazioni" → chiama get_recent_transactions
+- "Proiezioni future" → chiama get_monte_carlo
 
 Regole:
-- Rispondi SOLO in italiano
-- Usa SOLO dati ottenuti dai tool o dallo snapshot, MAI inventare numeri
-- Non dare consulenza finanziaria personalizzata — dai informazioni e calcoli
-- Quando suggerisci operazioni, mostra sempre i numeri concreti (importi, quote)
-- Se l'utente chiede qualcosa che non puoi calcolare, dillo onestamente
-- Spiega i concetti finanziari in modo semplice quando li usi
-  (es. "Il drift e' quanto sei lontano dal tuo piano originale")
+- Rispondi SEMPRE in italiano
+- Basa le risposte SOLO sui dati reali (snapshot + tool), MAI inventare numeri
+- Non dare consulenza finanziaria personalizzata — dai informazioni, calcoli e spunti educativi
+- Quando suggerisci operazioni, mostra numeri concreti: importi in EUR, numero quote approssimativo
+- Spiega il "perche'" dietro ogni osservazione
+- Se non hai dati sufficienti, dillo e suggerisci cosa l'utente puo' fare
 - Alla fine aggiungi: "⚠️ Supporto informativo, non consulenza finanziaria."
 
-Formato risposta:
-- Vai dritto al punto, niente introduzioni lunghe
-- Usa **grassetto** per numeri importanti
-- Usa tabelle quando confronti piu' asset
-- Se suggerisci azioni, elencale come checklist
+Stile di risposta:
+- Sii conversazionale e amichevole, non burocratico
+- Vai dritto al punto, poi approfondisci se utile
+- Usa **grassetto** per numeri importanti e concetti chiave
+- Usa tabelle Markdown per confronti tra asset
+- Usa liste puntate per azioni suggerite
+- Aggiungi brevi spiegazioni educative quando usi termini tecnici \
+  (es. "il drift, cioe' quanto sei lontano dal tuo piano originale, e' del 4.8%")
 
-Ecco un riepilogo base del portafoglio:
+Ecco i dati attuali del portafoglio dell'utente:
 
 {context}
 """
@@ -122,11 +137,17 @@ def build_portfolio_snapshot_light(
     portfolio_id: int,
     user_id: str,
 ) -> dict:
-    """Build a minimal snapshot for the agentic system prompt.
-    Detailed data is fetched on-demand via tool calls."""
-    summary = repo.get_summary(portfolio_id, user_id)
+    """Build a compact snapshot for the agentic system prompt.
 
-    snapshot = {
+    Includes summary + positions + target drift so the model has enough
+    context to give rich answers and decide which tools to call.
+    Heavier data (doctor, monte carlo, transactions) is fetched on-demand.
+    """
+    summary = repo.get_summary(portfolio_id, user_id)
+    positions = repo.get_positions(portfolio_id, user_id)
+    allocation = repo.get_allocation(portfolio_id, user_id)
+
+    snapshot: dict = {
         "portfolio": {
             "name": f"Portfolio #{portfolio_id}",
             "base_currency": summary.base_currency,
@@ -139,6 +160,53 @@ def build_portfolio_snapshot_light(
             "cash_balance": round(summary.cash_balance, 2),
         },
     }
+
+    # Positions (top 15 by weight — compact)
+    sorted_pos = sorted(positions, key=lambda p: p.weight, reverse=True)[:15]
+    snapshot["positions"] = [
+        {
+            "symbol": p.symbol,
+            "name": p.name,
+            "weight": round(p.weight, 2),
+            "market_value": round(p.market_value, 2),
+            "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
+            "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
+        }
+        for p in sorted_pos
+    ]
+
+    # Target drift (if targets exist)
+    try:
+        target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
+        if target_alloc:
+            alloc_map = {a.asset_id: a.weight_pct for a in allocation}
+            snapshot["target_drift"] = [
+                {
+                    "symbol": ta.symbol,
+                    "current_weight": round(alloc_map.get(ta.asset_id, 0.0), 2),
+                    "target_weight": round(ta.weight_pct, 2),
+                    "drift": round(alloc_map.get(ta.asset_id, 0.0) - ta.weight_pct, 2),
+                }
+                for ta in target_alloc
+            ]
+    except Exception:
+        pass
+
+    # Performance summary (compact — just TWR percentages)
+    try:
+        from .performance_service import PerformanceService
+        perf_service = PerformanceService(repo)
+        perf_data = {}
+        for period in ("1m", "3m", "ytd", "1y"):
+            try:
+                ps = perf_service.get_performance_summary(portfolio_id, user_id, period)
+                perf_data[f"twr_{period}"] = round(ps.twr.twr_pct, 2) if ps.twr.twr_pct is not None else None
+            except Exception:
+                pass
+        if perf_data:
+            snapshot["performance"] = perf_data
+    except Exception:
+        pass
 
     # Resolve actual portfolio name
     try:
