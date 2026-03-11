@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { Box, Paper, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconRobot } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
 
@@ -99,7 +100,7 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
           letterSpacing: '-0.01em',
         }}
       >
-        <ReactMarkdown>{content}</ReactMarkdown>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
       </Box>
     );
   };
