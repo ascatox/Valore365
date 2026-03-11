@@ -33,7 +33,7 @@ _DEFAULT_MODELS: dict[str, str] = {
     "openai": "gpt-4o-mini",
     "anthropic": "claude-sonnet-4-20250514",
     "gemini": "gemini-2.0-flash",
-    "openrouter": "mistralai/mistral-small-3.2-24b-instruct",
+    "openrouter": "mistralai/mistral-large-2512",
     "local": "llama3.2:3b",
 }
 
