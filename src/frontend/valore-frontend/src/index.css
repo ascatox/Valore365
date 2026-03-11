@@ -68,3 +68,38 @@ button:focus-visible {
   to { transform: rotate(360deg); }
 }
 
+/* Copilot Markdown styles */
+.copilot-markdown p { margin: 0 0 0.5em; }
+.copilot-markdown p:last-child { margin-bottom: 0; }
+.copilot-markdown strong { font-weight: 600; }
+.copilot-markdown ul, .copilot-markdown ol { margin: 0.3em 0; padding-left: 1.4em; }
+.copilot-markdown li { margin: 0.15em 0; }
+.copilot-markdown h1, .copilot-markdown h2, .copilot-markdown h3 {
+  font-size: 1em;
+  font-weight: 700;
+  margin: 0.6em 0 0.3em;
+}
+.copilot-markdown h1:first-child,
+.copilot-markdown h2:first-child,
+.copilot-markdown h3:first-child { margin-top: 0; }
+.copilot-markdown table { border-collapse: collapse; width: 100%; margin: 0.5em 0; font-size: 0.9em; }
+.copilot-markdown th, .copilot-markdown td {
+  border: 1px solid var(--mantine-color-default-border);
+  padding: 0.3em 0.6em;
+  text-align: left;
+}
+.copilot-markdown th { font-weight: 600; }
+.copilot-markdown code {
+  background: rgba(128, 128, 128, 0.15);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.copilot-markdown blockquote {
+  border-left: 3px solid var(--mantine-color-teal-5);
+  margin: 0.5em 0;
+  padding: 0.2em 0.8em;
+  opacity: 0.85;
+}
+.copilot-markdown hr { border: none; border-top: 1px solid var(--mantine-color-default-border); margin: 0.5em 0; }
+

@@ -1,5 +1,6 @@
 import { Box, Paper, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconRobot } from '@tabler/icons-react';
+import ReactMarkdown from 'react-markdown';
 
 const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
 
@@ -15,6 +16,66 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isUser = role === 'user';
+
+  const renderContent = () => {
+    if (thinkingStatus && !content) {
+      return (
+        <Text
+          size="sm"
+          c="dimmed"
+          style={{
+            fontFamily: COPILOT_FONT,
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.6,
+            fontStyle: 'italic',
+            animation: 'pulse 1.5s ease-in-out infinite',
+          }}
+        >
+          {thinkingStatus}
+        </Text>
+      );
+    }
+
+    if (!content && streaming) {
+      return (
+        <Text size="sm" style={{ fontFamily: COPILOT_FONT, lineHeight: 1.6 }}>
+          ...
+        </Text>
+      );
+    }
+
+    // User messages: plain text
+    if (isUser) {
+      return (
+        <Text
+          size="sm"
+          style={{
+            fontFamily: COPILOT_FONT,
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.6,
+            letterSpacing: '-0.01em',
+          }}
+        >
+          {content}
+        </Text>
+      );
+    }
+
+    // Assistant messages: render Markdown
+    return (
+      <Box
+        className="copilot-markdown"
+        style={{
+          fontFamily: COPILOT_FONT,
+          fontSize: 'var(--mantine-font-size-sm)',
+          lineHeight: 1.6,
+          letterSpacing: '-0.01em',
+        }}
+      >
+        <ReactMarkdown>{content}</ReactMarkdown>
+      </Box>
+    );
+  };
 
   return (
     <Box
@@ -59,33 +120,7 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
           borderBottomLeftRadius: !isUser ? 4 : undefined,
         }}
       >
-        {thinkingStatus && !content ? (
-          <Text
-            size="sm"
-            c="dimmed"
-            style={{
-              fontFamily: COPILOT_FONT,
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.6,
-              fontStyle: 'italic',
-              animation: 'pulse 1.5s ease-in-out infinite',
-            }}
-          >
-            {thinkingStatus}
-          </Text>
-        ) : (
-          <Text
-            size="sm"
-            style={{
-              fontFamily: COPILOT_FONT,
-              whiteSpace: 'pre-wrap',
-              lineHeight: 1.6,
-              letterSpacing: '-0.01em',
-            }}
-          >
-            {content || (streaming ? '...' : '')}
-          </Text>
-        )}
+        {renderContent()}
       </Paper>
     </Box>
   );
