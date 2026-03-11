@@ -13,17 +13,101 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
+import { IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
 
+// ---------------------------------------------------------------------------
+// localStorage helpers
+// ---------------------------------------------------------------------------
+
+const STORAGE_PREFIX = 'copilot_chat_';
+const MAX_CONVERSATIONS = 5;
+const MAX_MESSAGES_PER_CONV = 50;
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
+
+interface StoredConversation {
+  id: string;
+  portfolioId: number;
+  messages: Message[];
+  updatedAt: number; // timestamp
+  preview: string;   // first user message as preview
+}
+
+function getStorageKey(portfolioId: number): string {
+  return `${STORAGE_PREFIX}${portfolioId}`;
+}
+
+function loadConversations(portfolioId: number): StoredConversation[] {
+  try {
+    const raw = localStorage.getItem(getStorageKey(portfolioId));
+    if (!raw) return [];
+    const convs: StoredConversation[] = JSON.parse(raw);
+    return convs.sort((a, b) => b.updatedAt - a.updatedAt);
+  } catch {
+    return [];
+  }
+}
+
+function saveConversations(portfolioId: number, convs: StoredConversation[]): void {
+  try {
+    // Keep only the latest N conversations
+    const trimmed = convs
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .slice(0, MAX_CONVERSATIONS);
+    localStorage.setItem(getStorageKey(portfolioId), JSON.stringify(trimmed));
+  } catch {
+    // localStorage full or unavailable — silently ignore
+  }
+}
+
+function saveCurrentConversation(
+  portfolioId: number,
+  conversationId: string,
+  messages: Message[],
+): void {
+  if (messages.length === 0) return;
+  const convs = loadConversations(portfolioId);
+  const trimmedMessages = messages.slice(-MAX_MESSAGES_PER_CONV);
+  const firstUserMsg = messages.find((m) => m.role === 'user');
+  const preview = firstUserMsg?.content.slice(0, 80) || 'Conversazione';
+
+  const idx = convs.findIndex((c) => c.id === conversationId);
+  const updated: StoredConversation = {
+    id: conversationId,
+    portfolioId,
+    messages: trimmedMessages,
+    updatedAt: Date.now(),
+    preview,
+  };
+
+  if (idx >= 0) {
+    convs[idx] = updated;
+  } else {
+    convs.push(updated);
+  }
+  saveConversations(portfolioId, convs);
+}
+
+function deleteConversation(portfolioId: number, conversationId: string): void {
+  const convs = loadConversations(portfolioId).filter((c) => c.id !== conversationId);
+  saveConversations(portfolioId, convs);
+}
+
+function generateId(): string {
+  return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 interface CopilotChatProps {
   opened: boolean;
@@ -60,18 +144,53 @@ export function CopilotChat({
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [thinkingStatus, setThinkingStatus] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string>(generateId());
+  const [showHistory, setShowHistory] = useState(false);
+  const [savedConversations, setSavedConversations] = useState<StoredConversation[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const prevPortfolioRef = useRef<number | null>(portfolioId);
 
-  // Reset conversation on portfolio change
+  // Load conversations when portfolio changes
   useEffect(() => {
     if (prevPortfolioRef.current !== portfolioId) {
-      setMessages([]);
-      setError(null);
       prevPortfolioRef.current = portfolioId;
+      setError(null);
+      if (portfolioId) {
+        const convs = loadConversations(portfolioId);
+        setSavedConversations(convs);
+        // Resume the most recent conversation if it exists
+        if (convs.length > 0) {
+          setMessages(convs[0].messages);
+          setConversationId(convs[0].id);
+          setShowHistory(false);
+        } else {
+          setMessages([]);
+          setConversationId(generateId());
+        }
+      } else {
+        setMessages([]);
+        setSavedConversations([]);
+        setConversationId(generateId());
+      }
     }
   }, [portfolioId]);
+
+  // Refresh history list when drawer opens
+  useEffect(() => {
+    if (opened && portfolioId) {
+      setSavedConversations(loadConversations(portfolioId));
+    }
+  }, [opened, portfolioId]);
+
+  // Save conversation to localStorage after each completed exchange
+  useEffect(() => {
+    if (!streaming && portfolioId && messages.length > 0) {
+      saveCurrentConversation(portfolioId, conversationId, messages);
+      setSavedConversations(loadConversations(portfolioId));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -89,6 +208,7 @@ export function CopilotChat({
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || !portfolioId || streaming) return;
+    setShowHistory(false);
 
     const userMsg: Message = { role: 'user', content: text.trim() };
     const newMessages = [...messages, userMsg];
@@ -180,10 +300,49 @@ export function CopilotChat({
     }
   };
 
-  const clearChat = () => {
+  const startNewChat = () => {
     setMessages([]);
     setError(null);
+    setConversationId(generateId());
+    setShowHistory(false);
   };
+
+  const resumeConversation = (conv: StoredConversation) => {
+    setMessages(conv.messages);
+    setConversationId(conv.id);
+    setError(null);
+    setShowHistory(false);
+  };
+
+  const handleDeleteConversation = (conv: StoredConversation) => {
+    if (!portfolioId) return;
+    deleteConversation(portfolioId, conv.id);
+    const updated = loadConversations(portfolioId);
+    setSavedConversations(updated);
+    // If we deleted the active conversation, start fresh
+    if (conv.id === conversationId) {
+      startNewChat();
+    }
+  };
+
+  const clearChat = () => {
+    if (portfolioId) {
+      deleteConversation(portfolioId, conversationId);
+      setSavedConversations(loadConversations(portfolioId));
+    }
+    startNewChat();
+  };
+
+  const formatTime = (ts: number) => {
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) return `Oggi ${d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}`;
+    return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  };
+
+  const hasHistory = savedConversations.length > 0;
+  const otherConversations = savedConversations.filter((c) => c.id !== conversationId);
 
   return (
     <Drawer
@@ -210,7 +369,7 @@ export function CopilotChat({
         pt="sm"
         viewportRef={viewportRef}
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && !showHistory ? (
           <Stack gap="md" py="xl" align="center">
             <Box
               style={{
@@ -244,6 +403,78 @@ export function CopilotChat({
                 </Button>
               ))}
             </Stack>
+
+            {/* Show history link */}
+            {otherConversations.length > 0 && (
+              <Button
+                variant="subtle"
+                color="dimmed"
+                size="xs"
+                onClick={() => setShowHistory(true)}
+                style={{ fontFamily: COPILOT_FONT }}
+              >
+                Conversazioni precedenti ({otherConversations.length})
+              </Button>
+            )}
+          </Stack>
+        ) : showHistory ? (
+          <Stack gap="xs" py="sm">
+            <Group justify="space-between" px="xs">
+              <Text size="sm" fw={600} style={{ fontFamily: COPILOT_FONT }}>
+                Conversazioni precedenti
+              </Text>
+              <Button
+                variant="subtle"
+                size="xs"
+                color="teal"
+                onClick={() => setShowHistory(false)}
+                style={{ fontFamily: COPILOT_FONT }}
+              >
+                Indietro
+              </Button>
+            </Group>
+            {savedConversations.map((conv) => (
+              <Box
+                key={conv.id}
+                px="sm"
+                py="xs"
+                style={{
+                  borderRadius: 8,
+                  background: conv.id === conversationId
+                    ? (isDark ? theme.colors.teal[9] : theme.colors.teal[0])
+                    : (isDark ? theme.colors.dark[6] : theme.colors.gray[0]),
+                  cursor: 'pointer',
+                }}
+              >
+                <Group justify="space-between" wrap="nowrap">
+                  <Box onClick={() => resumeConversation(conv)} style={{ flex: 1, cursor: 'pointer' }}>
+                    <Text
+                      size="sm"
+                      fw={conv.id === conversationId ? 600 : 400}
+                      lineClamp={1}
+                      style={{ fontFamily: COPILOT_FONT }}
+                    >
+                      {conv.preview}
+                    </Text>
+                    <Text size="xs" c="dimmed" style={{ fontFamily: COPILOT_FONT }}>
+                      {formatTime(conv.updatedAt)} · {conv.messages.length} msg
+                    </Text>
+                  </Box>
+                  <ActionIcon
+                    variant="subtle"
+                    color="gray"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteConversation(conv);
+                    }}
+                    aria-label="Elimina conversazione"
+                  >
+                    <IconTrash size={14} />
+                  </ActionIcon>
+                </Group>
+              </Box>
+            ))}
           </Stack>
         ) : (
           <Stack gap="sm" pb="sm">
@@ -282,15 +513,41 @@ export function CopilotChat({
       >
         <Group gap="xs" align="flex-end">
           {messages.length > 0 && (
+            <>
+              <ActionIcon
+                variant="subtle"
+                color="teal"
+                size="lg"
+                onClick={startNewChat}
+                disabled={streaming}
+                aria-label="Nuova conversazione"
+                title="Nuova conversazione"
+              >
+                <IconMessagePlus size={16} />
+              </ActionIcon>
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                size="lg"
+                onClick={clearChat}
+                disabled={streaming}
+                aria-label="Cancella conversazione"
+                title="Cancella conversazione"
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            </>
+          )}
+          {messages.length === 0 && hasHistory && !showHistory && (
             <ActionIcon
               variant="subtle"
-              color="gray"
+              color="dimmed"
               size="lg"
-              onClick={clearChat}
-              disabled={streaming}
-              aria-label="Cancella conversazione"
+              onClick={() => setShowHistory(true)}
+              aria-label="Conversazioni precedenti"
+              title="Conversazioni precedenti"
             >
-              <IconTrash size={16} />
+              <IconMessagePlus size={16} />
             </ActionIcon>
           )}
           <Textarea
