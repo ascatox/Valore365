@@ -319,7 +319,7 @@ def _get_positions(
                 "name": p.name,
                 "weight": round(p.weight, 2),
                 "market_value": round(p.market_value, 2),
-                "cost_basis": round(p.cost_basis, 2) if p.cost_basis else 0,
+                "cost_basis": round(p.avg_cost * p.quantity, 2) if p.avg_cost else 0,
                 "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
                 "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
                 "quantity": float(p.quantity),
