@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
 const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
+const COPILOT_DISCLAIMER = 'Supporto informativo, non consulenza finanziaria.';
 
 /**
  * After ReactMarkdown renders, inject data-label attributes on <td> elements
@@ -41,6 +42,8 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isUser = role === 'user';
+  const normalizedContent = content.toLowerCase();
+  const hasDisclaimer = normalizedContent.includes('supporto informativo') || normalizedContent.includes('consulenza finanziaria');
   const mdRef = useRef<HTMLDivElement | null>(null);
   useTableDataLabels(mdRef, content);
 
@@ -149,6 +152,20 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
         }}
       >
         {renderContent()}
+        {!isUser && content && !hasDisclaimer && (
+          <Text
+            size="xs"
+            mt="sm"
+            c={isDark ? theme.colors.gray[4] : theme.colors.gray[7]}
+            style={{
+              fontFamily: COPILOT_FONT,
+              borderTop: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[3]}`,
+              paddingTop: 8,
+            }}
+          >
+            {COPILOT_DISCLAIMER}
+          </Text>
+        )}
       </Paper>
     </Box>
   );
