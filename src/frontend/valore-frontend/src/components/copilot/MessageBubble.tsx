@@ -1,6 +1,8 @@
 import { Box, Paper, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconRobot } from '@tabler/icons-react';
 
+const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
+
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
@@ -62,8 +64,9 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
             size="sm"
             c="dimmed"
             style={{
+              fontFamily: COPILOT_FONT,
               whiteSpace: 'pre-wrap',
-              lineHeight: 1.5,
+              lineHeight: 1.6,
               fontStyle: 'italic',
               animation: 'pulse 1.5s ease-in-out infinite',
             }}
@@ -73,7 +76,12 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
         ) : (
           <Text
             size="sm"
-            style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}
+            style={{
+              fontFamily: COPILOT_FONT,
+              whiteSpace: 'pre-wrap',
+              lineHeight: 1.6,
+              letterSpacing: '-0.01em',
+            }}
           >
             {content || (streaming ? '...' : '')}
           </Text>

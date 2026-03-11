@@ -18,6 +18,7 @@ import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
 
 const API_URL = import.meta.env.VITE_API_BASE_URL || '/api';
+const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
 
 interface Message {
   role: 'user' | 'assistant';
@@ -224,7 +225,7 @@ export function CopilotChat({
             >
               <IconRobot size={28} color={isDark ? theme.colors.teal[3] : theme.colors.teal[7]} />
             </Box>
-            <Text size="sm" c="dimmed" ta="center" maw={300}>
+            <Text size="sm" c="dimmed" ta="center" maw={300} style={{ fontFamily: COPILOT_FONT }}>
               {emptyStateDescription}
             </Text>
             <Stack gap="xs" w="100%" maw={340}>
@@ -237,7 +238,7 @@ export function CopilotChat({
                   radius="xl"
                   onClick={() => sendMessage(prompt)}
                   disabled={!portfolioId || streaming}
-                  styles={{ label: { whiteSpace: 'normal', textAlign: 'left' } }}
+                  styles={{ label: { whiteSpace: 'normal', textAlign: 'left', fontFamily: COPILOT_FONT } }}
                 >
                   {prompt}
                 </Button>
@@ -304,6 +305,7 @@ export function CopilotChat({
             maxRows={4}
             radius="xl"
             size="sm"
+            styles={{ input: { fontFamily: COPILOT_FONT } }}
           />
           <ActionIcon
             variant="filled"
