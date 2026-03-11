@@ -580,6 +580,10 @@ export function FirePage() {
                       : (decumulationSuccess ? 'teal' : 'yellow')
                   }
                   variant="filled"
+                  styles={{
+                    root: { color: '#ffffff' },
+                    label: { color: '#ffffff' },
+                  }}
                 >
                   {isPrivacyModeEnabled()
                     ? PRIVACY_MASK
