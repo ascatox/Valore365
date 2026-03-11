@@ -220,6 +220,28 @@ def build_portfolio_snapshot_light(
     except Exception:
         pass
 
+    # FIRE settings (if configured)
+    try:
+        user_settings = repo.get_user_settings(user_id)
+        if user_settings.fire_annual_expenses > 0:
+            swr = user_settings.fire_safe_withdrawal_rate or 4
+            fire_target = user_settings.fire_annual_expenses / (swr / 100)
+            coverage_pct = (summary.market_value / fire_target * 100) if fire_target > 0 else 0
+            fire_data: dict = {
+                "annual_expenses": user_settings.fire_annual_expenses,
+                "annual_contribution": user_settings.fire_annual_contribution,
+                "safe_withdrawal_rate_pct": swr,
+                "fire_target": round(fire_target, 0),
+                "coverage_pct": round(coverage_pct, 1),
+            }
+            if user_settings.fire_current_age:
+                fire_data["current_age"] = user_settings.fire_current_age
+            if user_settings.fire_target_age:
+                fire_data["target_age"] = user_settings.fire_target_age
+            snapshot["fire"] = fire_data
+    except Exception:
+        pass
+
     return snapshot
 
 

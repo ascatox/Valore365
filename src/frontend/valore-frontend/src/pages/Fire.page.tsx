@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -20,16 +21,17 @@ import {
   ThemeIcon,
   Title,
 } from '@mantine/core';
-import { IconFlame, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
+import { IconFlame, IconRobot, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
-import { useMediaQuery } from '@mantine/hooks';
+import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
-import { getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
+import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
 
 const PRIVACY_MASK = '******';
 
@@ -142,6 +144,8 @@ export function FirePage() {
   const [otherIncomeAnnual, setOtherIncomeAnnual] = useState<number | string>(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copilotAvailable, setCopilotAvailable] = useState(false);
+  const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
 
   useEffect(() => {
     if (!portfolios.length) return;
@@ -182,6 +186,19 @@ export function FirePage() {
     setTargetAge(userSettings.fire_target_age ?? '');
     setAnnualWithdrawal(userSettings.fire_annual_expenses ?? 0);
   }, [userSettings]);
+
+  useEffect(() => {
+    getCopilotStatus().then((s) => setCopilotAvailable(s.available)).catch(() => {});
+  }, []);
+
+  const fireQuickPrompts = useMemo(() => [
+    'Quanto manca al FIRE?',
+    'Il mio tasso di prelievo è sicuro?',
+    'Come posso accelerare il percorso FIRE?',
+    'Spiega le proiezioni Monte Carlo',
+    'Cosa succede se aumento il contributo di 200€/mese?',
+    'Il mio portafoglio può durare 30 anni in decumulo?',
+  ], []);
 
   const settingsMutation = useMutation({
     mutationFn: updateUserSettings,
@@ -1065,6 +1082,35 @@ export function FirePage() {
           </Group>
         </Stack>
       </Modal>
+
+      {copilotAvailable && (
+        <ActionIcon
+          variant="filled"
+          color="teal"
+          size={52}
+          radius="xl"
+          onClick={openCopilot}
+          aria-label="Apri FIRE Copilot"
+          style={{
+            position: 'fixed',
+            bottom: isMobile ? 80 : 24,
+            right: 24,
+            zIndex: 100,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <IconRobot size={24} />
+        </ActionIcon>
+      )}
+
+      <CopilotChat
+        opened={copilotOpened}
+        onClose={closeCopilot}
+        portfolioId={portfolioId}
+        title="FIRE Copilot"
+        quickPrompts={fireQuickPrompts}
+        emptyStateDescription="Ti aiuto a capire il tuo percorso verso l'indipendenza finanziaria. Ecco qualche spunto:"
+      />
     </PageLayout>
   );
 }
