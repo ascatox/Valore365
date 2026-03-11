@@ -33,7 +33,7 @@ import {
   IconShare,
   IconSparkles,
 } from '@tabler/icons-react';
-import { toBlob } from 'html-to-image';
+import { toBlob, toPng } from 'html-to-image';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
@@ -145,25 +145,43 @@ export function DoctorPage() {
       return;
     }
 
-    if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
-      setCopyImageState('error');
-      return;
-    }
-
     try {
       setCopyImageState('copying');
-      const blob = await toBlob(profileCardRef.current, {
-        cacheBust: true,
-        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
-      });
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
 
-      if (!blob) throw new Error('Image export failed');
+      // Strategy 1: Web Share API (works on Mobile Safari / iOS)
+      if (navigator.share && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        const dataUrl = await toPng(profileCardRef.current, { cacheBust: true, pixelRatio });
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], 'doctor-report.png', { type: 'image/png' });
 
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          [blob.type || 'image/png']: blob,
-        }),
-      ]);
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Portfolio Doctor' });
+          setCopyImageState('copied');
+          window.setTimeout(() => setCopyImageState('idle'), 2000);
+          return;
+        }
+      }
+
+      // Strategy 2: Clipboard API (desktop browsers)
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        const blob = await toBlob(profileCardRef.current, { cacheBust: true, pixelRatio });
+        if (!blob) throw new Error('Image export failed');
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type || 'image/png']: blob }),
+        ]);
+        setCopyImageState('copied');
+        window.setTimeout(() => setCopyImageState('idle'), 2000);
+        return;
+      }
+
+      // Strategy 3: Download fallback (any browser)
+      const dataUrl = await toPng(profileCardRef.current, { cacheBust: true, pixelRatio });
+      const link = document.createElement('a');
+      link.download = 'doctor-report.png';
+      link.href = dataUrl;
+      link.click();
       setCopyImageState('copied');
       window.setTimeout(() => setCopyImageState('idle'), 2000);
     } catch {
@@ -272,16 +290,16 @@ export function DoctorPage() {
                         <Button
                           variant="outline"
                           color="gray"
-                          leftSection={copyImageState === 'copied' ? <IconCheck size={16} /> : <IconDownload size={16} />}
+                          leftSection={copyImageState === 'copied' ? <IconCheck size={16} /> : <IconShare size={16} />}
                           onClick={handleCopyProfileImage}
                           radius="xl"
                           loading={copyImageState === 'copying'}
                         >
                           {copyImageState === 'copied'
-                            ? 'Immagine copiata'
+                            ? 'Fatto!'
                             : copyImageState === 'error'
-                              ? 'Copia non disponibile'
-                              : 'Copia immagine'}
+                              ? 'Non disponibile'
+                              : 'Condividi immagine'}
                         </Button>
                         {copilotAvailable && (
                           <Button
