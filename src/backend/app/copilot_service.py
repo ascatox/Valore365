@@ -425,8 +425,7 @@ def stream_copilot_response(
 
     except Exception as exc:
         logger.exception("Copilot streaming error")
-        error_event = json.dumps({"type": "error", "content": str(exc)}, ensure_ascii=False)
-        yield f"data: {error_event}\n\n"
+        yield _sse("error", _friendly_error(exc))
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +502,24 @@ def stream_copilot_response_agentic(
 
     except Exception as exc:
         logger.exception("Copilot agentic streaming error")
-        yield _sse("error", str(exc))
+        yield _sse("error", _friendly_error(exc))
+
+
+def _friendly_error(exc: Exception) -> str:
+    """Convert provider exceptions to user-friendly Italian messages."""
+    msg = str(exc).lower()
+    if "429" in msg or "rate" in msg or "quota" in msg or "resource_exhausted" in msg:
+        return (
+            "Limite di utilizzo API raggiunto. "
+            "Riprova tra qualche minuto oppure controlla il tuo piano sul provider AI."
+        )
+    if "401" in msg or "unauthorized" in msg or "invalid api key" in msg or "authentication" in msg:
+        return "Chiave API non valida o scaduta. Controlla la configurazione nelle impostazioni."
+    if "timeout" in msg or "timed out" in msg:
+        return "Il servizio AI non ha risposto in tempo. Riprova tra poco."
+    if "connection" in msg or "connect" in msg:
+        return "Impossibile raggiungere il servizio AI. Verifica la connessione."
+    return f"Errore dal servizio AI: {str(exc)[:200]}"
 
 
 def _sse(event_type: str, content: str) -> str:
