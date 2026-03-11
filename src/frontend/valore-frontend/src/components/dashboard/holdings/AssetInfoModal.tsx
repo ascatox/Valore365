@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Badge, Grid, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
+import { Badge, Divider, Grid, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconInfoCircle } from '@tabler/icons-react';
@@ -29,6 +29,10 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <Text size="sm" fw={500}>{value}</Text>
     </Group>
   );
+}
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt={4}>{children}</Text>;
 }
 
 function PriceHistoryChart({ data, currency }: { data: { date: string; close: number }[]; currency: string | null }) {
@@ -118,6 +122,8 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
     return () => { active = false; };
   }, [opened, assetId, symbol]);
 
+  const isFundLike = info?.asset_type === 'etf' || info?.asset_type === 'fund';
+
   return (
     <Modal
       opened={opened}
@@ -144,20 +150,23 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
         <Stack gap="md">
           {info.name && <Text fw={600} size="md">{info.name}</Text>}
 
-          {(info.asset_type || info.quote_type) && (
-            <Group gap="xs">
-              {info.asset_type && (
-                <Badge variant="light" color="blue" size="md">
-                  {info.asset_type.toUpperCase()}
-                </Badge>
-              )}
-              {info.quote_type && info.quote_type.toUpperCase() !== info.asset_type?.toUpperCase() && (
-                <Badge variant="outline" color="gray" size="sm">
-                  {info.quote_type}
-                </Badge>
-              )}
-            </Group>
-          )}
+          <Group gap="xs">
+            {info.asset_type && (
+              <Badge variant="light" color="blue" size="md">
+                {info.asset_type.toUpperCase()}
+              </Badge>
+            )}
+            {info.quote_type && info.quote_type.toUpperCase() !== info.asset_type?.toUpperCase() && (
+              <Badge variant="outline" color="gray" size="sm">
+                {info.quote_type}
+              </Badge>
+            )}
+            {info.category && (
+              <Badge variant="outline" color="teal" size="sm">
+                {info.category}
+              </Badge>
+            )}
+          </Group>
 
           {info.current_price != null && (
             <Group gap="sm" align="center">
@@ -175,6 +184,37 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
             </Group>
           )}
 
+          {/* --- Costi & Fondo (ETF/Fund) --- */}
+          {isFundLike && (info.expense_ratio != null || info.fund_family || info.total_assets != null) && (
+            <>
+              <Divider />
+              <SectionTitle>Costi e Fondo</SectionTitle>
+              <Grid gutter="md">
+                <Grid.Col span={6}>
+                  <Stack gap={6}>
+                    {info.expense_ratio != null && (
+                      <InfoRow label="TER" value={formatPct(info.expense_ratio * 100)} />
+                    )}
+                    {info.fund_family && <InfoRow label="Emittente" value={info.fund_family} />}
+                  </Stack>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Stack gap={6}>
+                    {info.total_assets != null && (
+                      <InfoRow label="AUM" value={formatMarketCap(info.total_assets)} />
+                    )}
+                    {info.dividend_yield != null && (
+                      <InfoRow label="Dist. Yield" value={formatPct(info.dividend_yield * 100)} />
+                    )}
+                  </Stack>
+                </Grid.Col>
+              </Grid>
+            </>
+          )}
+
+          {/* --- Fondamentali (Stock) --- */}
+          <Divider />
+          <SectionTitle>Fondamentali</SectionTitle>
           <Grid gutter="md">
             <Grid.Col span={6}>
               <Stack gap={6}>
@@ -189,12 +229,50 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                 <InfoRow label="Market Cap" value={formatMarketCap(info.market_cap)} />
                 {info.trailing_pe != null && <InfoRow label="P/E (TTM)" value={formatNum(info.trailing_pe)} />}
                 {info.forward_pe != null && <InfoRow label="P/E (Fwd)" value={formatNum(info.forward_pe)} />}
-                {info.dividend_yield != null && <InfoRow label="Div. Yield" value={formatPct(info.dividend_yield * 100)} />}
+                {!isFundLike && info.dividend_yield != null && (
+                  <InfoRow label="Div. Yield" value={formatPct(info.dividend_yield * 100)} />
+                )}
                 {info.beta != null && <InfoRow label="Beta" value={formatNum(info.beta)} />}
                 <InfoRow label="Vol. Medio" value={formatVolume(info.avg_volume)} />
               </Stack>
             </Grid.Col>
           </Grid>
+
+          {/* --- Range & Redditività --- */}
+          {(info.fifty_two_week_high != null || info.profit_margins != null || info.return_on_equity != null) && (
+            <>
+              <Divider />
+              <SectionTitle>Range e Margini</SectionTitle>
+              <Grid gutter="md">
+                <Grid.Col span={6}>
+                  <Stack gap={6}>
+                    {info.fifty_two_week_low != null && info.fifty_two_week_high != null && (
+                      <InfoRow
+                        label="52 sett."
+                        value={`${formatMoney(info.fifty_two_week_low, info.currency ?? 'USD')} – ${formatMoney(info.fifty_two_week_high, info.currency ?? 'USD')}`}
+                      />
+                    )}
+                    {info.revenue_growth != null && (
+                      <InfoRow label="Crescita ricavi" value={formatPct(info.revenue_growth * 100)} />
+                    )}
+                    {info.earnings_growth != null && (
+                      <InfoRow label="Crescita utili" value={formatPct(info.earnings_growth * 100)} />
+                    )}
+                  </Stack>
+                </Grid.Col>
+                <Grid.Col span={6}>
+                  <Stack gap={6}>
+                    {info.profit_margins != null && (
+                      <InfoRow label="Margine netto" value={formatPct(info.profit_margins * 100)} />
+                    )}
+                    {info.return_on_equity != null && (
+                      <InfoRow label="ROE" value={formatPct(info.return_on_equity * 100)} />
+                    )}
+                  </Stack>
+                </Grid.Col>
+              </Grid>
+            </>
+          )}
 
           {info.price_history_5y.length > 0 && (
             <PriceHistoryChart data={info.price_history_5y} currency={info.currency} />
@@ -203,6 +281,12 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
           {info.description && (
             <Text size="xs" c="dimmed" lineClamp={6} style={{ lineHeight: 1.5 }}>
               {info.description}
+            </Text>
+          )}
+
+          {info.website && (
+            <Text size="xs" c="blue" component="a" href={info.website} target="_blank" rel="noopener noreferrer">
+              {info.website}
             </Text>
           )}
         </Stack>

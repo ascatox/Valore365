@@ -31,6 +31,9 @@ class _FakeRepo:
     def batch_upsert_fx_rates_1d(self, **kwargs):
         self.fx_rows.extend(kwargs['rows'])
 
+    def get_latest_close_price(self, asset_id: int):
+        return None
+
 
 class _FakeSettings:
     finance_provider = 'yfinance'

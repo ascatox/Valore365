@@ -13,7 +13,7 @@ class _FakeRepo:
     def get_portfolio_created_date(self, portfolio_id: int, user_id: str) -> date:
         return self.created
 
-    def get_external_cashflows(self, portfolio_id: int, user_id: str, start_date: date | None = None, end_date: date | None = None):
+    def get_external_cashflows(self, portfolio_id: int, user_id: str, start_date: date | None = None, end_date: date | None = None, include_trades: bool = False):
         out: list[CashFlowEntry] = []
         for cf in self.cashflows:
             d = date.fromisoformat(cf.date)

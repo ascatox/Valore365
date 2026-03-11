@@ -416,6 +416,16 @@ export interface AssetInfo {
   day_change_pct: number | null;
   description: string | null;
   price_history_5y: AssetInfoPricePoint[];
+  expense_ratio: number | null;
+  fund_family: string | null;
+  total_assets: number | null;
+  category: string | null;
+  dividend_rate: number | null;
+  profit_margins: number | null;
+  return_on_equity: number | null;
+  revenue_growth: number | null;
+  earnings_growth: number | null;
+  website: string | null;
 }
 
 export interface AllocationItem {
