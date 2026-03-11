@@ -1,8 +1,32 @@
+import React, { useRef, useEffect } from 'react';
 import { Box, Paper, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconRobot } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
 
 const COPILOT_FONT = "'DM Sans', system-ui, sans-serif";
+
+/**
+ * After ReactMarkdown renders, inject data-label attributes on <td> elements
+ * so the CSS card layout on mobile can show column headers inline.
+ */
+function useTableDataLabels(ref: React.RefObject<HTMLDivElement | null>, content: string) {
+  useEffect(() => {
+    if (!ref.current) return;
+    const tables = ref.current.querySelectorAll('table');
+    tables.forEach((table) => {
+      const headers: string[] = [];
+      table.querySelectorAll('thead th').forEach((th) => {
+        headers.push(th.textContent?.trim() || '');
+      });
+      if (headers.length === 0) return;
+      table.querySelectorAll('tbody tr').forEach((tr) => {
+        tr.querySelectorAll('td').forEach((td, i) => {
+          if (headers[i]) td.setAttribute('data-label', headers[i]);
+        });
+      });
+    });
+  }, [ref, content]);
+}
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
@@ -16,6 +40,8 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isUser = role === 'user';
+  const mdRef = useRef<HTMLDivElement | null>(null);
+  useTableDataLabels(mdRef, content);
 
   const renderContent = () => {
     if (thinkingStatus && !content) {
@@ -64,6 +90,7 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
     // Assistant messages: render Markdown
     return (
       <Box
+        ref={mdRef}
         className="copilot-markdown"
         style={{
           fontFamily: COPILOT_FONT,
