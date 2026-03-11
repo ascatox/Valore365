@@ -33,6 +33,7 @@ import {
   IconEyeOff,
   IconShieldLock,
   IconDeviceMobile,
+  IconInfoCircle,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
@@ -48,6 +49,7 @@ const FirePage = lazy(() => import('./pages/Fire.page.tsx').then((module) => ({ 
 const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
 const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
 const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
+const AboutPage = lazy(() => import('./pages/About.page.tsx').then((module) => ({ default: module.AboutPage })));
 
 const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -160,7 +162,12 @@ function ProtectedApp() {
   }, []);
 
   useEffect(() => {
-    if (hasPortfolios === false && location.pathname !== '/portfolio' && !(isAdmin && location.pathname === '/admin')) {
+    if (
+      hasPortfolios === false
+      && location.pathname !== '/portfolio'
+      && location.pathname !== '/about'
+      && !(isAdmin && location.pathname === '/admin')
+    ) {
       navigate('/portfolio', { replace: true });
     }
   }, [hasPortfolios, isAdmin, location.pathname, navigate]);
@@ -335,6 +342,16 @@ function ProtectedApp() {
                 onClick={close}
             />
           </Tooltip>
+          <Tooltip label="About" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/about"
+                label={navbarExpanded ? 'About' : undefined}
+                leftSection={<IconInfoCircle size={16} />}
+                aria-label="About"
+                onClick={close}
+            />
+          </Tooltip>
           {isAdmin && (
             <Tooltip label="Admin" position="right" withArrow disabled={navbarExpanded}>
               <NavLink
@@ -395,6 +412,7 @@ function ProtectedApp() {
               <Route path="/doctor" element={<DoctorPage />} />
               <Route path="/fire" element={<FirePage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/about" element={<AboutPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Routes>
           </Container>
