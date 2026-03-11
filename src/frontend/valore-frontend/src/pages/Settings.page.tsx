@@ -356,6 +356,10 @@ export function SettingsPage() {
                   </Button>
                 )}
               </Group>
+
+              <Alert variant="light" color="yellow" style={{ maxWidth: 500 }}>
+                Quando usi il Copilot, i dati anonimi del tuo portafoglio (posizioni, valori, performance) vengono inviati al provider AI selezionato per l&apos;analisi. Nessun dato personale (nome, email, identificativi) viene condiviso.
+              </Alert>
             </Stack>
           </Paper>
         </Tabs.Panel>
