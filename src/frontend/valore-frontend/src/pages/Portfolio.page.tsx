@@ -79,7 +79,10 @@ export function PortfolioPage() {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(null);
+  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
+  });
   const [allocations, setAllocations] = useState<PortfolioTargetAllocationItem[]>([]);
   const [loadingPortfolios, setLoadingPortfolios] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
@@ -287,7 +290,10 @@ export function PortfolioPage() {
     setPortfolios(items);
     window.dispatchEvent(new CustomEvent('valore365:portfolios-changed', { detail: { count: items.length } }));
     setSelectedPortfolioId((prev) => {
-      const candidate = preferredSelectedId ?? prev;
+      const storedSelectedId = typeof window !== 'undefined'
+        ? window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId)
+        : null;
+      const candidate = preferredSelectedId ?? prev ?? storedSelectedId;
       const exists = candidate ? items.some((p) => String(p.id) === candidate) : false;
       const nextSelected = exists ? candidate : (items[0] ? String(items[0].id) : null);
       if (typeof window !== 'undefined') {
