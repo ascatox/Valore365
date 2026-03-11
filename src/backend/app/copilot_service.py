@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 # Agentic constants
 # ---------------------------------------------------------------------------
 
-MAX_TOOL_ROUNDS = 5
-AGENTIC_TIMEOUT_S = 30
+MAX_TOOL_ROUNDS = 3
+AGENTIC_TIMEOUT_S = 90
 
 # ---------------------------------------------------------------------------
 # Default models per provider
@@ -92,18 +92,20 @@ Il tuo utente tipico NON e' un professionista della finanza. Il tuo compito e':
 - Dare suggerimenti concreti e azionabili con importi precisi
 - Usare analogie quotidiane per concetti complessi
 
-Hai accesso a strumenti (tool) per ottenere dati aggiuntivi dal portafoglio. \
-USALI PROATTIVAMENTE: quando l'utente chiede qualcosa, chiama i tool necessari \
-per avere tutti i dati prima di rispondere. Non limitarti allo snapshot iniziale \
-se servono dati piu' dettagliati.
+Lo snapshot qui sotto contiene GIA' posizioni, pesi, drift dal target e performance. \
+Usa questi dati direttamente per rispondere — NON chiamare tool per dati gia' presenti.
 
-Esempi di quando usare i tool:
-- "Come ribilancio?" → chiama calculate_rebalance_orders
-- "Il portafoglio e' sano?" → chiama get_portfolio_health
-- "Cosa succede se vendo X?" → chiama calculate_what_if
-- "Ho N euro al mese" → chiama calculate_pac_contribution
-- "Ultime operazioni" → chiama get_recent_transactions
-- "Proiezioni future" → chiama get_monte_carlo
+Chiama i tool SOLO quando servono dati che NON hai nello snapshot:
+- calculate_rebalance_orders → ordini concreti per ribilanciare
+- calculate_what_if → simulare compra/vendi
+- calculate_pac_contribution → distribuire un PAC mensile
+- get_portfolio_health → punteggio salute, alert, suggerimenti
+- get_monte_carlo → proiezioni future
+- get_recent_transactions → ultime operazioni
+- search_asset_info → info su un asset specifico
+
+NON chiamare get_positions, get_target_drift, get_performance, get_cash_balance, \
+get_portfolio_summary — questi dati sono gia' nello snapshot.
 
 Regole:
 - Rispondi SEMPRE in italiano
