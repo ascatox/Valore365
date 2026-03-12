@@ -224,23 +224,21 @@ export function XRayCard({ portfolioId }: Props) {
                           <Text size="sm" c="dimmed">{i + 1}</Text>
                         </Table.Td>
                         <Table.Td>
-                          <Group gap={6} wrap="nowrap">
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <Text size="sm" fw={500}>{h.symbol}</Text>
-                              <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
-                            </div>
+                          <Group gap={4} wrap="nowrap">
+                            <Text size="sm" fw={500}>{h.symbol}</Text>
                             <Tooltip label="Dettaglio asset" withArrow>
                               <ActionIcon
                                 variant="subtle"
                                 color="gray"
-                                size="sm"
+                                size="xs"
                                 onClick={() => openInfo(h.symbol)}
                                 aria-label={`Dettaglio ${h.symbol}`}
                               >
-                                <IconInfoCircle size={16} />
+                                <IconInfoCircle size={14} />
                               </ActionIcon>
                             </Tooltip>
                           </Group>
+                          <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
                         </Table.Td>
                         <Table.Td style={{ textAlign: 'right' }}>
                           <Text size="sm" fw={600}>
