@@ -159,6 +159,8 @@ pac_service = PacExecutionService(engine)
 performance_service = PerformanceService(repo)
 scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service, historical_service, repo)
 finance_client = make_finance_client(settings)
+from .justetf_client import JustEtfClient
+justetf_client = JustEtfClient()
 
 CSV_IMPORT_ALLOWED_EXTENSIONS = (".csv", ".xlsx", ".xls")
 CSV_IMPORT_ALLOWED_CONTENT_TYPES = {
@@ -214,7 +216,39 @@ def _apply_pending_migrations():
                     updated_at timestamptz NOT NULL DEFAULT now()
                 )
             """))
-        logging.getLogger(__name__).info("asset_metadata table ensured")
+            # Create etf_enrichment if not exists
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS etf_enrichment (
+                    asset_id bigint PRIMARY KEY REFERENCES assets(id) ON DELETE CASCADE,
+                    isin text NOT NULL,
+                    name text,
+                    description text,
+                    index_tracked text,
+                    investment_focus text,
+                    country_weights jsonb,
+                    sector_weights jsonb,
+                    top_holdings jsonb,
+                    holdings_date text,
+                    replication_method text,
+                    distribution_policy text,
+                    distribution_frequency text,
+                    fund_currency text,
+                    currency_hedged boolean,
+                    domicile text,
+                    fund_provider text,
+                    fund_size_eur numeric,
+                    ter numeric,
+                    volatility_1y numeric,
+                    sustainability boolean,
+                    inception_date text,
+                    source text DEFAULT 'justetf',
+                    fetched_at timestamptz NOT NULL DEFAULT now()
+                )
+            """))
+            conn.execute(text("""
+                CREATE INDEX IF NOT EXISTS idx_etf_enrichment_isin ON etf_enrichment(isin)
+            """))
+        logging.getLogger(__name__).info("asset_metadata and etf_enrichment tables ensured")
     except Exception as exc:
         logging.getLogger(__name__).warning("Migration check failed: %s", exc)
 
@@ -763,6 +797,61 @@ def refresh_all_asset_metadata(
         except Exception as exc:
             errors.append({"asset_id": pa.asset_id, "symbol": pa.symbol, "error": str(exc)})
     return {"updated": updated, "errors": errors}
+
+
+# --- ETF Enrichment (justETF) ---
+
+@router.get("/assets/{asset_id}/etf-enrichment")
+def get_etf_enrichment(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)):
+    """Get stored justETF enrichment data for an asset."""
+    data = repo.get_etf_enrichment(asset_id)
+    if data is None:
+        raise AppError(code="not_found", message="Nessun dato ETF enrichment trovato", status_code=404)
+    return data
+
+
+@router.post("/assets/{asset_id}/etf-enrichment/refresh")
+def refresh_etf_enrichment(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)):
+    """Fetch fresh ETF data from justETF and store it. Requires ISIN."""
+    # Try to find the ISIN: check asset_metadata.raw_info first, then asset symbol
+    isin: str | None = None
+
+    # Check raw_info from yfinance metadata
+    meta = repo.get_asset_metadata(asset_id)
+    if meta and meta.raw_info:
+        raw = meta.raw_info if isinstance(meta.raw_info, dict) else {}
+        isin = raw.get("isin") or raw.get("ISIN")
+
+    # Fallback: check if the asset symbol itself is an ISIN (12 chars, starts with 2 letters)
+    if not isin:
+        try:
+            pa = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
+            symbol = pa.symbol
+            if len(symbol) == 12 and symbol[:2].isalpha():
+                isin = symbol
+        except ValueError:
+            pass
+
+    if not isin:
+        raise AppError(
+            code="bad_request",
+            message="ISIN non trovato per questo asset. Necessario per justETF lookup.",
+            status_code=400,
+        )
+
+    data = justetf_client.fetch_profile(isin)
+    if data is None:
+        raise AppError(
+            code="provider_error",
+            message=f"Impossibile ottenere dati da justETF per ISIN {isin}",
+            status_code=502,
+        )
+
+    repo.upsert_etf_enrichment(asset_id, isin, data)
+    result = repo.get_etf_enrichment(asset_id)
+    if result is None:
+        raise AppError(code="internal_error", message="ETF enrichment non salvato", status_code=500)
+    return result
 
 
 @router.post(

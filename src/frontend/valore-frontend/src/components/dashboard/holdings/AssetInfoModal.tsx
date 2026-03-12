@@ -1,11 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Badge, Divider, Grid, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
+import { ActionIcon, Badge, Button, Divider, Grid, Group, Loader, Modal, Paper, Progress, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
-import { IconInfoCircle } from '@tabler/icons-react';
-import type { AssetInfo } from '../../../services/api';
-import { getAssetInfo, getMarketSymbolInfo } from '../../../services/api';
+import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
+import type { AssetInfo, EtfEnrichment } from '../../../services/api';
+import { getAssetInfo, getMarketSymbolInfo, getEtfEnrichment, refreshEtfEnrichment } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
 function formatMarketCap(value: number | null): string {
@@ -35,6 +35,36 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt={4}>{children}</Text>;
 }
+
+function WeightBar({ items, colorMap }: { items: { name: string; percentage: number }[]; colorMap: string[] }) {
+  const top = items.slice(0, 8);
+  const otherPct = items.slice(8).reduce((s, i) => s + i.percentage, 0);
+  return (
+    <Stack gap={4}>
+      {top.map((item, i) => (
+        <Group key={item.name} justify="space-between" gap="xs" wrap="nowrap">
+          <Group gap={6} wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: colorMap[i % colorMap.length], flexShrink: 0 }} />
+            <Text size="xs" truncate style={{ flex: 1 }}>{item.name}</Text>
+          </Group>
+          <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+            <Progress value={item.percentage} size="xs" color={colorMap[i % colorMap.length]} style={{ width: 50 }} />
+            <Text size="xs" fw={500} w={42} ta="right">{formatNum(item.percentage, 1)}%</Text>
+          </Group>
+        </Group>
+      ))}
+      {otherPct > 0.1 && (
+        <Group justify="space-between" gap="xs">
+          <Text size="xs" c="dimmed">Altro</Text>
+          <Text size="xs" fw={500}>{formatNum(otherPct, 1)}%</Text>
+        </Group>
+      )}
+    </Stack>
+  );
+}
+
+const COUNTRY_COLORS = ['#228be6', '#40c057', '#fab005', '#fa5252', '#be4bdb', '#15aabf', '#fd7e14', '#74c0fc'];
+const SECTOR_COLORS = ['#7048e8', '#12b886', '#e8590c', '#4263eb', '#f06595', '#20c997', '#845ef7', '#fcc419'];
 
 function PriceHistoryChart({ data, currency }: { data: { date: string; close: number }[]; currency: string | null }) {
   const theme = useMantineTheme();
@@ -110,12 +140,18 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // ETF enrichment state
+  const [enrichment, setEnrichment] = useState<EtfEnrichment | null>(null);
+  const [enrichLoading, setEnrichLoading] = useState(false);
+  const [enrichRefreshing, setEnrichRefreshing] = useState(false);
+
   useEffect(() => {
     if (!opened) return;
     let active = true;
     setLoading(true);
     setError(null);
     setInfo(null);
+    setEnrichment(null);
     const fetcher = assetId != null ? getAssetInfo(assetId) : getMarketSymbolInfo(symbol);
     fetcher
       .then((data) => { if (active) setInfo(data); })
@@ -124,7 +160,31 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
     return () => { active = false; };
   }, [opened, assetId, symbol]);
 
+  // Fetch enrichment data when we have an ETF with asset_id
+  useEffect(() => {
+    if (!info) return;
+    const isFund = info.asset_type === 'etf' || info.asset_type === 'fund';
+    if (!isFund || info.asset_id == null) return;
+    let active = true;
+    setEnrichLoading(true);
+    getEtfEnrichment(info.asset_id)
+      .then((data) => { if (active) setEnrichment(data); })
+      .catch(() => {})
+      .finally(() => { if (active) setEnrichLoading(false); });
+    return () => { active = false; };
+  }, [info]);
+
+  const handleRefreshEnrichment = () => {
+    if (!info?.asset_id || enrichRefreshing) return;
+    setEnrichRefreshing(true);
+    refreshEtfEnrichment(info.asset_id)
+      .then((data) => setEnrichment(data))
+      .catch(() => {})
+      .finally(() => setEnrichRefreshing(false));
+  };
+
   const isFundLike = info?.asset_type === 'etf' || info?.asset_type === 'fund';
+  const hasEnrichment = enrichment != null;
 
   return (
     <Modal
@@ -170,6 +230,16 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                 {info.category}
               </Badge>
             )}
+            {enrichment?.replication_method && (
+              <Badge variant="outline" color="violet" size="sm">
+                {enrichment.replication_method}
+              </Badge>
+            )}
+            {enrichment?.distribution_policy && (
+              <Badge variant="outline" color="orange" size="sm">
+                {enrichment.distribution_policy}
+              </Badge>
+            )}
           </Group>
 
           {info.current_price != null && (
@@ -189,30 +259,140 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
           )}
 
           {/* --- Costi & Fondo (ETF/Fund) --- */}
-          {isFundLike && (info.expense_ratio != null || info.fund_family || info.total_assets != null) && (
+          {isFundLike && (info.expense_ratio != null || info.fund_family || info.total_assets != null || hasEnrichment) && (
             <>
               <Divider />
-              <SectionTitle>Costi e Fondo</SectionTitle>
+              <Group justify="space-between" align="center">
+                <SectionTitle>Costi e Fondo</SectionTitle>
+                {isFundLike && info.asset_id != null && (
+                  <Tooltip label={hasEnrichment ? 'Aggiorna dati justETF' : 'Carica dati da justETF'}>
+                    <ActionIcon
+                      variant="subtle"
+                      size="xs"
+                      loading={enrichRefreshing || enrichLoading}
+                      onClick={handleRefreshEnrichment}
+                    >
+                      <IconRefresh size={14} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </Group>
               <Grid gutter="md">
                 <Grid.Col span={6}>
                   <Stack gap={6}>
-                    {info.expense_ratio != null && (
-                      <InfoRow label="TER" value={formatPct(info.expense_ratio * 100)} />
+                    {(enrichment?.ter != null || info.expense_ratio != null) && (
+                      <InfoRow
+                        label="TER"
+                        value={enrichment?.ter != null
+                          ? formatPct(enrichment.ter * 100)
+                          : formatPct(info.expense_ratio! * 100)
+                        }
+                      />
                     )}
-                    {info.fund_family && <InfoRow label="Emittente" value={info.fund_family} />}
+                    {(enrichment?.fund_provider || info.fund_family) && (
+                      <InfoRow label="Emittente" value={enrichment?.fund_provider || info.fund_family!} />
+                    )}
+                    {enrichment?.domicile && <InfoRow label="Domicilio" value={enrichment.domicile} />}
+                    {enrichment?.inception_date && <InfoRow label="Lancio" value={enrichment.inception_date} />}
                   </Stack>
                 </Grid.Col>
                 <Grid.Col span={6}>
                   <Stack gap={6}>
-                    {info.total_assets != null && (
-                      <InfoRow label="AUM" value={formatMarketCap(info.total_assets)} />
+                    {(enrichment?.fund_size_eur != null || info.total_assets != null) && (
+                      <InfoRow
+                        label="AUM"
+                        value={enrichment?.fund_size_eur != null
+                          ? formatMarketCap(enrichment.fund_size_eur)
+                          : formatMarketCap(info.total_assets)
+                        }
+                      />
                     )}
                     {info.dividend_yield != null && (
                       <InfoRow label="Dist. Yield" value={formatPct(info.dividend_yield * 100)} />
                     )}
+                    {enrichment?.fund_currency && <InfoRow label="Valuta fondo" value={enrichment.fund_currency} />}
+                    {enrichment?.volatility_1y != null && (
+                      <InfoRow label="Volatilità 1Y" value={formatPct(enrichment.volatility_1y * 100)} />
+                    )}
+                    {enrichment?.currency_hedged != null && (
+                      <InfoRow label="Hedging valuta" value={enrichment.currency_hedged ? 'Sì' : 'No'} />
+                    )}
                   </Stack>
                 </Grid.Col>
               </Grid>
+              {enrichment?.index_tracked && (
+                <InfoRow label="Indice replicato" value={enrichment.index_tracked} />
+              )}
+            </>
+          )}
+
+          {/* --- Esposizione Geografica (justETF) --- */}
+          {hasEnrichment && enrichment.country_weights && enrichment.country_weights.length > 0 && (
+            <>
+              <Divider />
+              <SectionTitle>Esposizione Geografica</SectionTitle>
+              <WeightBar items={enrichment.country_weights} colorMap={COUNTRY_COLORS} />
+            </>
+          )}
+
+          {/* --- Settori (justETF) --- */}
+          {hasEnrichment && enrichment.sector_weights && enrichment.sector_weights.length > 0 && (
+            <>
+              <Divider />
+              <SectionTitle>Settori</SectionTitle>
+              <WeightBar items={enrichment.sector_weights} colorMap={SECTOR_COLORS} />
+            </>
+          )}
+
+          {/* --- Top Holdings (justETF) --- */}
+          {hasEnrichment && enrichment.top_holdings && enrichment.top_holdings.length > 0 && (
+            <>
+              <Divider />
+              <Group justify="space-between" align="center">
+                <SectionTitle>Top Holdings</SectionTitle>
+                {enrichment.holdings_date && (
+                  <Text size="xs" c="dimmed">{enrichment.holdings_date}</Text>
+                )}
+              </Group>
+              <Table striped highlightOnHover withTableBorder size="xs">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Nome</Table.Th>
+                    <Table.Th ta="right">Peso</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {enrichment.top_holdings.slice(0, 10).map((h, i) => (
+                    <Table.Tr key={i}>
+                      <Table.Td>
+                        <Text size="xs" truncate>{h.name ?? 'N/D'}</Text>
+                        {h.isin && <Text size="xs" c="dimmed">{h.isin}</Text>}
+                      </Table.Td>
+                      <Table.Td ta="right">
+                        <Text size="xs" fw={500}>
+                          {h.percentage != null ? `${formatNum(h.percentage, 2)}%` : 'N/D'}
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </>
+          )}
+
+          {/* --- Enrichment CTA when no data yet --- */}
+          {isFundLike && !hasEnrichment && !enrichLoading && info.asset_id != null && (
+            <>
+              <Divider />
+              <Button
+                variant="light"
+                size="xs"
+                leftSection={<IconRefresh size={14} />}
+                loading={enrichRefreshing}
+                onClick={handleRefreshEnrichment}
+              >
+                Carica dettagli ETF da justETF
+              </Button>
             </>
           )}
 
@@ -282,15 +462,21 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
             <PriceHistoryChart data={info.price_history_5y} currency={info.currency} />
           )}
 
-          {info.description && (
+          {(enrichment?.description || info.description) && (
             <Text size="xs" c="dimmed" lineClamp={6} style={{ lineHeight: 1.5 }}>
-              {info.description}
+              {enrichment?.description || info.description}
             </Text>
           )}
 
           {info.website && (
             <Text size="xs" c="blue" component="a" href={info.website} target="_blank" rel="noopener noreferrer">
               {info.website}
+            </Text>
+          )}
+
+          {hasEnrichment && enrichment.fetched_at && (
+            <Text size="xs" c="dimmed" ta="right">
+              justETF aggiornato: {new Date(enrichment.fetched_at).toLocaleDateString('it-IT')}
             </Text>
           )}
         </Stack>

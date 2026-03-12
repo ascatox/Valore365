@@ -1184,6 +1184,59 @@ export const getMarketSymbolInfo = async (symbol: string): Promise<AssetInfo> =>
   return apiFetch<AssetInfo>(`/markets/symbol-info?symbol=${encodeURIComponent(symbol)}`);
 };
 
+// --- ETF Enrichment (justETF) ---
+
+export interface EtfEnrichmentWeight {
+  name: string;
+  percentage: number;
+}
+
+export interface EtfEnrichmentHolding {
+  name?: string;
+  percentage?: number;
+  isin?: string;
+}
+
+export interface EtfEnrichment {
+  asset_id: number;
+  isin: string;
+  name: string | null;
+  description: string | null;
+  index_tracked: string | null;
+  investment_focus: string | null;
+  country_weights: EtfEnrichmentWeight[] | null;
+  sector_weights: EtfEnrichmentWeight[] | null;
+  top_holdings: EtfEnrichmentHolding[] | null;
+  holdings_date: string | null;
+  replication_method: string | null;
+  distribution_policy: string | null;
+  distribution_frequency: string | null;
+  fund_currency: string | null;
+  currency_hedged: boolean | null;
+  domicile: string | null;
+  fund_provider: string | null;
+  fund_size_eur: number | null;
+  ter: number | null;
+  volatility_1y: number | null;
+  sustainability: boolean | null;
+  inception_date: string | null;
+  source: string | null;
+  fetched_at: string | null;
+}
+
+export const getEtfEnrichment = async (assetId: number): Promise<EtfEnrichment | null> => {
+  try {
+    return await apiFetch<EtfEnrichment>(`/assets/${assetId}/etf-enrichment`);
+  } catch (err) {
+    if (err instanceof ApiRequestError && err.status === 404) return null;
+    throw err;
+  }
+};
+
+export const refreshEtfEnrichment = async (assetId: number): Promise<EtfEnrichment> => {
+  return apiFetch<EtfEnrichment>(`/assets/${assetId}/etf-enrichment/refresh`, { method: 'POST' });
+};
+
 export const getPortfolioDataCoverage = async (
   portfolioId: number,
   days = 365,

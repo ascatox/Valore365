@@ -3831,3 +3831,189 @@ class PortfolioRepository:
                 updated_at=row["updated_at"],
             )
         return result
+
+    # --- ETF Enrichment (justETF) ---
+
+    def upsert_etf_enrichment(self, asset_id: int, isin: str, data: dict) -> None:
+        """Insert or update ETF enrichment data from justETF."""
+        import json as _json
+        with self.engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO etf_enrichment (
+                        asset_id, isin, name, description, index_tracked, investment_focus,
+                        country_weights, sector_weights, top_holdings, holdings_date,
+                        replication_method, distribution_policy, distribution_frequency,
+                        fund_currency, currency_hedged, domicile, fund_provider,
+                        fund_size_eur, ter, volatility_1y, sustainability, inception_date,
+                        source, fetched_at
+                    ) VALUES (
+                        :asset_id, :isin, :name, :description, :index_tracked, :investment_focus,
+                        :country_weights::jsonb, :sector_weights::jsonb, :top_holdings::jsonb, :holdings_date,
+                        :replication_method, :distribution_policy, :distribution_frequency,
+                        :fund_currency, :currency_hedged, :domicile, :fund_provider,
+                        :fund_size_eur, :ter, :volatility_1y, :sustainability, :inception_date,
+                        :source, now()
+                    )
+                    ON CONFLICT (asset_id) DO UPDATE SET
+                        isin = EXCLUDED.isin,
+                        name = EXCLUDED.name,
+                        description = EXCLUDED.description,
+                        index_tracked = EXCLUDED.index_tracked,
+                        investment_focus = EXCLUDED.investment_focus,
+                        country_weights = EXCLUDED.country_weights,
+                        sector_weights = EXCLUDED.sector_weights,
+                        top_holdings = EXCLUDED.top_holdings,
+                        holdings_date = EXCLUDED.holdings_date,
+                        replication_method = EXCLUDED.replication_method,
+                        distribution_policy = EXCLUDED.distribution_policy,
+                        distribution_frequency = EXCLUDED.distribution_frequency,
+                        fund_currency = EXCLUDED.fund_currency,
+                        currency_hedged = EXCLUDED.currency_hedged,
+                        domicile = EXCLUDED.domicile,
+                        fund_provider = EXCLUDED.fund_provider,
+                        fund_size_eur = EXCLUDED.fund_size_eur,
+                        ter = EXCLUDED.ter,
+                        volatility_1y = EXCLUDED.volatility_1y,
+                        sustainability = EXCLUDED.sustainability,
+                        inception_date = EXCLUDED.inception_date,
+                        source = EXCLUDED.source,
+                        fetched_at = now()
+                """),
+                {
+                    "asset_id": asset_id,
+                    "isin": isin,
+                    "name": data.get("name"),
+                    "description": data.get("description"),
+                    "index_tracked": data.get("index_tracked"),
+                    "investment_focus": data.get("investment_focus"),
+                    "country_weights": _json.dumps(data.get("country_weights")) if data.get("country_weights") else None,
+                    "sector_weights": _json.dumps(data.get("sector_weights")) if data.get("sector_weights") else None,
+                    "top_holdings": _json.dumps(data.get("top_holdings")) if data.get("top_holdings") else None,
+                    "holdings_date": data.get("holdings_date"),
+                    "replication_method": data.get("replication_method"),
+                    "distribution_policy": data.get("distribution_policy"),
+                    "distribution_frequency": data.get("distribution_frequency"),
+                    "fund_currency": data.get("fund_currency"),
+                    "currency_hedged": data.get("currency_hedged"),
+                    "domicile": data.get("domicile"),
+                    "fund_provider": data.get("fund_provider"),
+                    "fund_size_eur": data.get("fund_size_eur"),
+                    "ter": data.get("ter"),
+                    "volatility_1y": data.get("volatility_1y"),
+                    "sustainability": data.get("sustainability"),
+                    "inception_date": data.get("inception_date"),
+                    "source": data.get("source", "justetf"),
+                },
+            )
+
+    def get_etf_enrichment(self, asset_id: int) -> dict | None:
+        """Get ETF enrichment data for a single asset."""
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT asset_id, isin, name, description, index_tracked, investment_focus,
+                           country_weights, sector_weights, top_holdings, holdings_date,
+                           replication_method, distribution_policy, distribution_frequency,
+                           fund_currency, currency_hedged, domicile, fund_provider,
+                           fund_size_eur, ter, volatility_1y, sustainability, inception_date,
+                           source, fetched_at
+                    FROM etf_enrichment
+                    WHERE asset_id = :asset_id
+                """),
+                {"asset_id": asset_id},
+            ).mappings().fetchone()
+
+        if row is None:
+            return None
+
+        return {
+            "asset_id": int(row["asset_id"]),
+            "isin": row["isin"],
+            "name": row["name"],
+            "description": row["description"],
+            "index_tracked": row["index_tracked"],
+            "investment_focus": row["investment_focus"],
+            "country_weights": row["country_weights"],
+            "sector_weights": row["sector_weights"],
+            "top_holdings": row["top_holdings"],
+            "holdings_date": row["holdings_date"],
+            "replication_method": row["replication_method"],
+            "distribution_policy": row["distribution_policy"],
+            "distribution_frequency": row["distribution_frequency"],
+            "fund_currency": row["fund_currency"],
+            "currency_hedged": row["currency_hedged"],
+            "domicile": row["domicile"],
+            "fund_provider": row["fund_provider"],
+            "fund_size_eur": float(row["fund_size_eur"]) if row["fund_size_eur"] is not None else None,
+            "ter": float(row["ter"]) if row["ter"] is not None else None,
+            "volatility_1y": float(row["volatility_1y"]) if row["volatility_1y"] is not None else None,
+            "sustainability": row["sustainability"],
+            "inception_date": row["inception_date"],
+            "source": row["source"],
+            "fetched_at": row["fetched_at"].isoformat() if row["fetched_at"] else None,
+        }
+
+    def get_etf_enrichment_bulk(self, asset_ids: list[int]) -> dict[int, dict]:
+        """Get ETF enrichment data for multiple assets."""
+        if not asset_ids:
+            return {}
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT asset_id, isin, name, description, index_tracked, investment_focus,
+                           country_weights, sector_weights, top_holdings, holdings_date,
+                           replication_method, distribution_policy, distribution_frequency,
+                           fund_currency, currency_hedged, domicile, fund_provider,
+                           fund_size_eur, ter, volatility_1y, sustainability, inception_date,
+                           source, fetched_at
+                    FROM etf_enrichment
+                    WHERE asset_id = ANY(:ids)
+                """),
+                {"ids": asset_ids},
+            ).mappings().all()
+
+        result = {}
+        for row in rows:
+            aid = int(row["asset_id"])
+            result[aid] = {
+                "asset_id": aid,
+                "isin": row["isin"],
+                "name": row["name"],
+                "description": row["description"],
+                "index_tracked": row["index_tracked"],
+                "investment_focus": row["investment_focus"],
+                "country_weights": row["country_weights"],
+                "sector_weights": row["sector_weights"],
+                "top_holdings": row["top_holdings"],
+                "holdings_date": row["holdings_date"],
+                "replication_method": row["replication_method"],
+                "distribution_policy": row["distribution_policy"],
+                "distribution_frequency": row["distribution_frequency"],
+                "fund_currency": row["fund_currency"],
+                "currency_hedged": row["currency_hedged"],
+                "domicile": row["domicile"],
+                "fund_provider": row["fund_provider"],
+                "fund_size_eur": float(row["fund_size_eur"]) if row["fund_size_eur"] is not None else None,
+                "ter": float(row["ter"]) if row["ter"] is not None else None,
+                "volatility_1y": float(row["volatility_1y"]) if row["volatility_1y"] is not None else None,
+                "sustainability": row["sustainability"],
+                "inception_date": row["inception_date"],
+                "source": row["source"],
+                "fetched_at": row["fetched_at"].isoformat() if row["fetched_at"] else None,
+            }
+        return result
+
+    def get_stale_etf_enrichments(self, max_age_days: int = 30) -> list[tuple[int, str]]:
+        """Get asset_id + ISIN pairs where enrichment data is stale."""
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text("""
+                    SELECT e.asset_id, e.isin
+                    FROM etf_enrichment e
+                    WHERE e.fetched_at < now() - make_interval(days => :max_age)
+                    ORDER BY e.fetched_at ASC
+                """),
+                {"max_age": max_age_days},
+            ).fetchall()
+        return [(int(r[0]), str(r[1])) for r in rows]
