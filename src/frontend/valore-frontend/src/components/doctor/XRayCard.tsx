@@ -17,9 +17,11 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconChevronDown, IconChevronRight, IconSearch } from '@tabler/icons-react';
 import { usePortfolioXray } from '../dashboard/hooks/queries';
 import { STORAGE_KEYS } from '../dashboard/constants';
+import type { XRayHolding } from '../../services/api';
 
 const PRIVACY_MASK = '******';
 
@@ -32,11 +34,59 @@ interface Props {
   portfolioId: number | null;
 }
 
+/* ---- Mobile card for a single aggregated holding ---- */
+function HoldingCard({
+  holding,
+  rank,
+  privacy,
+  isDark,
+  theme,
+}: {
+  holding: XRayHolding;
+  rank: number;
+  privacy: boolean;
+  isDark: boolean;
+  theme: ReturnType<typeof useMantineTheme>;
+}) {
+  return (
+    <Box
+      px="sm"
+      py="xs"
+      style={{
+        borderRadius: 10,
+        border: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}`,
+        background: isDark ? theme.colors.dark[6] : theme.colors.gray[0],
+      }}
+    >
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Group gap={6} wrap="nowrap">
+            <Text size="xs" c="dimmed" fw={700}>{rank}</Text>
+            <Text size="sm" fw={600} lineClamp={1}>{holding.symbol}</Text>
+          </Group>
+          <Text size="xs" c="dimmed" lineClamp={1}>{holding.name}</Text>
+        </div>
+        <Text size="sm" fw={700} style={{ flexShrink: 0 }}>
+          {privacy ? PRIVACY_MASK : `${holding.aggregated_weight_pct.toFixed(2)}%`}
+        </Text>
+      </Group>
+      {holding.etf_contributors.length > 0 && (
+        <Group gap={4} mt={4} wrap="wrap">
+          {holding.etf_contributors.map((etf) => (
+            <Badge key={etf} size="xs" variant="light" color="gray">{etf}</Badge>
+          ))}
+        </Group>
+      )}
+    </Box>
+  );
+}
+
 export function XRayCard({ portfolioId }: Props) {
   const { data: xray, isLoading, error } = usePortfolioXray(portfolioId);
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [expandedEtf, setExpandedEtf] = useState<string | null>(null);
   const privacy = isPrivacyModeEnabled();
 
@@ -96,49 +146,67 @@ export function XRayCard({ portfolioId }: Props) {
           </Group>
         </Group>
 
-        {/* Aggregated holdings table */}
+        {/* Aggregated holdings */}
         {xray.aggregated_holdings.length > 0 && (
           <Box>
             <Text size="sm" fw={600} mb="xs">
               Top titoli sottostanti (aggregati da tutti gli ETF)
             </Text>
-            <Table withTableBorder withColumnBorders highlightOnHover style={{ tableLayout: 'fixed' }}>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th style={{ width: 50 }}>#</Table.Th>
-                  <Table.Th>Titolo</Table.Th>
-                  <Table.Th style={{ width: 100, textAlign: 'right' }}>Peso</Table.Th>
-                  <Table.Th style={{ width: 180 }}>Presente in</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
+
+            {isMobile ? (
+              /* ---- Mobile: card layout ---- */
+              <Stack gap="xs">
                 {xray.aggregated_holdings.map((h, i) => (
-                  <Table.Tr key={h.symbol}>
-                    <Table.Td>
-                      <Text size="sm" c="dimmed">{i + 1}</Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Text size="sm" fw={500}>{h.symbol}</Text>
-                      <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
-                    </Table.Td>
-                    <Table.Td style={{ textAlign: 'right' }}>
-                      <Text size="sm" fw={600}>
-                        {privacy ? PRIVACY_MASK : `${h.aggregated_weight_pct.toFixed(2)}%`}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td>
-                      <Group gap={4} wrap="wrap">
-                        {h.etf_contributors.map((etf) => (
-                          <Badge key={etf} size="xs" variant="light" color="gray">
-                            {etf}
-                          </Badge>
-                        ))}
-                      </Group>
-                    </Table.Td>
-                  </Table.Tr>
+                  <HoldingCard
+                    key={h.symbol}
+                    holding={h}
+                    rank={i + 1}
+                    privacy={privacy}
+                    isDark={isDark}
+                    theme={theme}
+                  />
                 ))}
-              </Table.Tbody>
-            </Table>
+              </Stack>
+            ) : (
+              /* ---- Desktop: table layout ---- */
+              <Table withTableBorder withColumnBorders highlightOnHover style={{ tableLayout: 'fixed' }}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th style={{ width: 50 }}>#</Table.Th>
+                    <Table.Th>Titolo</Table.Th>
+                    <Table.Th style={{ width: 100, textAlign: 'right' }}>Peso</Table.Th>
+                    <Table.Th style={{ width: 180 }}>Presente in</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {xray.aggregated_holdings.map((h, i) => (
+                    <Table.Tr key={h.symbol}>
+                      <Table.Td>
+                        <Text size="sm" c="dimmed">{i + 1}</Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Text size="sm" fw={500}>{h.symbol}</Text>
+                        <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
+                      </Table.Td>
+                      <Table.Td style={{ textAlign: 'right' }}>
+                        <Text size="sm" fw={600}>
+                          {privacy ? PRIVACY_MASK : `${h.aggregated_weight_pct.toFixed(2)}%`}
+                        </Text>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} wrap="wrap">
+                          {h.etf_contributors.map((etf) => (
+                            <Badge key={etf} size="xs" variant="light" color="gray">
+                              {etf}
+                            </Badge>
+                          ))}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            )}
           </Box>
         )}
 
@@ -169,15 +237,15 @@ export function XRayCard({ portfolioId }: Props) {
                         background: isDark ? theme.colors.dark[6] : theme.colors.gray[0],
                       }}
                     >
-                      <Group justify="space-between" wrap="nowrap">
+                      <Group justify="space-between" wrap={isMobile ? 'wrap' : 'nowrap'}>
                         <Group gap="sm" wrap="nowrap">
                           {isExpanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
                           <div>
                             <Text size="sm" fw={600}>{etf.symbol}</Text>
-                            <Text size="xs" c="dimmed">{etf.name}</Text>
+                            <Text size="xs" c="dimmed" lineClamp={1}>{etf.name}</Text>
                           </div>
                         </Group>
-                        <Group gap="xs">
+                        <Group gap="xs" wrap="wrap">
                           <Badge size="sm" variant="light" color="blue">
                             {privacy ? PRIVACY_MASK : `${etf.portfolio_weight_pct.toFixed(1)}%`} del portafoglio
                           </Badge>
