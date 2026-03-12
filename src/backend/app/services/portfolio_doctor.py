@@ -1274,18 +1274,20 @@ def compute_portfolio_xray(
     if not holdings:
         raise ValueError("Portafoglio non trovato o vuoto")
 
-    etf_holdings = [h for h in holdings if h.asset_type.lower() in {"etf", "fund"}]
+    # Skip obvious non-fund assets (cash) but try ALL others,
+    # because many ETFs are mis-classified as "stock" in the DB.
+    candidates = [h for h in holdings if h.asset_type.lower() not in {"cash"}]
 
-    # Resolve provider symbols for ETFs
+    # Resolve provider symbols
     provider_symbols: dict[int, str] = {}
-    for h in etf_holdings:
+    for h in candidates:
         try:
             pricing = repo.get_asset_pricing_symbol(h.asset_id, provider="yfinance")
             provider_symbols[h.asset_id] = pricing.provider_symbol
         except Exception:
             provider_symbols[h.asset_id] = h.symbol
 
-    # Fetch holdings for each ETF using ThreadPoolExecutor for parallel calls
+    # Fetch holdings for each candidate using ThreadPoolExecutor
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     etf_raw_holdings: dict[int, list] = {}
@@ -1296,14 +1298,18 @@ def compute_portfolio_xray(
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {
             executor.submit(fetch_one, h.asset_id, provider_symbols[h.asset_id]): h
-            for h in etf_holdings
+            for h in candidates
         }
         for future in as_completed(futures):
             try:
                 aid, result = future.result()
-                etf_raw_holdings[aid] = result
+                if result:  # only keep assets that actually have holdings (= ETFs/funds)
+                    etf_raw_holdings[aid] = result
             except Exception:
                 pass
+
+    # The real ETF list is determined by which assets returned holdings data
+    etf_holdings = [h for h in candidates if h.asset_id in etf_raw_holdings]
 
     # Build per-ETF details and aggregate
     aggregated: dict[str, dict] = defaultdict(lambda: {"name": "", "weight": 0.0, "contributors": []})
@@ -1311,10 +1317,8 @@ def compute_portfolio_xray(
     covered_weight = 0.0
 
     for h in etf_holdings:
-        raw = etf_raw_holdings.get(h.asset_id, [])
-        has_data = len(raw) > 0
-        if has_data:
-            covered_weight += h.weight_pct
+        raw = etf_raw_holdings[h.asset_id]
+        covered_weight += h.weight_pct
 
         detail_holdings = []
         for rh in raw:
@@ -1333,7 +1337,7 @@ def compute_portfolio_xray(
             symbol=h.symbol,
             name=h.name,
             portfolio_weight_pct=round(h.weight_pct, 2),
-            holdings_available=has_data,
+            holdings_available=True,
             top_holdings=detail_holdings,
         ))
 
