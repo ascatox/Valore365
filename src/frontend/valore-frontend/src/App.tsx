@@ -299,16 +299,6 @@ function ProtectedApp() {
                 onClick={close}
             />
           </Tooltip>
-          <Tooltip label="Portfolio" position="right" withArrow disabled={navbarExpanded}>
-            <NavLink
-                component={Link}
-                to="/portfolio"
-                label={navbarExpanded ? 'Portfolio' : undefined}
-                leftSection={<IconBriefcase size={16} />}
-                aria-label="Portfolio"
-                onClick={close}
-            />
-          </Tooltip>
           <Tooltip label="Doctor" position="right" withArrow disabled={navbarExpanded}>
             <NavLink
                 component={Link}
@@ -317,6 +307,16 @@ function ProtectedApp() {
                 leftSection={<IconHeartRateMonitor size={16} />}
                 aria-label="Doctor"
                 disabled={lockNonPortfolioNavigation}
+                onClick={close}
+            />
+          </Tooltip>
+          <Tooltip label="Portfolio" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/portfolio"
+                label={navbarExpanded ? 'Portfolio' : undefined}
+                leftSection={<IconBriefcase size={16} />}
+                aria-label="Portfolio"
                 onClick={close}
             />
           </Tooltip>
