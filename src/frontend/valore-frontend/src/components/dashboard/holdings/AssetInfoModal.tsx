@@ -182,7 +182,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                   size="lg"
                   styles={{ root: { fontSize: 14, fontWeight: 600 } }}
                 >
-                  {info.day_change_pct >= 0 ? '+' : ''}{formatPct(info.day_change_pct)}
+                  {formatPct(info.day_change_pct)}
                 </Badge>
               )}
             </Group>
