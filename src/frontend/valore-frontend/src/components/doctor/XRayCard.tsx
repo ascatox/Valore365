@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Box,
@@ -13,14 +14,16 @@ import {
   Text,
   ThemeIcon,
   Title,
+  Tooltip,
   UnstyledButton,
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconChevronDown, IconChevronRight, IconSearch } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconInfoCircle, IconSearch } from '@tabler/icons-react';
 import { usePortfolioXray } from '../dashboard/hooks/queries';
 import { STORAGE_KEYS } from '../dashboard/constants';
+import { AssetInfoModal } from '../dashboard/holdings/AssetInfoModal';
 import type { XRayHolding } from '../../services/api';
 
 const PRIVACY_MASK = '******';
@@ -34,6 +37,23 @@ interface Props {
   portfolioId: number | null;
 }
 
+/* ---- Clickable ETF badge ---- */
+function EtfBadge({ symbol, onClick }: { symbol: string; onClick: (symbol: string) => void }) {
+  return (
+    <Tooltip label={`Dettaglio ${symbol}`} withArrow>
+      <Badge
+        size="xs"
+        variant="light"
+        color="indigo"
+        style={{ cursor: 'pointer' }}
+        onClick={(e) => { e.stopPropagation(); onClick(symbol); }}
+      >
+        {symbol}
+      </Badge>
+    </Tooltip>
+  );
+}
+
 /* ---- Mobile card for a single aggregated holding ---- */
 function HoldingCard({
   holding,
@@ -41,12 +61,16 @@ function HoldingCard({
   privacy,
   isDark,
   theme,
+  onInfoClick,
+  onEtfClick,
 }: {
   holding: XRayHolding;
   rank: number;
   privacy: boolean;
   isDark: boolean;
   theme: ReturnType<typeof useMantineTheme>;
+  onInfoClick: (symbol: string) => void;
+  onEtfClick: (symbol: string) => void;
 }) {
   return (
     <Box
@@ -63,6 +87,15 @@ function HoldingCard({
           <Group gap={6} wrap="nowrap">
             <Text size="xs" c="dimmed" fw={700}>{rank}</Text>
             <Text size="sm" fw={600} lineClamp={1}>{holding.symbol}</Text>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="xs"
+              onClick={() => onInfoClick(holding.symbol)}
+              aria-label={`Dettaglio ${holding.symbol}`}
+            >
+              <IconInfoCircle size={14} />
+            </ActionIcon>
           </Group>
           <Text size="xs" c="dimmed" lineClamp={1}>{holding.name}</Text>
         </div>
@@ -73,7 +106,7 @@ function HoldingCard({
       {holding.etf_contributors.length > 0 && (
         <Group gap={4} mt={4} wrap="wrap">
           {holding.etf_contributors.map((etf) => (
-            <Badge key={etf} size="xs" variant="light" color="gray">{etf}</Badge>
+            <EtfBadge key={etf} symbol={etf} onClick={onEtfClick} />
           ))}
         </Group>
       )}
@@ -88,7 +121,10 @@ export function XRayCard({ portfolioId }: Props) {
   const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [expandedEtf, setExpandedEtf] = useState<string | null>(null);
+  const [infoModal, setInfoModal] = useState<{ symbol: string } | null>(null);
   const privacy = isPrivacyModeEnabled();
+
+  const openInfo = (symbol: string) => setInfoModal({ symbol });
 
   if (isLoading) {
     return (
@@ -127,176 +163,221 @@ export function XRayCard({ portfolioId }: Props) {
   }
 
   return (
-    <Card withBorder radius="xl" padding="lg">
-      <Stack gap="md">
-        <Group justify="space-between" align="center" wrap="wrap">
-          <Group gap="sm">
-            <ThemeIcon color="indigo" variant="light" radius="xl">
-              <IconSearch size={18} />
-            </ThemeIcon>
-            <Title order={4}>X-Ray: Titoli Sottostanti</Title>
+    <>
+      <Card withBorder radius="xl" padding="lg">
+        <Stack gap="md">
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Group gap="sm">
+              <ThemeIcon color="indigo" variant="light" radius="xl">
+                <IconSearch size={18} />
+              </ThemeIcon>
+              <Title order={4}>X-Ray: Titoli Sottostanti</Title>
+            </Group>
+            <Group gap="xs">
+              <Badge variant="light" color="indigo">
+                {xray.etf_count} ETF analizzati
+              </Badge>
+              <Badge variant="light" color={xray.coverage_pct >= 80 ? 'teal' : 'yellow'}>
+                Copertura {privacy ? PRIVACY_MASK : `${xray.coverage_pct}%`}
+              </Badge>
+            </Group>
           </Group>
-          <Group gap="xs">
-            <Badge variant="light" color="indigo">
-              {xray.etf_count} ETF analizzati
-            </Badge>
-            <Badge variant="light" color={xray.coverage_pct >= 80 ? 'teal' : 'yellow'}>
-              Copertura {privacy ? PRIVACY_MASK : `${xray.coverage_pct}%`}
-            </Badge>
-          </Group>
-        </Group>
 
-        {/* Aggregated holdings */}
-        {xray.aggregated_holdings.length > 0 && (
-          <Box>
-            <Text size="sm" fw={600} mb="xs">
-              Top titoli sottostanti (aggregati da tutti gli ETF)
-            </Text>
+          {/* Aggregated holdings */}
+          {xray.aggregated_holdings.length > 0 && (
+            <Box>
+              <Text size="sm" fw={600} mb="xs">
+                Top titoli sottostanti (aggregati da tutti gli ETF)
+              </Text>
 
-            {isMobile ? (
-              /* ---- Mobile: card layout ---- */
-              <Stack gap="xs">
-                {xray.aggregated_holdings.map((h, i) => (
-                  <HoldingCard
-                    key={h.symbol}
-                    holding={h}
-                    rank={i + 1}
-                    privacy={privacy}
-                    isDark={isDark}
-                    theme={theme}
-                  />
-                ))}
-              </Stack>
-            ) : (
-              /* ---- Desktop: table layout ---- */
-              <Table withTableBorder withColumnBorders highlightOnHover style={{ tableLayout: 'fixed' }}>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th style={{ width: 50 }}>#</Table.Th>
-                    <Table.Th>Titolo</Table.Th>
-                    <Table.Th style={{ width: 100, textAlign: 'right' }}>Peso</Table.Th>
-                    <Table.Th style={{ width: 180 }}>Presente in</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
+              {isMobile ? (
+                /* ---- Mobile: card layout ---- */
+                <Stack gap="xs">
                   {xray.aggregated_holdings.map((h, i) => (
-                    <Table.Tr key={h.symbol}>
-                      <Table.Td>
-                        <Text size="sm" c="dimmed">{i + 1}</Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Text size="sm" fw={500}>{h.symbol}</Text>
-                        <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
-                      </Table.Td>
-                      <Table.Td style={{ textAlign: 'right' }}>
-                        <Text size="sm" fw={600}>
-                          {privacy ? PRIVACY_MASK : `${h.aggregated_weight_pct.toFixed(2)}%`}
-                        </Text>
-                      </Table.Td>
-                      <Table.Td>
-                        <Group gap={4} wrap="wrap">
-                          {h.etf_contributors.map((etf) => (
-                            <Badge key={etf} size="xs" variant="light" color="gray">
-                              {etf}
-                            </Badge>
-                          ))}
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
+                    <HoldingCard
+                      key={h.symbol}
+                      holding={h}
+                      rank={i + 1}
+                      privacy={privacy}
+                      isDark={isDark}
+                      theme={theme}
+                      onInfoClick={openInfo}
+                      onEtfClick={openInfo}
+                    />
                   ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </Box>
-        )}
+                </Stack>
+              ) : (
+                /* ---- Desktop: table layout ---- */
+                <Table withTableBorder withColumnBorders highlightOnHover style={{ tableLayout: 'fixed' }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th style={{ width: 50 }}>#</Table.Th>
+                      <Table.Th>Titolo</Table.Th>
+                      <Table.Th style={{ width: 100, textAlign: 'right' }}>Peso</Table.Th>
+                      <Table.Th style={{ width: 200 }}>Presente in</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {xray.aggregated_holdings.map((h, i) => (
+                      <Table.Tr key={h.symbol}>
+                        <Table.Td>
+                          <Text size="sm" c="dimmed">{i + 1}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={6} wrap="nowrap">
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <Text size="sm" fw={500}>{h.symbol}</Text>
+                              <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
+                            </div>
+                            <Tooltip label="Dettaglio asset" withArrow>
+                              <ActionIcon
+                                variant="subtle"
+                                color="gray"
+                                size="sm"
+                                onClick={() => openInfo(h.symbol)}
+                                aria-label={`Dettaglio ${h.symbol}`}
+                              >
+                                <IconInfoCircle size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          </Group>
+                        </Table.Td>
+                        <Table.Td style={{ textAlign: 'right' }}>
+                          <Text size="sm" fw={600}>
+                            {privacy ? PRIVACY_MASK : `${h.aggregated_weight_pct.toFixed(2)}%`}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={4} wrap="wrap">
+                            {h.etf_contributors.map((etf) => (
+                              <EtfBadge key={etf} symbol={etf} onClick={openInfo} />
+                            ))}
+                          </Group>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              )}
+            </Box>
+          )}
 
-        {/* Per-ETF breakdown */}
-        {xray.etf_details.length > 0 && (
-          <Box>
-            <Text size="sm" fw={600} mb="xs">
-              Dettaglio per ETF
-            </Text>
-            <Stack gap="xs">
-              {xray.etf_details.map((etf) => {
-                const isExpanded = expandedEtf === etf.symbol;
-                return (
-                  <Box
-                    key={etf.symbol}
-                    style={{
-                      borderRadius: 8,
-                      border: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}`,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <UnstyledButton
-                      onClick={() => setExpandedEtf(isExpanded ? null : etf.symbol)}
-                      w="100%"
-                      px="sm"
-                      py="xs"
+          {/* Per-ETF breakdown */}
+          {xray.etf_details.length > 0 && (
+            <Box>
+              <Text size="sm" fw={600} mb="xs">
+                Dettaglio per ETF
+              </Text>
+              <Stack gap="xs">
+                {xray.etf_details.map((etf) => {
+                  const isExpanded = expandedEtf === etf.symbol;
+                  return (
+                    <Box
+                      key={etf.symbol}
                       style={{
-                        background: isDark ? theme.colors.dark[6] : theme.colors.gray[0],
+                        borderRadius: 8,
+                        border: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}`,
+                        overflow: 'hidden',
                       }}
                     >
-                      <Group justify="space-between" wrap={isMobile ? 'wrap' : 'nowrap'}>
-                        <Group gap="sm" wrap="nowrap">
-                          {isExpanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
-                          <div>
-                            <Text size="sm" fw={600}>{etf.symbol}</Text>
-                            <Text size="xs" c="dimmed" lineClamp={1}>{etf.name}</Text>
-                          </div>
-                        </Group>
-                        <Group gap="xs" wrap="wrap">
-                          <Badge size="sm" variant="light" color="blue">
-                            {privacy ? PRIVACY_MASK : `${etf.portfolio_weight_pct.toFixed(1)}%`} del portafoglio
-                          </Badge>
-                          {!etf.holdings_available && (
-                            <Badge size="sm" variant="light" color="orange">
-                              Dati non disponibili
+                      <UnstyledButton
+                        onClick={() => setExpandedEtf(isExpanded ? null : etf.symbol)}
+                        w="100%"
+                        px="sm"
+                        py="xs"
+                        style={{
+                          background: isDark ? theme.colors.dark[6] : theme.colors.gray[0],
+                        }}
+                      >
+                        <Group justify="space-between" wrap={isMobile ? 'wrap' : 'nowrap'}>
+                          <Group gap="sm" wrap="nowrap">
+                            {isExpanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+                            <div>
+                              <Text size="sm" fw={600}>{etf.symbol}</Text>
+                              <Text size="xs" c="dimmed" lineClamp={1}>{etf.name}</Text>
+                            </div>
+                          </Group>
+                          <Group gap="xs" wrap="wrap">
+                            <Badge size="sm" variant="light" color="blue">
+                              {privacy ? PRIVACY_MASK : `${etf.portfolio_weight_pct.toFixed(1)}%`} del portafoglio
                             </Badge>
-                          )}
+                            <Tooltip label={`Dettaglio ${etf.symbol}`} withArrow>
+                              <ActionIcon
+                                variant="subtle"
+                                color="gray"
+                                size="sm"
+                                onClick={(e) => { e.stopPropagation(); openInfo(etf.symbol); }}
+                                aria-label={`Dettaglio ${etf.symbol}`}
+                              >
+                                <IconInfoCircle size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                            {!etf.holdings_available && (
+                              <Badge size="sm" variant="light" color="orange">
+                                Dati non disponibili
+                              </Badge>
+                            )}
+                          </Group>
                         </Group>
-                      </Group>
-                    </UnstyledButton>
-                    <Collapse in={isExpanded}>
-                      {etf.holdings_available && etf.top_holdings.length > 0 ? (
-                        <Box px="sm" py="xs">
-                          <Stack gap={4}>
-                            {etf.top_holdings.map((h) => (
-                              <Group key={h.symbol} justify="space-between" wrap="nowrap">
-                                <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
-                                  <Text size="xs" fw={500} style={{ flexShrink: 0 }}>{h.symbol}</Text>
-                                  <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
+                      </UnstyledButton>
+                      <Collapse in={isExpanded}>
+                        {etf.holdings_available && etf.top_holdings.length > 0 ? (
+                          <Box px="sm" py="xs">
+                            <Stack gap={4}>
+                              {etf.top_holdings.map((h) => (
+                                <Group key={h.symbol} justify="space-between" wrap="nowrap">
+                                  <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                                    <Text size="xs" fw={500} style={{ flexShrink: 0 }}>{h.symbol}</Text>
+                                    <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
+                                    <ActionIcon
+                                      variant="subtle"
+                                      color="gray"
+                                      size="xs"
+                                      onClick={() => openInfo(h.symbol)}
+                                      aria-label={`Dettaglio ${h.symbol}`}
+                                      style={{ flexShrink: 0 }}
+                                    >
+                                      <IconInfoCircle size={12} />
+                                    </ActionIcon>
+                                  </Group>
+                                  <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                                    <Progress
+                                      value={Math.min(h.aggregated_weight_pct, 100)}
+                                      size="sm"
+                                      color="indigo"
+                                      w={60}
+                                    />
+                                    <Text size="xs" fw={600} w={50} ta="right">
+                                      {privacy ? PRIVACY_MASK : `${h.aggregated_weight_pct.toFixed(1)}%`}
+                                    </Text>
+                                  </Group>
                                 </Group>
-                                <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                                  <Progress
-                                    value={Math.min(h.aggregated_weight_pct, 100)}
-                                    size="sm"
-                                    color="indigo"
-                                    w={60}
-                                  />
-                                  <Text size="xs" fw={600} w={50} ta="right">
-                                    {privacy ? PRIVACY_MASK : `${h.aggregated_weight_pct.toFixed(1)}%`}
-                                  </Text>
-                                </Group>
-                              </Group>
-                            ))}
-                          </Stack>
-                        </Box>
-                      ) : (
-                        <Box px="sm" py="xs">
-                          <Text size="xs" c="dimmed">
-                            Dati sulle posizioni sottostanti non disponibili per questo ETF.
-                          </Text>
-                        </Box>
-                      )}
-                    </Collapse>
-                  </Box>
-                );
-              })}
-            </Stack>
-          </Box>
-        )}
-      </Stack>
-    </Card>
+                              ))}
+                            </Stack>
+                          </Box>
+                        ) : (
+                          <Box px="sm" py="xs">
+                            <Text size="xs" c="dimmed">
+                              Dati sulle posizioni sottostanti non disponibili per questo ETF.
+                            </Text>
+                          </Box>
+                        )}
+                      </Collapse>
+                    </Box>
+                  );
+                })}
+              </Stack>
+            </Box>
+          )}
+        </Stack>
+      </Card>
+
+      {/* Asset Info Modal */}
+      <AssetInfoModal
+        symbol={infoModal?.symbol ?? ''}
+        opened={infoModal != null}
+        onClose={() => setInfoModal(null)}
+      />
+    </>
   );
 }
