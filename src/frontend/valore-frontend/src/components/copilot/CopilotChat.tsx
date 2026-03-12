@@ -13,6 +13,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
@@ -138,6 +139,7 @@ export function CopilotChat({
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -349,7 +351,7 @@ export function CopilotChat({
       opened={opened}
       onClose={onClose}
       position="right"
-      size="lg"
+      size={isMobile ? '100%' : 'lg'}
       title={
         <Group gap="xs">
           <IconRobot size={20} />
@@ -360,6 +362,8 @@ export function CopilotChat({
       styles={{
         body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', padding: 0 },
         content: { display: 'flex', flexDirection: 'column' },
+        header: { zIndex: 10 },
+        close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
       }}
     >
       {/* Messages */}
