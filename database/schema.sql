@@ -65,6 +65,34 @@ create table asset_metadata (
   updated_at timestamptz not null default now()
 );
 
+create table etf_enrichment (
+  asset_id bigint primary key references assets(id) on delete cascade,
+  isin text not null,
+  name text,
+  description text,
+  index_tracked text,
+  investment_focus text,
+  country_weights jsonb,
+  sector_weights jsonb,
+  top_holdings jsonb,
+  holdings_date text,
+  replication_method text,
+  distribution_policy text,
+  distribution_frequency text,
+  fund_currency text,
+  currency_hedged boolean,
+  domicile text,
+  fund_provider text,
+  fund_size_eur numeric,
+  ter numeric,
+  volatility_1y numeric,
+  sustainability boolean,
+  inception_date text,
+  source text default 'justetf',
+  fetched_at timestamptz not null default now()
+);
+create index idx_etf_enrichment_isin on etf_enrichment(isin);
+
 create table transactions (
   id bigserial primary key,
   portfolio_id bigint not null references portfolios(id) on delete cascade,
