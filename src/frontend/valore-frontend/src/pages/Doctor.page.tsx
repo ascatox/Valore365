@@ -494,8 +494,8 @@ function MetricChip({ label, value }: { label: string; value: string }) {
         border: '1px solid rgba(255,255,255,0.16)',
       }}
     >
-      <Text size="xs" tt="uppercase" style={{ opacity: 0.7, wordBreak: 'break-word' }}>{label}</Text>
-      <Text fw={700} style={{ wordBreak: 'break-word' }}>{humanize(value)}</Text>
+      <Text size="xs" tt="uppercase" c="rgba(255,255,255,0.7)" style={{ wordBreak: 'break-word' }}>{label}</Text>
+      <Text fw={700} c="white" style={{ wordBreak: 'break-word' }}>{humanize(value)}</Text>
     </Box>
   );
 }
