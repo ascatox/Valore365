@@ -115,6 +115,13 @@ class ProviderAssetInfo:
     raw_info: dict | None = None
 
 
+@dataclass
+class ProviderEtfHolding:
+    symbol: str
+    name: str
+    weight: float  # 0-1 fraction
+
+
 class TwelveDataClient:
     def __init__(
         self,
@@ -666,6 +673,29 @@ class YahooFinanceClient:
             logo_url=info.get('logo_url'),
             raw_info=raw_clean if raw_clean else None,
         )
+
+    def get_etf_top_holdings(self, symbol: str) -> list[ProviderEtfHolding]:
+        import yfinance as yf
+        try:
+            ticker = yf.Ticker(symbol)
+            holdings = ticker.funds_data.top_holdings
+            if holdings is None or holdings.empty:
+                return []
+            result = []
+            for sym, row in holdings.iterrows():
+                weight = row.get("Holding Percent")
+                if weight is None:
+                    continue
+                name = row.get("Name", str(sym))
+                result.append(ProviderEtfHolding(
+                    symbol=str(sym),
+                    name=str(name) if name else str(sym),
+                    weight=float(weight),
+                ))
+            return result
+        except Exception:
+            logger.debug("Failed to fetch ETF holdings for %s", symbol)
+            return []
 
     def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:
         import yfinance as yf

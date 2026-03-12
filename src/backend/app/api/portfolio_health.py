@@ -10,16 +10,18 @@ from ..schemas.portfolio_doctor import (
     DecumulationPlanResponse,
     MonteCarloProjectionResponse,
     PortfolioHealthResponse,
+    XRayResponse,
 )
 from ..services.portfolio_doctor import (
     analyze_portfolio_health,
+    compute_portfolio_xray,
     run_aggregate_decumulation_plan,
     run_decumulation_plan,
     run_monte_carlo_projection,
 )
 
 
-def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository) -> None:
+def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository, finance_client: object = None) -> None:
     @router.get(
         "/portfolios/{portfolio_id}/health",
         response_model=PortfolioHealthResponse,
@@ -105,3 +107,19 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
             message = str(exc)
             status_code = 400 if "valuta base" in message or "Seleziona almeno" in message else 404
             raise AppError(code="invalid_request" if status_code == 400 else "not_found", message=message, status_code=status_code) from exc
+
+    @router.get(
+        "/portfolios/{portfolio_id}/xray",
+        response_model=XRayResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    def get_portfolio_xray(
+        portfolio_id: int,
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> XRayResponse:
+        if not finance_client:
+            raise AppError(code="not_configured", message="Finance client non disponibile", status_code=500)
+        try:
+            return compute_portfolio_xray(repo, portfolio_id, _auth.user_id, finance_client)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc

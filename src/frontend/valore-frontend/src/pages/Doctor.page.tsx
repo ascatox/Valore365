@@ -40,6 +40,7 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
 import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetailsModal';
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
+import { XRayCard } from '../components/doctor/XRayCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { getCopilotStatus } from '../services/api';
@@ -431,6 +432,8 @@ export function DoctorPage() {
                   </Card>
                 </Grid.Col>
               </Grid>
+
+              <XRayCard portfolioId={portfolioId} />
 
               <MonteCarloCard
                 portfolioId={portfolioId}

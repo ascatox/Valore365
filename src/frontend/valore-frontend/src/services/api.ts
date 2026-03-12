@@ -874,6 +874,35 @@ export const getPortfolioHealth = async (portfolioId: number): Promise<Portfolio
   return apiFetch<PortfolioHealthResponse>(`/portfolios/${portfolioId}/health`);
 };
 
+// X-Ray (ETF look-through)
+
+export interface XRayHolding {
+  symbol: string;
+  name: string;
+  aggregated_weight_pct: number;
+  etf_contributors: string[];
+}
+
+export interface XRayEtfDetail {
+  symbol: string;
+  name: string;
+  portfolio_weight_pct: number;
+  holdings_available: boolean;
+  top_holdings: XRayHolding[];
+}
+
+export interface XRayResponse {
+  portfolio_id: number;
+  aggregated_holdings: XRayHolding[];
+  etf_details: XRayEtfDetail[];
+  etf_count: number;
+  coverage_pct: number;
+}
+
+export const getPortfolioXray = async (portfolioId: number): Promise<XRayResponse> => {
+  return apiFetch<XRayResponse>(`/portfolios/${portfolioId}/xray`);
+};
+
 export const getMonteCarloProjection = async (portfolioId: number): Promise<MonteCarloProjectionResponse> => {
   return apiFetch<MonteCarloProjectionResponse>(`/portfolios/${portfolioId}/monte-carlo`);
 };

@@ -117,3 +117,26 @@ class AggregateDecumulationPlanResponse(BaseModel):
     p75_terminal_value: float = Field(ge=0)
     depletion_year_p50: int | None = Field(default=None, ge=1)
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
+
+
+class XRayHolding(BaseModel):
+    symbol: str
+    name: str
+    aggregated_weight_pct: float
+    etf_contributors: list[str] = Field(default_factory=list)
+
+
+class XRayEtfDetail(BaseModel):
+    symbol: str
+    name: str
+    portfolio_weight_pct: float
+    holdings_available: bool
+    top_holdings: list[XRayHolding] = Field(default_factory=list)
+
+
+class XRayResponse(BaseModel):
+    portfolio_id: int = Field(ge=1)
+    aggregated_holdings: list[XRayHolding] = Field(default_factory=list)
+    etf_details: list[XRayEtfDetail] = Field(default_factory=list)
+    etf_count: int = Field(ge=0)
+    coverage_pct: float = Field(ge=0, le=100)

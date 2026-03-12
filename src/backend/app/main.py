@@ -274,7 +274,7 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
 
 router = APIRouter()
 register_instant_portfolio_analyzer_routes(router, repo)
-register_portfolio_health_routes(router, repo)
+register_portfolio_health_routes(router, repo, finance_client)
 
 
 @router.get("/health")

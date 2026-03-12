@@ -20,6 +20,9 @@ from ..schemas.portfolio_doctor import (
     PortfolioHealthResponse,
     PortfolioHealthSuggestion,
     PortfolioHealthSummary,
+    XRayEtfDetail,
+    XRayHolding,
+    XRayResponse,
 )
 
 
@@ -1258,4 +1261,101 @@ def _empty_aggregate_decumulation_response(
         p75_terminal_value=0.0,
         depletion_year_p50=1 if years > 0 else None,
         projections=projections,
+    )
+
+
+def compute_portfolio_xray(
+    repo: PortfolioRepository,
+    portfolio_id: int,
+    user_id: str,
+    finance_client: object,
+) -> XRayResponse:
+    holdings = _load_holdings(repo, portfolio_id, user_id)
+    if not holdings:
+        raise ValueError("Portafoglio non trovato o vuoto")
+
+    etf_holdings = [h for h in holdings if h.asset_type.lower() in {"etf", "fund"}]
+
+    # Resolve provider symbols for ETFs
+    provider_symbols: dict[int, str] = {}
+    for h in etf_holdings:
+        try:
+            pricing = repo.get_asset_pricing_symbol(h.asset_id, provider="yfinance")
+            provider_symbols[h.asset_id] = pricing.provider_symbol
+        except Exception:
+            provider_symbols[h.asset_id] = h.symbol
+
+    # Fetch holdings for each ETF using ThreadPoolExecutor for parallel calls
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    etf_raw_holdings: dict[int, list] = {}
+
+    def fetch_one(asset_id: int, symbol: str):
+        return asset_id, finance_client.get_etf_top_holdings(symbol)
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(fetch_one, h.asset_id, provider_symbols[h.asset_id]): h
+            for h in etf_holdings
+        }
+        for future in as_completed(futures):
+            try:
+                aid, result = future.result()
+                etf_raw_holdings[aid] = result
+            except Exception:
+                pass
+
+    # Build per-ETF details and aggregate
+    aggregated: dict[str, dict] = defaultdict(lambda: {"name": "", "weight": 0.0, "contributors": []})
+    etf_details: list[XRayEtfDetail] = []
+    covered_weight = 0.0
+
+    for h in etf_holdings:
+        raw = etf_raw_holdings.get(h.asset_id, [])
+        has_data = len(raw) > 0
+        if has_data:
+            covered_weight += h.weight_pct
+
+        detail_holdings = []
+        for rh in raw:
+            contrib_weight = rh.weight * h.weight_pct  # e.g. 0.07 * 50 = 3.5%
+            aggregated[rh.symbol]["name"] = rh.name
+            aggregated[rh.symbol]["weight"] += contrib_weight
+            aggregated[rh.symbol]["contributors"].append(h.symbol)
+            detail_holdings.append(XRayHolding(
+                symbol=rh.symbol,
+                name=rh.name,
+                aggregated_weight_pct=round(rh.weight * 100, 2),
+                etf_contributors=[h.symbol],
+            ))
+
+        etf_details.append(XRayEtfDetail(
+            symbol=h.symbol,
+            name=h.name,
+            portfolio_weight_pct=round(h.weight_pct, 2),
+            holdings_available=has_data,
+            top_holdings=detail_holdings,
+        ))
+
+    # Sort aggregated by weight descending, take top 25
+    sorted_agg = sorted(aggregated.items(), key=lambda x: x[1]["weight"], reverse=True)[:25]
+    aggregated_holdings = [
+        XRayHolding(
+            symbol=sym,
+            name=data["name"],
+            aggregated_weight_pct=round(data["weight"], 2),
+            etf_contributors=sorted(set(data["contributors"])),
+        )
+        for sym, data in sorted_agg
+    ]
+
+    total_portfolio_weight = sum(h.weight_pct for h in holdings)
+    coverage = round(covered_weight / total_portfolio_weight * 100, 1) if total_portfolio_weight > 0 else 0.0
+
+    return XRayResponse(
+        portfolio_id=portfolio_id,
+        aggregated_holdings=aggregated_holdings,
+        etf_details=sorted(etf_details, key=lambda x: x.portfolio_weight_pct, reverse=True),
+        etf_count=len(etf_holdings),
+        coverage_pct=coverage,
     )
