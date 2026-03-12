@@ -291,25 +291,27 @@ export function XRayCard({ portfolioId }: Props) {
                           <Group gap="sm" wrap="nowrap">
                             {isExpanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
                             <div>
-                              <Text size="sm" fw={600}>{etf.symbol}</Text>
-                              <Text size="xs" c="dimmed" lineClamp={1}>{etf.name}</Text>
+                              <Group gap={4} wrap="nowrap">
+                                <Text size="sm" fw={600} lineClamp={1}>{etf.name || etf.symbol}</Text>
+                                <Tooltip label={`Dettaglio ${etf.symbol}`} withArrow>
+                                  <ActionIcon
+                                    variant="subtle"
+                                    color="gray"
+                                    size="xs"
+                                    onClick={(e) => { e.stopPropagation(); openInfo(etf.symbol); }}
+                                    aria-label={`Dettaglio ${etf.symbol}`}
+                                  >
+                                    <IconInfoCircle size={14} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              </Group>
+                              <Text size="xs" c="dimmed">{etf.symbol}</Text>
                             </div>
                           </Group>
                           <Group gap="xs" wrap="wrap">
                             <Badge size="sm" variant="light" color="blue">
                               {privacy ? PRIVACY_MASK : `${etf.portfolio_weight_pct.toFixed(1)}%`} del portafoglio
                             </Badge>
-                            <Tooltip label={`Dettaglio ${etf.symbol}`} withArrow>
-                              <ActionIcon
-                                variant="subtle"
-                                color="gray"
-                                size="sm"
-                                onClick={(e) => { e.stopPropagation(); openInfo(etf.symbol); }}
-                                aria-label={`Dettaglio ${etf.symbol}`}
-                              >
-                                <IconInfoCircle size={16} />
-                              </ActionIcon>
-                            </Tooltip>
                             {!etf.holdings_available && (
                               <Badge size="sm" variant="light" color="orange">
                                 Dati non disponibili
