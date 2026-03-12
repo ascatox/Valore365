@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Badge, Divider, Grid, Group, Loader, Modal, Paper, Stack, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconInfoCircle } from '@tabler/icons-react';
 import type { AssetInfo } from '../../../services/api';
@@ -104,6 +105,7 @@ interface AssetInfoModalProps {
 }
 
 export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [info, setInfo] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,8 +136,9 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
           <Text fw={600}>Dettaglio {symbol}</Text>
         </Group>
       }
-      size="md"
-      centered
+      size={isMobile ? '100%' : 'lg'}
+      fullScreen={isMobile}
+      centered={!isMobile}
     >
       {loading && (
         <Group justify="center" py="xl">
