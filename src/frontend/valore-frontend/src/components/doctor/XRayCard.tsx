@@ -183,6 +183,43 @@ export function XRayCard({ portfolioId }: Props) {
             </Group>
           </Group>
 
+          {/* Aggregated country & sector exposure from justETF */}
+          {(Object.keys(xray.aggregated_country_exposure ?? {}).length > 0 ||
+            Object.keys(xray.aggregated_sector_exposure ?? {}).length > 0) && (
+            <Box>
+              <Group gap="xl" align="flex-start" wrap="wrap">
+                {Object.keys(xray.aggregated_country_exposure ?? {}).length > 0 && (
+                  <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
+                    <Text size="sm" fw={600} mb={4}>Esposizione Geografica</Text>
+                    {Object.entries(xray.aggregated_country_exposure).slice(0, 8).map(([country, weight]) => (
+                      <Group key={country} justify="space-between" gap="xs" wrap="nowrap">
+                        <Text size="xs" truncate style={{ flex: 1 }}>{country}</Text>
+                        <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+                          <Progress value={Math.min(weight, 100)} size="xs" color="blue" style={{ width: 50 }} />
+                          <Text size="xs" fw={500} w={42} ta="right">{weight.toFixed(1)}%</Text>
+                        </Group>
+                      </Group>
+                    ))}
+                  </Stack>
+                )}
+                {Object.keys(xray.aggregated_sector_exposure ?? {}).length > 0 && (
+                  <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
+                    <Text size="sm" fw={600} mb={4}>Esposizione Settoriale</Text>
+                    {Object.entries(xray.aggregated_sector_exposure).slice(0, 8).map(([sector, weight]) => (
+                      <Group key={sector} justify="space-between" gap="xs" wrap="nowrap">
+                        <Text size="xs" truncate style={{ flex: 1 }}>{sector}</Text>
+                        <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
+                          <Progress value={Math.min(weight, 100)} size="xs" color="violet" style={{ width: 50 }} />
+                          <Text size="xs" fw={500} w={42} ta="right">{weight.toFixed(1)}%</Text>
+                        </Group>
+                      </Group>
+                    ))}
+                  </Stack>
+                )}
+              </Group>
+            </Box>
+          )}
+
           {/* Aggregated holdings */}
           {xray.aggregated_holdings.length > 0 && (
             <Box>

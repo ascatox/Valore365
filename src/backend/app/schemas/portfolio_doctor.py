@@ -12,6 +12,7 @@ class PortfolioHealthSummary(BaseModel):
 
 class PortfolioHealthMetrics(BaseModel):
     geographic_exposure: dict[str, float] = Field(default_factory=dict)
+    sector_exposure: dict[str, float] = Field(default_factory=dict)
     max_position_weight: float = Field(default=0, ge=0, le=100)
     overlap_score: float = Field(default=0, ge=0, le=100)
     portfolio_volatility: float | None = Field(default=None, ge=0)
@@ -140,3 +141,5 @@ class XRayResponse(BaseModel):
     etf_details: list[XRayEtfDetail] = Field(default_factory=list)
     etf_count: int = Field(ge=0)
     coverage_pct: float = Field(ge=0, le=100)
+    aggregated_country_exposure: dict[str, float] = Field(default_factory=dict)
+    aggregated_sector_exposure: dict[str, float] = Field(default_factory=dict)

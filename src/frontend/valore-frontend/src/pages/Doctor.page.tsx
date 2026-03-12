@@ -365,6 +365,21 @@ export function DoctorPage() {
                         <Table.Tr><Table.Td style={{ wordBreak: 'break-word' }}>TER ponderato</Table.Td><Table.Td>{formatPct(health.metrics.weighted_ter)}</Table.Td></Table.Tr>
                       </Table.Tbody>
                     </Table>
+                    {Object.keys(health.metrics.sector_exposure).length > 0 && (
+                      <>
+                        <Title order={5} mt="md" mb="xs">Esposizione Settoriale</Title>
+                        <Table withTableBorder withColumnBorders highlightOnHover size="sm" style={{ tableLayout: 'fixed' }}>
+                          <Table.Tbody>
+                            {Object.entries(health.metrics.sector_exposure).slice(0, 10).map(([sector, weight]) => (
+                              <Table.Tr key={sector}>
+                                <Table.Td style={{ wordBreak: 'break-word' }}>{sector}</Table.Td>
+                                <Table.Td>{formatPct(weight)}</Table.Td>
+                              </Table.Tr>
+                            ))}
+                          </Table.Tbody>
+                        </Table>
+                      </>
+                    )}
                   </Card>
                 </Grid.Col>
 

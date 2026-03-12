@@ -57,7 +57,8 @@ def analyze_portfolio_health(
     if not holdings:
         return empty_health_response(portfolio_id)
 
-    geographic_exposure = compute_geographic_exposure(holdings)
+    geographic_exposure = compute_geographic_exposure(holdings, repo=repo)
+    sector_exposure = compute_sector_exposure(holdings, repo=repo)
     max_position_weight = compute_max_position_weight(holdings)
     overlap_score = compute_overlap_score(holdings)
     portfolio_volatility = compute_portfolio_volatility(repo, holdings)
@@ -67,6 +68,7 @@ def analyze_portfolio_health(
 
     metrics = PortfolioHealthMetrics(
         geographic_exposure=geographic_exposure,
+        sector_exposure=sector_exposure,
         max_position_weight=max_position_weight,
         overlap_score=overlap_score,
         portfolio_volatility=portfolio_volatility,
@@ -161,12 +163,61 @@ def _load_holdings(repo: PortfolioRepository, portfolio_id: int, user_id: str) -
     return holdings
 
 
-def compute_geographic_exposure(holdings: list[AnalyzedHolding]) -> dict[str, float]:
+def _country_to_region(country_name: str) -> str:
+    """Map a country name to one of our standard regions."""
+    name = country_name.strip().lower()
+    usa_names = {"united states", "usa", "us", "stati uniti", "united states of america"}
+    europe_names = {
+        "germany", "france", "united kingdom", "uk", "netherlands", "switzerland",
+        "spain", "italy", "sweden", "denmark", "finland", "norway", "belgium",
+        "ireland", "austria", "portugal", "luxembourg", "greece", "poland",
+        "czech republic", "hungary", "romania", "croatia",
+        "germania", "francia", "regno unito", "paesi bassi", "svizzera",
+        "spagna", "italia", "svezia", "danimarca", "finlandia", "norvegia",
+        "belgio", "irlanda", "austria", "portogallo", "lussemburgo", "grecia",
+    }
+    emerging_names = {
+        "china", "india", "brazil", "taiwan", "south korea", "mexico",
+        "south africa", "indonesia", "thailand", "malaysia", "philippines",
+        "chile", "colombia", "peru", "turkey", "saudi arabia", "qatar",
+        "united arab emirates", "egypt", "pakistan", "vietnam", "nigeria",
+        "cina", "brasile", "corea del sud", "messico", "sudafrica",
+    }
+    if name in usa_names:
+        return "usa"
+    if name in europe_names:
+        return "europe"
+    if name in emerging_names:
+        return "emerging"
+    return "other"
+
+
+def compute_geographic_exposure(
+    holdings: list[AnalyzedHolding],
+    repo: PortfolioRepository | None = None,
+) -> dict[str, float]:
+    # Load enrichment data for all holdings if available
+    enrichment_map: dict[int, dict] = {}
+    if repo:
+        try:
+            asset_ids = [h.asset_id for h in holdings]
+            enrichment_map = repo.get_etf_enrichment_bulk(asset_ids)
+        except Exception:
+            pass
+
     exposure = {region: 0.0 for region in REGIONS}
     for holding in holdings:
-        profile = infer_region_profile(holding)
-        for region, split in profile.items():
-            exposure[region] += holding.weight_pct * (split / 100.0)
+        enrich = enrichment_map.get(holding.asset_id)
+        if enrich and enrich.get("country_weights"):
+            # Use real country data from justETF
+            for cw in enrich["country_weights"]:
+                region = _country_to_region(cw["name"])
+                exposure[region] += holding.weight_pct * (cw["percentage"] / 100.0)
+        else:
+            # Fallback to heuristic
+            profile = infer_region_profile(holding)
+            for region, split in profile.items():
+                exposure[region] += holding.weight_pct * (split / 100.0)
 
     normalized = {region: round(max(0.0, value), 1) for region, value in exposure.items() if value > 0}
     total = round(sum(normalized.values()), 1)
@@ -174,6 +225,35 @@ def compute_geographic_exposure(holdings: list[AnalyzedHolding]) -> dict[str, fl
         diff = round(100.0 - total, 1)
         normalized["other"] = round(normalized.get("other", 0.0) + diff, 1)
     return normalized
+
+
+def compute_sector_exposure(
+    holdings: list[AnalyzedHolding],
+    repo: PortfolioRepository | None = None,
+) -> dict[str, float]:
+    """Compute portfolio-level sector exposure using justETF enrichment data."""
+    enrichment_map: dict[int, dict] = {}
+    if repo:
+        try:
+            asset_ids = [h.asset_id for h in holdings]
+            enrichment_map = repo.get_etf_enrichment_bulk(asset_ids)
+        except Exception:
+            pass
+
+    sector_totals: dict[str, float] = {}
+    for holding in holdings:
+        enrich = enrichment_map.get(holding.asset_id)
+        if enrich and enrich.get("sector_weights"):
+            for sw in enrich["sector_weights"]:
+                name = sw["name"]
+                sector_totals[name] = sector_totals.get(name, 0.0) + holding.weight_pct * (sw["percentage"] / 100.0)
+
+    if not sector_totals:
+        return {}
+
+    # Normalize and sort by weight descending
+    result = {k: round(v, 1) for k, v in sorted(sector_totals.items(), key=lambda x: -x[1]) if v >= 0.1}
+    return result
 
 
 def infer_region_profile(holding: AnalyzedHolding) -> dict[str, float]:
@@ -349,15 +429,25 @@ def compute_weighted_ter(
     holdings: list[AnalyzedHolding],
     repo: PortfolioRepository | None = None,
 ) -> float | None:
-    # Try to fetch TER from DB metadata in bulk
+    # Try to fetch TER from justETF enrichment first, then yFinance metadata
     db_ter: dict[int, float] = {}
     if repo:
         try:
             asset_ids = [h.asset_id for h in holdings]
+            # justETF enrichment (preferred — more accurate)
+            enrich_map = repo.get_etf_enrichment_bulk(asset_ids)
+            for aid, enrich in enrich_map.items():
+                if enrich.get("ter") is not None:
+                    db_ter[aid] = enrich["ter"] * 100  # justETF returns 0.0022, we use percent 0.22
+        except Exception:
+            pass
+        try:
+            # yFinance metadata as fallback
+            asset_ids = [h.asset_id for h in holdings]
             meta_map = repo.get_asset_metadata_bulk(asset_ids)
             for aid, meta in meta_map.items():
-                if meta.expense_ratio is not None:
-                    db_ter[aid] = meta.expense_ratio * 100  # yFinance returns 0.0022, we use percent 0.22
+                if aid not in db_ter and meta.expense_ratio is not None:
+                    db_ter[aid] = meta.expense_ratio * 100
         except Exception:
             pass
 
@@ -1278,6 +1368,13 @@ def compute_portfolio_xray(
     # because many ETFs are mis-classified as "stock" in the DB.
     candidates = [h for h in holdings if h.asset_type.lower() not in {"cash"}]
 
+    # Load justETF enrichment data for all candidates
+    enrichment_map: dict[int, dict] = {}
+    try:
+        enrichment_map = repo.get_etf_enrichment_bulk([h.asset_id for h in candidates])
+    except Exception:
+        pass
+
     # Resolve provider symbols
     provider_symbols: dict[int, str] = {}
     for h in candidates:
@@ -1288,9 +1385,11 @@ def compute_portfolio_xray(
             provider_symbols[h.asset_id] = h.symbol
 
     # Fetch holdings for each candidate using ThreadPoolExecutor
+    # Skip candidates that already have justETF enrichment holdings
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     etf_raw_holdings: dict[int, list] = {}
+    needs_yfinance = [h for h in candidates if h.asset_id not in enrichment_map or not enrichment_map[h.asset_id].get("top_holdings")]
 
     def fetch_one(asset_id: int, symbol: str):
         return asset_id, finance_client.get_etf_top_holdings(symbol)
@@ -1298,7 +1397,7 @@ def compute_portfolio_xray(
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {
             executor.submit(fetch_one, h.asset_id, provider_symbols[h.asset_id]): h
-            for h in candidates
+            for h in needs_yfinance
         }
         for future in as_completed(futures):
             try:
@@ -1308,30 +1407,70 @@ def compute_portfolio_xray(
             except Exception:
                 pass
 
-    # The real ETF list is determined by which assets returned holdings data
-    etf_holdings = [h for h in candidates if h.asset_id in etf_raw_holdings]
+    # The real ETF list: has justETF enrichment holdings OR yfinance holdings
+    etf_holdings = [
+        h for h in candidates
+        if h.asset_id in etf_raw_holdings
+        or (h.asset_id in enrichment_map and enrichment_map[h.asset_id].get("top_holdings"))
+    ]
 
     # Build per-ETF details and aggregate
     aggregated: dict[str, dict] = defaultdict(lambda: {"name": "", "weight": 0.0, "contributors": []})
     etf_details: list[XRayEtfDetail] = []
     covered_weight = 0.0
 
-    for h in etf_holdings:
-        raw = etf_raw_holdings[h.asset_id]
-        covered_weight += h.weight_pct
+    # Aggregated country/sector from enrichment
+    country_totals: dict[str, float] = {}
+    sector_totals: dict[str, float] = {}
 
+    for h in etf_holdings:
+        covered_weight += h.weight_pct
+        enrich = enrichment_map.get(h.asset_id)
         detail_holdings = []
-        for rh in raw:
-            contrib_weight = rh.weight * h.weight_pct  # e.g. 0.07 * 50 = 3.5%
-            aggregated[rh.symbol]["name"] = rh.name
-            aggregated[rh.symbol]["weight"] += contrib_weight
-            aggregated[rh.symbol]["contributors"].append(h.symbol)
-            detail_holdings.append(XRayHolding(
-                symbol=rh.symbol,
-                name=rh.name,
-                aggregated_weight_pct=round(rh.weight * 100, 2),
-                etf_contributors=[h.symbol],
-            ))
+
+        # Prefer justETF top_holdings if available
+        if enrich and enrich.get("top_holdings"):
+            for th in enrich["top_holdings"]:
+                name = th.get("name", "")
+                isin = th.get("isin", "")
+                pct = th.get("percentage")
+                if pct is None:
+                    continue
+                weight_frac = pct / 100.0
+                contrib_weight = weight_frac * h.weight_pct
+                key = isin or name  # use ISIN as key if available
+                aggregated[key]["name"] = name
+                aggregated[key]["weight"] += contrib_weight
+                aggregated[key]["contributors"].append(h.symbol)
+                detail_holdings.append(XRayHolding(
+                    symbol=isin or name,
+                    name=name,
+                    aggregated_weight_pct=round(pct, 2),
+                    etf_contributors=[h.symbol],
+                ))
+        elif h.asset_id in etf_raw_holdings:
+            raw = etf_raw_holdings[h.asset_id]
+            for rh in raw:
+                contrib_weight = rh.weight * h.weight_pct
+                aggregated[rh.symbol]["name"] = rh.name
+                aggregated[rh.symbol]["weight"] += contrib_weight
+                aggregated[rh.symbol]["contributors"].append(h.symbol)
+                detail_holdings.append(XRayHolding(
+                    symbol=rh.symbol,
+                    name=rh.name,
+                    aggregated_weight_pct=round(rh.weight * 100, 2),
+                    etf_contributors=[h.symbol],
+                ))
+
+        # Aggregate country/sector from enrichment
+        if enrich and enrich.get("country_weights"):
+            for cw in enrich["country_weights"]:
+                name = cw["name"]
+                country_totals[name] = country_totals.get(name, 0.0) + h.weight_pct * (cw["percentage"] / 100.0)
+        if enrich and enrich.get("sector_weights"):
+            for sw in enrich["sector_weights"]:
+                name = sw["name"]
+                sector_totals[name] = sector_totals.get(name, 0.0) + h.weight_pct * (sw["percentage"] / 100.0)
 
         etf_details.append(XRayEtfDetail(
             symbol=h.symbol,
@@ -1356,10 +1495,16 @@ def compute_portfolio_xray(
     total_portfolio_weight = sum(h.weight_pct for h in holdings)
     coverage = round(covered_weight / total_portfolio_weight * 100, 1) if total_portfolio_weight > 0 else 0.0
 
+    # Build sorted country/sector dicts
+    agg_countries = {k: round(v, 1) for k, v in sorted(country_totals.items(), key=lambda x: -x[1]) if v >= 0.1}
+    agg_sectors = {k: round(v, 1) for k, v in sorted(sector_totals.items(), key=lambda x: -x[1]) if v >= 0.1}
+
     return XRayResponse(
         portfolio_id=portfolio_id,
         aggregated_holdings=aggregated_holdings,
         etf_details=sorted(etf_details, key=lambda x: x.portfolio_weight_pct, reverse=True),
         etf_count=len(etf_holdings),
         coverage_pct=coverage,
+        aggregated_country_exposure=agg_countries,
+        aggregated_sector_exposure=agg_sectors,
     )

@@ -177,6 +177,7 @@ export interface PortfolioHealthSummary {
 
 export interface PortfolioHealthMetrics {
   geographic_exposure: Record<string, number>;
+  sector_exposure: Record<string, number>;
   max_position_weight: number;
   overlap_score: number;
   portfolio_volatility: number | null;
@@ -897,6 +898,8 @@ export interface XRayResponse {
   etf_details: XRayEtfDetail[];
   etf_count: number;
   coverage_pct: number;
+  aggregated_country_exposure: Record<string, number>;
+  aggregated_sector_exposure: Record<string, number>;
 }
 
 export const getPortfolioXray = async (portfolioId: number): Promise<XRayResponse> => {
