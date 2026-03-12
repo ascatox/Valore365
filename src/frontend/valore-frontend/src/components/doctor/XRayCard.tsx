@@ -86,7 +86,7 @@ function HoldingCard({
         <div style={{ flex: 1, minWidth: 0 }}>
           <Group gap={6} wrap="nowrap">
             <Text size="xs" c="dimmed" fw={700}>{rank}</Text>
-            <Text size="sm" fw={600} lineClamp={1}>{holding.symbol}</Text>
+            <Text size="sm" fw={600} lineClamp={1}>{holding.name || holding.symbol}</Text>
             <ActionIcon
               variant="subtle"
               color="gray"
@@ -97,7 +97,7 @@ function HoldingCard({
               <IconInfoCircle size={14} />
             </ActionIcon>
           </Group>
-          <Text size="xs" c="dimmed" lineClamp={1}>{holding.name}</Text>
+          <Text size="xs" c="dimmed" lineClamp={1}>{holding.symbol}</Text>
         </div>
         <Text size="sm" fw={700} style={{ flexShrink: 0 }}>
           {privacy ? PRIVACY_MASK : `${holding.aggregated_weight_pct.toFixed(2)}%`}
@@ -225,7 +225,7 @@ export function XRayCard({ portfolioId }: Props) {
                         </Table.Td>
                         <Table.Td>
                           <Group gap={4} wrap="nowrap">
-                            <Text size="sm" fw={500}>{h.symbol}</Text>
+                            <Text size="sm" fw={500} lineClamp={1}>{h.name || h.symbol}</Text>
                             <Tooltip label="Dettaglio asset" withArrow>
                               <ActionIcon
                                 variant="subtle"
@@ -238,7 +238,7 @@ export function XRayCard({ portfolioId }: Props) {
                               </ActionIcon>
                             </Tooltip>
                           </Group>
-                          <Text size="xs" c="dimmed" lineClamp={1}>{h.name}</Text>
+                          <Text size="xs" c="dimmed">{h.symbol}</Text>
                         </Table.Td>
                         <Table.Td style={{ textAlign: 'right' }}>
                           <Text size="sm" fw={600}>

@@ -133,7 +133,10 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
       title={
         <Group gap="xs">
           <IconInfoCircle size={20} />
-          <Text fw={600}>Dettaglio {symbol}</Text>
+          <div>
+            <Text fw={600}>{info?.name ?? symbol}</Text>
+            {info?.name && <Text size="xs" c="dimmed">{symbol}</Text>}
+          </div>
         </Group>
       }
       size={isMobile ? '100%' : 'lg'}
@@ -151,8 +154,6 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
       )}
       {info && !loading && (
         <Stack gap="md">
-          {info.name && <Text fw={600} size="md">{info.name}</Text>}
-
           <Group gap="xs">
             {info.asset_type && (
               <Badge variant="light" color="blue" size="md">
