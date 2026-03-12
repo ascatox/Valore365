@@ -1129,8 +1129,8 @@ function ScenarioMetric({ label, value }: { label: string; value: string }) {
 function HeroMetric({ label, value }: { label: string; value: string }) {
   return (
     <Card radius="lg" p="sm" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.16)' }}>
-      <Text size="xs" tt="uppercase" fw={800} style={{ opacity: 0.7 }}>{label}</Text>
-      <Text fw={700}>{value}</Text>
+      <Text size="xs" tt="uppercase" fw={800} c="rgba(255,255,255,0.7)">{label}</Text>
+      <Text fw={700} c="white">{value}</Text>
     </Card>
   );
 }
