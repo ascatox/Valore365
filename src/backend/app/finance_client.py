@@ -653,7 +653,7 @@ class YahooFinanceClient:
             previous_close=_num('previousClose') or _num('regularMarketPreviousClose'),
             description=info.get('longBusinessSummary'),
             quote_type=info.get('quoteType'),
-            expense_ratio=_num('expenseRatio'),
+            expense_ratio=_num('netExpenseRatio') or _num('expenseRatio'),
             fund_family=info.get('fundFamily'),
             total_assets=_num('totalAssets'),
             category=info.get('category'),
