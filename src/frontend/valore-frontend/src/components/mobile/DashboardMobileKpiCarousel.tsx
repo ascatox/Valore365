@@ -1,4 +1,5 @@
 import { Badge, Box, Group, ScrollArea, Stack, Text, ThemeIcon, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useElementSize } from '@mantine/hooks';
 import type { KpiStatCardProps } from '../dashboard/types';
 
 interface DashboardMobileKpiCarouselProps {
@@ -9,16 +10,18 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const { ref, width: containerWidth } = useElementSize();
 
   return (
+    <div ref={ref}>
     <ScrollArea scrollbarSize={0} type="never">
       <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6, scrollSnapType: 'x mandatory' }}>
         {items.map(({ label, value, color, icon: Icon, iconColor, subtitle, subtitleColor }) => (
           <Box
             key={label}
             style={{
-              width: 'calc(100vw - 2 * var(--mantine-spacing-sm))',
-              minWidth: 'calc(100vw - 2 * var(--mantine-spacing-sm))',
+              width: containerWidth || '100%',
+              minWidth: containerWidth || 244,
               flexShrink: 0,
               borderRadius: 24,
               padding: 18,
@@ -63,5 +66,6 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
         ))}
       </Group>
     </ScrollArea>
+    </div>
   );
 }
