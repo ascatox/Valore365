@@ -120,6 +120,9 @@ button:focus-visible {
 }
 /* Mobile: stack tables as cards */
 @media (max-width: 48em) {
+  .copilot-markdown {
+    overflow-x: hidden;
+  }
   .copilot-markdown table, .copilot-markdown thead,
   .copilot-markdown tbody, .copilot-markdown th,
   .copilot-markdown td, .copilot-markdown tr {
