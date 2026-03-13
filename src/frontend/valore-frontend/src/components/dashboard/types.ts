@@ -10,6 +10,8 @@ export interface KpiStatCardProps {
   iconColor?: string;
   subtitle?: string;
   subtitleColor?: string;
+  /** When set, renders a small semicircular gauge coloured by sign */
+  gaugeValue?: number;
 }
 
 export interface ChartPoint {

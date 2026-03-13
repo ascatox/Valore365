@@ -1,7 +1,8 @@
 import { Group, Paper, Text, ThemeIcon } from '@mantine/core';
 import type { KpiStatCardProps } from '../types';
+import { MiniGauge } from './MiniGauge';
 
-export function KpiStatCard({ label, value, color, icon: Icon, iconColor }: KpiStatCardProps) {
+export function KpiStatCard({ label, value, color, icon: Icon, iconColor, gaugeValue }: KpiStatCardProps) {
   return (
     <Paper withBorder p="sm" radius="md">
       <Group justify="space-between" mb={4}>
@@ -12,7 +13,10 @@ export function KpiStatCard({ label, value, color, icon: Icon, iconColor }: KpiS
           </ThemeIcon>
         )}
       </Group>
-      <Text fw={700} size="lg" c={color ?? undefined}>{value}</Text>
+      <Group justify="space-between" align="flex-end" wrap="nowrap">
+        <Text fw={700} size="lg" c={color ?? undefined}>{value}</Text>
+        {gaugeValue != null && <MiniGauge value={gaugeValue} size={48} />}
+      </Group>
     </Paper>
   );
 }
