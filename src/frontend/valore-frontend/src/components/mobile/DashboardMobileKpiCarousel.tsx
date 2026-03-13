@@ -12,12 +12,12 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
 
   return (
     <ScrollArea offsetScrollbars scrollbarSize={0} type="never">
-      <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6 }}>
+      <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6, scrollSnapType: 'x mandatory' }}>
         {items.map(({ label, value, color, icon: Icon, iconColor, subtitle, subtitleColor }) => (
           <Box
             key={label}
             style={{
-              minWidth: 244,
+              minWidth: 'calc(100vw - 2 * var(--mantine-spacing-sm))',
               borderRadius: 24,
               padding: 18,
               background: isDark
