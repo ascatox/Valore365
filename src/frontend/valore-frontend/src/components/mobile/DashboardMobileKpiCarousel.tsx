@@ -11,13 +11,15 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
   const isDark = colorScheme === 'dark';
 
   return (
-    <ScrollArea offsetScrollbars scrollbarSize={0} type="never">
+    <ScrollArea scrollbarSize={0} type="never">
       <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6, scrollSnapType: 'x mandatory' }}>
         {items.map(({ label, value, color, icon: Icon, iconColor, subtitle, subtitleColor }) => (
           <Box
             key={label}
             style={{
+              width: 'calc(100vw - 2 * var(--mantine-spacing-sm))',
               minWidth: 'calc(100vw - 2 * var(--mantine-spacing-sm))',
+              flexShrink: 0,
               borderRadius: 24,
               padding: 18,
               background: isDark
