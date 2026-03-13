@@ -360,8 +360,8 @@ export function CopilotChat({
         </Group>
       }
       styles={{
-        body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', padding: 0 },
-        content: { display: 'flex', flexDirection: 'column' },
+        body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', padding: 0, overflowX: 'hidden' },
+        content: { display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
         header: { zIndex: 10 },
         close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
       }}
