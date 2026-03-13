@@ -1,6 +1,7 @@
 import { Badge, Box, Group, ScrollArea, Stack, Text, ThemeIcon, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useElementSize } from '@mantine/hooks';
 import type { KpiStatCardProps } from '../dashboard/types';
+import { MiniGauge } from '../dashboard/summary/MiniGauge';
 
 interface DashboardMobileKpiCarouselProps {
   items: KpiStatCardProps[];
@@ -16,7 +17,7 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
     <div ref={ref}>
     <ScrollArea scrollbarSize={0} type="never">
       <Group wrap="nowrap" gap="sm" style={{ paddingBottom: 6, scrollSnapType: 'x mandatory' }}>
-        {items.map(({ label, value, color, icon: Icon, iconColor, subtitle, subtitleColor }) => (
+        {items.map(({ label, value, color, icon: Icon, iconColor, subtitle, subtitleColor, gaugeValue }) => (
           <Box
             key={label}
             style={{
@@ -44,9 +45,12 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
                   </ThemeIcon>
                 )}
               </Group>
-              <Text fw={800} size="1.3rem" c={color ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.15 }}>
-                {value}
-              </Text>
+              <Group justify="space-between" align="flex-end" wrap="nowrap">
+                <Text fw={800} size="1.3rem" c={color ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.15 }}>
+                  {value}
+                </Text>
+                {gaugeValue != null && <MiniGauge value={gaugeValue} size={56} />}
+              </Group>
               {subtitle ? (
                 <Text fw={800} size="1.3rem" c={subtitleColor ?? (isDark ? theme.white : '#0f172a')} style={{ lineHeight: 1.15 }}>
                   {subtitle}

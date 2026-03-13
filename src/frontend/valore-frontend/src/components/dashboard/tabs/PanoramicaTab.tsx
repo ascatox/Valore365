@@ -148,6 +148,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       iconColor: 'orange' as const,
       subtitle: portfolioSummary ? formatMoney(portfolioSummary.day_change, mvpCurrency, true) : undefined,
       subtitleColor: getVariationColor(portfolioSummary?.day_change ?? 0),
+      gaugeValue: portfolioSummary?.day_change_pct ?? 0,
     },
     {
       label: isMobile ? 'Valore Tot' : 'Valore Totale',
