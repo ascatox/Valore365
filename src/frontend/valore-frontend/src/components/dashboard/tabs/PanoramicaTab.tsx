@@ -18,6 +18,7 @@ import {
   usePortfolioTimeseries,
   usePortfolioIntradayTimeseries,
   usePortfolioDataCoverage,
+  usePortfolioXray,
   useGainTimeseries,
   useBenchmarks,
   useBenchmarkPrices,
@@ -47,6 +48,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
   const { data: portfolioAllocationData = [] } = usePortfolioAllocation(portfolioId);
   const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(portfolioId);
   const { data: dataCoverage } = usePortfolioDataCoverage(portfolioId);
+  const { data: xrayData } = usePortfolioXray(portfolioId);
   const { data: benchmarkList = [] } = useBenchmarks();
 
   const isIntradayWindow = chartWindow === '1';
@@ -182,6 +184,22 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     () => portfolioAllocationData.map((item) => ({ name: item.symbol, value: item.weight_pct, asset_id: item.asset_id })),
     [portfolioAllocationData],
   );
+
+  const countryDoughnutData = useMemo<AllocationDoughnutItem[]>(() => {
+    if (!xrayData?.aggregated_country_exposure) return [];
+    return Object.entries(xrayData.aggregated_country_exposure)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+  }, [xrayData]);
+
+  const sectorDoughnutData = useMemo<AllocationDoughnutItem[]>(() => {
+    if (!xrayData?.aggregated_sector_exposure) return [];
+    return Object.entries(xrayData.aggregated_sector_exposure)
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+  }, [xrayData]);
 
   const { best, worst } = useMemo(() => {
     const sorted = [...portfolioPositions]
@@ -567,6 +585,29 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
             title="Allocazione Portafoglio"
             data={allocationDoughnutData}
             centerLabel={totalAllocationPct > 0 ? `${formatNum(totalAllocationPct, 0)}%` : '0%'}
+          />
+        </Grid.Col>
+      </Grid>
+
+      <Grid gutter="md" mt="md">
+        <Grid.Col span={{ base: 12, md: 6 }}>
+          <AllocationDoughnut
+            title="Allocazione Geografica"
+            data={countryDoughnutData}
+            centerLabel={countryDoughnutData.length > 0 ? `${countryDoughnutData.length}` : undefined}
+            headerRight={
+              <Badge variant="light" color="blue" size="sm">justETF</Badge>
+            }
+          />
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, md: 6 }}>
+          <AllocationDoughnut
+            title="Allocazione Settoriale"
+            data={sectorDoughnutData}
+            centerLabel={sectorDoughnutData.length > 0 ? `${sectorDoughnutData.length}` : undefined}
+            headerRight={
+              <Badge variant="light" color="blue" size="sm">justETF</Badge>
+            }
           />
         </Grid.Col>
       </Grid>
