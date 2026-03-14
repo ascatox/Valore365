@@ -69,6 +69,7 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { formatNum } from '../components/dashboard/formatters';
 import { ENABLE_TARGET_ALLOCATION } from '../features';
 import { getCopilotStatus } from '../services/api';
+import { formatPriceSourceLabel, formatProviderWarning } from '../services/dataQuality';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -159,6 +160,7 @@ export function PortfolioPage() {
   const [txResolvedAssetLabel, setTxResolvedAssetLabel] = useState<string | null>(null);
   const [txEnsuringAsset, setTxEnsuringAsset] = useState(false);
   const [txPriceLoading, setTxPriceLoading] = useState(false);
+  const [txPriceHint, setTxPriceHint] = useState<string | null>(null);
   const [rebalancePreviewOpened, setRebalancePreviewOpened] = useState(false);
   const [rebalancePreviewLoading, setRebalancePreviewLoading] = useState(false);
   const [rebalancePreviewError, setRebalancePreviewError] = useState<string | null>(null);
@@ -761,6 +763,7 @@ export function PortfolioPage() {
     setTxResolvedAssetId(null);
     setTxResolvedAssetLabel(null);
     setTxPrice('');
+    setTxPriceHint(null);
 
     if (!value) return;
     const selected = txDiscoverItems.find((item) => item.key === value);
@@ -773,8 +776,15 @@ export function PortfolioPage() {
       try {
         const quote = await getAssetLatestQuote(assetId);
         setTxPrice(quote.price);
+        setTxPriceHint(
+          formatProviderWarning(quote.warning)
+            ?? (quote.stale || quote.is_fallback
+              ? `Prezzo automatico non realtime (${formatPriceSourceLabel(quote.quote_source) ?? 'fallback'})`
+              : null),
+        );
       } catch {
         // prezzo non disponibile — l'utente lo inserisce manualmente
+        setTxPriceHint(null);
       } finally {
         setTxPriceLoading(false);
       }
@@ -2119,7 +2129,7 @@ export function PortfolioPage() {
             min={0}
             decimalScale={6}
             rightSection={txPriceLoading ? <Loader size="xs" /> : null}
-            description={txPriceLoading ? 'Caricamento prezzo...' : undefined}
+            description={txPriceLoading ? 'Caricamento prezzo...' : (txPriceHint ?? undefined)}
           />
           <TextInput
             label="Totale (Prezzo x Quantita)"

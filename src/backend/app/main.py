@@ -4,6 +4,7 @@ import logging
 import math
 import threading
 import time as _time
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import date, datetime
@@ -55,7 +56,7 @@ from .api.portfolio_health import register_portfolio_health_routes
 from .config import get_settings
 from .csv_service import CsvImportService
 from .db import engine
-from .errors import AppError
+from .errors import AppError, ProviderError
 from .finance_client import make_finance_client, QUOTE_TYPE_MAP
 from .historical_service import HistoricalIngestionService
 from .models import (
@@ -170,6 +171,9 @@ CSV_IMPORT_ALLOWED_CONTENT_TYPES = {
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "application/octet-stream",
 }
+MARKET_QUOTES_CACHE_TTL_SECONDS = 60.0
+_market_quotes_cache: dict[str, Any] = {"payload": None, "expires_at": 0.0}
+_market_quotes_cache_lock = threading.Lock()
 
 
 def _format_file_size_limit(byte_count: int) -> str:
@@ -178,6 +182,35 @@ def _format_file_size_limit(byte_count: int) -> str:
     if byte_count >= 1024:
         return f"{byte_count // 1024} KB"
     return f"{byte_count} bytes"
+
+
+def _resolve_asset_isin(asset_id: int) -> str | None:
+    try:
+        asset = repo.get_asset(asset_id)
+        if asset.isin:
+            return asset.isin.strip().upper()
+    except ValueError:
+        pass
+
+    enrich = repo.get_etf_enrichment(asset_id)
+    if enrich and enrich.get("isin"):
+        return str(enrich["isin"]).strip().upper()
+
+    meta = repo.get_asset_metadata(asset_id)
+    if meta and meta.raw_info:
+        raw = meta.raw_info if isinstance(meta.raw_info, dict) else {}
+        raw_isin = raw.get("isin") or raw.get("ISIN")
+        if isinstance(raw_isin, str) and raw_isin.strip():
+            return raw_isin.strip().upper()
+
+    try:
+        pa = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
+        symbol = pa.symbol.strip().upper()
+        if len(symbol) == 12 and symbol[:2].isalpha():
+            return symbol
+    except ValueError:
+        pass
+    return None
 
 
 def _apply_pending_migrations():
@@ -614,7 +647,7 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
         # Detect asset type from provider
         detected_type = "stock"
         try:
-            client = make_finance_client()
+            client = make_finance_client(settings)
             info = client.get_asset_info(symbol)
             if info.quote_type:
                 detected_type = QUOTE_TYPE_MAP.get(info.quote_type.upper(), "stock")
@@ -685,6 +718,7 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth_rate
         raise AppError(code="provider_error", message=f"Impossibile ottenere info: {exc}", status_code=502) from exc
     # Fetch 5-year price history
     price_history: list[AssetInfoPricePoint] = []
+    price_history_status = "available"
     try:
         start_5y = date.today().replace(year=date.today().year - 5).isoformat()
         bars = finance_client.get_daily_bars(
@@ -698,8 +732,10 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth_rate
             for i, b in enumerate(bars)
             if i % 5 == 0 or i == len(bars) - 1
         ]
-    except Exception:
-        pass
+        if not price_history:
+            price_history_status = "empty"
+    except Exception as exc:
+        price_history_status = f"unavailable:{exc.__class__.__name__}"
     day_change_pct: float | None = None
     if info.current_price is not None and info.previous_close is not None and info.previous_close != 0:
         day_change_pct = round(((info.current_price / info.previous_close) - 1) * 100, 2)
@@ -750,6 +786,10 @@ def get_asset_info(asset_id: int, _auth: AuthContext = Depends(require_auth_rate
         revenue_growth=info.revenue_growth,
         earnings_growth=info.earnings_growth,
         website=info.website,
+        current_price_source=info.current_price_source,
+        metadata_status=info.metadata_status,
+        price_history_status=price_history_status,
+        warnings=info.warnings,
     )
 
 
@@ -813,25 +853,7 @@ def get_etf_enrichment(asset_id: int, _auth: AuthContext = Depends(require_auth_
 @router.post("/assets/{asset_id}/etf-enrichment/refresh")
 def refresh_etf_enrichment(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)):
     """Fetch fresh ETF data from justETF and store it. Requires ISIN."""
-    # Try to find the ISIN: check asset_metadata.raw_info first, then asset symbol
-    isin: str | None = None
-
-    # Check raw_info from yfinance metadata
-    meta = repo.get_asset_metadata(asset_id)
-    if meta and meta.raw_info:
-        raw = meta.raw_info if isinstance(meta.raw_info, dict) else {}
-        isin = raw.get("isin") or raw.get("ISIN")
-
-    # Fallback: check if the asset symbol itself is an ISIN (12 chars, starts with 2 letters)
-    if not isin:
-        try:
-            pa = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
-            symbol = pa.symbol
-            if len(symbol) == 12 and symbol[:2].isalpha():
-                isin = symbol
-        except ValueError:
-            pass
-
+    isin = _resolve_asset_isin(asset_id)
     if not isin:
         raise AppError(
             code="bad_request",
@@ -839,13 +861,20 @@ def refresh_etf_enrichment(asset_id: int, _auth: AuthContext = Depends(require_a
             status_code=400,
         )
 
-    data = justetf_client.fetch_profile(isin)
-    if data is None:
+    try:
+        data = justetf_client.fetch_profile(isin)
+    except ProviderError as exc:
+        status_code = 502
+        if exc.reason == "invalid_isin":
+            status_code = 400
+        elif exc.reason == "disabled":
+            status_code = 503
         raise AppError(
-            code="provider_error",
-            message=f"Impossibile ottenere dati da justETF per ISIN {isin}",
-            status_code=502,
-        )
+            code=exc.reason,
+            message=exc.message,
+            status_code=status_code,
+            details={"provider": exc.provider, "operation": exc.operation, "symbol": exc.symbol},
+        ) from exc
 
     repo.upsert_etf_enrichment(asset_id, isin, data)
     result = repo.get_etf_enrichment(asset_id)
@@ -967,7 +996,7 @@ def reclassify_assets(
     except ValueError as exc:
         raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
-    client = make_finance_client()
+    client = make_finance_client(settings)
     updated: list[dict[str, str]] = []
     for aid in asset_ids:
         try:
@@ -1671,6 +1700,11 @@ def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_a
             provider_symbol=pricing_asset.provider_symbol,
             price=quote.price,
             ts=quote.ts,
+            quote_source=quote.source,
+            is_realtime=quote.is_realtime,
+            is_fallback=quote.is_fallback,
+            stale=quote.stale,
+            warning=quote.warning,
         )
     except ValueError as exc:
         message = str(exc)
@@ -1714,59 +1748,74 @@ MARKET_SYMBOLS: dict[str, dict[str, list[tuple[str, str]]]] = {
 
 @router.get("/markets/quotes", response_model=MarketQuotesResponse)
 def get_market_quotes(_auth: AuthContext = Depends(require_auth_rate_limited)) -> MarketQuotesResponse:
-    categories: list[MarketCategory] = []
-    delay = settings.finance_symbol_request_delay_seconds
-    first_call = True
+    now = _time.monotonic()
+    with _market_quotes_cache_lock:
+        cached_payload = _market_quotes_cache.get("payload")
+        cached_expires = float(_market_quotes_cache.get("expires_at", 0.0) or 0.0)
+        if cached_payload is not None and cached_expires > now:
+            return cached_payload
 
-    for cat_key, cat_info in MARKET_SYMBOLS.items():
-        items: list[MarketQuoteItem] = []
-        for symbol, name in cat_info["symbols"]:
-            if not first_call and delay > 0:
-                _time.sleep(delay)
-            first_call = False
+    def fetch_one(symbol: str, name: str) -> MarketQuoteItem:
+        try:
+            mq = finance_client.get_market_quote(symbol)
+            change: float | None = None
+            change_pct: float | None = None
+            if mq.price is not None and mq.previous_close is not None and mq.previous_close != 0:
+                change = mq.price - mq.previous_close
+                change_pct = (change / mq.previous_close) * 100
 
+            intraday: list[MarketIntradayPoint] = []
             try:
-                mq = finance_client.get_market_quote(symbol)
-                change: float | None = None
-                change_pct: float | None = None
-                if mq.price is not None and mq.previous_close is not None and mq.previous_close != 0:
-                    change = mq.price - mq.previous_close
-                    change_pct = (change / mq.previous_close) * 100
+                bars = finance_client.get_intraday_bars(symbol)
+                intraday = [
+                    MarketIntradayPoint(
+                        time=b.ts.strftime('%d/%m %H:%M'),
+                        price=b.close,
+                    )
+                    for b in bars
+                ]
+            except Exception:
+                pass
 
-                intraday: list[MarketIntradayPoint] = []
-                try:
-                    bars = finance_client.get_intraday_bars(symbol)
-                    intraday = [
-                        MarketIntradayPoint(
-                            time=b.ts.strftime('%d/%m %H:%M'),
-                            price=b.close,
-                        )
-                        for b in bars
-                    ]
-                except Exception:
-                    pass
+            return MarketQuoteItem(
+                symbol=symbol,
+                name=name,
+                price=mq.price,
+                previous_close=mq.previous_close,
+                change=round(change, 4) if change is not None else None,
+                change_pct=round(change_pct, 4) if change_pct is not None else None,
+                ts=mq.ts,
+                error=None if mq.price is not None else "Prezzo non disponibile",
+                intraday=intraday,
+                price_source=getattr(mq, "source", None),
+                is_realtime=getattr(mq, "is_realtime", True),
+                is_fallback=getattr(mq, "is_fallback", False),
+                stale=getattr(mq, "stale", False),
+                warning=getattr(mq, "warning", None),
+            )
+        except Exception as exc:
+            return MarketQuoteItem(
+                symbol=symbol,
+                name=name,
+                error=str(exc),
+                is_realtime=False,
+                is_fallback=True,
+                stale=True,
+                warning="market quote fetch failed",
+            )
 
-                items.append(MarketQuoteItem(
-                    symbol=symbol,
-                    name=name,
-                    price=mq.price,
-                    previous_close=mq.previous_close,
-                    change=round(change, 4) if change is not None else None,
-                    change_pct=round(change_pct, 4) if change_pct is not None else None,
-                    ts=mq.ts,
-                    error=None if mq.price is not None else "Prezzo non disponibile",
-                    intraday=intraday,
-                ))
-            except Exception as exc:
-                items.append(MarketQuoteItem(
-                    symbol=symbol,
-                    name=name,
-                    error=str(exc),
-                ))
-
+    categories: list[MarketCategory] = []
+    for cat_key, cat_info in MARKET_SYMBOLS.items():
+        symbol_items = cat_info["symbols"]
+        with ThreadPoolExecutor(max_workers=min(4, len(symbol_items))) as executor:
+            items = list(executor.map(lambda item: fetch_one(item[0], item[1]), symbol_items))
         categories.append(MarketCategory(category=cat_key, label=cat_info["label"], items=items))
 
-    return MarketQuotesResponse(categories=categories)
+    response = MarketQuotesResponse(categories=categories)
+    with _market_quotes_cache_lock:
+        _market_quotes_cache["payload"] = response
+        _market_quotes_cache["expires_at"] = _time.monotonic() + MARKET_QUOTES_CACHE_TTL_SECONDS
+    return response
 
 
 @router.get("/markets/symbol-info", response_model=AssetInfoResponse, responses={404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
@@ -1777,6 +1826,7 @@ def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext
     except Exception as exc:
         raise AppError(code="provider_error", message=f"Impossibile ottenere info: {exc}", status_code=502) from exc
     price_history: list[AssetInfoPricePoint] = []
+    price_history_status = "available"
     try:
         start_5y = date.today().replace(year=date.today().year - 5).isoformat()
         bars = finance_client.get_daily_bars(symbol, start_date=start_5y, end_date=date.today().isoformat())
@@ -1785,8 +1835,10 @@ def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext
             for i, b in enumerate(bars)
             if i % 5 == 0 or i == len(bars) - 1
         ]
-    except Exception:
-        pass
+        if not price_history:
+            price_history_status = "empty"
+    except Exception as exc:
+        price_history_status = f"unavailable:{exc.__class__.__name__}"
     day_change_pct: float | None = None
     if info.current_price is not None and info.previous_close is not None and info.previous_close != 0:
         day_change_pct = round(((info.current_price / info.previous_close) - 1) * 100, 2)
@@ -1813,6 +1865,20 @@ def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext
         day_change_pct=day_change_pct,
         description=info.description,
         price_history_5y=price_history,
+        expense_ratio=info.expense_ratio,
+        fund_family=info.fund_family,
+        total_assets=info.total_assets,
+        category=info.category,
+        dividend_rate=info.dividend_rate,
+        profit_margins=info.profit_margins,
+        return_on_equity=info.return_on_equity,
+        revenue_growth=info.revenue_growth,
+        earnings_growth=info.earnings_growth,
+        website=info.website,
+        current_price_source=info.current_price_source,
+        metadata_status=info.metadata_status,
+        price_history_status=price_history_status,
+        warnings=info.warnings,
     )
 
 

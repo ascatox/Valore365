@@ -82,7 +82,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                         withArrow
                       >
                         <Badge color="yellow" variant="light" leftSection={<IconAlertTriangle size={12} />}>
-                          Prezzo stale
+                          Prezzo non aggiornato
                         </Badge>
                       </Tooltip>
                     )}

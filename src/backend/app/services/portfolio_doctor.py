@@ -20,6 +20,7 @@ from ..schemas.portfolio_doctor import (
     PortfolioHealthResponse,
     PortfolioHealthSuggestion,
     PortfolioHealthSummary,
+    XRayCoverageIssue,
     XRayEtfDetail,
     XRayHolding,
     XRayResponse,
@@ -438,7 +439,7 @@ def compute_weighted_ter(
             enrich_map = repo.get_etf_enrichment_bulk(asset_ids)
             for aid, enrich in enrich_map.items():
                 if enrich.get("ter") is not None:
-                    db_ter[aid] = enrich["ter"] * 100  # justETF returns 0.0022, we use percent 0.22
+                    db_ter[aid] = enrich["ter"]  # justETF already returns percentage (e.g. 0.22)
         except Exception:
             pass
         try:
@@ -1389,6 +1390,7 @@ def compute_portfolio_xray(
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     etf_raw_holdings: dict[int, list] = {}
+    yfinance_failures: dict[int, str] = {}
     needs_yfinance = [h for h in candidates if h.asset_id not in enrichment_map or not enrichment_map[h.asset_id].get("top_holdings")]
 
     def fetch_one(asset_id: int, symbol: str):
@@ -1404,32 +1406,41 @@ def compute_portfolio_xray(
                 aid, result = future.result()
                 if result:  # only keep assets that actually have holdings (= ETFs/funds)
                     etf_raw_holdings[aid] = result
-            except Exception:
-                pass
+                else:
+                    yfinance_failures[aid] = "yfinance returned no top holdings"
+            except Exception as exc:
+                asset = futures[future]
+                yfinance_failures[asset.asset_id] = f"yfinance holdings fetch failed: {exc}"
 
-    # The real ETF list: has justETF enrichment holdings OR yfinance holdings
-    etf_holdings = [
-        h for h in candidates
-        if h.asset_id in etf_raw_holdings
-        or (h.asset_id in enrichment_map and enrichment_map[h.asset_id].get("top_holdings"))
-    ]
+    # Analyze all non-cash candidates and report which ones are not covered.
+    etf_holdings = candidates
 
     # Build per-ETF details and aggregate
     aggregated: dict[str, dict] = defaultdict(lambda: {"name": "", "weight": 0.0, "contributors": []})
     etf_details: list[XRayEtfDetail] = []
+    coverage_issues: list[XRayCoverageIssue] = []
     covered_weight = 0.0
+    covered_etf_count = 0
 
     # Aggregated country/sector from enrichment
     country_totals: dict[str, float] = {}
     sector_totals: dict[str, float] = {}
 
     for h in etf_holdings:
-        covered_weight += h.weight_pct
         enrich = enrichment_map.get(h.asset_id)
+        is_fund_candidate = (
+            h.asset_type.lower() in {"etf", "fund"}
+            or (enrich is not None)
+            or (h.asset_id in etf_raw_holdings)
+        )
+        if not is_fund_candidate and h.asset_id not in yfinance_failures:
+            continue
         detail_holdings = []
 
         # Prefer justETF top_holdings if available
         if enrich and enrich.get("top_holdings"):
+            holdings_source = "justetf"
+            failure_reason = None
             for th in enrich["top_holdings"]:
                 name = th.get("name", "")
                 isin = th.get("isin", "")
@@ -1449,6 +1460,8 @@ def compute_portfolio_xray(
                     etf_contributors=[h.symbol],
                 ))
         elif h.asset_id in etf_raw_holdings:
+            holdings_source = "yfinance"
+            failure_reason = None
             raw = etf_raw_holdings[h.asset_id]
             for rh in raw:
                 contrib_weight = rh.weight * h.weight_pct
@@ -1461,8 +1474,25 @@ def compute_portfolio_xray(
                     aggregated_weight_pct=round(rh.weight * 100, 2),
                     etf_contributors=[h.symbol],
                 ))
+        else:
+            holdings_source = "missing"
+            failure_reason = yfinance_failures.get(
+                h.asset_id,
+                "justETF enrichment missing and yfinance fallback unavailable",
+            )
+            coverage_issues.append(
+                XRayCoverageIssue(
+                    asset_id=h.asset_id,
+                    symbol=h.symbol,
+                    name=h.name,
+                    reason=failure_reason,
+                )
+            )
 
         # Aggregate country/sector from enrichment
+        if detail_holdings:
+            covered_weight += h.weight_pct
+            covered_etf_count += 1
         if enrich and enrich.get("country_weights"):
             for cw in enrich["country_weights"]:
                 name = cw["name"]
@@ -1473,10 +1503,13 @@ def compute_portfolio_xray(
                 sector_totals[name] = sector_totals.get(name, 0.0) + h.weight_pct * (sw["percentage"] / 100.0)
 
         etf_details.append(XRayEtfDetail(
+            asset_id=h.asset_id,
             symbol=h.symbol,
             name=h.name,
             portfolio_weight_pct=round(h.weight_pct, 2),
-            holdings_available=True,
+            holdings_available=bool(detail_holdings),
+            holdings_source=holdings_source,
+            failure_reason=failure_reason,
             top_holdings=detail_holdings,
         ))
 
@@ -1503,8 +1536,9 @@ def compute_portfolio_xray(
         portfolio_id=portfolio_id,
         aggregated_holdings=aggregated_holdings,
         etf_details=sorted(etf_details, key=lambda x: x.portfolio_weight_pct, reverse=True),
-        etf_count=len(etf_holdings),
+        etf_count=covered_etf_count,
         coverage_pct=coverage,
         aggregated_country_exposure=agg_countries,
         aggregated_sector_exposure=agg_sectors,
+        coverage_issues=coverage_issues,
     )

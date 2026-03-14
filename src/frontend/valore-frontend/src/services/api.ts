@@ -427,6 +427,10 @@ export interface AssetInfo {
   revenue_growth: number | null;
   earnings_growth: number | null;
   website: string | null;
+  current_price_source: string | null;
+  metadata_status: string;
+  price_history_status: string;
+  warnings: string[];
 }
 
 export interface AllocationItem {
@@ -626,6 +630,11 @@ export interface AssetLatestQuoteResponse {
   provider_symbol: string;
   price: number;
   ts: string;
+  quote_source: string | null;
+  is_realtime: boolean;
+  is_fallback: boolean;
+  stale: boolean;
+  warning: string | null;
 }
 
 export type TransactionSide = 'buy' | 'sell' | 'deposit' | 'withdrawal' | 'dividend' | 'fee' | 'interest';
@@ -774,6 +783,11 @@ export interface MarketQuoteItem {
   ts: string | null;
   error: string | null;
   intraday: MarketIntradayPoint[];
+  price_source: string | null;
+  is_realtime: boolean;
+  is_fallback: boolean;
+  stale: boolean;
+  warning: string | null;
 }
 
 export interface MarketCategory {
@@ -885,11 +899,21 @@ export interface XRayHolding {
 }
 
 export interface XRayEtfDetail {
+  asset_id?: number | null;
   symbol: string;
   name: string;
   portfolio_weight_pct: number;
   holdings_available: boolean;
+  holdings_source: 'justetf' | 'yfinance' | 'missing';
+  failure_reason: string | null;
   top_holdings: XRayHolding[];
+}
+
+export interface XRayCoverageIssue {
+  asset_id: number;
+  symbol: string;
+  name: string;
+  reason: string;
 }
 
 export interface XRayResponse {
@@ -900,6 +924,7 @@ export interface XRayResponse {
   coverage_pct: number;
   aggregated_country_exposure: Record<string, number>;
   aggregated_sector_exposure: Record<string, number>;
+  coverage_issues: XRayCoverageIssue[];
 }
 
 export const getPortfolioXray = async (portfolioId: number): Promise<XRayResponse> => {

@@ -128,11 +128,21 @@ class XRayHolding(BaseModel):
 
 
 class XRayEtfDetail(BaseModel):
+    asset_id: int | None = Field(default=None, ge=1)
     symbol: str
     name: str
     portfolio_weight_pct: float
     holdings_available: bool
+    holdings_source: Literal["justetf", "yfinance", "missing"] = "missing"
+    failure_reason: str | None = None
     top_holdings: list[XRayHolding] = Field(default_factory=list)
+
+
+class XRayCoverageIssue(BaseModel):
+    asset_id: int = Field(ge=1)
+    symbol: str
+    name: str
+    reason: str
 
 
 class XRayResponse(BaseModel):
@@ -143,3 +153,4 @@ class XRayResponse(BaseModel):
     coverage_pct: float = Field(ge=0, le=100)
     aggregated_country_exposure: dict[str, float] = Field(default_factory=dict)
     aggregated_sector_exposure: dict[str, float] = Field(default_factory=dict)
+    coverage_issues: list[XRayCoverageIssue] = Field(default_factory=list)

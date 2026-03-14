@@ -5,6 +5,8 @@ import os
 import threading
 import time
 
+from .errors import ProviderError
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,96 +27,120 @@ class JustEtfClient:
                 time.sleep(self._rate_limit - elapsed)
             self._last_request = time.monotonic()
 
-    def fetch_profile(self, isin: str) -> dict | None:
+    def fetch_profile(self, isin: str, max_retries: int = 3) -> dict | None:
         """Fetch ETF profile from justETF. Returns DB-ready dict or None on error."""
         if not self._enabled:
-            logger.debug("justETF client disabled via JUSTETF_ENABLED=false")
-            return None
+            raise ProviderError(
+                provider="justetf",
+                operation="fetch_profile",
+                symbol=isin,
+                reason="disabled",
+                message="justETF client disabled via JUSTETF_ENABLED=false",
+            )
 
         if not isin or len(isin) != 12:
-            logger.warning("Invalid ISIN for justETF lookup: %s", isin)
+            raise ProviderError(
+                provider="justetf",
+                operation="fetch_profile",
+                symbol=isin,
+                reason="invalid_isin",
+                message=f"Invalid ISIN for justETF lookup: {isin}",
+            )
+
+        from justetf_scraping import get_etf_overview  # type: ignore
+
+        for attempt in range(max_retries):
+            try:
+                self._wait_rate_limit()
+                logger.debug("Fetching justETF data for ISIN %s (attempt %d)", isin, attempt + 1)
+                overview = get_etf_overview(isin)
+                return self._convert_overview(isin, overview)
+            except Exception as exc:
+                if attempt < max_retries - 1:
+                    backoff = self._rate_limit * (2 ** attempt)
+                    logger.info("justETF fetch failed for ISIN %s, retrying in %.1fs", isin, backoff)
+                    time.sleep(backoff)
+                else:
+                    logger.warning("justETF fetch failed for ISIN %s after %d attempts", isin, max_retries, exc_info=True)
+                    raise ProviderError(
+                        provider="justetf",
+                        operation="fetch_profile",
+                        symbol=isin,
+                        reason="provider_error",
+                        message=f"justETF fetch failed for ISIN {isin}: {exc}",
+                        retryable=False,
+                    ) from exc
+        raise ProviderError(
+            provider="justetf",
+            operation="fetch_profile",
+            symbol=isin,
+            reason="provider_error",
+            message=f"justETF fetch failed for ISIN {isin}",
+        )
+
+    @staticmethod
+    def _parse_allocation_list(items) -> list[dict] | None:
+        """Parse country/sector allocation data from the library.
+
+        The library returns list[AllocationItem] dicts with keys
+        ``name`` and ``percentage`` (already on a 0-100 scale).
+        """
+        if items is None:
+            return None
+        try:
+            result: list[dict] = []
+            if isinstance(items, list):
+                for item in items:
+                    name = item.get("name") if isinstance(item, dict) else None
+                    pct = item.get("percentage") if isinstance(item, dict) else None
+                    if name is not None and pct is not None and float(pct) > 0:
+                        result.append({"name": str(name), "percentage": round(float(pct), 2)})
+            elif isinstance(items, dict):
+                for k, v in items.items():
+                    if v and float(v) > 0:
+                        result.append({"name": str(k), "percentage": round(float(v), 2)})
+            elif hasattr(items, "to_dict"):
+                for k, v in items.items():
+                    if v and float(v) > 0:
+                        result.append({"name": str(k), "percentage": round(float(v), 2)})
+            return result if result else None
+        except Exception:
             return None
 
+    @staticmethod
+    def _parse_holdings_list(holdings) -> list[dict] | None:
+        """Parse top holdings data from the library.
+
+        The library returns list[HoldingItem] dicts with keys
+        ``name``, ``percentage``, and optionally ``isin``.
+        """
+        if holdings is None:
+            return None
         try:
-            self._wait_rate_limit()
-            from justetf_scraping import get_etf_overview  # type: ignore
-
-            logger.debug("Fetching justETF data for ISIN %s", isin)
-            overview = get_etf_overview(isin)
-
-            return self._convert_overview(isin, overview)
+            if isinstance(holdings, list):
+                result: list[dict] = []
+                for item in holdings:
+                    if not isinstance(item, dict):
+                        continue
+                    entry: dict = {}
+                    if "name" in item:
+                        entry["name"] = str(item["name"])
+                    if "percentage" in item:
+                        entry["percentage"] = round(float(item["percentage"]), 2)
+                    if "isin" in item:
+                        entry["isin"] = str(item["isin"])
+                    if entry:
+                        result.append(entry)
+                return result if result else None
+            return None
         except Exception:
-            logger.warning("justETF fetch failed for ISIN %s", isin, exc_info=True)
             return None
 
     def _convert_overview(self, isin: str, ov: dict) -> dict:
         """Convert EtfOverview TypedDict to our DB-friendly format."""
-        # Country weights
-        country_weights = None
-        countries = ov.get("countries")
-        if countries is not None:
-            try:
-                if hasattr(countries, "to_dict"):
-                    # pandas Series
-                    country_weights = [
-                        {"name": str(k), "percentage": round(float(v) * 100, 2) if float(v) <= 1.0 else round(float(v), 2)}
-                        for k, v in countries.items()
-                        if v and float(v) > 0
-                    ]
-                elif isinstance(countries, dict):
-                    country_weights = [
-                        {"name": str(k), "percentage": round(float(v) * 100, 2) if float(v) <= 1.0 else round(float(v), 2)}
-                        for k, v in countries.items()
-                        if v and float(v) > 0
-                    ]
-            except Exception:
-                logger.debug("Could not parse country weights for %s", isin)
-
-        # Sector weights
-        sector_weights = None
-        sectors = ov.get("sectors")
-        if sectors is not None:
-            try:
-                if hasattr(sectors, "to_dict"):
-                    sector_weights = [
-                        {"name": str(k), "percentage": round(float(v) * 100, 2) if float(v) <= 1.0 else round(float(v), 2)}
-                        for k, v in sectors.items()
-                        if v and float(v) > 0
-                    ]
-                elif isinstance(sectors, dict):
-                    sector_weights = [
-                        {"name": str(k), "percentage": round(float(v) * 100, 2) if float(v) <= 1.0 else round(float(v), 2)}
-                        for k, v in sectors.items()
-                        if v and float(v) > 0
-                    ]
-            except Exception:
-                logger.debug("Could not parse sector weights for %s", isin)
-
-        # Top holdings
-        top_holdings = None
-        holdings = ov.get("top_holdings")
-        if holdings is not None:
-            try:
-                if hasattr(holdings, "to_dict"):
-                    # DataFrame — rows have name, percentage, maybe isin
-                    rows = holdings.to_dict("records") if hasattr(holdings, "to_dict") else []
-                    top_holdings = []
-                    for row in rows:
-                        entry: dict = {}
-                        # The library returns a DataFrame with columns like 'name', 'weight'
-                        if "name" in row:
-                            entry["name"] = str(row["name"])
-                        if "weight" in row:
-                            w = float(row["weight"])
-                            entry["percentage"] = round(w * 100, 2) if w <= 1.0 else round(w, 2)
-                        if "isin" in row:
-                            entry["isin"] = str(row["isin"])
-                        if entry:
-                            top_holdings.append(entry)
-                elif isinstance(holdings, list):
-                    top_holdings = holdings
-            except Exception:
-                logger.debug("Could not parse top holdings for %s", isin)
+        country_weights = self._parse_allocation_list(ov.get("countries"))
+        sector_weights = self._parse_allocation_list(ov.get("sectors"))
+        top_holdings = self._parse_holdings_list(ov.get("top_holdings"))
 
         def _safe_float(key: str) -> float | None:
             v = ov.get(key)
@@ -144,9 +170,9 @@ class JustEtfClient:
             "distribution_frequency": _safe_str("distribution_frequency"),
             "fund_currency": _safe_str("fund_currency"),
             "currency_hedged": ov.get("currency_hedged") if isinstance(ov.get("currency_hedged"), bool) else None,
-            "domicile": _safe_str("domicile"),
+            "domicile": _safe_str("fund_domicile"),
             "fund_provider": _safe_str("fund_provider"),
-            "fund_size_eur": _safe_float("fund_size"),
+            "fund_size_eur": _safe_float("fund_size_eur"),
             "ter": _safe_float("ter"),
             "volatility_1y": _safe_float("volatility_1y"),
             "sustainability": ov.get("sustainability") if isinstance(ov.get("sustainability"), bool) else None,

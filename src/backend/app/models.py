@@ -126,6 +126,11 @@ class AssetLatestQuoteResponse(BaseModel):
     provider_symbol: str
     price: float
     ts: datetime
+    quote_source: str | None = None
+    is_realtime: bool = True
+    is_fallback: bool = False
+    stale: bool = False
+    warning: str | None = None
 
 
 class AssetCreate(BaseModel):
@@ -254,6 +259,10 @@ class AssetInfoResponse(BaseModel):
     revenue_growth: float | None = None
     earnings_growth: float | None = None
     website: str | None = None
+    current_price_source: str | None = None
+    metadata_status: str = "complete"
+    price_history_status: str = "available"
+    warnings: list[str] = Field(default_factory=list)
 
 
 class Position(BaseModel):
@@ -450,6 +459,11 @@ class PriceRefreshItem(BaseModel):
     provider_symbol: str
     price: float
     ts: datetime
+    quote_source: str | None = None
+    is_realtime: bool = True
+    is_fallback: bool = False
+    stale: bool = False
+    warning: str | None = None
 
 
 class PriceRefreshResponse(BaseModel):
@@ -466,12 +480,16 @@ class DailyBackfillItem(BaseModel):
     symbol: str
     provider_symbol: str
     bars_saved: int
+    bars_requested: int = 0
+    bars_rejected: int = 0
 
 
 class FxBackfillItem(BaseModel):
     from_currency: str
     to_currency: str
     rates_saved: int
+    rates_requested: int = 0
+    rates_rejected: int = 0
 
 
 class DailyBackfillResponse(BaseModel):
@@ -600,6 +618,11 @@ class MarketQuoteItem(BaseModel):
     ts: datetime | None = None
     error: str | None = None
     intraday: list[MarketIntradayPoint] = []
+    price_source: str | None = None
+    is_realtime: bool = True
+    is_fallback: bool = False
+    stale: bool = False
+    warning: str | None = None
 
 
 class MarketCategory(BaseModel):

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Alert, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
+import { Alert, Badge, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { IconAlertTriangle, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import { formatDateTime, formatPct, getVariationColor } from '../formatters';
 import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
+import { formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
 
 /* ── Exchange schedule per symbol ────────────────────────────────── */
@@ -171,6 +172,7 @@ function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: ()
   const variation = item.change_pct;
   const variationColor = variation != null ? getVariationColor(variation) : 'gray';
   const isError = !!item.error;
+  const dataWarning = formatProviderWarning(item.warning) ?? (item.stale ? 'Prezzo non realtime.' : null);
 
   return (
     <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1, cursor: 'pointer' }} onClick={onClick}>
@@ -192,6 +194,24 @@ function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: ()
 
         <Text fw={700} size="lg">{formatMarketPrice(item.price)}</Text>
 
+        <Group gap={6} wrap="wrap">
+          {item.is_fallback && (
+            <Badge size="xs" variant="light" color="yellow">
+              prezzo fallback
+            </Badge>
+          )}
+          {item.stale && (
+            <Badge size="xs" variant="light" color="orange">
+              non realtime
+            </Badge>
+          )}
+          {item.price_source && (
+            <Badge size="xs" variant="outline" color="gray">
+              {formatPriceSourceLabel(item.price_source)}
+            </Badge>
+          )}
+        </Group>
+
         <Group justify="space-between" gap="xs">
           <Text size="sm" c={variationColor} fw={600}>
             {variation != null ? formatPct(variation) : 'N/D'}
@@ -206,6 +226,11 @@ function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: ()
         {item.error && (
           <Text size="xs" c="red">
             {item.error}
+          </Text>
+        )}
+        {!item.error && dataWarning && (
+          <Text size="xs" c="dimmed">
+            {dataWarning}
           </Text>
         )}
       </Stack>
@@ -236,6 +261,11 @@ export function MercatiTab() {
     const allSymbols = data.categories.flatMap((c) => c.items.map((i) => i.symbol));
     return getClosedExchanges(allSymbols, new Date());
   }, [data]);
+
+  const degradedItems = useMemo(
+    () => data?.categories.flatMap((category) => category.items).filter((item) => item.stale || item.is_fallback) ?? [],
+    [data],
+  );
 
   if (isLoading && !data) {
     return (
@@ -270,6 +300,22 @@ export function MercatiTab() {
       <Text size="xs" c="dimmed">
         Ultimo aggiornamento: {lastUpdatedAt ? formatDateTime(lastUpdatedAt) : 'N/D'}
       </Text>
+
+      {degradedItems.length > 0 && (
+        <Alert color="yellow" variant="light" title="Alcune quotazioni non sono realtime">
+          <Text size="sm">
+            {degradedItems.length === 1
+              ? '1 strumento usa un prezzo differito o di fallback.'
+              : `${degradedItems.length} strumenti usano prezzi differiti o di fallback.`}
+          </Text>
+          <Text size="xs" c="dimmed" mt={4}>
+            {degradedItems
+              .slice(0, 4)
+              .map((item) => `${item.symbol}${item.price_source ? ` (${formatPriceSourceLabel(item.price_source)})` : ''}`)
+              .join(' • ')}
+          </Text>
+        </Alert>
+      )}
 
       {error && <Alert color="red">{error instanceof Error ? error.message : 'Errore caricamento mercati'}</Alert>}
 

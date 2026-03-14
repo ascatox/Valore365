@@ -2,11 +2,13 @@ import logging
 import math
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import TYPE_CHECKING
 
 import httpx
+
+from .errors import ProviderError
 
 if TYPE_CHECKING:
     from .config import Settings
@@ -26,6 +28,11 @@ class ProviderQuote:
     ask: float | None
     volume: float | None
     ts: datetime
+    source: str = "provider"
+    is_realtime: bool = True
+    is_fallback: bool = False
+    stale: bool = False
+    warning: str | None = None
 
 
 @dataclass
@@ -58,6 +65,11 @@ class ProviderMarketQuote:
     price: float | None
     previous_close: float | None
     ts: datetime
+    source: str = "provider"
+    is_realtime: bool = True
+    is_fallback: bool = False
+    stale: bool = False
+    warning: str | None = None
 
 
 @dataclass
@@ -113,6 +125,9 @@ class ProviderAssetInfo:
     logo_url: str | None = None
     # Full raw info dict
     raw_info: dict | None = None
+    current_price_source: str | None = None
+    metadata_status: str = "complete"
+    warnings: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -165,7 +180,13 @@ class TwelveDataClient:
         payload = self._request_json('/quote', {'symbol': symbol, 'apikey': self.api_key}, symbol=symbol)
         price = _parse_float(payload, ['price', 'close', 'last'])
         if price is None:
-            raise ValueError(f"Prezzo non disponibile per {symbol}")
+            raise ProviderError(
+                provider='twelvedata',
+                operation='quote',
+                symbol=symbol,
+                reason='no_data',
+                message=f"Prezzo non disponibile per {symbol}",
+            )
 
         ts = datetime.now(UTC)
         return ProviderQuote(
@@ -175,6 +196,7 @@ class TwelveDataClient:
             ask=_parse_float(payload, ['ask']),
             volume=_parse_float(payload, ['volume']),
             ts=ts,
+            source='quote',
         )
 
     def get_market_quote(self, symbol: str) -> ProviderMarketQuote:
@@ -185,6 +207,11 @@ class TwelveDataClient:
                 price=quote.price,
                 previous_close=None,
                 ts=quote.ts,
+                source=quote.source,
+                is_realtime=quote.is_realtime,
+                is_fallback=quote.is_fallback,
+                stale=quote.stale,
+                warning=quote.warning,
             )
         except Exception:
             return ProviderMarketQuote(
@@ -192,6 +219,11 @@ class TwelveDataClient:
                 price=None,
                 previous_close=None,
                 ts=datetime.now(UTC),
+                source='quote',
+                is_realtime=False,
+                is_fallback=True,
+                stale=True,
+                warning='market quote unavailable',
             )
 
     def get_daily_bars(
@@ -223,7 +255,13 @@ class TwelveDataClient:
         )
         values = payload.get('values') if isinstance(payload, dict) else None
         if not isinstance(values, list):
-            raise ValueError(f"Serie storica non disponibile per {symbol}")
+            raise ProviderError(
+                provider='twelvedata',
+                operation='daily_bars',
+                symbol=symbol,
+                reason='no_data',
+                message=f"Serie storica non disponibile per {symbol}",
+            )
 
         bars: list[ProviderDailyBar] = []
         for row in values:
@@ -283,7 +321,13 @@ class TwelveDataClient:
         )
         values = payload.get('values') if isinstance(payload, dict) else None
         if not isinstance(values, list):
-            raise ValueError(f"Serie FX non disponibile per {pair}")
+            raise ProviderError(
+                provider='twelvedata',
+                operation='daily_fx_rates',
+                symbol=pair,
+                reason='no_data',
+                message=f"Serie FX non disponibile per {pair}",
+            )
 
         rates: list[ProviderFxRate] = []
         for row in values:
@@ -302,7 +346,13 @@ class TwelveDataClient:
 
     def _request_json(self, path: str, params: dict, *, symbol: str) -> dict:
         if not self.api_key:
-            raise ValueError('FINANCE_API_KEY non configurata')
+            raise ProviderError(
+                provider='twelvedata',
+                operation=path.strip('/'),
+                symbol=symbol,
+                reason='misconfigured',
+                message='FINANCE_API_KEY non configurata',
+            )
 
         url = f"{self.base_url}{path}"
         attempt = 0
@@ -326,10 +376,22 @@ class TwelveDataClient:
 
                 if isinstance(payload, dict) and payload.get('code'):
                     message = payload.get('message', 'Errore provider')
-                    raise ValueError(f"Provider error per {symbol}: {message}")
+                    raise ProviderError(
+                        provider='twelvedata',
+                        operation=path.strip('/'),
+                        symbol=symbol,
+                        reason='provider_error',
+                        message=f"Provider error per {symbol}: {message}",
+                    )
 
                 if not isinstance(payload, dict):
-                    raise ValueError(f"Payload non valido per {symbol}")
+                    raise ProviderError(
+                        provider='twelvedata',
+                        operation=path.strip('/'),
+                        symbol=symbol,
+                        reason='invalid_payload',
+                        message=f"Payload non valido per {symbol}",
+                    )
                 return payload
             except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as exc:
                 last_error = exc
@@ -349,8 +411,14 @@ class TwelveDataClient:
                     time.sleep(delay)
 
         if last_error is not None:
-            raise ValueError(f"Errore provider per {symbol}: {last_error}") from last_error
-        raise ValueError(f"Errore provider per {symbol}")
+            raise _provider_error('twelvedata', path.strip('/'), symbol, last_error) from last_error
+        raise ProviderError(
+            provider='twelvedata',
+            operation=path.strip('/'),
+            symbol=symbol,
+            reason='provider_error',
+            message=f"Errore provider per {symbol}",
+        )
 
 
 def _parse_float(payload: dict, keys: list[str]) -> float | None:
@@ -469,6 +537,17 @@ def _resolve_isin(isin: str) -> list[ProviderSymbol]:
 class YahooFinanceClient:
     """Client Yahoo Finance tramite la libreria yfinance (gratuito, no API key)."""
 
+    def __init__(
+        self,
+        *,
+        timeout_seconds: float = 10.0,
+        max_retries: int = 1,
+        retry_backoff_seconds: float = 0.5,
+    ) -> None:
+        self.timeout_seconds = timeout_seconds
+        self.max_retries = max(1, int(max_retries))
+        self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
+
     def search_symbols(self, query: str) -> list[ProviderSymbol]:
         q = query.strip().upper()
         # Se la query sembra un ISIN, usa OpenFIGI per la risoluzione
@@ -495,20 +574,50 @@ class YahooFinanceClient:
     def get_quote(self, symbol: str) -> ProviderQuote:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
+        warning: str | None = None
         try:
             price = ticker.fast_info.last_price
-        except Exception:
+        except Exception as exc:
             price = None
+            warning = f"fast_info unavailable: {exc.__class__.__name__}"
 
         if price is None or not math.isfinite(float(price)):
-            hist = ticker.history(period='5d')
+            hist = self._ticker_history(ticker, symbol, period='5d')
             if hist.empty:
-                raise ValueError(f"Nessuna quotazione disponibile per {symbol}")
-            close_col = hist['Close']
-            close_col = close_col.dropna()
+                raise ProviderError(
+                    provider='yfinance',
+                    operation='quote',
+                    symbol=symbol,
+                    reason='no_data',
+                    message=f"Nessuna quotazione disponibile per {symbol}",
+                )
+            close_col = hist['Close'].dropna()
             if close_col.empty:
-                raise ValueError(f"Nessuna quotazione disponibile per {symbol}")
+                raise ProviderError(
+                    provider='yfinance',
+                    operation='quote',
+                    symbol=symbol,
+                    reason='no_data',
+                    message=f"Nessuna quotazione disponibile per {symbol}",
+                )
             price = float(close_col.iloc[-1])
+            quote_ts = datetime.now(UTC)
+            last_idx = close_col.index[-1]
+            if hasattr(last_idx, 'to_pydatetime'):
+                quote_ts = last_idx.to_pydatetime()
+            return ProviderQuote(
+                symbol=symbol,
+                price=float(price),
+                bid=None,
+                ask=None,
+                volume=None,
+                ts=quote_ts,
+                source='history_close',
+                is_realtime=False,
+                is_fallback=True,
+                stale=True,
+                warning='realtime quote unavailable; using last close',
+            )
 
         return ProviderQuote(
             symbol=symbol,
@@ -517,6 +626,11 @@ class YahooFinanceClient:
             ask=None,
             volume=None,
             ts=datetime.now(UTC),
+            source='fast_info',
+            is_realtime=True,
+            is_fallback=False,
+            stale=False,
+            warning=warning,
         )
 
     def get_market_quote(self, symbol: str) -> ProviderMarketQuote:
@@ -525,15 +639,18 @@ class YahooFinanceClient:
         price: float | None = None
         previous_close: float | None = None
         market_ts: datetime | None = None
+        source = "fast_info"
+        warning: str | None = None
         try:
             price = ticker.fast_info.last_price
             previous_close = ticker.fast_info.previous_close
-        except Exception:
-            pass
+        except Exception as exc:
+            source = "history_close"
+            warning = f"fast_info unavailable: {exc.__class__.__name__}"
 
         # Try to get the actual market timestamp from ticker.info
         try:
-            info = ticker.info
+            info = self._ticker_info(ticker, symbol)
             raw_ts = info.get('regularMarketTime')
             if raw_ts is not None:
                 market_ts = datetime.fromtimestamp(int(raw_ts), tz=UTC)
@@ -542,7 +659,7 @@ class YahooFinanceClient:
 
         if price is None or not math.isfinite(float(price)):
             try:
-                hist = ticker.history(period='5d')
+                hist = self._ticker_history(ticker, symbol, period='5d')
                 if not hist.empty:
                     close_col = hist['Close'].dropna()
                     if not close_col.empty:
@@ -567,6 +684,11 @@ class YahooFinanceClient:
             price=float(price) if price is not None else None,
             previous_close=float(previous_close) if previous_close is not None else None,
             ts=market_ts or datetime.now(UTC),
+            source=source,
+            is_realtime=source == "fast_info" and price is not None,
+            is_fallback=source != "fast_info",
+            stale=source != "fast_info",
+            warning=warning if price is not None else "market quote unavailable",
         )
 
     def get_daily_bars(
@@ -583,23 +705,34 @@ class YahooFinanceClient:
         import yfinance as yf
 
         ticker = yf.Ticker(symbol)
-        df = ticker.history(
+        df = self._ticker_history(
+            ticker,
+            symbol,
             start=start_date,
             end=end_date,
             auto_adjust=True,
         )
         if df.empty:
-            raise ValueError(f"Nessun dato storico per {symbol}")
+            raise ProviderError(
+                provider='yfinance',
+                operation='daily_bars',
+                symbol=symbol,
+                reason='no_data',
+                message=f"Nessun dato storico per {symbol}",
+            )
 
         bars: list[ProviderDailyBar] = []
         for ts, row in df.iterrows():
             try:
+                o, h, l, c = float(row['Open']), float(row['High']), float(row['Low']), float(row['Close'])
+                if not (math.isfinite(o) and math.isfinite(h) and math.isfinite(l) and math.isfinite(c)):
+                    continue
                 bars.append(ProviderDailyBar(
                     day=ts.date() if hasattr(ts, 'date') else _parse_date(str(ts)),
-                    open=float(row['Open']),
-                    high=float(row['High']),
-                    low=float(row['Low']),
-                    close=float(row['Close']),
+                    open=o,
+                    high=h,
+                    low=l,
+                    close=c,
                     volume=float(row['Volume']) if 'Volume' in row and pd.notna(row['Volume']) else None,
                 ))
             except Exception:
@@ -613,10 +746,12 @@ class YahooFinanceClient:
     def get_asset_info(self, symbol: str) -> ProviderAssetInfo:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
+        warnings: list[str] = []
         try:
-            info = ticker.info
-        except Exception:
+            info = self._ticker_info(ticker, symbol)
+        except ProviderError as exc:
             info = {}
+            warnings.append(exc.message)
 
         def _num(key: str) -> float | None:
             v = info.get(key)
@@ -640,6 +775,18 @@ class YahooFinanceClient:
                     raw_clean[k] = v
                 except (TypeError, ValueError):
                     pass
+
+        current_price_source = None
+        if _num('currentPrice') is not None:
+            current_price_source = 'currentPrice'
+        elif _num('regularMarketPrice') is not None:
+            current_price_source = 'regularMarketPrice'
+
+        metadata_status = "complete"
+        if not info:
+            metadata_status = "missing"
+        elif not (info.get('longName') or info.get('shortName')) or info.get('quoteType') is None:
+            metadata_status = "partial"
 
         return ProviderAssetInfo(
             symbol=symbol,
@@ -672,6 +819,9 @@ class YahooFinanceClient:
             website=info.get('website'),
             logo_url=info.get('logo_url'),
             raw_info=raw_clean if raw_clean else None,
+            current_price_source=current_price_source,
+            metadata_status=metadata_status,
+            warnings=warnings,
         )
 
     def get_etf_top_holdings(self, symbol: str) -> list[ProviderEtfHolding]:
@@ -700,7 +850,7 @@ class YahooFinanceClient:
     def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period=period, interval=interval)
+        df = self._ticker_history(ticker, symbol, period=period, interval=interval)
         if df.empty:
             return []
         bars: list[ProviderIntradayBar] = []
@@ -738,9 +888,16 @@ class YahooFinanceClient:
             auto_adjust=True,
             progress=False,
             multi_level_index=False,
+            timeout=self.timeout_seconds,
         )
         if df.empty:
-            raise ValueError(f"Nessun dato FX per {pair}")
+            raise ProviderError(
+                provider='yfinance',
+                operation='daily_fx_rates',
+                symbol=pair,
+                reason='no_data',
+                message=f"Nessun dato FX per {pair}",
+            )
 
         rates: list[ProviderFxRate] = []
         for ts, row in df.iterrows():
@@ -760,12 +917,41 @@ class YahooFinanceClient:
             rates.reverse()
         return rates
 
+    def _ticker_history(self, ticker, symbol: str, **kwargs):
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                return ticker.history(**kwargs)
+            except Exception as exc:
+                last_error = exc
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_backoff_seconds * attempt)
+        assert last_error is not None
+        raise _provider_error('yfinance', 'history', symbol, last_error)
+
+    def _ticker_info(self, ticker, symbol: str) -> dict:
+        last_error: Exception | None = None
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                info = ticker.info
+                return info if isinstance(info, dict) else {}
+            except Exception as exc:
+                last_error = exc
+                if attempt < self.max_retries:
+                    time.sleep(self.retry_backoff_seconds * attempt)
+        assert last_error is not None
+        raise _provider_error('yfinance', 'info', symbol, last_error)
+
 
 def make_finance_client(settings: 'Settings') -> TwelveDataClient | YahooFinanceClient:
     """Factory: restituisce il client giusto in base a FINANCE_PROVIDER."""
     provider = settings.finance_provider.strip().lower()
     if provider == 'yfinance':
-        return YahooFinanceClient()
+        return YahooFinanceClient(
+            timeout_seconds=settings.finance_request_timeout_seconds,
+            max_retries=settings.finance_max_retries,
+            retry_backoff_seconds=settings.finance_retry_backoff_seconds,
+        )
     # fallback: TwelveData
     return TwelveDataClient(
         base_url=settings.finance_api_base_url,
@@ -773,4 +959,29 @@ def make_finance_client(settings: 'Settings') -> TwelveDataClient | YahooFinance
         timeout_seconds=settings.finance_request_timeout_seconds,
         max_retries=settings.finance_max_retries,
         retry_backoff_seconds=settings.finance_retry_backoff_seconds,
+    )
+
+
+def _provider_error(provider: str, operation: str, symbol: str, exc: Exception) -> ProviderError:
+    raw = str(exc).lower()
+    reason = 'provider_error'
+    retryable = False
+    if isinstance(exc, httpx.TimeoutException) or 'timeout' in raw:
+        reason = 'timeout'
+        retryable = True
+    elif '429' in raw or 'rate limit' in raw or 'too many requests' in raw:
+        reason = 'rate_limited'
+        retryable = True
+    elif 'not found' in raw or 'no data' in raw or 'empty' in raw:
+        reason = 'no_data'
+    elif 'json' in raw or 'parse' in raw:
+        reason = 'invalid_payload'
+
+    return ProviderError(
+        provider=provider,
+        operation=operation,
+        symbol=symbol,
+        reason=reason,
+        message=f"{provider} {operation} failed for {symbol}: {exc}",
+        retryable=retryable,
     )

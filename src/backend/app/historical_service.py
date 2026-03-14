@@ -187,6 +187,8 @@ class HistoricalIngestionService:
                         symbol=asset.symbol,
                         provider_symbol=asset.provider_symbol,
                         bars_saved=len(rows),
+                        bars_requested=len(bars),
+                        bars_rejected=max(0, len(bars) - len(rows)),
                     )
                 )
             except ValueError as exc:
@@ -218,6 +220,8 @@ class HistoricalIngestionService:
                         from_currency=from_ccy,
                         to_currency=base_currency,
                         rates_saved=len(rows),
+                        rates_requested=len(rates),
+                        rates_rejected=max(0, len(rates) - len(rows)),
                     )
                 )
             except ValueError as exc:

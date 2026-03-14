@@ -8,3 +8,23 @@ class AppError(Exception):
         self.message = message
         self.status_code = status_code
         self.details = details
+
+
+class ProviderError(ValueError):
+    def __init__(
+        self,
+        *,
+        provider: str,
+        operation: str,
+        symbol: str | None,
+        reason: str,
+        message: str,
+        retryable: bool = False,
+    ) -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.operation = operation
+        self.symbol = symbol
+        self.reason = reason
+        self.message = message
+        self.retryable = retryable

@@ -89,6 +89,10 @@ def test_backfill_daily_batch_upsert(monkeypatch):
     assert result.fx_pairs_refreshed == 1
     assert len(repo.bars_rows) == 1
     assert len(repo.fx_rows) == 1
+    assert result.asset_items[0].bars_requested == 1
+    assert result.asset_items[0].bars_rejected == 0
+    assert result.fx_items[0].rates_requested == 1
+    assert result.fx_items[0].rates_rejected == 0
 
 
 def test_backfill_daily_rejects_high_less_than_low(monkeypatch):

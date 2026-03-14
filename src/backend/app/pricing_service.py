@@ -1,6 +1,5 @@
 import logging
 import time
-from datetime import date
 
 import httpx
 
@@ -78,22 +77,6 @@ class PriceIngestionService:
                     ask=quote.ask,
                     volume=quote.volume,
                 )
-                # Also upsert today's daily bar so that P/L and
-                # summary calculations (which read from price_bars_1d)
-                # reflect the latest live price immediately.
-                today_str = date.today().isoformat()
-                self.repository.batch_upsert_price_bars_1d(
-                    asset_id=asset.asset_id,
-                    provider=provider,
-                    rows=[{
-                        "price_date": today_str,
-                        "open": quote.price,
-                        "high": quote.price,
-                        "low": quote.price,
-                        "close": quote.price,
-                        "volume": quote.volume or 0,
-                    }],
-                )
                 items.append(
                     PriceRefreshItem(
                         asset_id=asset.asset_id,
@@ -101,6 +84,11 @@ class PriceIngestionService:
                         provider_symbol=asset.provider_symbol,
                         price=quote.price,
                         ts=quote.ts,
+                        quote_source=getattr(quote, 'source', None),
+                        is_realtime=getattr(quote, 'is_realtime', True),
+                        is_fallback=getattr(quote, 'is_fallback', False),
+                        stale=getattr(quote, 'stale', False),
+                        warning=getattr(quote, 'warning', None),
                     )
                 )
             except (ValueError, httpx.HTTPError) as exc:

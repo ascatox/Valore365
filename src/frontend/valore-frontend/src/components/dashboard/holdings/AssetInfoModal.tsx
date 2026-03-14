@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { ActionIcon, Badge, Button, Divider, Grid, Group, Loader, Modal, Paper, Progress, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Alert, Badge, Button, Divider, Grid, Group, Loader, Modal, Paper, Progress, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import type { AssetInfo, EtfEnrichment } from '../../../services/api';
+import { formatMetadataStatusLabel, formatPriceHistoryStatusLabel, formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
 import { getAssetInfo, getMarketSymbolInfo, getEtfEnrichment, refreshEtfEnrichment } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 
@@ -240,7 +241,30 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                 {enrichment.distribution_policy}
               </Badge>
             )}
+            {info.metadata_status !== 'complete' && (
+              <Badge variant="light" color={info.metadata_status === 'missing' ? 'red' : 'yellow'} size="sm">
+                {formatMetadataStatusLabel(info.metadata_status)}
+              </Badge>
+            )}
+            {info.current_price_source && (
+              <Badge variant="outline" color="gray" size="sm">
+                prezzo: {formatPriceSourceLabel(info.current_price_source)}
+              </Badge>
+            )}
           </Group>
+
+          {(info.warnings.length > 0 || info.price_history_status !== 'available') && (
+            <Alert color="yellow" variant="light" title="Qualita del dato">
+              {info.warnings.map((warning) => (
+                <Text key={warning} size="sm">{formatProviderWarning(warning)}</Text>
+              ))}
+              {info.price_history_status !== 'available' && (
+                <Text size="sm">
+                  Storico 5 anni: {formatPriceHistoryStatusLabel(info.price_history_status)}
+                </Text>
+              )}
+            </Alert>
+          )}
 
           {info.current_price != null && (
             <Group gap="sm" align="center">
@@ -460,6 +484,11 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
 
           {info.price_history_5y.length > 0 && (
             <PriceHistoryChart data={info.price_history_5y} currency={info.currency} />
+          )}
+          {info.price_history_5y.length === 0 && info.price_history_status !== 'available' && (
+            <Text size="xs" c="dimmed">
+              Storico prezzi non disponibile per questo strumento.
+            </Text>
           )}
 
           {(enrichment?.description || info.description) && (

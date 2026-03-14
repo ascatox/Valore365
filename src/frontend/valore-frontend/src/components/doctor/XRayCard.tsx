@@ -20,17 +20,24 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconChevronDown, IconChevronRight, IconInfoCircle, IconSearch } from '@tabler/icons-react';
+import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconInfoCircle, IconSearch } from '@tabler/icons-react';
 import { usePortfolioXray } from '../dashboard/hooks/queries';
 import { STORAGE_KEYS } from '../dashboard/constants';
 import { AssetInfoModal } from '../dashboard/holdings/AssetInfoModal';
-import type { XRayHolding } from '../../services/api';
+import type { XRayEtfDetail, XRayHolding } from '../../services/api';
+import { formatXrayFailureReason } from '../../services/dataQuality';
 
 const PRIVACY_MASK = '******';
 
 function isPrivacyModeEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   return window.localStorage.getItem(STORAGE_KEYS.privacyModeEnabled) === 'true';
+}
+
+function getHoldingsSourceTone(detail: XRayEtfDetail): { color: string; label: string } {
+  if (detail.holdings_source === 'justetf') return { color: 'teal', label: 'justETF' };
+  if (detail.holdings_source === 'yfinance') return { color: 'blue', label: 'fallback yfinance' };
+  return { color: 'orange', label: 'copertura assente' };
 }
 
 interface Props {
@@ -155,9 +162,18 @@ export function XRayCard({ portfolioId }: Props) {
           </ThemeIcon>
           <Title order={4}>X-Ray: Titoli Sottostanti</Title>
         </Group>
-        <Alert color="blue" variant="light">
-          Nessun ETF/fondo presente nel portafoglio. L&apos;X-Ray analizza la composizione degli ETF.
-        </Alert>
+        {xray?.coverage_issues?.length ? (
+          <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={18} />}>
+            L&apos;X-Ray ha rilevato strumenti candidati, ma nessuno con holdings sufficienti. {xray.coverage_issues
+              .slice(0, 2)
+              .map((issue) => `${issue.symbol}: ${formatXrayFailureReason(issue.reason)}`)
+              .join(' • ')}
+          </Alert>
+        ) : (
+          <Alert color="blue" variant="light">
+            Nessun ETF/fondo presente nel portafoglio. L&apos;X-Ray analizza la composizione degli ETF.
+          </Alert>
+        )}
       </Card>
     );
   }
@@ -182,6 +198,27 @@ export function XRayCard({ portfolioId }: Props) {
               </Badge>
             </Group>
           </Group>
+
+          {xray.coverage_issues.length > 0 && (
+            <Alert
+              color="yellow"
+              variant="light"
+              icon={<IconAlertTriangle size={18} />}
+              title="Copertura X-Ray parziale"
+            >
+              <Text size="sm">
+                {xray.coverage_issues.length === 1
+                  ? 'Un ETF/fondo non ha holdings affidabili disponibili.'
+                  : `${xray.coverage_issues.length} ETF/fondi non hanno holdings affidabili disponibili.`}
+              </Text>
+              <Text size="xs" c="dimmed" mt={4}>
+                {xray.coverage_issues
+                  .slice(0, 3)
+                  .map((issue) => `${issue.symbol}: ${formatXrayFailureReason(issue.reason)}`)
+                  .join(' • ')}
+              </Text>
+            </Alert>
+          )}
 
           {/* Aggregated country & sector exposure from justETF */}
           {(Object.keys(xray.aggregated_country_exposure ?? {}).length > 0 ||
@@ -306,6 +343,7 @@ export function XRayCard({ portfolioId }: Props) {
               <Stack gap="xs">
                 {xray.etf_details.map((etf) => {
                   const isExpanded = expandedEtf === etf.symbol;
+                  const sourceTone = getHoldingsSourceTone(etf);
                   return (
                     <Box
                       key={etf.symbol}
@@ -348,6 +386,9 @@ export function XRayCard({ portfolioId }: Props) {
                           <Group gap="xs" wrap="wrap">
                             <Badge size="sm" variant="light" color="blue">
                               {privacy ? PRIVACY_MASK : `${etf.portfolio_weight_pct.toFixed(1)}%`} del portafoglio
+                            </Badge>
+                            <Badge size="sm" variant="light" color={sourceTone.color}>
+                              {sourceTone.label}
                             </Badge>
                             {!etf.holdings_available && (
                               <Badge size="sm" variant="light" color="orange">
@@ -395,7 +436,7 @@ export function XRayCard({ portfolioId }: Props) {
                         ) : (
                           <Box px="sm" py="xs">
                             <Text size="xs" c="dimmed">
-                              Dati sulle posizioni sottostanti non disponibili per questo ETF.
+                              {formatXrayFailureReason(etf.failure_reason) ?? 'Dati sulle posizioni sottostanti non disponibili per questo ETF.'}
                             </Text>
                           </Box>
                         )}
