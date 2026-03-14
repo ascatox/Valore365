@@ -34,6 +34,7 @@ import {
   IconShieldLock,
   IconDeviceMobile,
   IconInfoCircle,
+  IconSparkles,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
@@ -50,6 +51,7 @@ const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((modu
 const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
 const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
 const AboutPage = lazy(() => import('./pages/About.page.tsx').then((module) => ({ default: module.AboutPage })));
+const CreatorPage = lazy(() => import('./pages/Creator.page.tsx').then((module) => ({ default: module.CreatorPage })));
 
 const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -165,6 +167,7 @@ function ProtectedApp() {
     if (
       hasPortfolios === false
       && location.pathname !== '/portfolio'
+      && location.pathname !== '/creator'
       && location.pathname !== '/about'
       && !(isAdmin && location.pathname === '/admin')
     ) {
@@ -320,6 +323,16 @@ function ProtectedApp() {
                 onClick={close}
             />
           </Tooltip>
+          <Tooltip label="Creator" position="right" withArrow disabled={navbarExpanded}>
+            <NavLink
+                component={Link}
+                to="/creator"
+                label={navbarExpanded ? 'Creator' : undefined}
+                leftSection={<IconSparkles size={16} />}
+                aria-label="Creator"
+                onClick={close}
+            />
+          </Tooltip>
           <Tooltip label="FIRE" position="right" withArrow disabled={navbarExpanded}>
             <NavLink
                 component={Link}
@@ -412,6 +425,7 @@ function ProtectedApp() {
               <Route path="/doctor" element={<DoctorPage />} />
               <Route path="/fire" element={<FirePage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/creator" element={<CreatorPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/admin" element={<AdminPage />} />
             </Routes>
