@@ -68,12 +68,13 @@ export function CreatorPage() {
       for (const slot of slots) {
         if (!slot.ticker) continue;
 
-        // 1. Ensure asset exists
+        // 1. Ensure asset exists (pass ISIN for justETF enrichment)
         const ensured = await ensureAsset({
           source: 'provider',
           symbol: slot.ticker,
           name: slot.label,
           portfolio_id: portfolio.id,
+          isin: slot.isin ?? null,
         });
 
         // 2. Set target allocation

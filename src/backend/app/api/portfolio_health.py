@@ -21,7 +21,7 @@ from ..services.portfolio_doctor import (
 )
 
 
-def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository, finance_client: object = None) -> None:
+def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository, finance_client: object = None, justetf_client: object = None) -> None:
     @router.get(
         "/portfolios/{portfolio_id}/health",
         response_model=PortfolioHealthResponse,
@@ -120,6 +120,6 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         if not finance_client:
             raise AppError(code="not_configured", message="Finance client non disponibile", status_code=500)
         try:
-            return compute_portfolio_xray(repo, portfolio_id, _auth.user_id, finance_client)
+            return compute_portfolio_xray(repo, portfolio_id, _auth.user_id, finance_client, justetf_client=justetf_client)
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc

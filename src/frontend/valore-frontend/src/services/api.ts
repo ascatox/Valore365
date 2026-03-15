@@ -615,6 +615,7 @@ export interface AssetEnsureInput {
   provider?: string;
   provider_symbol?: string | null;
   portfolio_id?: number | null;
+  isin?: string | null;
 }
 
 export interface AssetEnsureResponse {

@@ -1,3 +1,4 @@
+import logging
 import math
 import random
 import statistics
@@ -1355,12 +1356,36 @@ def _empty_aggregate_decumulation_response(
     )
 
 
+def _resolve_isin_for_holding(repo: PortfolioRepository, holding: AnalyzedHolding) -> str | None:
+    """Try to resolve the ISIN for a holding from the asset table or metadata."""
+    try:
+        asset = repo.get_asset(holding.asset_id)
+        if asset.isin:
+            return asset.isin.strip().upper()
+    except (ValueError, AttributeError):
+        pass
+
+    try:
+        meta = repo.get_asset_metadata(holding.asset_id)
+        if meta and meta.raw_info:
+            raw = meta.raw_info if isinstance(meta.raw_info, dict) else {}
+            raw_isin = raw.get("isin") or raw.get("ISIN")
+            if isinstance(raw_isin, str) and raw_isin.strip():
+                return raw_isin.strip().upper()
+    except Exception:
+        pass
+
+    return None
+
+
 def compute_portfolio_xray(
     repo: PortfolioRepository,
     portfolio_id: int,
     user_id: str,
     finance_client: object,
+    justetf_client: object = None,
 ) -> XRayResponse:
+    logger = logging.getLogger(__name__)
     holdings = _load_holdings(repo, portfolio_id, user_id)
     if not holdings:
         raise ValueError("Portafoglio non trovato o vuoto")
@@ -1375,6 +1400,21 @@ def compute_portfolio_xray(
         enrichment_map = repo.get_etf_enrichment_bulk([h.asset_id for h in candidates])
     except Exception:
         pass
+
+    # Auto-enrich candidates missing from enrichment_map
+    if justetf_client is not None:
+        missing = [h for h in candidates if h.asset_id not in enrichment_map]
+        for h in missing:
+            isin = _resolve_isin_for_holding(repo, h)
+            if not isin:
+                continue
+            try:
+                data = justetf_client.fetch_profile(isin)
+                repo.upsert_etf_enrichment(h.asset_id, isin, data)
+                enrichment_map[h.asset_id] = data
+                logger.info("Auto-enriched asset %s (ISIN %s) from justETF", h.symbol, isin)
+            except Exception as exc:
+                logger.debug("Auto-enrich failed for %s (ISIN %s): %s", h.symbol, isin, exc)
 
     # Resolve provider symbols
     provider_symbols: dict[int, str] = {}

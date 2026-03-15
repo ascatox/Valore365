@@ -341,7 +341,7 @@ async def validation_error_handler(_: Request, exc: RequestValidationError) -> J
 
 router = APIRouter()
 register_instant_portfolio_analyzer_routes(router, repo)
-register_portfolio_health_routes(router, repo, finance_client)
+register_portfolio_health_routes(router, repo, finance_client, justetf_client=justetf_client)
 
 
 @router.get("/health")
@@ -663,7 +663,7 @@ def ensure_asset(payload: AssetEnsureRequest, _auth: AuthContext = Depends(requi
                     exchange_code=None,
                     exchange_name=payload.exchange,
                     quote_currency=base_ccy,
-                    isin=None,
+                    isin=payload.isin.strip().upper() if payload.isin else None,
                     active=True,
                 )
             )
