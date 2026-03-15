@@ -1106,7 +1106,8 @@ export function FirePage() {
       <CopilotChat
         opened={copilotOpened}
         onClose={closeCopilot}
-        portfolioId={portfolioId}
+        portfolioId={aggregateModeEnabled ? aggregatePortfolioIdNumbers[0] ?? portfolioId : portfolioId}
+        portfolioIds={aggregateModeEnabled ? aggregatePortfolioIdNumbers : undefined}
         title="FIRE Copilot"
         quickPrompts={fireQuickPrompts}
         emptyStateDescription="Ti aiuto a capire il tuo percorso verso l'indipendenza finanziaria. Ecco qualche spunto:"

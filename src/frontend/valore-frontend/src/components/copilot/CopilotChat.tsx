@@ -114,6 +114,7 @@ interface CopilotChatProps {
   opened: boolean;
   onClose: () => void;
   portfolioId: number | null;
+  portfolioIds?: number[];
   title?: string;
   quickPrompts?: string[];
   emptyStateDescription?: string;
@@ -132,6 +133,7 @@ export function CopilotChat({
   opened,
   onClose,
   portfolioId,
+  portfolioIds,
   title = 'Portfolio Copilot',
   quickPrompts = QUICK_PROMPTS,
   emptyStateDescription = 'Chiedimi qualsiasi cosa sul tuo portafoglio. Ecco qualche spunto:',
@@ -235,6 +237,7 @@ export function CopilotChat({
         headers,
         body: JSON.stringify({
           portfolio_id: portfolioId,
+          ...(portfolioIds && portfolioIds.length > 0 ? { portfolio_ids: portfolioIds } : {}),
           messages: newMessages,
         }),
         signal: controller.signal,

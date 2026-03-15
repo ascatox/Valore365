@@ -48,6 +48,7 @@ class CopilotMessage(BaseModel):
 
 class CopilotChatRequest(BaseModel):
     portfolio_id: int
+    portfolio_ids: list[int] | None = None
     messages: list[CopilotMessage]
 
 
@@ -227,6 +228,107 @@ def build_portfolio_snapshot_light(
             swr = user_settings.fire_safe_withdrawal_rate or 4
             fire_target = user_settings.fire_annual_expenses / (swr / 100)
             coverage_pct = (summary.market_value / fire_target * 100) if fire_target > 0 else 0
+            fire_data: dict = {
+                "annual_expenses": user_settings.fire_annual_expenses,
+                "annual_contribution": user_settings.fire_annual_contribution,
+                "safe_withdrawal_rate_pct": swr,
+                "fire_target": round(fire_target, 0),
+                "coverage_pct": round(coverage_pct, 1),
+            }
+            if user_settings.fire_current_age:
+                fire_data["current_age"] = user_settings.fire_current_age
+            if user_settings.fire_target_age:
+                fire_data["target_age"] = user_settings.fire_target_age
+            snapshot["fire"] = fire_data
+    except Exception:
+        pass
+
+    return snapshot
+
+
+def build_aggregate_snapshot_light(
+    repo: PortfolioRepository,
+    portfolio_ids: list[int],
+    user_id: str,
+) -> dict:
+    """Build a combined snapshot from multiple portfolios for the agentic system prompt."""
+    all_positions: list[dict] = []
+    total_market_value = 0.0
+    total_cost_basis = 0.0
+    total_unrealized_pl = 0.0
+    total_day_change = 0.0
+    total_cash = 0.0
+    base_currency = "EUR"
+    portfolio_names: list[str] = []
+
+    try:
+        portfolios = repo.list_portfolios(user_id)
+        name_map = {p.id: p.name for p in portfolios}
+    except Exception:
+        name_map = {}
+
+    for pid in portfolio_ids:
+        try:
+            s = repo.get_summary(pid, user_id)
+            total_market_value += s.market_value
+            total_cost_basis += s.cost_basis
+            total_unrealized_pl += s.unrealized_pl
+            total_day_change += s.day_change
+            total_cash += s.cash_balance
+            base_currency = s.base_currency
+            portfolio_names.append(name_map.get(pid, f"Portfolio #{pid}"))
+
+            positions = repo.get_positions(pid, user_id)
+            for p in positions:
+                all_positions.append({
+                    "symbol": p.symbol,
+                    "name": p.name,
+                    "market_value": p.market_value,
+                    "weight": p.weight,
+                    "unrealized_pl_pct": p.unrealized_pl_pct,
+                    "day_change_pct": p.day_change_pct or 0,
+                    "portfolio": name_map.get(pid, f"#{pid}"),
+                })
+        except Exception:
+            continue
+
+    # Recalculate weights based on total market value
+    if total_market_value > 0:
+        for pos in all_positions:
+            pos["weight"] = round(pos["market_value"] / total_market_value * 100, 2)
+
+    sorted_pos = sorted(all_positions, key=lambda p: p["market_value"], reverse=True)[:20]
+    for pos in sorted_pos:
+        pos["market_value"] = round(pos["market_value"], 2)
+        pos["unrealized_pl_pct"] = round(pos["unrealized_pl_pct"], 2)
+        pos["day_change_pct"] = round(pos["day_change_pct"], 2)
+
+    unrealized_pl_pct = (total_unrealized_pl / total_cost_basis * 100) if total_cost_basis > 0 else 0
+    day_change_pct = (total_day_change / (total_market_value - total_day_change) * 100) if (total_market_value - total_day_change) > 0 else 0
+
+    snapshot: dict = {
+        "aggregate_portfolio": {
+            "portfolios": portfolio_names,
+            "portfolio_count": len(portfolio_ids),
+            "base_currency": base_currency,
+            "market_value": round(total_market_value, 2),
+            "cost_basis": round(total_cost_basis, 2),
+            "unrealized_pl": round(total_unrealized_pl, 2),
+            "unrealized_pl_pct": round(unrealized_pl_pct, 2),
+            "day_change": round(total_day_change, 2),
+            "day_change_pct": round(day_change_pct, 2),
+            "cash_balance": round(total_cash, 2),
+        },
+        "positions": sorted_pos,
+    }
+
+    # FIRE settings
+    try:
+        user_settings = repo.get_user_settings(user_id)
+        if user_settings.fire_annual_expenses > 0:
+            swr = user_settings.fire_safe_withdrawal_rate or 4
+            fire_target = user_settings.fire_annual_expenses / (swr / 100)
+            coverage_pct = (total_market_value / fire_target * 100) if fire_target > 0 else 0
             fire_data: dict = {
                 "annual_expenses": user_settings.fire_annual_expenses,
                 "annual_contribution": user_settings.fire_annual_contribution,

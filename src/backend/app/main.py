@@ -133,6 +133,7 @@ from .models import (
 )
 from .copilot_service import (
     CopilotChatRequest,
+    build_aggregate_snapshot_light,
     build_portfolio_snapshot,
     build_portfolio_snapshot_light,
     encrypt_api_key,
@@ -2247,10 +2248,16 @@ def copilot_chat(
         )
 
     # Use agentic flow for providers that support tool calling
+    is_aggregate = payload.portfolio_ids and len(payload.portfolio_ids) > 1
     if config.provider in ("openai", "anthropic", "gemini", "openrouter"):
-        snapshot = build_portfolio_snapshot_light(
-            repo, payload.portfolio_id, _auth.user_id,
-        )
+        if is_aggregate:
+            snapshot = build_aggregate_snapshot_light(
+                repo, payload.portfolio_ids, _auth.user_id,
+            )
+        else:
+            snapshot = build_portfolio_snapshot_light(
+                repo, payload.portfolio_id, _auth.user_id,
+            )
         generator = stream_copilot_response_agentic(
             config, snapshot, payload.messages,
             repo, performance_service, payload.portfolio_id, _auth.user_id,
