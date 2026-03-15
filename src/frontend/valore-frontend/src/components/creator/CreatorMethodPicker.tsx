@@ -1,4 +1,4 @@
-import { Card, Group, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
+import { Badge, Card, SimpleGrid, Stack, Text, ThemeIcon, Tooltip } from '@mantine/core';
 import { IconLayoutList, IconClipboardCheck, IconAdjustments } from '@tabler/icons-react';
 import type { CreatorMethod } from './types';
 
@@ -6,7 +6,7 @@ interface CreatorMethodPickerProps {
   onPick: (method: CreatorMethod) => void;
 }
 
-const METHODS: { method: CreatorMethod; icon: typeof IconLayoutList; color: string; title: string; description: string }[] = [
+const METHODS: { method: CreatorMethod; icon: typeof IconLayoutList; color: string; title: string; description: string; disabled?: boolean }[] = [
   {
     method: 'model',
     icon: IconLayoutList,
@@ -20,6 +20,7 @@ const METHODS: { method: CreatorMethod; icon: typeof IconLayoutList; color: stri
     color: 'teal',
     title: 'Profilo guidato',
     description: 'Rispondi a 3 domande su orizzonte, rischio e obiettivi e ricevi un suggerimento su misura.',
+    disabled: true,
   },
   {
     method: 'manual',
@@ -27,29 +28,45 @@ const METHODS: { method: CreatorMethod; icon: typeof IconLayoutList; color: stri
     color: 'grape',
     title: 'Allocazione manuale',
     description: 'Parti da zero e componi liberamente le percentuali per ogni asset class.',
+    disabled: true,
   },
 ];
 
 export function CreatorMethodPicker({ onPick }: CreatorMethodPickerProps) {
   return (
     <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="md">
-      {METHODS.map(({ method, icon: Icon, color, title, description }) => (
-        <Card
+      {METHODS.map(({ method, icon: Icon, color, title, description, disabled }) => (
+        <Tooltip
           key={method}
-          withBorder
-          radius="xl"
-          padding="xl"
-          style={{ cursor: 'pointer', transition: 'box-shadow 150ms ease' }}
-          onClick={() => onPick(method)}
+          label="Prossimamente"
+          disabled={!disabled}
+          withArrow
         >
-          <Stack gap="md" align="center" ta="center">
-            <ThemeIcon size={56} radius="xl" variant="light" color={color}>
-              <Icon size={28} />
-            </ThemeIcon>
-            <Text fw={700} size="lg">{title}</Text>
-            <Text size="sm" c="dimmed">{description}</Text>
-          </Stack>
-        </Card>
+          <Card
+            withBorder
+            radius="xl"
+            padding="xl"
+            style={{
+              cursor: disabled ? 'not-allowed' : 'pointer',
+              opacity: disabled ? 0.5 : 1,
+              transition: 'box-shadow 150ms ease',
+            }}
+            onClick={() => !disabled && onPick(method)}
+          >
+            <Stack gap="md" align="center" ta="center">
+              <ThemeIcon size={56} radius="xl" variant="light" color={disabled ? 'gray' : color}>
+                <Icon size={28} />
+              </ThemeIcon>
+              <Text fw={700} size="lg">{title}</Text>
+              <Text size="sm" c="dimmed">{description}</Text>
+              {disabled && (
+                <Badge variant="light" color="gray" size="sm">
+                  Prossimamente
+                </Badge>
+              )}
+            </Stack>
+          </Card>
+        </Tooltip>
       ))}
     </SimpleGrid>
   );

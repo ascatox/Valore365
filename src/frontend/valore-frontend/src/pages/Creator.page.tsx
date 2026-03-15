@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Group, Stack, Stepper } from '@mantine/core';
+import { Button, Group, Stack, Stepper, Notification } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -7,11 +7,18 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { CreatorMethodPicker } from '../components/creator/CreatorMethodPicker';
 import { CreatorModelLibrary } from '../components/creator/CreatorModelLibrary';
 import { CreatorCustomize } from '../components/creator/CreatorCustomize';
+import { CreatorCapital } from '../components/creator/CreatorCapital';
 import { CreatorConfirm } from '../components/creator/CreatorConfirm';
-import { createPortfolio, upsertPortfolioTargetAllocation, searchAssets } from '../services/api';
+import {
+  createPortfolio,
+  upsertPortfolioTargetAllocation,
+  ensureAsset,
+  getAssetLatestQuote,
+  createTransaction,
+} from '../services/api';
 import type { AllocationSlot, CreatorMethod, PortfolioModel } from '../components/creator/types';
 
-const STEP_LABELS = ['Scegli', 'Modello', 'Personalizza', 'Conferma'];
+const STEP_LABELS = ['Scegli', 'Modello', 'Personalizza', 'Capitale', 'Conferma'];
 
 export function CreatorPage() {
   const navigate = useNavigate();
@@ -22,7 +29,9 @@ export function CreatorPage() {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [slots, setSlots] = useState<AllocationSlot[]>([]);
   const [portfolioName, setPortfolioName] = useState('');
+  const [capital, setCapital] = useState<number | ''>('');
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   /* ---- Step 1 ---- */
   const handleMethodPick = (m: CreatorMethod) => {
@@ -40,10 +49,12 @@ export function CreatorPage() {
     setPortfolioName(model.name);
   };
 
-  /* ---- Step finale: crea portafoglio ---- */
+  /* ---- Step finale: crea portafoglio con transazioni ---- */
   const handleConfirm = async () => {
-    if (!portfolioName.trim() || creating) return;
+    const numericCapital = typeof capital === 'number' ? capital : 0;
+    if (!portfolioName.trim() || creating || numericCapital <= 0) return;
     setCreating(true);
+    setError(null);
 
     try {
       const portfolio = await createPortfolio({
@@ -52,22 +63,44 @@ export function CreatorPage() {
         timezone: 'Europe/Rome',
       });
 
-      // Per ogni slot, cerca l'asset tramite ticker e crea la target allocation
+      const now = new Date().toISOString();
+
       for (const slot of slots) {
         if (!slot.ticker) continue;
-        try {
-          const results = await searchAssets(slot.ticker);
-          const asset = results.find(
-            (a) => a.symbol.toUpperCase() === slot.ticker!.toUpperCase(),
-          ) ?? results[0];
-          if (asset) {
-            await upsertPortfolioTargetAllocation(portfolio.id, {
-              asset_id: asset.id,
-              weight_pct: slot.weight,
+
+        // 1. Ensure asset exists
+        const ensured = await ensureAsset({
+          source: 'provider',
+          symbol: slot.ticker,
+          name: slot.label,
+          portfolio_id: portfolio.id,
+        });
+
+        // 2. Set target allocation
+        await upsertPortfolioTargetAllocation(portfolio.id, {
+          asset_id: ensured.asset_id,
+          weight_pct: slot.weight,
+        });
+
+        // 3. Get current price and create buy transaction
+        const quote = await getAssetLatestQuote(ensured.asset_id);
+        if (quote.price > 0) {
+          const amountForSlot = (numericCapital * slot.weight) / 100;
+          const quantity = Math.floor((amountForSlot / quote.price) * 10000) / 10000; // 4 decimali
+          if (quantity > 0) {
+            await createTransaction({
+              portfolio_id: portfolio.id,
+              asset_id: ensured.asset_id,
+              side: 'buy',
+              trade_at: now,
+              quantity,
+              price: quote.price,
+              fees: 0,
+              taxes: 0,
+              trade_currency: 'EUR',
+              notes: `Acquisto iniziale da Creator — modello ${portfolioName}`,
             });
           }
-        } catch {
-          // Continua con gli altri slot se un singolo asset non viene trovato
         }
       }
 
@@ -75,8 +108,8 @@ export function CreatorPage() {
         new CustomEvent('valore365:portfolios-changed', { detail: { count: 1 } }),
       );
       navigate('/');
-    } catch {
-      // Errore gestito dal feedback visivo (il bottone smette di caricare)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Errore durante la creazione del portafoglio');
     } finally {
       setCreating(false);
     }
@@ -89,6 +122,7 @@ export function CreatorPage() {
       const total = slots.reduce((s, sl) => s + sl.weight, 0);
       if (Math.abs(total - 100) >= 0.5) return false;
     }
+    if (active === 3 && (typeof capital !== 'number' || capital <= 0)) return false;
     return true;
   };
 
@@ -142,15 +176,27 @@ export function CreatorPage() {
           <CreatorCustomize slots={slots} onChange={setSlots} />
         )}
 
-        {/* Step 3: conferma */}
+        {/* Step 3: capitale iniziale */}
         {active === 3 && (
+          <CreatorCapital capital={capital} onChange={setCapital} slots={slots} />
+        )}
+
+        {/* Step 4: conferma */}
+        {active === 4 && (
           <CreatorConfirm
             slots={slots}
             portfolioName={portfolioName}
             onNameChange={setPortfolioName}
             onConfirm={handleConfirm}
             loading={creating}
+            capital={typeof capital === 'number' ? capital : 0}
           />
+        )}
+
+        {error && (
+          <Notification color="red" onClose={() => setError(null)}>
+            {error}
+          </Notification>
         )}
 
         {/* Navigazione */}
