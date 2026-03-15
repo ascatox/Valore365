@@ -754,7 +754,7 @@ export function FirePage() {
                 color="teal"
                 label="Contributo richiesto"
                 value={requiredContribution != null ? formatMoney(requiredContribution, currency) : 'N/D'}
-                note={hasAgePlan ? 'Contributo annuo per arrivare entro l’età target' : 'Inserisci età attuale e target'}
+                note={hasAgePlan ? "Contributo annuo per arrivare entro l'età target" : 'Inserisci età attuale e target'}
               />
               <StatCard
                 icon={IconTarget}
@@ -778,7 +778,7 @@ export function FirePage() {
                 color="orange"
                 label="Durata stimata"
                 value={capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D'}
-                note={activeDecumulationData?.depletion_year_p50 ? 'Esaurimento mediano entro l’orizzonte simulato' : 'Capitale mediano ancora positivo a fine orizzonte'}
+                note={activeDecumulationData?.depletion_year_p50 ? "Esaurimento mediano entro l'orizzonte simulato" : 'Capitale mediano ancora positivo a fine orizzonte'}
               />
               <StatCard
                 icon={IconTrendingUp}
@@ -824,9 +824,9 @@ export function FirePage() {
                         : 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo di decumulo.')
                       : decumulationSuccess
                         ? (aggregateModeEnabled
-                          ? `Con le ipotesi correnti la probabilità di chiudere l’orizzonte con capitale residuo sul perimetro aggregato è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
-                          : `Con le ipotesi correnti la probabilità di chiudere l’orizzonte con capitale residuo è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`)
-                        : `Con le ipotesi correnti la probabilità di esaurimento entro l’orizzonte è circa ${activeDecumulationData?.depletion_probability_pct?.toFixed(1) ?? '0'}%.`)}
+                          ? `Con le ipotesi correnti la probabilità di chiudere l'orizzonte con capitale residuo sul perimetro aggregato è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
+                          : `Con le ipotesi correnti la probabilità di chiudere l'orizzonte con capitale residuo è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`)
+                        : `Con le ipotesi correnti la probabilità di esaurimento entro l'orizzonte è circa ${activeDecumulationData?.depletion_probability_pct?.toFixed(1) ?? '0'}%.`)}
               </Text>
               {fireMode === 'accumulation' && hasAgePlan && targetAgeValue > 0 && (
                 <Alert color={estimatedFireAge != null && estimatedFireAge <= targetAgeValue ? 'teal' : 'yellow'} variant="light">
@@ -834,7 +834,7 @@ export function FirePage() {
                     ? (estimatedFireAge <= targetAgeValue
                       ? `La stima attuale porta al FIRE prima o entro i ${targetAgeValue} anni.`
                       : `Con l'assetto attuale il FIRE stimato arriva dopo i ${targetAgeValue} anni.`)
-                    : 'Serve completare il piano per confrontare l’età target.'}
+                    : "Serve completare il piano per confrontare l'età target."}
                 </Alert>
               )}
               <Table withTableBorder withColumnBorders>
@@ -885,9 +885,9 @@ export function FirePage() {
                 <Title order={4}>{fireMode === 'accumulation' ? 'Scenari Monte Carlo' : 'Timeline di decumulo'}</Title>
               </Group>
                 <Text size="sm" c="dimmed">
-                {fireMode === ‘accumulation’
-                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 1000).toLocaleString(‘it-IT’)} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
-                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 1000).toLocaleString(‘it-IT’)} percorsi) anno per anno del capitale residuo, con prelievi indicizzati all’inflazione.`}
+                {fireMode === 'accumulation'
+                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 1000).toLocaleString('it-IT')} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
+                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 1000).toLocaleString('it-IT')} percorsi) anno per anno del capitale residuo, con prelievi indicizzati all'inflazione.`}
                 </Text>
               {fireMode === 'accumulation' ? (
                 fireNumber == null || horizonScenarios.length === 0 ? (
