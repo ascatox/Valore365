@@ -355,12 +355,12 @@ export function FirePage() {
 
   const aggregateHorizonScenarios = useMemo(() => {
     if (!aggregateMonteCarlo.length || fireNumber == null || !aggregateSummary) return [];
+    const targetYears = aggregateMonteCarlo[0]?.horizons ?? [5, 10, 20];
     const years = Array.from(new Set(
       aggregateMonteCarlo.flatMap((projection) => projection.projections.map((yearProjection) => yearProjection.year)),
     ))
-      .filter((year) => year > 0)
-      .sort((left, right) => left - right)
-      .slice(0, 5);
+      .filter((year) => targetYears.includes(year))
+      .sort((left, right) => left - right);
 
     return years.map((year) => {
       const totals = aggregateMonteCarlo.reduce((accumulator, projection) => {
@@ -394,8 +394,9 @@ export function FirePage() {
 
   const singleHorizonScenarios = useMemo(() => {
     if (!monteCarlo || fireNumber == null) return [];
+    const targetYears = monteCarlo.horizons ?? [5, 10, 20];
     return monteCarlo.projections
-      .filter((projection) => projection.year > 0)
+      .filter((projection) => targetYears.includes(projection.year))
       .map((projection) => {
         const p25Value = projectionToValue(projection.p25, investedValue, cashBalance);
         const p50Value = projectionToValue(projection.p50, investedValue, cashBalance);
@@ -408,8 +409,7 @@ export function FirePage() {
           onTrack: p50Value >= fireNumber,
           stretch: p75Value >= fireNumber,
         };
-      })
-      .slice(0, 5);
+      });
   }, [cashBalance, fireNumber, investedValue, monteCarlo]);
   const horizonScenarios = aggregateModeEnabled ? aggregateHorizonScenarios : singleHorizonScenarios;
   const { data: decumulationData, isLoading: decumulationLoading, error: decumulationError } = useDecumulationPlan(
@@ -885,9 +885,9 @@ export function FirePage() {
                 <Title order={4}>{fireMode === 'accumulation' ? 'Scenari Monte Carlo' : 'Timeline di decumulo'}</Title>
               </Group>
                 <Text size="sm" c="dimmed">
-                {fireMode === 'accumulation'
-                  ? 'Lettura delle proiezioni sul capitale già investito. I valori sotto non includono nuovi versamenti futuri.'
-                  : 'Simulazione Monte Carlo anno per anno del capitale residuo, con prelievi indicizzati all’inflazione.'}
+                {fireMode === ‘accumulation’
+                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 1000).toLocaleString(‘it-IT’)} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
+                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 1000).toLocaleString(‘it-IT’)} percorsi) anno per anno del capitale residuo, con prelievi indicizzati all’inflazione.`}
                 </Text>
               {fireMode === 'accumulation' ? (
                 fireNumber == null || horizonScenarios.length === 0 ? (
