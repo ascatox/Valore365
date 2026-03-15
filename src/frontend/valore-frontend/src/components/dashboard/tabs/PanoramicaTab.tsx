@@ -589,28 +589,34 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
         </Grid.Col>
       </Grid>
 
-      <Grid gutter="md" mt="md">
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <AllocationDoughnut
-            title="Allocazione Geografica"
-            data={countryDoughnutData}
-            centerLabel={countryDoughnutData.length > 0 ? `${countryDoughnutData.length}` : undefined}
-            headerRight={
-              <Badge variant="light" color="blue" size="sm">justETF</Badge>
-            }
-          />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 6 }}>
-          <AllocationDoughnut
-            title="Allocazione Settoriale"
-            data={sectorDoughnutData}
-            centerLabel={sectorDoughnutData.length > 0 ? `${sectorDoughnutData.length}` : undefined}
-            headerRight={
-              <Badge variant="light" color="blue" size="sm">justETF</Badge>
-            }
-          />
-        </Grid.Col>
-      </Grid>
+      {(countryDoughnutData.length > 0 || sectorDoughnutData.length > 0) && (
+        <Grid gutter="md" mt="md">
+          {countryDoughnutData.length > 0 && (
+            <Grid.Col span={{ base: 12, md: sectorDoughnutData.length > 0 ? 6 : 12 }}>
+              <AllocationDoughnut
+                title="Allocazione Geografica"
+                data={countryDoughnutData}
+                centerLabel={`${countryDoughnutData.length}`}
+                headerRight={
+                  <Badge variant="light" color="blue" size="sm">justETF</Badge>
+                }
+              />
+            </Grid.Col>
+          )}
+          {sectorDoughnutData.length > 0 && (
+            <Grid.Col span={{ base: 12, md: countryDoughnutData.length > 0 ? 6 : 12 }}>
+              <AllocationDoughnut
+                title="Allocazione Settoriale"
+                data={sectorDoughnutData}
+                centerLabel={`${sectorDoughnutData.length}`}
+                headerRight={
+                  <Badge variant="light" color="blue" size="sm">justETF</Badge>
+                }
+              />
+            </Grid.Col>
+          )}
+        </Grid>
+      )}
     </>
   );
 }
