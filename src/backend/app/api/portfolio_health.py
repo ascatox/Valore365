@@ -50,34 +50,8 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
-    @router.get(
-        "/portfolios/{portfolio_id}/decumulation",
-        response_model=DecumulationPlanResponse,
-        responses={404: {"model": ErrorResponse}},
-    )
-    def get_decumulation_plan(
-        portfolio_id: int,
-        annual_withdrawal: float = Query(ge=0),
-        years: int = Query(ge=1, le=80),
-        inflation_rate_pct: float = Query(default=2.0, ge=0, le=20),
-        other_income_annual: float = Query(default=0.0, ge=0),
-        current_age: int | None = Query(default=None, ge=18, le=100),
-        _auth: AuthContext = Depends(require_auth_rate_limited),
-    ) -> DecumulationPlanResponse:
-        try:
-            return run_decumulation_plan(
-                repo,
-                portfolio_id,
-                annual_withdrawal=annual_withdrawal,
-                years=years,
-                inflation_rate_pct=inflation_rate_pct,
-                other_income_annual=other_income_annual,
-                current_age=current_age,
-                user_id=_auth.user_id,
-            )
-        except ValueError as exc:
-            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
-
+    # NOTE: aggregate route MUST be registered before the {portfolio_id} route
+    # to prevent FastAPI from matching "aggregate" as a portfolio_id integer.
     @router.get(
         "/portfolios/aggregate/decumulation",
         response_model=AggregateDecumulationPlanResponse,
@@ -107,6 +81,34 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
             message = str(exc)
             status_code = 400 if "valuta base" in message or "Seleziona almeno" in message else 404
             raise AppError(code="invalid_request" if status_code == 400 else "not_found", message=message, status_code=status_code) from exc
+
+    @router.get(
+        "/portfolios/{portfolio_id}/decumulation",
+        response_model=DecumulationPlanResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    def get_decumulation_plan(
+        portfolio_id: int,
+        annual_withdrawal: float = Query(ge=0),
+        years: int = Query(ge=1, le=80),
+        inflation_rate_pct: float = Query(default=2.0, ge=0, le=20),
+        other_income_annual: float = Query(default=0.0, ge=0),
+        current_age: int | None = Query(default=None, ge=18, le=100),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> DecumulationPlanResponse:
+        try:
+            return run_decumulation_plan(
+                repo,
+                portfolio_id,
+                annual_withdrawal=annual_withdrawal,
+                years=years,
+                inflation_rate_pct=inflation_rate_pct,
+                other_income_annual=other_income_annual,
+                current_age=current_age,
+                user_id=_auth.user_id,
+            )
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
     @router.get(
         "/portfolios/{portfolio_id}/xray",
