@@ -89,6 +89,8 @@ from .models import (
     MarketCategory,
     MarketIntradayPoint,
     MarketQuoteItem,
+    MarketNewsItem,
+    MarketNewsResponse,
     MarketQuotesResponse,
     PacExecutionConfirm,
     PacExecutionRead,
@@ -1816,6 +1818,80 @@ def get_market_quotes(_auth: AuthContext = Depends(require_auth_rate_limited)) -
     with _market_quotes_cache_lock:
         _market_quotes_cache["payload"] = response
         _market_quotes_cache["expires_at"] = _time.monotonic() + MARKET_QUOTES_CACHE_TTL_SECONDS
+    return response
+
+
+MARKET_NEWS_CACHE_TTL_SECONDS = 300.0  # 5 minutes
+_market_news_cache: dict[str, Any] = {"payload": None, "expires_at": 0.0}
+_market_news_cache_lock = threading.Lock()
+
+NEWS_SYMBOLS = ["^GSPC", "^IXIC", "FTSEMIB.MI", "BTC-USD", "GC=F"]
+
+
+@router.get("/markets/news", response_model=MarketNewsResponse)
+def get_market_news(_auth: AuthContext = Depends(require_auth_rate_limited)) -> MarketNewsResponse:
+    now = _time.monotonic()
+    with _market_news_cache_lock:
+        cached_payload = _market_news_cache.get("payload")
+        cached_expires = float(_market_news_cache.get("expires_at", 0.0) or 0.0)
+        if cached_payload is not None and cached_expires > now:
+            return cached_payload
+
+    import yfinance as yf
+
+    seen_titles: set[str] = set()
+    news_items: list[MarketNewsItem] = []
+
+    def fetch_news(symbol: str) -> list[MarketNewsItem]:
+        items: list[MarketNewsItem] = []
+        try:
+            ticker = yf.Ticker(symbol)
+            raw_news = ticker.news or []
+            for article in raw_news[:5]:
+                title = article.get("title") or article.get("content", {}).get("title", "")
+                if not title:
+                    continue
+                publisher = article.get("publisher") or article.get("content", {}).get("provider", {}).get("displayName")
+                link = article.get("link") or article.get("content", {}).get("canonicalUrl", {}).get("url")
+                pub_date = article.get("providerPublishTime") or article.get("content", {}).get("pubDate")
+                pub_str = None
+                if pub_date is not None:
+                    try:
+                        if isinstance(pub_date, (int, float)):
+                            pub_str = datetime.fromtimestamp(int(pub_date)).isoformat()
+                        else:
+                            pub_str = str(pub_date)
+                    except Exception:
+                        pass
+                items.append(MarketNewsItem(
+                    title=title,
+                    publisher=publisher,
+                    link=link,
+                    published=pub_str,
+                    related_symbol=symbol,
+                ))
+        except Exception:
+            pass
+        return items
+
+    with ThreadPoolExecutor(max_workers=min(4, len(NEWS_SYMBOLS))) as executor:
+        results = list(executor.map(fetch_news, NEWS_SYMBOLS))
+
+    for result in results:
+        for item in result:
+            title_key = item.title.strip().lower()
+            if title_key not in seen_titles:
+                seen_titles.add(title_key)
+                news_items.append(item)
+
+    # Sort by publish date descending (newest first)
+    news_items.sort(key=lambda x: x.published or "", reverse=True)
+    news_items = news_items[:20]
+
+    response = MarketNewsResponse(items=news_items)
+    with _market_news_cache_lock:
+        _market_news_cache["payload"] = response
+        _market_news_cache["expires_at"] = _time.monotonic() + MARKET_NEWS_CACHE_TTL_SECONDS
     return response
 
 

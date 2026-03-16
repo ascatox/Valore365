@@ -636,6 +636,18 @@ class MarketQuotesResponse(BaseModel):
     categories: list[MarketCategory]
 
 
+class MarketNewsItem(BaseModel):
+    title: str
+    publisher: str | None = None
+    link: str | None = None
+    published: str | None = None
+    related_symbol: str | None = None
+
+
+class MarketNewsResponse(BaseModel):
+    items: list[MarketNewsItem]
+
+
 # --- Feature 2: Cash Movements ---
 
 class CashMovementCreate(BaseModel):

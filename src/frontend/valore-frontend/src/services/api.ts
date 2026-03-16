@@ -1242,6 +1242,24 @@ export const getMarketQuotes = async (): Promise<MarketQuotesResponse> => {
   return apiFetch<MarketQuotesResponse>('/markets/quotes');
 };
 
+// Market News
+
+export interface MarketNewsItem {
+  title: string;
+  publisher: string | null;
+  link: string | null;
+  published: string | null;
+  related_symbol: string | null;
+}
+
+export interface MarketNewsResponse {
+  items: MarketNewsItem[];
+}
+
+export const getMarketNews = async (): Promise<MarketNewsResponse> => {
+  return apiFetch<MarketNewsResponse>('/markets/news');
+};
+
 export const getMarketSymbolInfo = async (symbol: string): Promise<AssetInfo> => {
   return apiFetch<AssetInfo>(`/markets/symbol-info?symbol=${encodeURIComponent(symbol)}`);
 };

@@ -7,6 +7,7 @@ import {
   getDecumulationPlan,
   getBenchmarks,
   getGainTimeseries,
+  getMarketNews,
   getMarketQuotes,
   getMonteCarloProjection,
   getMWRTimeseries,
@@ -266,6 +267,14 @@ export function useMarketQuotes() {
   return useQuery({
     queryKey: ['market-quotes'],
     queryFn: getMarketQuotes,
+  });
+}
+
+export function useMarketNews() {
+  return useQuery({
+    queryKey: ['market-news'],
+    queryFn: getMarketNews,
+    refetchInterval: 5 * 60 * 1000, // refresh every 5 minutes
   });
 }
 
