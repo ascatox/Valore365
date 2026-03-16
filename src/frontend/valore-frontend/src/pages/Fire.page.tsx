@@ -3,6 +3,7 @@ import {
   ActionIcon,
   Alert,
   Badge,
+  Box,
   Button,
   Card,
   Checkbox,
@@ -20,10 +21,23 @@ import {
   Text,
   ThemeIcon,
   Title,
+  useComputedColorScheme,
+  useMantineTheme,
 } from '@mantine/core';
 import { IconFlame, IconRobot, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import {
+  Area,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -100,6 +114,9 @@ type FireScopeMode = 'single' | 'aggregate';
 export function FirePage() {
   const queryClient = useQueryClient();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const theme = useMantineTheme();
+  const colorScheme = useComputedColorScheme('light');
+  const isDark = colorScheme === 'dark';
   const [fireMode, setFireMode] = useState<FireMode>(() => {
     if (typeof window === 'undefined') return 'accumulation';
     const savedMode = window.localStorage.getItem(STORAGE_KEYS.fireMode);
@@ -412,6 +429,19 @@ export function FirePage() {
       });
   }, [cashBalance, fireNumber, investedValue, monteCarlo]);
   const horizonScenarios = aggregateModeEnabled ? aggregateHorizonScenarios : singleHorizonScenarios;
+
+  const monteCarloChartData = useMemo(() => {
+    if (!monteCarlo || monteCarlo.projections.length === 0) return [];
+    return monteCarlo.projections.map((p) => ({
+      year: `${p.year}`,
+      p10: p.p10,
+      p25: p.p25,
+      p50: p.p50,
+      p75: p.p75,
+      p90: p.p90,
+    }));
+  }, [monteCarlo]);
+
   const { data: decumulationData, isLoading: decumulationLoading, error: decumulationError } = useDecumulationPlan(
     portfolioId,
     {
@@ -886,9 +916,78 @@ export function FirePage() {
               </Group>
                 <Text size="sm" c="dimmed">
                 {fireMode === 'accumulation'
-                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 1000).toLocaleString('it-IT')} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
-                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 1000).toLocaleString('it-IT')} percorsi) anno per anno del capitale residuo, con prelievi indicizzati all'inflazione.`}
+                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 5000).toLocaleString('it-IT')} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
+                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 5000).toLocaleString('it-IT')} percorsi) anno per anno del capitale residuo, con prelievi indicizzati all'inflazione.`}
                 </Text>
+              {fireMode === 'accumulation' && monteCarloChartData.length > 0 && (() => {
+                const tealColor = theme.colors.teal[isDark ? 4 : 6];
+                const lightTeal = theme.colors.teal[isDark ? 9 : 1];
+                const midTeal = theme.colors.teal[isDark ? 8 : 2];
+                const mv = (investedValue ?? 0) + (cashBalance ?? 0);
+                const hasValue = mv > 0;
+                return (
+                  <Box style={{ width: '100%', height: 320, overflow: 'hidden' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart data={monteCarloChartData} margin={{ top: 10, right: isMobile ? 5 : 10, left: isMobile ? -15 : 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDark ? theme.colors.dark[4] : '#e2e8f0'} />
+                        <XAxis
+                          dataKey="year"
+                          tick={{ fontSize: isMobile ? 10 : 12 }}
+                          tickFormatter={(v) => v === '0' ? 'Oggi' : `${v}a`}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          tick={{ fontSize: isMobile ? 10 : 12 }}
+                          tickFormatter={(v: number) => `${v}`}
+                          domain={['auto', 'auto']}
+                          width={isMobile ? 35 : 60}
+                        />
+                        {hasValue && !isMobile && (
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            tick={{ fontSize: 11 }}
+                            tickFormatter={(v: number) =>
+                              ((v / 100) * mv).toLocaleString('it-IT', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                            }
+                            domain={['auto', 'auto']}
+                          />
+                        )}
+                        <Tooltip
+                          content={({ active, payload }) => {
+                            if (!active || !payload?.length) return null;
+                            const d = payload[0]?.payload as { year: string; p10: number; p25: number; p50: number; p75: number; p90: number };
+                            const fmtGrowth = (v: number) => { const pct = v - 100; return pct >= 0 ? `+${pct.toFixed(0)}%` : `${pct.toFixed(0)}%`; };
+                            const fmtVal = (v: number) => ((v / 100) * mv).toLocaleString('it-IT', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                            return (
+                              <Box style={{ background: isDark ? theme.colors.dark[7] : 'white', border: `1px solid ${isDark ? theme.colors.dark[4] : '#e2e8f0'}`, borderRadius: 8, padding: '8px 12px' }}>
+                                <Text fw={700} size="sm" mb={4}>{d.year === '0' ? 'Oggi' : `Anno ${d.year}`}</Text>
+                                {[
+                                  { label: 'P90', val: d.p90 },
+                                  { label: 'P75', val: d.p75 },
+                                  { label: 'P50', val: d.p50, bold: true },
+                                  { label: 'P25', val: d.p25 },
+                                  { label: 'P10', val: d.p10 },
+                                ].map(({ label, val, bold }) => (
+                                  <Text key={label} size="xs" c={bold ? undefined : 'dimmed'} fw={bold ? 600 : undefined}>
+                                    {label}: {fmtGrowth(val)}{hasValue && ` (${fmtVal(val)})`}
+                                  </Text>
+                                ))}
+                              </Box>
+                            );
+                          }}
+                        />
+                        <ReferenceLine yAxisId="left" y={100} stroke={isDark ? theme.colors.dark[3] : '#94a3b8'} strokeDasharray="4 4" />
+                        <Area yAxisId="left" type="monotone" dataKey="p90" stroke="none" fill={lightTeal} fillOpacity={0.5} isAnimationActive={false} />
+                        <Area yAxisId="left" type="monotone" dataKey="p75" stroke="none" fill={midTeal} fillOpacity={0.5} isAnimationActive={false} />
+                        <Area yAxisId="left" type="monotone" dataKey="p25" stroke="none" fill={isDark ? theme.colors.dark[7] : 'white'} fillOpacity={1} isAnimationActive={false} />
+                        <Area yAxisId="left" type="monotone" dataKey="p10" stroke="none" fill={isDark ? theme.colors.dark[7] : 'white'} fillOpacity={1} isAnimationActive={false} />
+                        <Line yAxisId="left" type="monotone" dataKey="p50" stroke={tealColor} strokeWidth={2.5} dot={false} isAnimationActive={false} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </Box>
+                );
+              })()}
               {fireMode === 'accumulation' ? (
                 fireNumber == null || horizonScenarios.length === 0 ? (
                   <Alert color="yellow" variant="light">
