@@ -24,6 +24,7 @@ import {
   getPortfolioTargetIntradayPerformance,
   getPortfolioTargetPerformance,
   getPortfolioTimeseries,
+  getStressTest,
   getTWRTimeseries,
   getUserSettings,
 } from '../../../services/api';
@@ -78,6 +79,14 @@ export function useMonteCarloProjection(portfolioId: number | null) {
   return useQuery({
     queryKey: ['monte-carlo-projection', portfolioId],
     queryFn: () => getMonteCarloProjection(portfolioId!),
+    enabled: portfolioId != null,
+  });
+}
+
+export function useStressTest(portfolioId: number | null) {
+  return useQuery({
+    queryKey: ['stress-test', portfolioId],
+    queryFn: () => getStressTest(portfolioId!),
     enabled: portfolioId != null,
   });
 }

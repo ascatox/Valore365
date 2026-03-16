@@ -10,6 +10,7 @@ from ..schemas.portfolio_doctor import (
     DecumulationPlanResponse,
     MonteCarloProjectionResponse,
     PortfolioHealthResponse,
+    StressTestResponse,
     XRayResponse,
 )
 from ..services.portfolio_doctor import (
@@ -18,6 +19,7 @@ from ..services.portfolio_doctor import (
     run_aggregate_decumulation_plan,
     run_decumulation_plan,
     run_monte_carlo_projection,
+    run_stress_test,
 )
 
 
@@ -47,6 +49,20 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
     ) -> MonteCarloProjectionResponse:
         try:
             return run_monte_carlo_projection(repo, portfolio_id, _auth.user_id)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+    @router.get(
+        "/portfolios/{portfolio_id}/stress-test",
+        response_model=StressTestResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    def get_stress_test(
+        portfolio_id: int,
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> StressTestResponse:
+        try:
+            return run_stress_test(repo, portfolio_id, _auth.user_id)
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 

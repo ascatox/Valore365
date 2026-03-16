@@ -40,6 +40,7 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
 import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetailsModal';
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
+import { StressTestCard } from '../components/doctor/StressTestCard';
 import { XRayCard } from '../components/doctor/XRayCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -455,6 +456,8 @@ export function DoctorPage() {
                 marketValue={summary?.market_value ?? null}
                 currency={summary?.base_currency ?? 'EUR'}
               />
+
+              <StressTestCard portfolioId={portfolioId} />
 
               <DoctorAlertDetailsModal
                 alert={detailsAlert}

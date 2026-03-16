@@ -120,6 +120,33 @@ class AggregateDecumulationPlanResponse(BaseModel):
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
 
 
+class StressTestAssetImpact(BaseModel):
+    symbol: str
+    name: str
+    weight_pct: float
+    estimated_loss_pct: float
+
+
+class StressTestScenarioResult(BaseModel):
+    scenario_id: str = Field(min_length=1)
+    scenario_name: str = Field(min_length=1)
+    scenario_type: Literal["historical", "shock"]
+    period: str | None = None
+    estimated_portfolio_impact_pct: float
+    max_drawdown_pct: float | None = None
+    recovery_months: int | None = None
+    benchmark_drawdown_pct: float | None = None
+    risk_level: Literal["low", "medium", "high", "critical"]
+    most_impacted_assets: list[StressTestAssetImpact] = Field(default_factory=list)
+
+
+class StressTestResponse(BaseModel):
+    portfolio_id: int = Field(ge=1)
+    scenarios: list[StressTestScenarioResult] = Field(default_factory=list)
+    portfolio_volatility_pct: float | None = None
+    analysis_date: str
+
+
 class XRayHolding(BaseModel):
     symbol: str
     name: str

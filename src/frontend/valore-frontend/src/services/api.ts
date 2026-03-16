@@ -936,6 +936,39 @@ export const getMonteCarloProjection = async (portfolioId: number): Promise<Mont
   return apiFetch<MonteCarloProjectionResponse>(`/portfolios/${portfolioId}/monte-carlo`);
 };
 
+// Stress Test
+
+export interface StressTestAssetImpact {
+  symbol: string;
+  name: string;
+  weight_pct: number;
+  estimated_loss_pct: number;
+}
+
+export interface StressTestScenarioResult {
+  scenario_id: string;
+  scenario_name: string;
+  scenario_type: 'historical' | 'shock';
+  period: string | null;
+  estimated_portfolio_impact_pct: number;
+  max_drawdown_pct: number | null;
+  recovery_months: number | null;
+  benchmark_drawdown_pct: number | null;
+  risk_level: 'low' | 'medium' | 'high' | 'critical';
+  most_impacted_assets: StressTestAssetImpact[];
+}
+
+export interface StressTestResponse {
+  portfolio_id: number;
+  scenarios: StressTestScenarioResult[];
+  portfolio_volatility_pct: number | null;
+  analysis_date: string;
+}
+
+export const getStressTest = async (portfolioId: number): Promise<StressTestResponse> => {
+  return apiFetch<StressTestResponse>(`/portfolios/${portfolioId}/stress-test`);
+};
+
 export const getDecumulationPlan = async (
   portfolioId: number,
   params: {
