@@ -8,6 +8,7 @@ import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
 import { formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
+import { MarketTicker } from './MarketTicker';
 
 /* ── Exchange schedule per symbol ────────────────────────────────── */
 
@@ -278,6 +279,8 @@ export function MercatiTab() {
 
   return (
     <Stack gap="md">
+      <MarketTicker />
+
       {closedExchanges.length > 0 && !closedAlertDismissed && (
         <Alert
           color="yellow"
