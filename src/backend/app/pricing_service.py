@@ -76,6 +76,7 @@ class PriceIngestionService:
                     bid=quote.bid,
                     ask=quote.ask,
                     volume=quote.volume,
+                    previous_close=getattr(quote, 'previous_close', None),
                 )
                 items.append(
                     PriceRefreshItem(

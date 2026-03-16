@@ -1787,28 +1787,51 @@ class PortfolioRepository:
             daily_prices = self._get_latest_daily_prices(conn, asset_ids)
             base_ccy = portfolio.base_currency
 
-            # Fetch last 2 daily bars per asset for day_change_pct calculation
+            # Fetch previous_close from the latest price tick per asset (yFinance previous_close).
+            # Falls back to the penultimate daily bar from price_bars_1d when not available.
             prev_close_rows = conn.execute(
                 text(
                     """
-                    with ranked as (
-                        select asset_id, close::float8 as close,
-                               row_number() over (partition by asset_id order by price_date desc) as rn
-                        from price_bars_1d
-                        where asset_id = any(:asset_ids)
-                    )
-                    select asset_id, close
-                    from ranked
-                    where rn = 2
+                    select distinct on (asset_id)
+                        asset_id,
+                        previous_close::float8 as previous_close
+                    from price_ticks
+                    where asset_id = any(:asset_ids)
+                      and previous_close is not null
+                    order by asset_id, ts desc
                     """
                 ),
                 {"asset_ids": asset_ids},
             ).mappings().all()
             prev_close_by_asset: dict[int, float] = {}
             for r in prev_close_rows:
-                v = float(r["close"])
+                v = float(r["previous_close"])
                 if math.isfinite(v):
                     prev_close_by_asset[int(r["asset_id"])] = v
+
+            # Fallback: for assets without previous_close in ticks, use penultimate daily bar
+            missing_assets = [aid for aid in asset_ids if aid not in prev_close_by_asset]
+            if missing_assets:
+                fallback_rows = conn.execute(
+                    text(
+                        """
+                        with ranked as (
+                            select asset_id, close::float8 as close,
+                                   row_number() over (partition by asset_id order by price_date desc) as rn
+                            from price_bars_1d
+                            where asset_id = any(:asset_ids)
+                        )
+                        select asset_id, close
+                        from ranked
+                        where rn = 2
+                        """
+                    ),
+                    {"asset_ids": missing_assets},
+                ).mappings().all()
+                for r in fallback_rows:
+                    v = float(r["close"])
+                    if math.isfinite(v):
+                        prev_close_by_asset[int(r["asset_id"])] = v
 
             fx_currencies = sorted(
                 {
@@ -1898,9 +1921,11 @@ class PortfolioRepository:
                 price_info = daily_prices.get(aid)
                 meta = asset_meta.get(aid)
                 market_price = avg_cost
+                raw_price: float | None = None  # price in quote currency (no FX)
                 price_day_val: date | None = None
                 if price_info and meta is not None:
                     price_day, latest_close = price_info
+                    raw_price = latest_close
                     price_day_val = price_day
                     quote_fx = fx_rate_on_or_before(meta.quote_currency, price_day)
                     if quote_fx is not None:
@@ -1924,8 +1949,10 @@ class PortfolioRepository:
 
                 prev_close = prev_close_by_asset.get(aid)
                 pos_day_change_pct = 0.0
-                if prev_close is not None and prev_close > 0 and math.isfinite(market_price):
-                    pos_day_change_pct = ((market_price / prev_close) - 1) * 100.0
+                # Compare in quote currency (no FX) to match yFinance modal behaviour
+                current_for_pct = raw_price if raw_price is not None else market_price
+                if prev_close is not None and prev_close > 0 and math.isfinite(current_for_pct):
+                    pos_day_change_pct = ((current_for_pct / prev_close) - 1) * 100.0
 
                 positions.append(
                     Position(
@@ -2044,17 +2071,53 @@ class PortfolioRepository:
                 return series[idx][1]
 
             _log = logging.getLogger(__name__)
+
+            # Fetch previous_close from latest tick (yFinance) per asset
+            tick_prev_close: dict[int, float] = {}
+            with self.engine.begin() as conn2:
+                tick_rows = conn2.execute(
+                    text(
+                        """
+                        select distinct on (asset_id)
+                            asset_id,
+                            previous_close::float8 as previous_close
+                        from price_ticks
+                        where asset_id = any(:asset_ids)
+                          and previous_close is not null
+                        order by asset_id, ts desc
+                        """
+                    ),
+                    {"asset_ids": asset_ids},
+                ).mappings().all()
+            for r in tick_rows:
+                v = float(r["previous_close"])
+                if math.isfinite(v):
+                    tick_prev_close[int(r["asset_id"])] = v
+
             previous_market_value = 0.0
             for asset_id, quantity in qty_by_asset.items():
-                series = daily_by_asset.get(asset_id, [])
-                if len(series) < 2:
-                    _log.warning("day_change: asset %s has only %d bars in price_bars_1d, skipping", asset_id, len(series))
-                    continue
-                latest_day, _latest_close = series[0]
-                prev_day, prev_close = series[1]
-                if latest_day == prev_day:
-                    _log.warning("day_change: asset %s latest_day==prev_day (%s), skipping", asset_id, latest_day)
-                    continue
+                # Prefer yFinance previous_close, fall back to penultimate daily bar
+                prev_close: float | None = tick_prev_close.get(asset_id)
+                prev_day: date | None = None
+
+                if prev_close is None:
+                    series = daily_by_asset.get(asset_id, [])
+                    if len(series) < 2:
+                        _log.warning("day_change: asset %s has only %d bars in price_bars_1d and no tick previous_close, skipping", asset_id, len(series))
+                        continue
+                    latest_day, _latest_close = series[0]
+                    prev_day, prev_close = series[1]
+                    if latest_day == prev_day:
+                        _log.warning("day_change: asset %s latest_day==prev_day (%s), skipping", asset_id, latest_day)
+                        continue
+                else:
+                    # Use latest daily bar date for FX lookup
+                    series = daily_by_asset.get(asset_id, [])
+                    if series:
+                        prev_day = series[1][0] if len(series) >= 2 else series[0][0]
+                    else:
+                        prev_day = date.today()
+
                 meta = asset_meta.get(asset_id)
                 if meta is None:
                     _log.warning("day_change: asset %s has no meta, skipping", asset_id)
@@ -2069,7 +2132,7 @@ class PortfolioRepository:
                     _log.warning("day_change: asset %s has NaN/Inf price (curr=%.4f prev=%.4f), skipping", asset_id, current_price_base, previous_price_base)
                     continue
                 _log.info("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (close=%.4f fx=%.4f) dates=%s→%s",
-                          asset_id, quantity, current_price_base, previous_price_base, prev_close, prev_fx, prev_day, latest_day)
+                          asset_id, quantity, current_price_base, previous_price_base, prev_close, prev_fx, prev_day, series[0][0] if series else prev_day)
                 day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
 
@@ -2598,13 +2661,14 @@ class PortfolioRepository:
         bid: float | None,
         ask: float | None,
         volume: float | None,
+        previous_close: float | None = None,
     ) -> None:
         with self.engine.begin() as conn:
             conn.execute(
                 text(
                     """
-                    insert into price_ticks (asset_id, provider, ts, last, bid, ask, volume)
-                    values (:asset_id, :provider, :ts, :last, :bid, :ask, :volume)
+                    insert into price_ticks (asset_id, provider, ts, last, bid, ask, volume, previous_close)
+                    values (:asset_id, :provider, :ts, :last, :bid, :ask, :volume, :previous_close)
                     """
                 ),
                 {
@@ -2615,6 +2679,7 @@ class PortfolioRepository:
                     "bid": bid,
                     "ask": ask,
                     "volume": volume,
+                    "previous_close": previous_close,
                 },
             )
 

@@ -122,6 +122,7 @@ create table price_ticks (
   bid numeric(28,10),
   ask numeric(28,10),
   volume numeric(28,10),
+  previous_close numeric(28,10),
   primary key (asset_id, provider, ts)
 );
 

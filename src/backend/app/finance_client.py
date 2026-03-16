@@ -33,6 +33,7 @@ class ProviderQuote:
     is_fallback: bool = False
     stale: bool = False
     warning: str | None = None
+    previous_close: float | None = None
 
 
 @dataclass
@@ -575,11 +576,16 @@ class YahooFinanceClient:
         import yfinance as yf
         ticker = yf.Ticker(symbol)
         warning: str | None = None
+        previous_close: float | None = None
         try:
             price = ticker.fast_info.last_price
+            previous_close = ticker.fast_info.previous_close
         except Exception as exc:
             price = None
             warning = f"fast_info unavailable: {exc.__class__.__name__}"
+
+        if previous_close is not None and not math.isfinite(float(previous_close)):
+            previous_close = None
 
         if price is None or not math.isfinite(float(price)):
             hist = self._ticker_history(ticker, symbol, period='5d')
@@ -601,6 +607,8 @@ class YahooFinanceClient:
                     message=f"Nessuna quotazione disponibile per {symbol}",
                 )
             price = float(close_col.iloc[-1])
+            if previous_close is None and len(close_col) >= 2:
+                previous_close = float(close_col.iloc[-2])
             quote_ts = datetime.now(UTC)
             last_idx = close_col.index[-1]
             if hasattr(last_idx, 'to_pydatetime'):
@@ -617,6 +625,7 @@ class YahooFinanceClient:
                 is_fallback=True,
                 stale=True,
                 warning='realtime quote unavailable; using last close',
+                previous_close=previous_close,
             )
 
         return ProviderQuote(
@@ -631,6 +640,7 @@ class YahooFinanceClient:
             is_fallback=False,
             stale=False,
             warning=warning,
+            previous_close=previous_close,
         )
 
     def get_market_quote(self, symbol: str) -> ProviderMarketQuote:
