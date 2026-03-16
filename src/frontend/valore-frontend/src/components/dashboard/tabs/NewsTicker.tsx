@@ -1,5 +1,5 @@
-import { Box, Group, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { IconNews } from '@tabler/icons-react';
+import { Anchor, Box, Group, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { IconExternalLink, IconNews } from '@tabler/icons-react';
 import { useMarketNews } from '../hooks/queries';
 import type { MarketNewsItem } from '../../../services/api';
 
@@ -39,9 +39,24 @@ function NewsItem({ item, isDark }: { item: MarketNewsItem; isDark: boolean }) {
       }}
     >
       <IconNews size={14} style={{ flexShrink: 0, opacity: 0.5 }} />
-      <Text size="xs" fw={600} style={{ whiteSpace: 'nowrap' }}>
-        {item.title}
-      </Text>
+      {item.link ? (
+        <Anchor
+          href={item.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          size="xs"
+          fw={600}
+          underline="hover"
+          style={{ whiteSpace: 'nowrap' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {item.title} <IconExternalLink size={10} style={{ verticalAlign: 'middle', opacity: 0.6 }} />
+        </Anchor>
+      ) : (
+        <Text size="xs" fw={600} style={{ whiteSpace: 'nowrap' }}>
+          {item.title}
+        </Text>
+      )}
       {item.publisher && (
         <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
           {item.publisher}
@@ -107,6 +122,7 @@ export function NewsTicker() {
       />
 
       <Box
+        className="news-ticker-track"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -128,8 +144,11 @@ export function NewsTicker() {
           0% { transform: translateX(0); }
           100% { transform: translateX(-50%); }
         }
+        .news-ticker-track:hover {
+          animation-play-state: paused !important;
+        }
         @media (prefers-reduced-motion: reduce) {
-          [style*="news-scroll"] {
+          .news-ticker-track {
             animation: none !important;
           }
         }
