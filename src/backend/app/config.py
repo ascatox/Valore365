@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     finance_max_retries: int = 3
     finance_retry_backoff_seconds: float = 0.5
     finance_symbol_request_delay_seconds: float = 0.0
+    justetf_enabled: bool = True
+    justetf_blocked_cooldown_seconds: float = 900.0
+    fmt_api_key: str = ""
+    fmt_api_base_url: str = "https://financialmodelingprep.com/stable"
+    fmt_timeout_seconds: float = 10.0
 
     price_scheduler_enabled: bool = False
     price_scheduler_interval_seconds: int = 60

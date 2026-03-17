@@ -74,6 +74,18 @@ def register_assets_routes(
             pass
         return None
 
+    def _resolve_asset_symbol(asset_id: int) -> str | None:
+        try:
+            pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
+            return pricing_asset.provider_symbol.strip().upper()
+        except ValueError:
+            pass
+        try:
+            asset = repo.get_asset(asset_id)
+            return asset.symbol.strip().upper()
+        except ValueError:
+            return None
+
     BENCHMARK_SYMBOLS = [
         {"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust"},
     ]
@@ -448,7 +460,7 @@ def register_assets_routes(
             )
 
         try:
-            data = justetf_client.fetch_profile(isin)
+            data = justetf_client.fetch_profile(isin, symbol=_resolve_asset_symbol(asset_id))
         except ProviderError as exc:
             status_code = 502
             if exc.reason == "invalid_isin":

@@ -66,7 +66,12 @@ def compute_portfolio_xray(
             if not isin:
                 continue
             try:
-                data = justetf_client.fetch_profile(isin)
+                try:
+                    pricing = repo.get_asset_pricing_symbol(h.asset_id, provider="yfinance")
+                    fallback_symbol = pricing.provider_symbol
+                except Exception:
+                    fallback_symbol = h.symbol
+                data = justetf_client.fetch_profile(isin, symbol=fallback_symbol)
                 repo.upsert_etf_enrichment(h.asset_id, isin, data)
                 enrichment_map[h.asset_id] = data
                 logger.info("Auto-enriched asset %s (ISIN %s) from justETF", h.symbol, isin)

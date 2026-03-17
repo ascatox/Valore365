@@ -88,3 +88,26 @@ def test_justetf_fetch_profile_disables_gettex_by_default(monkeypatch):
     client.fetch_profile("IE00B4L5Y983")
 
     assert received_include_gettex is False
+
+
+def test_justetf_403_uses_fmp_fallback_when_configured(monkeypatch):
+    def _raise_403(_: str, **__):
+        raise RuntimeError("Failed to fetch ETF page for IE00B441G979: status 403")
+
+    fake_module = types.SimpleNamespace(get_etf_overview=_raise_403)
+    monkeypatch.setitem(sys.modules, "justetf_scraping", fake_module)
+    monkeypatch.setenv("FMT_API_KEY", "test-key")
+
+    client = JustEtfClient(rate_limit_seconds=0.0, blocked_cooldown_seconds=60.0)
+    calls: list[str] = []
+
+    def _fake_fmp(symbol: str):
+        calls.append(symbol)
+        return {"name": "Fallback ETF", "source": "fmp"}
+
+    monkeypatch.setattr(client, "_fetch_profile_from_fmp", _fake_fmp)
+
+    data = client.fetch_profile("IE00B441G979", symbol="SWDA")
+
+    assert data["source"] == "fmp"
+    assert calls == ["SWDA"]

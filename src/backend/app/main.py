@@ -88,7 +88,7 @@ pac_service = PacExecutionService(engine)
 performance_service = PerformanceService(repo)
 scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service, historical_service, repo)
 finance_client = make_finance_client(settings)
-justetf_client = JustEtfClient()
+justetf_client = JustEtfClient(settings=settings)
 
 
 # ---------------------------------------------------------------------------
