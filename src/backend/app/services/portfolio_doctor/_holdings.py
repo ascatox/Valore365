@@ -136,41 +136,63 @@ def _compute_portfolio_return_params(
         ).mappings().all()
 
     prices_by_asset: dict[int, list[float]] = defaultdict(list)
+    dates_by_asset: dict[int, list[date]] = defaultdict(list)
     for row in rows:
         close = float(row["close"])
         if close > 0 and math.isfinite(close):
-            prices_by_asset[int(row["asset_id"])].append(close)
+            aid = int(row["asset_id"])
+            prices_by_asset[aid].append(close)
+            dates_by_asset[aid].append(row["price_date"])
 
-    weighted_mu = 0.0
-    weighted_sigma = 0.0
-    covered_weight = 0.0
-
-    for holding in holdings:
-        series = prices_by_asset.get(holding.asset_id, [])
-        if len(series) < 20:
-            continue
-        log_returns = [
-            math.log(curr / prev)
-            for prev, curr in zip(series, series[1:])
-            if prev > 0 and curr > 0
-        ]
-        if len(log_returns) < 20:
-            continue
-
-        mu_daily = statistics.mean(log_returns)
-        sigma_daily = statistics.pstdev(log_returns)
-        mu_ann = mu_daily * 252
-        sigma_ann = sigma_daily * math.sqrt(252)
-        weight_fraction = holding.weight_pct / 100.0
-
-        weighted_mu += mu_ann * weight_fraction
-        weighted_sigma += sigma_ann * weight_fraction
-        covered_weight += weight_fraction
-
-    if covered_weight == 0:
+    all_dates: set[date] = set()
+    for series_dates in dates_by_asset.values():
+        all_dates.update(series_dates)
+    if len(all_dates) < 20:
         return 0.0, 0.0
 
-    return weighted_mu / covered_weight, weighted_sigma / covered_weight
+    sorted_dates = sorted(all_dates)
+    price_lookup: dict[int, dict[date, float]] = {}
+    for asset_id, series_dates in dates_by_asset.items():
+        price_lookup[asset_id] = {
+            day: price
+            for day, price in zip(series_dates, prices_by_asset[asset_id])
+        }
+
+    weight_map = {h.asset_id: h.weight_pct / 100.0 for h in holdings}
+    total_weight = sum(weight_map.values())
+    if total_weight <= 0:
+        return 0.0, 0.0
+
+    portfolio_values: list[float] = []
+    for current_date in sorted_dates:
+        value = 0.0
+        for asset_id, weight in weight_map.items():
+            series_prices = prices_by_asset.get(asset_id, [])
+            series_dates = dates_by_asset.get(asset_id, [])
+            if series_prices and series_dates:
+                latest_price = series_prices[0]
+                for series_date, series_price in zip(series_dates, series_prices):
+                    if series_date > current_date:
+                        break
+                    latest_price = series_price
+                base_price = series_prices[0]
+                normalized_value = latest_price / base_price if base_price > 0 else 1.0
+            else:
+                normalized_value = 1.0
+            value += normalized_value * (weight / total_weight)
+        portfolio_values.append(value)
+
+    log_returns = [
+        math.log(curr / prev)
+        for prev, curr in zip(portfolio_values, portfolio_values[1:])
+        if prev > 0 and curr > 0
+    ]
+    if len(log_returns) < 20:
+        return 0.0, 0.0
+
+    mu_daily = statistics.mean(log_returns)
+    sigma_daily = statistics.pstdev(log_returns)
+    return mu_daily * 252, sigma_daily * math.sqrt(252)
 
 
 def _percentile(sorted_values: list[float], pct: int) -> float:

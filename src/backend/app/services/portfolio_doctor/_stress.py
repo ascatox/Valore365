@@ -87,7 +87,9 @@ def _compute_historical_scenario(
         )
 
     if covered_weight > 0:
-        portfolio_impact = (weighted_return / covered_weight) * 100.0
+        # Keep uncovered weight in the portfolio with a neutral impact instead
+        # of renormalizing losses to the subset that has historical prices.
+        portfolio_impact = weighted_return * 100.0
     else:
         # Fallback: estimate from benchmark drawdown scaled by portfolio beta
         portfolio_impact = scenario["benchmark_drawdown"] * 0.8
@@ -136,8 +138,8 @@ def _compute_weighted_drawdown(
     for asset_id, series in prices_by_asset.items():
         price_lookup[asset_id] = {d: p for d, p in series}
 
-    weight_map = {h.asset_id: h.weight_pct / 100.0 for h in holdings if h.asset_type != "cash"}
-    total_weight = sum(weight_map.get(aid, 0) for aid in prices_by_asset)
+    weight_map = {h.asset_id: h.weight_pct / 100.0 for h in holdings}
+    total_weight = sum(weight_map.values())
     if total_weight <= 0:
         return 0.0
 
@@ -147,9 +149,20 @@ def _compute_weighted_drawdown(
         value = 0.0
         for asset_id, w in weight_map.items():
             lookup = price_lookup.get(asset_id, {})
-            if d in lookup and prices_by_asset.get(asset_id):
-                first_price = prices_by_asset[asset_id][0][1]
-                value += (lookup[d] / first_price) * (w / total_weight)
+            series = prices_by_asset.get(asset_id, [])
+            if series:
+                first_price = series[0][1]
+                latest_price = first_price
+                for series_date, series_price in series:
+                    if series_date > d:
+                        break
+                    latest_price = series_price
+                normalized_value = latest_price / first_price if first_price > 0 else 1.0
+            else:
+                # Cash and uncovered assets are held flat in the stress path
+                # instead of being dropped from the portfolio.
+                normalized_value = 1.0
+            value += normalized_value * (w / total_weight)
         if value > 0:
             portfolio_values.append(value)
 

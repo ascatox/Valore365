@@ -1,4 +1,11 @@
+from datetime import date
+
 from app.schemas.portfolio_doctor import PortfolioHealthMetrics
+from app.services.portfolio_doctor._holdings import _compute_portfolio_return_params
+from app.services.portfolio_doctor._stress import (
+    _compute_historical_scenario,
+    _compute_weighted_drawdown,
+)
 from app.services.portfolio_doctor import (
     AnalyzedHolding,
     _build_decumulation_projections,
@@ -128,6 +135,118 @@ def test_weighted_ter_normalizes_metadata_expense_ratio_units():
     weighted_ter = compute_weighted_ter(holdings, repo=_Repo())
 
     assert weighted_ter == 0.13
+
+
+def test_historical_stress_does_not_renormalize_away_cash_weight():
+    holdings = [
+        _holding(1, "EQ", "Equity ETF", "etf", 50, "USD"),
+        _holding(2, "CASH", "Cash", "cash", 50, "EUR"),
+    ]
+
+    rows = [
+        {"asset_id": 1, "price_date": date(2020, 2, 19), "close": 100.0},
+        {"asset_id": 1, "price_date": date(2020, 3, 23), "close": 80.0},
+    ]
+
+    class _Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return rows
+
+    class _Conn:
+        def execute(self, *args, **kwargs):
+            return _Result()
+
+    class _Begin:
+        def __enter__(self):
+            return _Conn()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _Engine:
+        @staticmethod
+        def begin():
+            return _Begin()
+
+    class _Repo:
+        engine = _Engine()
+
+    scenario = {
+        "id": "covid_crash",
+        "name": "Covid Crash",
+        "period": "Feb-Mar 2020",
+        "start": "2020-02-19",
+        "end": "2020-03-23",
+        "benchmark_drawdown": -33.9,
+    }
+
+    result = _compute_historical_scenario(_Repo(), holdings, scenario)
+
+    assert result.estimated_portfolio_impact_pct == -10.0
+    assert result.max_drawdown_pct == -10.0
+
+
+def test_weighted_drawdown_keeps_uncovered_assets_flat_instead_of_dropping_them():
+    holdings = [
+        _holding(1, "EQ", "Equity ETF", "etf", 50, "USD"),
+        _holding(2, "BOND", "Bond ETF", "bond", 50, "EUR"),
+    ]
+
+    prices_by_asset = {
+        1: [
+            (date(2020, 2, 19), 100.0),
+            (date(2020, 3, 23), 80.0),
+        ]
+    }
+
+    drawdown = _compute_weighted_drawdown(prices_by_asset, holdings)
+
+    assert round(drawdown, 2) == -10.0
+
+
+def test_portfolio_return_params_use_portfolio_series_not_weighted_asset_sigmas():
+    holdings = [
+        _holding(1, "UP", "Up Asset", "etf", 50, "USD"),
+        _holding(2, "DOWN", "Down Asset", "etf", 50, "USD"),
+    ]
+
+    up_series = [{"asset_id": 1, "price_date": date(2026, 1, day + 1), "close": 100.0 + day} for day in range(21)]
+    down_series = [{"asset_id": 2, "price_date": date(2026, 1, day + 1), "close": 100.0 - day} for day in range(21)]
+    rows = sorted(up_series + down_series, key=lambda row: (row["asset_id"], row["price_date"]))
+
+    class _Result:
+        def mappings(self):
+            return self
+
+        def all(self):
+            return rows
+
+    class _Conn:
+        def execute(self, *args, **kwargs):
+            return _Result()
+
+    class _Begin:
+        def __enter__(self):
+            return _Conn()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class _Engine:
+        @staticmethod
+        def begin():
+            return _Begin()
+
+    class _Repo:
+        engine = _Engine()
+
+    mu_annual, sigma_annual = _compute_portfolio_return_params(_Repo(), holdings)
+
+    assert abs(mu_annual) < 1e-6
+    assert sigma_annual < 0.001
 
 
 def test_scoring_and_alerts_penalize_concentration_risk_and_costs():
