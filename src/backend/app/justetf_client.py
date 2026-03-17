@@ -270,6 +270,27 @@ class JustEtfClient:
             )
         )
 
+    @staticmethod
+    def _needs_fmp_completion(data: dict | None) -> bool:
+        if not isinstance(data, dict):
+            return False
+        # Country/sector allocations power the Doctor/Dashboard exposure charts.
+        # If justETF omits them, try completing the payload from FMT instead of
+        # persisting a partially useful record.
+        return not data.get("country_weights") and not data.get("sector_weights")
+
+    @staticmethod
+    def _merge_enrichment(primary: dict, fallback: dict) -> dict:
+        merged = dict(primary)
+        for key, value in fallback.items():
+            if key == "source":
+                continue
+            if merged.get(key) in (None, "", []):
+                merged[key] = value
+        if fallback.get("source"):
+            merged["source"] = fallback["source"]
+        return merged
+
     def fetch_profile(self, isin: str, symbol: str | None = None, max_retries: int = 3) -> dict | None:
         """Fetch ETF profile from justETF. Returns DB-ready dict or None on error."""
         if not self._enabled:
@@ -334,6 +355,14 @@ class JustEtfClient:
                 overview = self._load_overview(get_etf_overview, isin)
                 converted = self._convert_overview(isin, overview)
                 if self._has_meaningful_enrichment(converted):
+                    if self._needs_fmp_completion(converted):
+                        fallback = self._fallback_to_fmp(
+                            symbol,
+                            reason="partial_payload",
+                            message=f"justETF returned partial enrichment for ISIN {isin}",
+                        )
+                        if fallback is not None:
+                            return self._merge_enrichment(converted, fallback)
                     return converted
                 fallback = self._fallback_to_fmp(
                     symbol,

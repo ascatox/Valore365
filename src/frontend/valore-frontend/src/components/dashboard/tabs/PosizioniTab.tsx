@@ -3,7 +3,7 @@ import { ActionIcon, Badge, Card, Group, Loader, SimpleGrid, Stack, Text, Toolti
 import { IconRefresh } from '@tabler/icons-react';
 import { HoldingsTable } from '../holdings/HoldingsTable';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
-import { usePortfolioSummary, usePortfolioPositions, useTargetAllocation } from '../hooks/queries';
+import { usePortfolioSummary, usePortfolioPositions, usePortfolioXray, useTargetAllocation } from '../hooks/queries';
 import { reclassifyPortfolioAssets } from '../../../services/api';
 import type { AllocationDoughnutItem } from '../types';
 
@@ -23,6 +23,7 @@ interface PosizioniTabProps {
 export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
   const { data: summary } = usePortfolioSummary(portfolioId);
   const { data: positions = [], isLoading, refetch } = usePortfolioPositions(portfolioId);
+  const { data: xrayData } = usePortfolioXray(portfolioId);
   const { data: targetAllocation = [] } = useTargetAllocation(portfolioId);
   const currency = summary?.base_currency ?? 'EUR';
   const [reclassifying, setReclassifying] = useState(false);
@@ -62,6 +63,22 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
     }
     return items;
   }, [positions]);
+
+  const countryDoughnutData = useMemo<AllocationDoughnutItem[]>(() => {
+    if (!xrayData?.aggregated_country_exposure) return [];
+    return Object.entries(xrayData.aggregated_country_exposure)
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+  }, [xrayData]);
+
+  const sectorDoughnutData = useMemo<AllocationDoughnutItem[]>(() => {
+    if (!xrayData?.aggregated_sector_exposure) return [];
+    return Object.entries(xrayData.aggregated_sector_exposure)
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name, value]) => ({ name, value }));
+  }, [xrayData]);
 
   const handleReclassify = async () => {
     if (!portfolioId || reclassifying) return;
@@ -117,6 +134,27 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
             data={allocationByAsset}
             centerLabel={currency}
           />
+        </SimpleGrid>
+      )}
+
+      {(countryDoughnutData.length > 0 || sectorDoughnutData.length > 0) && (
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+          {countryDoughnutData.length > 0 && (
+            <AllocationDoughnut
+              title="Allocazione Geografica"
+              data={countryDoughnutData}
+              centerLabel={`${countryDoughnutData.length}`}
+              headerRight={<Badge variant="light" color="blue" size="sm">justETF</Badge>}
+            />
+          )}
+          {sectorDoughnutData.length > 0 && (
+            <AllocationDoughnut
+              title="Allocazione Settoriale"
+              data={sectorDoughnutData}
+              centerLabel={`${sectorDoughnutData.length}`}
+              headerRight={<Badge variant="light" color="blue" size="sm">justETF</Badge>}
+            />
+          )}
         </SimpleGrid>
       )}
     </Stack>

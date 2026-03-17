@@ -148,3 +148,34 @@ def test_empty_justetf_payload_uses_fmp_fallback_when_configured(monkeypatch):
 
     assert data["source"] == "fmp"
     assert calls == ["SWDA"]
+
+
+def test_partial_justetf_payload_uses_fmp_to_complete_country_and_sector(monkeypatch):
+    fake_module = types.SimpleNamespace(
+        get_etf_overview=lambda isin, **_: {
+            "name": "Test ETF",
+            "top_holdings": [{"name": "Apple", "percentage": 4.5, "isin": "US0378331005"}],
+        }
+    )
+    monkeypatch.setitem(sys.modules, "justetf_scraping", fake_module)
+    monkeypatch.setenv("FMT_API_KEY", "test-key")
+
+    client = JustEtfClient(rate_limit_seconds=0.0)
+
+    def _fake_fmp(symbol: str):
+        assert symbol == "SWDA"
+        return {
+            "country_weights": [{"name": "USA", "percentage": 72.1}],
+            "sector_weights": [{"name": "Technology", "percentage": 28.4}],
+            "source": "fmp",
+        }
+
+    monkeypatch.setattr(client, "_fetch_profile_from_fmp", _fake_fmp)
+
+    data = client.fetch_profile("IE00B4L5Y983", symbol="SWDA")
+
+    assert data["source"] == "fmp"
+    assert data["name"] == "Test ETF"
+    assert data["top_holdings"][0]["name"] == "Apple"
+    assert data["country_weights"][0]["name"] == "USA"
+    assert data["sector_weights"][0]["name"] == "Technology"
