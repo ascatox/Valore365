@@ -20,6 +20,23 @@ DEFAULT_TIMEZONE = "UTC"
 DEFAULT_ORDER = "asc"
 
 
+def normalize_expense_ratio_pct(value: float | None) -> float | None:
+    """Normalize provider expense ratios to percentage points.
+
+    Providers are inconsistent: some return ``0.13`` for ``0.13%``, while
+    others return ``0.0013`` for the same value. We treat tiny values as
+    fractions and convert them to percentage points; larger values are assumed
+    to already be percentages.
+    """
+    if value is None or not math.isfinite(value):
+        return None
+    if value < 0:
+        return None
+    if value <= 0.01:
+        return value * 100
+    return value
+
+
 @dataclass
 class ProviderQuote:
     symbol: str
@@ -817,7 +834,7 @@ class YahooFinanceClient:
             previous_close=_num('previousClose') or _num('regularMarketPreviousClose'),
             description=info.get('longBusinessSummary'),
             quote_type=info.get('quoteType'),
-            expense_ratio=_num('netExpenseRatio') or _num('expenseRatio'),
+            expense_ratio=normalize_expense_ratio_pct(_num('netExpenseRatio') or _num('expenseRatio')),
             fund_family=info.get('fundFamily'),
             total_assets=_num('totalAssets'),
             category=info.get('category'),

@@ -23,6 +23,7 @@ from ...constants.geo_classification import (
     EMERGING_CURRENCIES,
     EUROPE_CURRENCIES,
 )
+from ...finance_client import normalize_expense_ratio_pct
 from ._holdings import AnalyzedHolding, _load_holdings, _is_equity_like
 
 logger = logging.getLogger(__name__)
@@ -387,14 +388,16 @@ def compute_weighted_ter(
             meta_map = repo.get_asset_metadata_bulk(asset_ids)
             for aid, meta in meta_map.items():
                 if aid not in db_ter and meta.expense_ratio is not None:
-                    db_ter[aid] = meta.expense_ratio * 100
+                    normalized = normalize_expense_ratio_pct(meta.expense_ratio)
+                    if normalized is not None:
+                        db_ter[aid] = normalized
         except Exception:
             pass
 
     weighted_cost = 0.0
     covered_weight = 0.0
     for holding in holdings:
-        ter = db_ter.get(holding.asset_id) or infer_ter(holding)
+        ter = db_ter[holding.asset_id] if holding.asset_id in db_ter else infer_ter(holding)
         if ter is None:
             continue
         weight_fraction = holding.weight_pct / 100.0

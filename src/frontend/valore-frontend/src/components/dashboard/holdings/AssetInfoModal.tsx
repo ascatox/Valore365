@@ -25,6 +25,15 @@ function formatVolume(value: number | null): string {
   return formatNum(value, 0);
 }
 
+function formatPercentValue(value: number, decimals = 2): string {
+  return `${formatNum(value, decimals)}%`;
+}
+
+function normalizeExpenseRatioPct(value: number): number {
+  if (!Number.isFinite(value) || value < 0) return value;
+  return value <= 0.01 ? value * 100 : value;
+}
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <Group justify="space-between" gap="xs">
@@ -355,8 +364,8 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                       <InfoRow
                         label="TER"
                         value={enrichment?.ter != null
-                          ? formatPct(enrichment.ter * 100)
-                          : formatPct(info.expense_ratio! * 100)
+                          ? formatPercentValue(enrichment.ter)
+                          : formatPercentValue(normalizeExpenseRatioPct(info.expense_ratio!))
                         }
                       />
                     )}
@@ -383,7 +392,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                     )}
                     {enrichment?.fund_currency && <InfoRow label="Valuta fondo" value={enrichment.fund_currency} />}
                     {enrichment?.volatility_1y != null && (
-                      <InfoRow label="Volatilità 1Y" value={formatPct(enrichment.volatility_1y * 100)} />
+                      <InfoRow label="Volatilità 1Y" value={formatPercentValue(enrichment.volatility_1y)} />
                     )}
                     {enrichment?.currency_hedged != null && (
                       <InfoRow label="Hedging valuta" value={enrichment.currency_hedged ? 'Sì' : 'No'} />

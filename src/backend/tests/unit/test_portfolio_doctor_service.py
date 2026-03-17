@@ -67,6 +67,25 @@ def test_geographic_exposure_and_overlap_follow_world_plus_us_heuristic():
     assert weighted_ter <= 0.25
 
 
+def test_weighted_ter_normalizes_metadata_expense_ratio_units():
+    holdings = [_holding(1, "VWRA", "Vanguard FTSE All-World UCITS ETF", "etf", 100, "USD")]
+
+    class _Repo:
+        @staticmethod
+        def get_etf_enrichment_bulk(asset_ids):
+            return {}
+
+        @staticmethod
+        def get_asset_metadata_bulk(asset_ids):
+            return {
+                1: type("Meta", (), {"expense_ratio": 0.13})(),
+            }
+
+    weighted_ter = compute_weighted_ter(holdings, repo=_Repo())
+
+    assert weighted_ter == 0.13
+
+
 def test_scoring_and_alerts_penalize_concentration_risk_and_costs():
     metrics = PortfolioHealthMetrics(
         geographic_exposure={"usa": 72.0, "europe": 8.0, "emerging": 3.0, "other": 17.0},

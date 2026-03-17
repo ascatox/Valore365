@@ -5,7 +5,14 @@ import pandas as pd
 import pytest
 
 from app.errors import ProviderError
-from app.finance_client import YahooFinanceClient
+from app.finance_client import YahooFinanceClient, normalize_expense_ratio_pct
+
+
+def test_normalize_expense_ratio_pct_handles_percent_and_fraction_inputs():
+    assert normalize_expense_ratio_pct(0.13) == 0.13
+    assert normalize_expense_ratio_pct(0.0013) == 0.13
+    assert normalize_expense_ratio_pct(0.22) == 0.22
+    assert normalize_expense_ratio_pct(None) is None
 
 
 def test_yfinance_quote_falls_back_to_history_close(monkeypatch):
