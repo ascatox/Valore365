@@ -67,6 +67,50 @@ def test_geographic_exposure_and_overlap_follow_world_plus_us_heuristic():
     assert weighted_ter <= 0.25
 
 
+def test_geographic_exposure_uses_enrichment_semantics_before_listing_or_currency():
+    holdings = [
+        _holding(114, "VWRA.L", "Vanguard FTSE All-World UCITS ETF", "etf", 40, "EUR"),
+        _holding(110, "EQQQ.DE", "Invesco EQQQ Nasdaq-100 UCITS ETF", "etf", 30, "EUR"),
+        _holding(115, "IEVL.L", "iShares Edge MSCI Europe Value Factor UCITS ETF", "etf", 30, "EUR"),
+    ]
+
+    class _Repo:
+        @staticmethod
+        def get_etf_enrichment_bulk(asset_ids):
+            return {
+                114: {
+                    "investment_focus": "Equity, USD, World",
+                    "index_tracked": "FTSE All-World",
+                    "description": "Tracks stocks from developed and emerging countries worldwide.",
+                },
+                110: {
+                    "investment_focus": "Equity, United States, Technology",
+                    "index_tracked": "Nasdaq 100",
+                    "description": "Tracks non-financial stocks listed on the NASDAQ stock exchange.",
+                },
+                115: {
+                    "investment_focus": "Equity, Europe, Value",
+                    "index_tracked": "MSCI Europe Enhanced Value",
+                    "description": "Tracks the value stocks from European industrial countries.",
+                },
+            }
+
+    exposure = compute_geographic_exposure(holdings, repo=_Repo())
+
+    assert exposure["usa"] == 52.0
+    assert exposure["europe"] == 38.0
+    assert exposure["emerging"] == 4.0
+    assert exposure["other"] == 6.0
+
+
+def test_geographic_exposure_does_not_force_europe_for_unknown_ucits_listing():
+    holdings = [_holding(1, "UNKNOWN.L", "Unknown UCITS ETF", "etf", 100, "EUR")]
+
+    exposure = compute_geographic_exposure(holdings)
+
+    assert exposure == {}
+
+
 def test_weighted_ter_normalizes_metadata_expense_ratio_units():
     holdings = [_holding(1, "VWRA", "Vanguard FTSE All-World UCITS ETF", "etf", 100, "USD")]
 

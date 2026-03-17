@@ -19,7 +19,6 @@ from ...constants.geo_classification import (
     REGIONS,
     GLOBAL_EQUITY_SPLIT,
     GLOBAL_BOND_SPLIT,
-    EUROPE_SUFFIXES,
     EMERGING_CURRENCIES,
     EUROPE_CURRENCIES,
 )
@@ -155,8 +154,8 @@ def compute_geographic_exposure(
                 region = _country_to_region(cw["name"])
                 exposure[region] += holding.weight_pct * (cw["percentage"] / 100.0)
         else:
-            # Fallback to heuristic
-            profile = infer_region_profile(holding)
+            # Fallback to semantic inference from ETF metadata, not listing venue.
+            profile = infer_region_profile(holding, enrich=enrich)
             for region, split in profile.items():
                 exposure[region] += holding.weight_pct * (split / 100.0)
 
@@ -197,25 +196,68 @@ def compute_sector_exposure(
     return result
 
 
-def infer_region_profile(holding: AnalyzedHolding) -> dict[str, float]:
-    descriptor = f"{holding.symbol} {holding.name}".upper()
+def _infer_region_profile_from_text(asset_type: str, descriptor: str) -> dict[str, float] | None:
+    if any(
+        token in descriptor
+        for token in (
+            "ALL-WORLD",
+            "ALL WORLD",
+            "ACWI",
+            "WORLD",
+            "GLOBAL",
+            "WORLDWIDE",
+            "MSCI WORLD",
+            "FTSE ALL-WORLD",
+            "GLOBAL AGGREGATE BOND",
+            "BLOOMBERG GLOBAL AGGREGATE",
+        )
+    ):
+        return GLOBAL_BOND_SPLIT.copy() if asset_type == "bond" else GLOBAL_EQUITY_SPLIT.copy()
+    if any(token in descriptor for token in ("EMERGING", "EM IMI", "FTSE EM", "MSCI EM", "EMIM", "EIMI")):
+        return {"emerging": 100.0}
+    if any(token in descriptor for token in ("EUROPE", "MSCI EUROPE", "STOXX", "EU600", "DAX", "FTSE 100", "EURO STOXX")):
+        return {"europe": 100.0}
+    if any(
+        token in descriptor
+        for token in (
+            "UNITED STATES",
+            "UNITED STATES OF AMERICA",
+            "S&P 500",
+            "SP500",
+            "NASDAQ",
+            "RUSSELL 1000",
+            "RUSSELL 3000",
+            "TOTAL MARKET",
+            "US TREASURY",
+            "ICE US TREASURY",
+            "USA",
+            "US ",
+        )
+    ):
+        return {"usa": 100.0}
+    return None
+
+
+def infer_region_profile(holding: AnalyzedHolding, *, enrich: dict | None = None) -> dict[str, float]:
+    descriptor_parts = [holding.symbol, holding.name]
+    if isinstance(enrich, dict):
+        descriptor_parts.extend(
+            [
+                str(enrich.get("investment_focus") or ""),
+                str(enrich.get("index_tracked") or ""),
+                str(enrich.get("description") or ""),
+            ]
+        )
+    descriptor = " ".join(part for part in descriptor_parts if part).upper()
     asset_type = holding.asset_type.lower()
 
     if asset_type == "cash":
         return {"other": 100.0}
-    if any(token in descriptor for token in ("EMERGING", "EM IMI", "FTSE EM", "MSCI EM", "EMIM", "EIMI")):
-        return {"emerging": 100.0}
-    if any(token in descriptor for token in ("EUROPE", "STOXX", "EU600", "DAX", "FTSE 100", "EURO STOXX")):
-        return {"europe": 100.0}
-    if any(
-        token in descriptor
-        for token in ("S&P 500", "SP500", "NASDAQ", "RUSSELL 1000", "RUSSELL 3000", "TOTAL MARKET", "USA", "US ")
-    ):
-        return {"usa": 100.0}
-    if any(token in descriptor for token in ("ALL-WORLD", "ALL WORLD", "ACWI", "WORLD", "VWCE", "IWDA", "SWDA", "GLOBAL")):
-        return GLOBAL_BOND_SPLIT.copy() if asset_type == "bond" else GLOBAL_EQUITY_SPLIT.copy()
-    if any(holding.symbol.upper().endswith(suffix) for suffix in EUROPE_SUFFIXES):
-        return {"europe": 100.0}
+    semantic_profile = _infer_region_profile_from_text(asset_type, descriptor)
+    if semantic_profile is not None:
+        return semantic_profile
+    if asset_type in {"etf", "fund"}:
+        return {}
     if holding.quote_currency in EMERGING_CURRENCIES:
         return {"emerging": 100.0}
     if holding.quote_currency in EUROPE_CURRENCIES:
