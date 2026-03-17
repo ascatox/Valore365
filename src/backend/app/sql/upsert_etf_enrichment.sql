@@ -7,7 +7,7 @@ INSERT INTO etf_enrichment (
     source, fetched_at
 ) VALUES (
     :asset_id, :isin, :name, :description, :index_tracked, :investment_focus,
-    :country_weights::jsonb, :sector_weights::jsonb, :top_holdings::jsonb, :holdings_date,
+    CAST(:country_weights AS jsonb), CAST(:sector_weights AS jsonb), CAST(:top_holdings AS jsonb), :holdings_date,
     :replication_method, :distribution_policy, :distribution_frequency,
     :fund_currency, :currency_hedged, :domicile, :fund_provider,
     :fund_size_eur, :ter, :volatility_1y, :sustainability, :inception_date,

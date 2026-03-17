@@ -11,7 +11,7 @@ insert into asset_metadata (
     :trailing_pe, :forward_pe, :dividend_yield, :dividend_rate,
     :beta, :fifty_two_week_high, :fifty_two_week_low, :avg_volume,
     :profit_margins, :return_on_equity, :revenue_growth, :earnings_growth,
-    :description, :website, :logo_url, :raw_info::jsonb, now()
+    :description, :website, :logo_url, CAST(:raw_info AS jsonb), now()
 )
 on conflict (asset_id) do update set
     expense_ratio = excluded.expense_ratio,
