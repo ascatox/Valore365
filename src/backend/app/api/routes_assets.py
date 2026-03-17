@@ -453,7 +453,7 @@ def register_assets_routes(
             status_code = 502
             if exc.reason == "invalid_isin":
                 status_code = 400
-            elif exc.reason == "disabled":
+            elif exc.reason in {"disabled", "temporarily_blocked"}:
                 status_code = 503
             raise AppError(
                 code=exc.reason,

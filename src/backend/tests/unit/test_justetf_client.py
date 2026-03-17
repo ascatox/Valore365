@@ -40,3 +40,29 @@ def test_justetf_fetch_profile_parses_library_payload(monkeypatch):
     assert data["country_weights"][0]["name"] == "USA"
     assert data["sector_weights"][0]["percentage"] == 25.0
     assert data["top_holdings"][0]["isin"] == "US0378331005"
+
+
+def test_justetf_403_enters_cooldown_without_retries(monkeypatch):
+    calls = 0
+
+    def _raise_403(_: str):
+        nonlocal calls
+        calls += 1
+        raise RuntimeError("Failed to fetch ETF page for IE00B441G979: status 403")
+
+    fake_module = types.SimpleNamespace(get_etf_overview=_raise_403)
+    monkeypatch.setitem(sys.modules, "justetf_scraping", fake_module)
+
+    client = JustEtfClient(rate_limit_seconds=0.0, blocked_cooldown_seconds=60.0)
+
+    with pytest.raises(ProviderError) as exc:
+        client.fetch_profile("IE00B441G979")
+
+    assert exc.value.reason == "temporarily_blocked"
+    assert calls == 1
+
+    with pytest.raises(ProviderError) as exc:
+        client.fetch_profile("IE00B441G979")
+
+    assert exc.value.reason == "temporarily_blocked"
+    assert calls == 1

@@ -13,11 +13,25 @@ logger = logging.getLogger(__name__)
 class JustEtfClient:
     """Fetches ETF profile data from justETF with rate limiting and error handling."""
 
-    def __init__(self, rate_limit_seconds: float = 2.0):
+    def __init__(self, rate_limit_seconds: float = 2.0, blocked_cooldown_seconds: float | None = None):
         self._rate_limit = rate_limit_seconds
         self._last_request: float = 0.0
         self._lock = threading.Lock()
         self._enabled = os.environ.get("JUSTETF_ENABLED", "true").lower() != "false"
+        self._blocked_until: float = 0.0
+        self._blocked_cooldown_seconds = blocked_cooldown_seconds
+        if self._blocked_cooldown_seconds is None:
+            self._blocked_cooldown_seconds = float(os.environ.get("JUSTETF_BLOCKED_COOLDOWN_SECONDS", "900"))
+
+    @staticmethod
+    def _is_forbidden_error(exc: Exception) -> bool:
+        return "status 403" in str(exc).lower()
+
+    def _get_blocked_remaining_seconds(self) -> float:
+        return max(0.0, self._blocked_until - time.monotonic())
+
+    def _activate_block_cooldown(self) -> None:
+        self._blocked_until = time.monotonic() + max(0.0, self._blocked_cooldown_seconds)
 
     def _wait_rate_limit(self) -> None:
         with self._lock:
@@ -38,6 +52,20 @@ class JustEtfClient:
                 message="justETF client disabled via JUSTETF_ENABLED=false",
             )
 
+        blocked_remaining = self._get_blocked_remaining_seconds()
+        if blocked_remaining > 0:
+            raise ProviderError(
+                provider="justetf",
+                operation="fetch_profile",
+                symbol=isin,
+                reason="temporarily_blocked",
+                message=(
+                    "justETF is temporarily blocked after recent HTTP 403 responses; "
+                    f"retry after about {int(blocked_remaining)}s"
+                ),
+                retryable=True,
+            )
+
         if not isin or len(isin) != 12:
             raise ProviderError(
                 provider="justetf",
@@ -56,6 +84,24 @@ class JustEtfClient:
                 overview = get_etf_overview(isin)
                 return self._convert_overview(isin, overview)
             except Exception as exc:
+                if self._is_forbidden_error(exc):
+                    self._activate_block_cooldown()
+                    logger.warning(
+                        "justETF returned HTTP 403 for ISIN %s; suspending enrichment fetches for %.0fs",
+                        isin,
+                        self._blocked_cooldown_seconds,
+                    )
+                    raise ProviderError(
+                        provider="justetf",
+                        operation="fetch_profile",
+                        symbol=isin,
+                        reason="temporarily_blocked",
+                        message=(
+                            "justETF returned HTTP 403 and appears to be blocking scraping requests; "
+                            "enrichment fetches have been temporarily suspended"
+                        ),
+                        retryable=True,
+                    ) from exc
                 if attempt < max_retries - 1:
                     backoff = self._rate_limit * (2 ** attempt)
                     logger.info("justETF fetch failed for ISIN %s, retrying in %.1fs", isin, backoff)

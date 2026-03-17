@@ -4,6 +4,7 @@ import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
+import { ApiRequestError } from '../../../services/api';
 import type { AssetInfo, EtfEnrichment } from '../../../services/api';
 import { formatMetadataStatusLabel, formatPriceHistoryStatusLabel, formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
 import { getAssetInfo, getMarketSymbolInfo, getEtfEnrichment, refreshEtfEnrichment } from '../../../services/api';
@@ -35,6 +36,27 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt={4}>{children}</Text>;
+}
+
+function formatEnrichmentError(error: unknown): string {
+  if (error instanceof ApiRequestError) {
+    if (error.code === 'temporarily_blocked') {
+      return 'justETF sta bloccando temporaneamente le richieste dal backend. Riprova più tardi.';
+    }
+    if (error.code === 'disabled') {
+      return 'Integrazione justETF temporaneamente disabilitata sul backend.';
+    }
+    if (error.code === 'invalid_isin') {
+      return 'ISIN mancante o non valido per questo strumento.';
+    }
+    if (error.message) {
+      return error.message;
+    }
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return 'Impossibile caricare i dettagli ETF da justETF.';
 }
 
 function WeightBar({ items, colorMap }: { items: { name: string; percentage: number }[]; colorMap: string[] }) {
@@ -145,6 +167,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
   const [enrichment, setEnrichment] = useState<EtfEnrichment | null>(null);
   const [enrichLoading, setEnrichLoading] = useState(false);
   const [enrichRefreshing, setEnrichRefreshing] = useState(false);
+  const [enrichError, setEnrichError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!opened) return;
@@ -153,6 +176,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
     setError(null);
     setInfo(null);
     setEnrichment(null);
+    setEnrichError(null);
     const fetcher = assetId != null ? getAssetInfo(assetId) : getMarketSymbolInfo(symbol);
     fetcher
       .then((data) => { if (active) setInfo(data); })
@@ -168,9 +192,12 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
     if (!isFund || info.asset_id == null) return;
     let active = true;
     setEnrichLoading(true);
+    setEnrichError(null);
     getEtfEnrichment(info.asset_id)
       .then((data) => { if (active) setEnrichment(data); })
-      .catch(() => {})
+      .catch((err) => {
+        if (active) setEnrichError(formatEnrichmentError(err));
+      })
       .finally(() => { if (active) setEnrichLoading(false); });
     return () => { active = false; };
   }, [info]);
@@ -178,9 +205,10 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
   const handleRefreshEnrichment = () => {
     if (!info?.asset_id || enrichRefreshing) return;
     setEnrichRefreshing(true);
+    setEnrichError(null);
     refreshEtfEnrichment(info.asset_id)
       .then((data) => setEnrichment(data))
-      .catch(() => {})
+      .catch((err) => setEnrichError(formatEnrichmentError(err)))
       .finally(() => setEnrichRefreshing(false));
   };
 
@@ -263,6 +291,12 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                   Storico 5 anni: {formatPriceHistoryStatusLabel(info.price_history_status)}
                 </Text>
               )}
+            </Alert>
+          )}
+
+          {enrichError && (
+            <Alert color="yellow" variant="light" title="justETF non disponibile">
+              <Text size="sm">{enrichError}</Text>
             </Alert>
           )}
 

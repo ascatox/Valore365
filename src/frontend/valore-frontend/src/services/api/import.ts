@@ -1,4 +1,5 @@
-import { API_URL, getAuthToken, ApiErrorPayload, apiFetch } from './client';
+import { API_URL, getAuthToken, apiFetch } from './client';
+import type { ApiErrorPayload } from './client';
 import type {
   CsvImportPreviewResponse,
   CsvImportCommitResponse,

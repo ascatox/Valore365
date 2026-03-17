@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
+from ..config import get_settings
 from ..errors import AppError
 from ..models import ErrorResponse
 from ..repository import PortfolioRepository
@@ -24,6 +25,8 @@ from ..services.portfolio_doctor import (
 
 
 def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository, finance_client: object = None, justetf_client: object = None) -> None:
+    settings = get_settings()
+
     @router.get(
         "/portfolios/{portfolio_id}/health",
         response_model=PortfolioHealthResponse,
@@ -138,6 +141,13 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         if not finance_client:
             raise AppError(code="not_configured", message="Finance client non disponibile", status_code=500)
         try:
-            return compute_portfolio_xray(repo, portfolio_id, _auth.user_id, finance_client, justetf_client=justetf_client)
+            xray_justetf_client = justetf_client if settings.justetf_xray_auto_enrich_enabled_resolved else None
+            return compute_portfolio_xray(
+                repo,
+                portfolio_id,
+                _auth.user_id,
+                finance_client,
+                justetf_client=xray_justetf_client,
+            )
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
