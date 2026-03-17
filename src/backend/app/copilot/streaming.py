@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Generator
 
 from ..copilot_tools import execute_tool, format_tools_for_provider
-from ..performance_service import PerformanceService
+from ..services.performance_service import PerformanceService
 from ..repository import PortfolioRepository
 from .config import CopilotConfig
 from .models import CopilotMessage

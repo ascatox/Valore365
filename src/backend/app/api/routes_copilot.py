@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
-from ..copilot_service import (
+from ..services.copilot_service import (
     CopilotChatRequest,
     build_aggregate_snapshot_light,
     build_portfolio_snapshot,

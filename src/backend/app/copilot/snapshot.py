@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..performance_service import PerformanceService
+from ..services.performance_service import PerformanceService
 from ..repository import PortfolioRepository
 from ..services.portfolio_doctor import analyze_portfolio_health, run_monte_carlo_projection
 
@@ -73,7 +73,7 @@ def build_portfolio_snapshot_light(
 
     # Performance summary (compact -- just TWR percentages)
     try:
-        from ..performance_service import PerformanceService
+        from ..services.performance_service import PerformanceService
         perf_service = PerformanceService(repo)
         perf_data = {}
         for period in ("1m", "3m", "ytd", "1y"):

@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import date, timedelta
 from math import isfinite
 
-from .models import GainTimeseriesPoint, MWRResult, MWRTimeseriesPoint, PerformanceSummary, TWRResult, TWRTimeseriesPoint
-from .repository import PortfolioRepository
+from ..models import GainTimeseriesPoint, MWRResult, MWRTimeseriesPoint, PerformanceSummary, TWRResult, TWRTimeseriesPoint
+from ..repository import PortfolioRepository
 
 try:
     from scipy.optimize import brentq as scipy_brentq  # type: ignore

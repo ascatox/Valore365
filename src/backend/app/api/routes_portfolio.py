@@ -17,7 +17,7 @@ from ..repository import PortfolioRepository
 
 
 def register_portfolio_routes(router: APIRouter, repo: PortfolioRepository, settings: object = None) -> None:
-    from ..copilot_service import encrypt_api_key
+    from ..services.copilot_service import encrypt_api_key
 
     @router.get("/settings/user", response_model=UserSettingsRead)
     def get_user_settings(_auth: AuthContext = Depends(require_auth_rate_limited)) -> UserSettingsRead:

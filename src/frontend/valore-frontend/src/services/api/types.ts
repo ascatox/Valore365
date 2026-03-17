@@ -1,46 +1,3 @@
-const API_URL = import.meta.env.VITE_API_BASE_URL || '/api';
-
-type TokenGetter = () => Promise<string | null>;
-let _getToken: TokenGetter = async () => null;
-export function setTokenGetter(fn: TokenGetter): void {
-  _getToken = fn;
-}
-export function getAuthToken(): Promise<string | null> {
-  return _getToken();
-}
-
-export interface ApiErrorPayload {
-  error?: {
-    code: string;
-    message: string;
-    details?: Record<string, unknown> | null;
-  };
-}
-
-export class ApiRequestError extends Error {
-  code: string | null;
-  status: number;
-  details: Record<string, unknown> | null;
-
-  constructor({
-    message,
-    code,
-    status,
-    details,
-  }: {
-    message: string;
-    code?: string | null;
-    status: number;
-    details?: Record<string, unknown> | null;
-  }) {
-    super(message);
-    this.name = 'ApiRequestError';
-    this.code = code ?? null;
-    this.status = status;
-    this.details = details ?? null;
-  }
-}
-
 export interface InstantAnalyzeRequest {
   input_mode: 'text' | 'raw_text';
   positions?: Array<{
@@ -801,95 +758,6 @@ export interface MarketQuotesResponse {
   categories: MarketCategory[];
 }
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = await _getToken();
-  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  const response = await fetch(`${API_URL}${path}`, {
-    cache: 'no-store',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders,
-      ...(init?.headers ?? {}),
-    },
-    ...init,
-  });
-
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    let code: string | null = null;
-    let details: Record<string, unknown> | null = null;
-    try {
-      const body = (await response.json()) as ApiErrorPayload;
-      if (body?.error?.message) {
-        message = body.error.message;
-      }
-      code = body?.error?.code ?? null;
-      details = body?.error?.details ?? null;
-    } catch {
-      const text = await response.text().catch(() => '');
-      if (text) {
-        message = text;
-      }
-    }
-    throw new ApiRequestError({ message, code, status: response.status, details });
-  }
-
-  return response.json() as Promise<T>;
-}
-
-export const getPortfolios = async (): Promise<Portfolio[]> => {
-  return apiFetch<Portfolio[]>('/portfolios');
-};
-
-/** @deprecated Use getPortfolios instead */
-export const getAdminPortfolios = getPortfolios;
-
-export const getUserSettings = async (): Promise<UserSettings> => {
-  return apiFetch<UserSettings>('/settings/user');
-};
-
-export const updateUserSettings = async (payload: UserSettingsUpdateInput): Promise<UserSettings> => {
-  return apiFetch<UserSettings>('/settings/user', {
-    method: 'PUT',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const createPortfolio = async (payload: PortfolioCreateInput): Promise<Portfolio> => {
-  return apiFetch<Portfolio>('/portfolios', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const updatePortfolio = async (portfolioId: number, payload: PortfolioUpdateInput): Promise<Portfolio> => {
-  return apiFetch<Portfolio>(`/portfolios/${portfolioId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const deletePortfolio = async (portfolioId: number): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/portfolios/${portfolioId}`, {
-    method: 'DELETE',
-  });
-};
-
-export const clonePortfolio = async (portfolioId: number, payload: PortfolioCloneInput): Promise<PortfolioCloneResponse> => {
-  return apiFetch<PortfolioCloneResponse>(`/portfolios/${portfolioId}/clone`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const getPortfolioSummary = async (portfolioId: number): Promise<PortfolioSummary> => {
-  return apiFetch<PortfolioSummary>(`/portfolios/${portfolioId}/summary`);
-};
-
-export const getPortfolioHealth = async (portfolioId: number): Promise<PortfolioHealthResponse> => {
-  return apiFetch<PortfolioHealthResponse>(`/portfolios/${portfolioId}/health`);
-};
-
 // X-Ray (ETF look-through)
 
 export interface XRayHolding {
@@ -928,14 +796,6 @@ export interface XRayResponse {
   coverage_issues: XRayCoverageIssue[];
 }
 
-export const getPortfolioXray = async (portfolioId: number): Promise<XRayResponse> => {
-  return apiFetch<XRayResponse>(`/portfolios/${portfolioId}/xray`);
-};
-
-export const getMonteCarloProjection = async (portfolioId: number): Promise<MonteCarloProjectionResponse> => {
-  return apiFetch<MonteCarloProjectionResponse>(`/portfolios/${portfolioId}/monte-carlo`);
-};
-
 // Stress Test
 
 export interface StressTestAssetImpact {
@@ -965,283 +825,6 @@ export interface StressTestResponse {
   analysis_date: string;
 }
 
-export const getStressTest = async (portfolioId: number): Promise<StressTestResponse> => {
-  return apiFetch<StressTestResponse>(`/portfolios/${portfolioId}/stress-test`);
-};
-
-export const getDecumulationPlan = async (
-  portfolioId: number,
-  params: {
-    annualWithdrawal: number;
-    years: number;
-    inflationRatePct?: number;
-    otherIncomeAnnual?: number;
-    currentAge?: number | null;
-  },
-): Promise<DecumulationPlanResponse> => {
-  const query = new URLSearchParams({
-    annual_withdrawal: String(params.annualWithdrawal),
-    years: String(params.years),
-    inflation_rate_pct: String(params.inflationRatePct ?? 2),
-    other_income_annual: String(params.otherIncomeAnnual ?? 0),
-  });
-  if (params.currentAge != null && Number.isFinite(params.currentAge)) {
-    query.set('current_age', String(params.currentAge));
-  }
-  return apiFetch<DecumulationPlanResponse>(`/portfolios/${portfolioId}/decumulation?${query.toString()}`);
-};
-
-export const getAggregateDecumulationPlan = async (
-  portfolioIds: number[],
-  params: {
-    annualWithdrawal: number;
-    years: number;
-    inflationRatePct?: number;
-    otherIncomeAnnual?: number;
-    currentAge?: number | null;
-  },
-): Promise<AggregateDecumulationPlanResponse> => {
-  const query = new URLSearchParams({
-    annual_withdrawal: String(params.annualWithdrawal),
-    years: String(params.years),
-    inflation_rate_pct: String(params.inflationRatePct ?? 2),
-    other_income_annual: String(params.otherIncomeAnnual ?? 0),
-  });
-  portfolioIds.forEach((portfolioId) => query.append('portfolio_ids', String(portfolioId)));
-  if (params.currentAge != null && Number.isFinite(params.currentAge)) {
-    query.set('current_age', String(params.currentAge));
-  }
-  return apiFetch<AggregateDecumulationPlanResponse>(`/portfolios/aggregate/decumulation?${query.toString()}`);
-};
-
-export const getPerformanceSummary = async (
-  portfolioId: number,
-  period: '1m' | '3m' | '6m' | 'ytd' | '1y' | '3y' | 'all',
-): Promise<PerformanceSummary> => {
-  return apiFetch<PerformanceSummary>(
-    `/portfolios/${portfolioId}/performance/summary?period=${encodeURIComponent(period)}`,
-  );
-};
-
-export const getTWRTimeseries = async (
-  portfolioId: number,
-  startDate?: string,
-  endDate?: string,
-): Promise<TWRTimeseriesPoint[]> => {
-  const params = new URLSearchParams();
-  if (startDate) params.set('start_date', startDate);
-  if (endDate) params.set('end_date', endDate);
-  const query = params.toString();
-  return apiFetch<TWRTimeseriesPoint[]>(
-    `/portfolios/${portfolioId}/performance/twr/timeseries${query ? `?${query}` : ''}`,
-  );
-};
-
-export const getGainTimeseries = async (
-  portfolioId: number,
-  startDate?: string,
-  endDate?: string,
-): Promise<GainTimeseriesPoint[]> => {
-  const params = new URLSearchParams();
-  if (startDate) params.set('start_date', startDate);
-  if (endDate) params.set('end_date', endDate);
-  const query = params.toString();
-  return apiFetch<GainTimeseriesPoint[]>(
-    `/portfolios/${portfolioId}/performance/gain/timeseries${query ? `?${query}` : ''}`,
-  );
-};
-
-export const getMWRTimeseries = async (
-  portfolioId: number,
-  startDate?: string,
-  endDate?: string,
-): Promise<MWRTimeseriesPoint[]> => {
-  const params = new URLSearchParams();
-  if (startDate) params.set('start_date', startDate);
-  if (endDate) params.set('end_date', endDate);
-  const query = params.toString();
-  return apiFetch<MWRTimeseriesPoint[]>(
-    `/portfolios/${portfolioId}/performance/mwr/timeseries${query ? `?${query}` : ''}`,
-  );
-};
-
-export const getPortfolioPositions = async (portfolioId: number): Promise<Position[]> => {
-  return apiFetch<Position[]>(`/portfolios/${portfolioId}/positions`);
-};
-
-export const getPortfolioAllocation = async (portfolioId: number): Promise<AllocationItem[]> => {
-  return apiFetch<AllocationItem[]>(`/portfolios/${portfolioId}/allocation`);
-};
-
-export const getPortfolioTimeseries = async (portfolioId: number): Promise<TimeSeriesPoint[]> => {
-  return apiFetch<TimeSeriesPoint[]>(`/portfolios/${portfolioId}/timeseries?range=1y&interval=1d`);
-};
-
-export const getPortfolioIntradayTimeseries = async (portfolioId: number): Promise<IntradayTimeseriesPoint[]> => {
-  return apiFetch<IntradayTimeseriesPoint[]>(`/portfolios/${portfolioId}/intraday-timeseries`);
-};
-
-export const getPortfolioTargetPerformance = async (portfolioId: number): Promise<PortfolioTargetPerformanceResponse> => {
-  return apiFetch<PortfolioTargetPerformanceResponse>(`/portfolios/${portfolioId}/target-performance`);
-};
-
-export const getPortfolioTargetIntradayPerformance = async (
-  portfolioId: number,
-  date: string,
-): Promise<PortfolioTargetIntradayResponse> => {
-  return apiFetch<PortfolioTargetIntradayResponse>(
-    `/portfolios/${portfolioId}/target-performance/intraday?date=${encodeURIComponent(date)}`,
-  );
-};
-
-export const getPortfolioTargetAssetPerformance = async (
-  portfolioId: number,
-): Promise<PortfolioTargetAssetPerformanceResponse> => {
-  return apiFetch<PortfolioTargetAssetPerformanceResponse>(`/portfolios/${portfolioId}/target-performance/assets`);
-};
-
-export const getPortfolioTargetAssetIntradayPerformance = async (
-  portfolioId: number,
-  date: string,
-): Promise<PortfolioTargetAssetIntradayPerformanceResponse> => {
-  return apiFetch<PortfolioTargetAssetIntradayPerformanceResponse>(
-    `/portfolios/${portfolioId}/target-performance/assets/intraday?date=${encodeURIComponent(date)}`,
-  );
-};
-
-export const refreshPortfolioPrices = async (
-  portfolioId: number,
-  assetScope: 'target' | 'transactions' | 'all' = 'target',
-): Promise<PriceRefreshResponse> => {
-  return apiFetch<PriceRefreshResponse>(`/prices/refresh?portfolio_id=${portfolioId}&asset_scope=${assetScope}`, {
-    method: 'POST',
-  });
-};
-
-export const backfillPortfolioDailyPrices = async (
-  portfolioId: number,
-  days = 365,
-  assetScope: 'target' | 'transactions' | 'all' = 'target',
-): Promise<DailyBackfillResponse> => {
-  return apiFetch<DailyBackfillResponse>(
-    `/prices/backfill-daily?portfolio_id=${portfolioId}&days=${days}&asset_scope=${assetScope}`,
-    { method: 'POST' },
-  );
-};
-
-export const reclassifyPortfolioAssets = async (
-  portfolioId: number,
-): Promise<{ updated: Array<{ symbol: string; old: string; new: string }>; total_checked: number }> => {
-  return apiFetch(`/portfolios/${portfolioId}/reclassify-assets`, { method: 'POST' });
-};
-
-export const getPortfolioTargetAllocation = async (portfolioId: number): Promise<PortfolioTargetAllocationItem[]> => {
-  return apiFetch<PortfolioTargetAllocationItem[]>(`/portfolios/${portfolioId}/target-allocation`);
-};
-
-export const upsertPortfolioTargetAllocation = async (
-  portfolioId: number,
-  payload: { asset_id: number; weight_pct: number },
-): Promise<PortfolioTargetAllocationItem> => {
-  return apiFetch<PortfolioTargetAllocationItem>(`/portfolios/${portfolioId}/target-allocation`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const deletePortfolioTargetAllocation = async (portfolioId: number, assetId: number): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/portfolios/${portfolioId}/target-allocation/${assetId}`, {
-    method: 'DELETE',
-  });
-};
-
-export const getSymbols = async (query: string): Promise<Symbol[]> => {
-  const q = query.trim();
-  if (!q) {
-    return [];
-  }
-  const payload = await apiFetch<{ symbols: Symbol[] }>(`/symbols?q=${encodeURIComponent(q)}`);
-  return payload.symbols ?? [];
-};
-
-export const searchAssets = async (query: string): Promise<AssetSearchResult[]> => {
-  const q = query.trim();
-  if (!q) {
-    return [];
-  }
-  const payload = await apiFetch<{ assets: AssetSearchResult[] }>(`/assets/search?q=${encodeURIComponent(q)}`);
-  return payload.assets ?? [];
-};
-
-export const discoverAssets = async (query: string): Promise<AssetDiscoverItem[]> => {
-  const q = query.trim();
-  if (!q) {
-    return [];
-  }
-  const payload = await apiFetch<{ items: AssetDiscoverItem[] }>(`/assets/discover?q=${encodeURIComponent(q)}`);
-  return payload.items ?? [];
-};
-
-export const createAsset = async (payload: AssetCreateInput): Promise<AssetRead> => {
-  return apiFetch<AssetRead>('/assets', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const createAssetProviderSymbol = async (payload: AssetProviderSymbolCreateInput): Promise<AssetProviderSymbolCreateInput> => {
-  return apiFetch<AssetProviderSymbolCreateInput>('/asset-provider-symbols', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const ensureAsset = async (payload: AssetEnsureInput): Promise<AssetEnsureResponse> => {
-  return apiFetch<AssetEnsureResponse>('/assets/ensure', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const getAssetLatestQuote = async (assetId: number): Promise<AssetLatestQuoteResponse> => {
-  return apiFetch<AssetLatestQuoteResponse>(`/assets/${assetId}/latest-quote`);
-};
-
-export const getAssetInfo = async (assetId: number): Promise<AssetInfo> => {
-  return apiFetch<AssetInfo>(`/assets/${assetId}/info`);
-};
-
-export const createTransaction = async (payload: TransactionCreateInput): Promise<TransactionRead> => {
-  return apiFetch<TransactionRead>('/transactions', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const getPortfolioTransactions = async (portfolioId: number): Promise<TransactionListItem[]> => {
-  return apiFetch<TransactionListItem[]>(`/portfolios/${portfolioId}/transactions`);
-};
-
-export const updateTransaction = async (
-  transactionId: number,
-  payload: TransactionUpdateInput,
-): Promise<TransactionRead> => {
-  return apiFetch<TransactionRead>(`/transactions/${transactionId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const deleteTransaction = async (transactionId: number): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/transactions/${transactionId}`, {
-    method: 'DELETE',
-  });
-};
-
-export const getMarketQuotes = async (): Promise<MarketQuotesResponse> => {
-  return apiFetch<MarketQuotesResponse>('/markets/quotes');
-};
-
 // Market News
 
 export interface MarketNewsItem {
@@ -1256,15 +839,7 @@ export interface MarketNewsResponse {
   items: MarketNewsItem[];
 }
 
-export const getMarketNews = async (): Promise<MarketNewsResponse> => {
-  return apiFetch<MarketNewsResponse>('/markets/news');
-};
-
-export const getMarketSymbolInfo = async (symbol: string): Promise<AssetInfo> => {
-  return apiFetch<AssetInfo>(`/markets/symbol-info?symbol=${encodeURIComponent(symbol)}`);
-};
-
-// --- ETF Enrichment (justETF) ---
+// ETF Enrichment
 
 export interface EtfEnrichmentWeight {
   name: string;
@@ -1304,50 +879,7 @@ export interface EtfEnrichment {
   fetched_at: string | null;
 }
 
-export const getEtfEnrichment = async (assetId: number): Promise<EtfEnrichment | null> => {
-  try {
-    return await apiFetch<EtfEnrichment>(`/assets/${assetId}/etf-enrichment`);
-  } catch (err) {
-    if (err instanceof ApiRequestError && err.status === 404) return null;
-    throw err;
-  }
-};
-
-export const refreshEtfEnrichment = async (assetId: number): Promise<EtfEnrichment> => {
-  return apiFetch<EtfEnrichment>(`/assets/${assetId}/etf-enrichment/refresh`, { method: 'POST' });
-};
-
-export const getPortfolioDataCoverage = async (
-  portfolioId: number,
-  days = 365,
-  thresholdPct = 80,
-): Promise<DataCoverageResponse> => {
-  return apiFetch<DataCoverageResponse>(
-    `/portfolios/${portfolioId}/data-coverage?days=${days}&threshold_pct=${thresholdPct}`,
-  );
-};
-
-export const getPortfolioRebalancePreview = async (
-  portfolioId: number,
-  payload: RebalancePreviewInput,
-): Promise<RebalancePreviewResponse> => {
-  return apiFetch<RebalancePreviewResponse>(`/portfolios/${portfolioId}/rebalance/preview`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const commitPortfolioRebalance = async (
-  portfolioId: number,
-  payload: RebalanceCommitInput,
-): Promise<RebalanceCommitResponse> => {
-  return apiFetch<RebalanceCommitResponse>(`/portfolios/${portfolioId}/rebalance/commit`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-// ---- Feature 2: Cash Movements ----
+// Cash
 
 export interface CashMovementCreateInput {
   portfolio_id: number;
@@ -1386,22 +918,7 @@ export interface CashFlowTimelineResponse {
   points: CashFlowTimelinePoint[];
 }
 
-export const createCashMovement = async (payload: CashMovementCreateInput): Promise<TransactionRead> => {
-  return apiFetch<TransactionRead>('/cash-movements', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const getPortfolioCashBalance = async (portfolioId: number): Promise<CashBalanceResponse> => {
-  return apiFetch<CashBalanceResponse>(`/portfolios/${portfolioId}/cash-balance`);
-};
-
-export const getPortfolioCashFlowTimeline = async (portfolioId: number): Promise<CashFlowTimelineResponse> => {
-  return apiFetch<CashFlowTimelineResponse>(`/portfolios/${portfolioId}/cash-flow-timeline`);
-};
-
-// ---- Feature 3: CSV Import ----
+// CSV Import
 
 export interface CsvImportPreviewRow {
   row_number: number;
@@ -1436,72 +953,7 @@ export interface CsvImportCommitResponse {
   errors: string[];
 }
 
-export const uploadCsvImportPreview = async (
-  portfolioId: number,
-  file: File,
-  broker = 'generic',
-): Promise<CsvImportPreviewResponse> => {
-  const token = await _getToken();
-  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('broker', broker);
-  const response = await fetch(`${API_URL}/portfolios/${portfolioId}/csv-import/preview`, {
-    method: 'POST',
-    headers: { ...authHeaders },
-    body: formData,
-  });
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    try {
-      const body = (await response.json()) as ApiErrorPayload;
-      if (body?.error?.message) message = body.error.message;
-    } catch { /* ignore */ }
-    throw new Error(message);
-  }
-  return response.json() as Promise<CsvImportPreviewResponse>;
-};
-
-export const downloadCsvImportTemplate = async (
-  broker = 'generic',
-): Promise<{ blob: Blob; filename: string }> => {
-  const token = await _getToken();
-  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-  const response = await fetch(`${API_URL}/csv-import/template?broker=${encodeURIComponent(broker)}`, {
-    method: 'GET',
-    headers: { ...authHeaders },
-  });
-  if (!response.ok) {
-    let message = `HTTP ${response.status}`;
-    try {
-      const body = (await response.json()) as ApiErrorPayload;
-      if (body?.error?.message) message = body.error.message;
-    } catch { /* ignore */ }
-    throw new Error(message);
-  }
-
-  const blob = await response.blob();
-  const disposition = response.headers.get('content-disposition') || '';
-  const filenameMatch = disposition.match(/filename="([^"]+)"/i);
-  return {
-    blob,
-    filename: filenameMatch?.[1] || `valore365-${broker}-import-template.xlsx`,
-  };
-};
-
-export const commitCsvImport = async (batchId: number): Promise<CsvImportCommitResponse> => {
-  return apiFetch<CsvImportCommitResponse>(`/csv-import/${batchId}/commit`, {
-    method: 'POST',
-  });
-};
-
-export const cancelCsvImport = async (batchId: number): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/csv-import/${batchId}`, {
-    method: 'DELETE',
-  });
-};
-
-// ---- Feature 4: PAC ----
+// PAC
 
 export interface PacRuleCreateInput {
   portfolio_id: number;
@@ -1570,59 +1022,7 @@ export interface PacExecutionConfirmInput {
   notes?: string | null;
 }
 
-export const createPacRule = async (portfolioId: number, payload: PacRuleCreateInput): Promise<PacRuleRead> => {
-  return apiFetch<PacRuleRead>(`/portfolios/${portfolioId}/pac-rules`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const getPortfolioPacRules = async (portfolioId: number): Promise<PacRuleRead[]> => {
-  return apiFetch<PacRuleRead[]>(`/portfolios/${portfolioId}/pac-rules`);
-};
-
-export const getPacRule = async (ruleId: number): Promise<PacRuleRead> => {
-  return apiFetch<PacRuleRead>(`/pac-rules/${ruleId}`);
-};
-
-export const updatePacRule = async (ruleId: number, payload: PacRuleUpdateInput): Promise<PacRuleRead> => {
-  return apiFetch<PacRuleRead>(`/pac-rules/${ruleId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const deletePacRule = async (ruleId: number): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/pac-rules/${ruleId}`, {
-    method: 'DELETE',
-  });
-};
-
-export const getPacRuleExecutions = async (ruleId: number): Promise<PacExecutionRead[]> => {
-  return apiFetch<PacExecutionRead[]>(`/pac-rules/${ruleId}/executions`);
-};
-
-export const getPendingPacExecutions = async (portfolioId: number): Promise<PacExecutionRead[]> => {
-  return apiFetch<PacExecutionRead[]>(`/portfolios/${portfolioId}/pac-executions/pending`);
-};
-
-export const confirmPacExecution = async (
-  executionId: number,
-  payload: PacExecutionConfirmInput,
-): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/pac-executions/${executionId}/confirm`, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const skipPacExecution = async (executionId: number): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(`/pac-executions/${executionId}/skip`, {
-    method: 'POST',
-  });
-};
-
-// --- Benchmarks ---
+// Benchmarks
 
 export interface BenchmarkItem {
   asset_id: number;
@@ -1635,22 +1035,7 @@ export interface AssetPricePoint {
   close: number;
 }
 
-export const getBenchmarks = async (): Promise<BenchmarkItem[]> => {
-  return apiFetch<BenchmarkItem[]>('/benchmarks');
-};
-
-export const backfillBenchmarkPrices = async (
-  assetId: number,
-  portfolioId: number,
-  days = 365,
-): Promise<{ status: string }> => {
-  return apiFetch<{ status: string }>(
-    `/benchmarks/${assetId}/backfill?portfolio_id=${portfolioId}&days=${days}`,
-    { method: 'POST' },
-  );
-};
-
-// --- Copilot ---
+// Copilot
 
 export interface CopilotStatus {
   available: boolean;
@@ -1658,32 +1043,3 @@ export interface CopilotStatus {
   model: string | null;
   source: 'user' | 'server' | null;
 }
-
-export const getCopilotStatus = async (): Promise<CopilotStatus> => {
-  return apiFetch<CopilotStatus>('/copilot/status');
-};
-
-export const getAssetPriceTimeseries = async (
-  assetId: number,
-  startDate?: string,
-  endDate?: string,
-): Promise<AssetPricePoint[]> => {
-  const params = new URLSearchParams();
-  if (startDate) params.set('start_date', startDate);
-  if (endDate) params.set('end_date', endDate);
-  const query = params.toString();
-  return apiFetch<AssetPricePoint[]>(
-    `/assets/${assetId}/price-timeseries${query ? `?${query}` : ''}`,
-  );
-};
-
-export const analyzeInstantPortfolio = async (payload: InstantAnalyzeRequest): Promise<InstantAnalyzeResponse> => {
-  return apiFetch<InstantAnalyzeResponse>('/public/portfolio/analyze', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const getAdminUsageSummary = async (): Promise<AdminUsageSummary> => {
-  return apiFetch<AdminUsageSummary>('/admin/usage-summary');
-};

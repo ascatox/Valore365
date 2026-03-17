@@ -15,7 +15,7 @@ import {
   type PacRuleCreateInput,
   type PacRuleRead,
   type PacRuleUpdateInput,
-} from '../../services/api';
+} from '../../../services/api';
 
 interface PacRuleDrawerProps {
   opened: boolean;

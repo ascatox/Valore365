@@ -16,7 +16,7 @@ import {
   Alert,
 } from '@mantine/core';
 import { IconFileImport, IconCheck, IconX, IconChartPie } from '@tabler/icons-react';
-import { formatNum } from '../dashboard/formatters';
+import { formatNum } from '../../dashboard/formatters';
 import {
   downloadCsvImportTemplate,
   uploadCsvImportPreview,
@@ -25,7 +25,7 @@ import {
   createPortfolio,
   type CsvImportPreviewResponse,
   type CsvImportCommitResponse,
-} from '../../services/api';
+} from '../../../services/api';
 
 const BROKER_OPTIONS = [
   { value: 'fineco', label: 'Fineco', logo: '/logos/fineco.svg' },

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from app.models import PriceRefreshResponse
-from app.pricing_service import PriceIngestionService
+from app.services.pricing_service import PriceIngestionService
 
 
 class _FakeAsset:
@@ -50,7 +50,7 @@ class _FakeClient:
 
 
 def test_refresh_prices_success(monkeypatch):
-    import app.pricing_service as mod
+    import app.services.pricing_service as mod
 
     monkeypatch.setattr(mod, 'make_finance_client', lambda _: _FakeClient())
 
@@ -67,7 +67,7 @@ def test_refresh_prices_success(monkeypatch):
 
 
 def test_refresh_prices_zero_price_rejected(monkeypatch):
-    import app.pricing_service as mod
+    import app.services.pricing_service as mod
 
     monkeypatch.setattr(mod, 'make_finance_client', lambda _: _FakeClient(price=0.0))
 

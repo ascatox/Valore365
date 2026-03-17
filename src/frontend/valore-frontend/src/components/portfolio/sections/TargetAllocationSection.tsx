@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Button, Card, Group, SimpleGrid, Stack, Table, Text, Title } from '@mantine/core';
 import { IconFileImport, IconPlus } from '@tabler/icons-react';
-import { formatNum } from '../dashboard/formatters';
+import { formatNum } from '../../dashboard/formatters';
 
 interface TargetAllocationSectionProps {
   allocationsCount: number;

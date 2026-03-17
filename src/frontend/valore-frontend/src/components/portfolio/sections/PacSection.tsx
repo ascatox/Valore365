@@ -15,7 +15,7 @@ import {
   Title,
 } from '@mantine/core';
 import { IconDotsVertical, IconPlus, IconCheck, IconPlayerSkipForward, IconTrash } from '@tabler/icons-react';
-import { formatNum } from '../dashboard/formatters';
+import { formatNum } from '../../dashboard/formatters';
 import {
   confirmPacExecution,
   deletePacRule,
@@ -25,7 +25,7 @@ import {
   type PacExecutionConfirmInput,
   type PacExecutionRead,
   type PacRuleRead,
-} from '../../services/api';
+} from '../../../services/api';
 
 interface PacSectionProps {
   selectedPortfolioId: string | null;

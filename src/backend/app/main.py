@@ -44,17 +44,17 @@ class SafeJSONResponse(JSONResponse):
 from .auth import AuthContext, require_admin
 from .middleware import RequestLoggingMiddleware
 from .config import get_settings
-from .csv_service import CsvImportService
 from .db import engine
 from .errors import AppError
 from .finance_client import make_finance_client
-from .historical_service import HistoricalIngestionService
 from .models import AdminUsageSummary, ErrorResponse
-from .pac_service import PacExecutionService
-from .performance_service import PerformanceService
-from .pricing_service import PriceIngestionService
 from .repository import PortfolioRepository
 from .scheduler import PriceRefreshScheduler
+from .services.csv_service import CsvImportService
+from .services.historical_service import HistoricalIngestionService
+from .services.pac_service import PacExecutionService
+from .services.performance_service import PerformanceService
+from .services.pricing_service import PriceIngestionService
 from .justetf_client import JustEtfClient
 
 # --- Route registrations ---

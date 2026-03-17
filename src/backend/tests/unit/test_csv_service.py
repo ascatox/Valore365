@@ -2,7 +2,7 @@ import io
 
 import openpyxl
 
-from app.csv_service import BANK_EXPORT_COLUMNS, _prepare_fineco_csv_content, _read_xlsx_rows
+from app.services.csv_service import BANK_EXPORT_COLUMNS, _prepare_fineco_csv_content, _read_xlsx_rows
 
 
 def test_prepare_fineco_csv_content_keeps_embedded_header_row():

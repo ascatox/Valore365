@@ -20,7 +20,7 @@ import {
   getPortfolioCashBalance,
   type CashBalanceResponse,
   type CashMovementCreateInput,
-} from '../../services/api';
+} from '../../../services/api';
 
 interface CashSectionProps {
   selectedPortfolioId: string | null;

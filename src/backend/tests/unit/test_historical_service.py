@@ -1,6 +1,6 @@
 from datetime import date
 
-from app.historical_service import HistoricalIngestionService
+from app.services.historical_service import HistoricalIngestionService
 from app.models import DailyBackfillResponse
 
 
@@ -76,7 +76,7 @@ class _FakeClient:
 
 
 def test_backfill_daily_batch_upsert(monkeypatch):
-    import app.historical_service as mod
+    import app.services.historical_service as mod
 
     monkeypatch.setattr(mod, 'make_finance_client', lambda _: _FakeClient())
 
@@ -96,7 +96,7 @@ def test_backfill_daily_batch_upsert(monkeypatch):
 
 
 def test_backfill_daily_rejects_high_less_than_low(monkeypatch):
-    import app.historical_service as mod
+    import app.services.historical_service as mod
 
     class BadBar:
         def __init__(self):
@@ -120,7 +120,7 @@ def test_backfill_daily_rejects_high_less_than_low(monkeypatch):
 
 
 def test_backfill_daily_rejects_zero_close(monkeypatch):
-    import app.historical_service as mod
+    import app.services.historical_service as mod
 
     class ZeroBar:
         def __init__(self):
@@ -142,7 +142,7 @@ def test_backfill_daily_rejects_zero_close(monkeypatch):
 
 
 def test_backfill_daily_rejects_invalid_fx_rate(monkeypatch):
-    import app.historical_service as mod
+    import app.services.historical_service as mod
 
     class BadFx:
         def __init__(self):

@@ -34,7 +34,7 @@ class PacExecutionService:
         for rule in rules:
             rule_id = int(rule["id"])
             try:
-                from .repository import PortfolioRepository
+                from ..repository import PortfolioRepository
                 # Use a lightweight approach - just generate executions directly
                 with self.engine.begin() as conn:
                     existing = conn.execute(

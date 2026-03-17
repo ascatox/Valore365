@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.models import CashFlowEntry
-from app.performance_service import PerformanceService
+from app.services.performance_service import PerformanceService
 
 
 class _FakeRepo:

@@ -3,10 +3,10 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from .config import Settings
-from .historical_service import HistoricalIngestionService
-from .pac_service import PacExecutionService
-from .pricing_service import PriceIngestionService
 from .repository import PortfolioRepository
+from .services.historical_service import HistoricalIngestionService
+from .services.pac_service import PacExecutionService
+from .services.pricing_service import PriceIngestionService
 
 logger = logging.getLogger(__name__)
 

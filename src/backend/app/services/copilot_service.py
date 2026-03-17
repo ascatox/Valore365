@@ -1,6 +1,6 @@
 """Backward-compatible facade -- imports from copilot package."""
-from .copilot import *  # noqa: F401,F403
-from .copilot import (
+from ..copilot import *  # noqa: F401,F403
+from ..copilot import (
     CopilotChatRequest,
     CopilotMessage,
     build_aggregate_snapshot_light,

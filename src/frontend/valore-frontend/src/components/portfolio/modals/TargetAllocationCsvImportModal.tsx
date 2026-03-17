@@ -11,13 +11,13 @@ import {
   Text,
 } from '@mantine/core';
 import { IconCheck, IconFileImport, IconX, IconAlertTriangle } from '@tabler/icons-react';
-import { formatNum } from '../dashboard/formatters';
+import { formatNum } from '../../dashboard/formatters';
 import {
   discoverAssets,
   ensureAsset,
   upsertPortfolioTargetAllocation,
   type AssetDiscoverItem,
-} from '../../services/api';
+} from '../../../services/api';
 
 interface Props {
   opened: boolean;

@@ -10,7 +10,7 @@ import json
 import logging
 from typing import Any
 
-from .performance_service import PerformanceService
+from .services.performance_service import PerformanceService
 from .repository import PortfolioRepository
 from .services.portfolio_doctor import analyze_portfolio_health, run_monte_carlo_projection
 
