@@ -111,3 +111,40 @@ def test_justetf_403_uses_fmp_fallback_when_configured(monkeypatch):
 
     assert data["source"] == "fmp"
     assert calls == ["SWDA"]
+
+
+def test_invalid_isin_uses_fmp_fallback_when_configured(monkeypatch):
+    monkeypatch.setenv("FMT_API_KEY", "test-key")
+    client = JustEtfClient(rate_limit_seconds=0.0)
+    calls: list[str] = []
+
+    def _fake_fmp(symbol: str):
+        calls.append(symbol)
+        return {"name": "Fallback ETF", "source": "fmp"}
+
+    monkeypatch.setattr(client, "_fetch_profile_from_fmp", _fake_fmp)
+
+    data = client.fetch_profile("INVALID", symbol="SWDA")
+
+    assert data["source"] == "fmp"
+    assert calls == ["SWDA"]
+
+
+def test_empty_justetf_payload_uses_fmp_fallback_when_configured(monkeypatch):
+    fake_module = types.SimpleNamespace(get_etf_overview=lambda isin, **_: {})
+    monkeypatch.setitem(sys.modules, "justetf_scraping", fake_module)
+    monkeypatch.setenv("FMT_API_KEY", "test-key")
+
+    client = JustEtfClient(rate_limit_seconds=0.0)
+    calls: list[str] = []
+
+    def _fake_fmp(symbol: str):
+        calls.append(symbol)
+        return {"name": "Fallback ETF", "source": "fmp"}
+
+    monkeypatch.setattr(client, "_fetch_profile_from_fmp", _fake_fmp)
+
+    data = client.fetch_profile("IE00B4L5Y983", symbol="SWDA")
+
+    assert data["source"] == "fmp"
+    assert calls == ["SWDA"]

@@ -69,6 +69,16 @@ class JustEtfClient:
     def _can_use_fmp_fallback(self, symbol: str | None) -> bool:
         return bool(self._fmp_api_key and (symbol or "").strip())
 
+    def _fallback_to_fmp(self, symbol: str | None, *, reason: str, message: str) -> dict | None:
+        if not self._can_use_fmp_fallback(symbol):
+            return None
+        logger.warning("%s; using FMT fallback for symbol %s", message, symbol)
+        try:
+            return self._fetch_profile_from_fmp(str(symbol))
+        except ProviderError as exc:
+            logger.warning("FMT fallback failed for symbol %s after %s: %s", symbol, reason, exc.message)
+            raise
+
     def _wait_rate_limit(self) -> None:
         with self._lock:
             now = time.monotonic()
@@ -240,12 +250,36 @@ class JustEtfClient:
             )
         return result
 
+    @staticmethod
+    def _has_meaningful_enrichment(data: dict | None) -> bool:
+        if not isinstance(data, dict):
+            return False
+        return any(
+            data.get(key)
+            for key in (
+                "name",
+                "description",
+                "index_tracked",
+                "investment_focus",
+                "country_weights",
+                "sector_weights",
+                "top_holdings",
+                "fund_provider",
+                "fund_size_eur",
+                "ter",
+            )
+        )
+
     def fetch_profile(self, isin: str, symbol: str | None = None, max_retries: int = 3) -> dict | None:
         """Fetch ETF profile from justETF. Returns DB-ready dict or None on error."""
         if not self._enabled:
-            if self._can_use_fmp_fallback(symbol):
-                logger.info("justETF disabled, using FMP fallback for symbol %s", symbol)
-                return self._fetch_profile_from_fmp(str(symbol))
+            fallback = self._fallback_to_fmp(
+                symbol,
+                reason="disabled",
+                message="justETF disabled",
+            )
+            if fallback is not None:
+                return fallback
             raise ProviderError(
                 provider="justetf",
                 operation="fetch_profile",
@@ -256,9 +290,13 @@ class JustEtfClient:
 
         blocked_remaining = self._get_blocked_remaining_seconds()
         if blocked_remaining > 0:
-            if self._can_use_fmp_fallback(symbol):
-                logger.info("justETF temporarily blocked, using FMP fallback for symbol %s", symbol)
-                return self._fetch_profile_from_fmp(str(symbol))
+            fallback = self._fallback_to_fmp(
+                symbol,
+                reason="temporarily_blocked",
+                message="justETF temporarily blocked",
+            )
+            if fallback is not None:
+                return fallback
             raise ProviderError(
                 provider="justetf",
                 operation="fetch_profile",
@@ -272,6 +310,13 @@ class JustEtfClient:
             )
 
         if not isin or len(isin) != 12:
+            fallback = self._fallback_to_fmp(
+                symbol,
+                reason="invalid_isin",
+                message=f"Invalid ISIN for justETF lookup: {isin}",
+            )
+            if fallback is not None:
+                return fallback
             raise ProviderError(
                 provider="justetf",
                 operation="fetch_profile",
@@ -287,17 +332,33 @@ class JustEtfClient:
                 self._wait_rate_limit()
                 logger.debug("Fetching justETF data for ISIN %s (attempt %d)", isin, attempt + 1)
                 overview = self._load_overview(get_etf_overview, isin)
-                return self._convert_overview(isin, overview)
+                converted = self._convert_overview(isin, overview)
+                if self._has_meaningful_enrichment(converted):
+                    return converted
+                fallback = self._fallback_to_fmp(
+                    symbol,
+                    reason="empty_payload",
+                    message=f"justETF returned empty/incomplete enrichment for ISIN {isin}",
+                )
+                if fallback is not None:
+                    return fallback
+                raise ProviderError(
+                    provider="justetf",
+                    operation="fetch_profile",
+                    symbol=isin,
+                    reason="no_data",
+                    message=f"justETF returned empty enrichment for ISIN {isin}",
+                )
             except Exception as exc:
                 if self._is_forbidden_error(exc):
                     self._activate_block_cooldown()
-                    if self._can_use_fmp_fallback(symbol):
-                        logger.warning(
-                            "justETF returned HTTP 403 for ISIN %s; using FMP fallback for symbol %s",
-                            isin,
-                            symbol,
-                        )
-                        return self._fetch_profile_from_fmp(str(symbol))
+                    fallback = self._fallback_to_fmp(
+                        symbol,
+                        reason="http_403",
+                        message=f"justETF returned HTTP 403 for ISIN {isin}",
+                    )
+                    if fallback is not None:
+                        return fallback
                     logger.warning(
                         "justETF returned HTTP 403 for ISIN %s; suspending enrichment fetches for %.0fs",
                         isin,
@@ -319,14 +380,13 @@ class JustEtfClient:
                     logger.info("justETF fetch failed for ISIN %s, retrying in %.1fs", isin, backoff)
                     time.sleep(backoff)
                 else:
-                    if self._can_use_fmp_fallback(symbol):
-                        logger.warning(
-                            "justETF fetch failed for ISIN %s after %d attempts; using FMP fallback for symbol %s",
-                            isin,
-                            max_retries,
-                            symbol,
-                        )
-                        return self._fetch_profile_from_fmp(str(symbol))
+                    fallback = self._fallback_to_fmp(
+                        symbol,
+                        reason="provider_error",
+                        message=f"justETF fetch failed for ISIN {isin} after {max_retries} attempts",
+                    )
+                    if fallback is not None:
+                        return fallback
                     logger.warning("justETF fetch failed for ISIN %s after %d attempts", isin, max_retries, exc_info=True)
                     raise ProviderError(
                         provider="justetf",
