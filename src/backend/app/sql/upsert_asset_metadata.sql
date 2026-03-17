@@ -1,0 +1,41 @@
+insert into asset_metadata (
+    asset_id, expense_ratio, fund_family, total_assets, category,
+    sector, industry, country, market_cap,
+    trailing_pe, forward_pe, dividend_yield, dividend_rate,
+    beta, fifty_two_week_high, fifty_two_week_low, avg_volume,
+    profit_margins, return_on_equity, revenue_growth, earnings_growth,
+    description, website, logo_url, raw_info, updated_at
+) values (
+    :asset_id, :expense_ratio, :fund_family, :total_assets, :category,
+    :sector, :industry, :country, :market_cap,
+    :trailing_pe, :forward_pe, :dividend_yield, :dividend_rate,
+    :beta, :fifty_two_week_high, :fifty_two_week_low, :avg_volume,
+    :profit_margins, :return_on_equity, :revenue_growth, :earnings_growth,
+    :description, :website, :logo_url, :raw_info::jsonb, now()
+)
+on conflict (asset_id) do update set
+    expense_ratio = excluded.expense_ratio,
+    fund_family = excluded.fund_family,
+    total_assets = excluded.total_assets,
+    category = excluded.category,
+    sector = excluded.sector,
+    industry = excluded.industry,
+    country = excluded.country,
+    market_cap = excluded.market_cap,
+    trailing_pe = excluded.trailing_pe,
+    forward_pe = excluded.forward_pe,
+    dividend_yield = excluded.dividend_yield,
+    dividend_rate = excluded.dividend_rate,
+    beta = excluded.beta,
+    fifty_two_week_high = excluded.fifty_two_week_high,
+    fifty_two_week_low = excluded.fifty_two_week_low,
+    avg_volume = excluded.avg_volume,
+    profit_margins = excluded.profit_margins,
+    return_on_equity = excluded.return_on_equity,
+    revenue_growth = excluded.revenue_growth,
+    earnings_growth = excluded.earnings_growth,
+    description = excluded.description,
+    website = excluded.website,
+    logo_url = excluded.logo_url,
+    raw_info = excluded.raw_info,
+    updated_at = now()
