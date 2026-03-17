@@ -41,6 +41,17 @@ class JustEtfClient:
                 time.sleep(self._rate_limit - elapsed)
             self._last_request = time.monotonic()
 
+    @staticmethod
+    def _load_overview(get_etf_overview, isin: str):
+        # We do not use live gettex quotes. Disabling them also avoids a current
+        # upstream NameError regression in justetf-scraping.
+        try:
+            return get_etf_overview(isin, include_gettex=False)
+        except TypeError as exc:
+            if "include_gettex" not in str(exc):
+                raise
+            return get_etf_overview(isin)
+
     def fetch_profile(self, isin: str, max_retries: int = 3) -> dict | None:
         """Fetch ETF profile from justETF. Returns DB-ready dict or None on error."""
         if not self._enabled:
@@ -81,7 +92,7 @@ class JustEtfClient:
             try:
                 self._wait_rate_limit()
                 logger.debug("Fetching justETF data for ISIN %s (attempt %d)", isin, attempt + 1)
-                overview = get_etf_overview(isin)
+                overview = self._load_overview(get_etf_overview, isin)
                 return self._convert_overview(isin, overview)
             except Exception as exc:
                 if self._is_forbidden_error(exc):

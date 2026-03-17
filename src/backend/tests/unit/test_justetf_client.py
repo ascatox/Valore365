@@ -18,7 +18,7 @@ def test_justetf_invalid_isin_raises_provider_error():
 
 def test_justetf_fetch_profile_parses_library_payload(monkeypatch):
     fake_module = types.SimpleNamespace(
-        get_etf_overview=lambda isin: {
+        get_etf_overview=lambda isin, **_: {
             "name": "Test ETF",
             "description": "Test description",
             "index": "MSCI World",
@@ -45,7 +45,7 @@ def test_justetf_fetch_profile_parses_library_payload(monkeypatch):
 def test_justetf_403_enters_cooldown_without_retries(monkeypatch):
     calls = 0
 
-    def _raise_403(_: str):
+    def _raise_403(_: str, **__):
         nonlocal calls
         calls += 1
         raise RuntimeError("Failed to fetch ETF page for IE00B441G979: status 403")
@@ -66,3 +66,25 @@ def test_justetf_403_enters_cooldown_without_retries(monkeypatch):
 
     assert exc.value.reason == "temporarily_blocked"
     assert calls == 1
+
+
+def test_justetf_fetch_profile_disables_gettex_by_default(monkeypatch):
+    received_include_gettex: bool | None = None
+
+    def _overview(_: str, **kwargs):
+        nonlocal received_include_gettex
+        received_include_gettex = kwargs.get("include_gettex")
+        return {
+            "name": "Test ETF",
+            "countries": [],
+            "sectors": [],
+            "top_holdings": [],
+        }
+
+    fake_module = types.SimpleNamespace(get_etf_overview=_overview)
+    monkeypatch.setitem(sys.modules, "justetf_scraping", fake_module)
+
+    client = JustEtfClient(rate_limit_seconds=0.0)
+    client.fetch_profile("IE00B4L5Y983")
+
+    assert received_include_gettex is False
