@@ -122,6 +122,7 @@ export interface Portfolio {
   timezone: string;
   target_notional: number | null;
   cash_balance: number;
+  current_cash_balance?: number | null;
   created_at: string;
 }
 

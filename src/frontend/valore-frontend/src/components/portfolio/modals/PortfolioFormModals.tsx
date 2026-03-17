@@ -89,13 +89,13 @@ export function PortfolioModal({
           description="Opzionale. Usato per calcolare il controvalore target per asset dai pesi %."
         />
         <NumberInput
-          label={`Cash disponibile (${formBaseCurrency || 'EUR'})`}
+          label={`Saldo iniziale liquidità (${formBaseCurrency || 'EUR'})`}
           value={formCashBalance}
           onChange={onFormCashBalanceChange}
           min={0}
           decimalScale={2}
           placeholder="Es. 5000"
-          description="Liquidità non investita nel portfolio."
+          description="Liquidità già presente nel portfolio all'avvio. I movimenti successivi vanno registrati nella sezione Liquidità."
         />
         <Button onClick={onSave} loading={saving}>
           {mode === 'create' ? 'Crea Portfolio' : 'Salva Modifiche'}

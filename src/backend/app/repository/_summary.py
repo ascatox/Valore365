@@ -22,6 +22,7 @@ class SummaryMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
+        current_cash_balance = self.get_current_cash_balance_value(portfolio_id, user_id)
         positions = self.get_positions(portfolio_id, user_id)
         market_value = sum(p.market_value for p in positions)
         cost_basis = sum(p.quantity * p.avg_cost for p in positions)
@@ -169,7 +170,7 @@ class SummaryMixin:
                 day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
 
-            denominator = previous_market_value + portfolio.cash_balance
+            denominator = previous_market_value + current_cash_balance
             if denominator > 0:
                 day_change_pct = (day_change / denominator) * 100.0
 
@@ -182,7 +183,7 @@ class SummaryMixin:
             unrealized_pl_pct=round(_finite(pl_pct), 2),
             day_change=round(_finite(day_change), 2),
             day_change_pct=round(_finite(day_change_pct), 2),
-            cash_balance=portfolio.cash_balance,
+            cash_balance=current_cash_balance,
         )
 
     def get_intraday_timeseries(self, portfolio_id: int, user_id: str, finance_client) -> list[IntradayTimeseriesPoint]:

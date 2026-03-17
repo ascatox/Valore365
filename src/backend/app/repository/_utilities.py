@@ -1,4 +1,5 @@
 import json
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import date
 
@@ -15,6 +16,79 @@ from ..models import (
     TransactionRead,
 )
 from ._base import PortfolioData
+
+
+def _build_cash_breakdown(
+    *,
+    base_currency: str,
+    opening_cash_balance: float,
+    rows: list[dict],
+) -> list[CashCurrencyBreakdown]:
+    balances_by_currency: dict[str, float] = {}
+
+    for row in rows:
+        currency = str(row["trade_currency"])
+        balances_by_currency[currency] = round(float(row["balance"]), 2)
+
+    if opening_cash_balance:
+        balances_by_currency[base_currency] = round(
+            balances_by_currency.get(base_currency, 0.0) + float(opening_cash_balance),
+            2,
+        )
+
+    return [
+        CashCurrencyBreakdown(currency=currency, balance=round(balance, 2))
+        for currency, balance in sorted(balances_by_currency.items())
+    ]
+
+
+def _compute_cash_balance_base(
+    *,
+    base_currency: str,
+    opening_cash_balance: float,
+    rows: list[dict],
+    fx_rows: list[dict],
+) -> float:
+    fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
+    for row in fx_rows:
+        fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
+    fx_dates = {ccy: [d for d, _ in series] for ccy, series in fx_series.items()}
+
+    def fx_rate_on_or_before(currency: str, day: date | None) -> float:
+        if currency == base_currency:
+            return 1.0
+        if day is None:
+            return 1.0
+        series = fx_series.get(currency)
+        dates = fx_dates.get(currency)
+        if not series or not dates:
+            return 1.0
+        idx = bisect_right(dates, day) - 1
+        if idx < 0:
+            return 1.0
+        return series[idx][1]
+
+    cash_balance = float(opening_cash_balance)
+    for row in rows:
+        side = str(row["side"])
+        trade_day = row["trade_date"]
+        trade_ccy = str(row["trade_currency"])
+        quantity = float(row["quantity"])
+        price = float(row["price"])
+        fees = float(row["fees"])
+        taxes = float(row["taxes"])
+        fx_rate = fx_rate_on_or_before(trade_ccy, trade_day)
+        amount_base = quantity * price * fx_rate
+        costs_base = (fees + taxes) * fx_rate
+
+        if side in {"deposit", "interest", "sell", "dividend"}:
+            cash_balance += amount_base if side != "sell" else amount_base - costs_base
+        elif side in {"withdrawal", "fee"}:
+            cash_balance -= amount_base + costs_base
+        elif side == "buy":
+            cash_balance -= amount_base + costs_base
+
+    return round(cash_balance, 2)
 
 
 class UtilitiesMixin:
@@ -157,7 +231,8 @@ class UtilitiesMixin:
 
     def get_computed_cash_balance(self, portfolio_id: int, user_id: str) -> CashBalanceResponse:
         with self.engine.begin() as conn:
-            if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
+            if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
             # Compute total from all cash-impacting transactions
@@ -180,10 +255,11 @@ class UtilitiesMixin:
                 {"portfolio_id": portfolio_id},
             ).mappings().all()
 
-            breakdown = [
-                CashCurrencyBreakdown(currency=str(r["trade_currency"]), balance=round(float(r["balance"]), 2))
-                for r in rows
-            ]
+            breakdown = _build_cash_breakdown(
+                base_currency=portfolio.base_currency,
+                opening_cash_balance=portfolio.cash_balance,
+                rows=[dict(r) for r in rows],
+            )
             total_cash = round(sum(b.balance for b in breakdown), 2)
 
             # Recent cash movements (last 20)
@@ -230,6 +306,68 @@ class UtilitiesMixin:
             total_cash=total_cash,
             currency_breakdown=breakdown,
             recent_movements=recent,
+        )
+
+    def get_current_cash_balance_value(self, portfolio_id: int, user_id: str) -> float:
+        with self.engine.begin() as conn:
+            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
+            if portfolio is None:
+                raise ValueError("Portfolio non trovato")
+
+            tx_rows = conn.execute(
+                text(
+                    """
+                    select side,
+                           trade_at::date as trade_date,
+                           quantity::float8 as quantity,
+                           price::float8 as price,
+                           fees::float8 as fees,
+                           taxes::float8 as taxes,
+                           trade_currency
+                    from transactions
+                    where portfolio_id = :portfolio_id
+                    order by trade_at asc, id asc
+                    """
+                ),
+                {"portfolio_id": portfolio_id},
+            ).mappings().all()
+
+            if not tx_rows:
+                return round(float(portfolio.cash_balance), 2)
+
+            fx_needed = sorted(
+                {
+                    str(row["trade_currency"])
+                    for row in tx_rows
+                    if row["trade_currency"] is not None and str(row["trade_currency"]) != portfolio.base_currency
+                }
+            )
+            fx_rows = []
+            if fx_needed:
+                max_trade_day = max(row["trade_date"] for row in tx_rows if row["trade_date"] is not None)
+                fx_rows = conn.execute(
+                    text(
+                        """
+                        select from_ccy, price_date, rate::float8 as rate
+                        from fx_rates_1d
+                        where from_ccy = any(:from_ccy)
+                          and to_ccy = :to_ccy
+                          and price_date <= :max_trade_day
+                        order by from_ccy asc, price_date asc
+                        """
+                    ),
+                    {
+                        "from_ccy": fx_needed,
+                        "to_ccy": portfolio.base_currency,
+                        "max_trade_day": max_trade_day,
+                    },
+                ).mappings().all()
+
+        return _compute_cash_balance_base(
+            base_currency=portfolio.base_currency,
+            opening_cash_balance=portfolio.cash_balance,
+            rows=[dict(row) for row in tx_rows],
+            fx_rows=[dict(row) for row in fx_rows],
         )
 
     def get_cash_flow_timeline(self, portfolio_id: int, user_id: str) -> CashFlowTimelineResponse:

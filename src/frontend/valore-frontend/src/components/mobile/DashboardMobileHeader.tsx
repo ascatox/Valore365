@@ -7,6 +7,7 @@ import type { Portfolio } from '../../services/api';
 interface DashboardMobileHeaderProps {
   portfolios: Portfolio[];
   selectedPortfolioId: string | null;
+  selectedPortfolioCashBalance: number | null;
   onSelectPortfolio: (value: string) => void;
   portfoliosLoading: boolean;
   refreshing: boolean;
@@ -17,6 +18,7 @@ interface DashboardMobileHeaderProps {
 export function DashboardMobileHeader({
   portfolios,
   selectedPortfolioId,
+  selectedPortfolioCashBalance,
   onSelectPortfolio,
   portfoliosLoading,
   refreshing,
@@ -50,6 +52,7 @@ export function DashboardMobileHeader({
           <PortfolioSwitcher
             portfolios={portfolios}
             value={selectedPortfolioId}
+            selectedPortfolioCashBalance={selectedPortfolioCashBalance}
             onChange={onSelectPortfolio}
             loading={portfoliosLoading}
           />

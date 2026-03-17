@@ -29,6 +29,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 
 import { usePortfolioPage } from '../components/portfolio/hooks/usePortfolioPage';
+import { usePortfolioSummary } from '../components/dashboard/hooks/queries';
 import { RebalancePreviewModal } from '../components/portfolio/modals/RebalancePreviewModal';
 import { PortfolioModal, PortfolioCloneModal, PortfolioDeleteModal, EditTransactionModal, DeleteTransactionModal } from '../components/portfolio/modals/PortfolioFormModals';
 import { TransactionDrawer } from '../components/portfolio/drawers/TransactionDrawer';
@@ -41,6 +42,8 @@ export function PortfolioPage() {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
+  const { data: summary } = usePortfolioSummary(portfolioId);
 
   // --- Allocation table rows ---
   const allocationRows = s.allocations.map((item) => (
@@ -194,8 +197,6 @@ export function PortfolioPage() {
     ? [{ value: 'target', label: 'Target', icon: IconTarget }]
     : [];
 
-  const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
-
   return (
     <>
       <PageLayout mobileBottomPadding={s.isMobile ? 180 : undefined} style={s.isMobile ? { paddingTop: 4 } : undefined}>
@@ -207,6 +208,7 @@ export function PortfolioPage() {
           <PortfolioSwitcher
             portfolios={s.portfolios}
             value={s.selectedPortfolioId}
+            selectedPortfolioCashBalance={summary?.cash_balance ?? null}
             onChange={(nextValue) => s.setSelectedPortfolioId(nextValue)}
             loading={s.loadingPortfolios}
             style={s.isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}

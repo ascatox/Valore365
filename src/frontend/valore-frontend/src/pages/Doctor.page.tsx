@@ -204,6 +204,7 @@ export function DoctorPage() {
               <PortfolioSwitcher
                 portfolios={portfolios}
                 value={selectedPortfolioId}
+                selectedPortfolioCashBalance={summary?.cash_balance ?? null}
                 onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
                 loading={portfoliosLoading}
                 style={{ width: '100%', maxWidth: 360 }}

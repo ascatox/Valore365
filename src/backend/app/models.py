@@ -77,6 +77,7 @@ class PortfolioUpdate(BaseModel):
 class PortfolioRead(PortfolioCreate):
     id: int
     created_at: datetime
+    current_cash_balance: float | None = None
 
 
 class PortfolioCloneRequest(BaseModel):

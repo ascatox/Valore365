@@ -14,7 +14,7 @@ import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRo
 import { useNavigate } from 'react-router-dom';
 import { DashboardMobileHeader } from '../components/mobile/DashboardMobileHeader';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
-import { usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
+import { usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
 import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
@@ -72,6 +72,7 @@ export function DashboardPage() {
   // --- Queries ---
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
+  const { data: summary } = usePortfolioSummary(portfolioId);
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
 
   // --- Auto-select portfolio ---
@@ -165,6 +166,7 @@ export function DashboardPage() {
           <DashboardMobileHeader
             portfolios={portfolios}
             selectedPortfolioId={selectedPortfolioId}
+            selectedPortfolioCashBalance={summary?.cash_balance ?? null}
             onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
             portfoliosLoading={portfoliosLoading}
             refreshing={refreshing}
@@ -181,6 +183,7 @@ export function DashboardPage() {
             <PortfolioSwitcher
               portfolios={portfolios}
               value={selectedPortfolioId}
+              selectedPortfolioCashBalance={summary?.cash_balance ?? null}
               onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
               loading={portfoliosLoading}
               onOpenPortfolio={() => navigate('/portfolio')}

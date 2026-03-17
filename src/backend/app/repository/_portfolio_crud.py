@@ -24,6 +24,11 @@ class PortfolioCrudMixin:
                 {"user_id": user_id},
             ).mappings().all()
 
+        current_cash_by_portfolio = {
+            int(row["id"]): self.get_current_cash_balance_value(int(row["id"]), user_id)
+            for row in rows
+        }
+
         return [
             PortfolioRead(
                 id=int(row["id"]),
@@ -33,6 +38,7 @@ class PortfolioCrudMixin:
                 target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
                 cash_balance=float(row["cash_balance"]),
                 created_at=row["created_at"],
+                current_cash_balance=current_cash_by_portfolio.get(int(row["id"])),
             )
             for row in rows
         ]
@@ -79,6 +85,7 @@ class PortfolioCrudMixin:
             target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
             cash_balance=float(row["cash_balance"]),
             created_at=row["created_at"],
+            current_cash_balance=float(row["cash_balance"]),
         )
 
     def update_portfolio(self, portfolio_id: int, payload: PortfolioUpdate, user_id: str) -> PortfolioRead:
@@ -150,6 +157,7 @@ class PortfolioCrudMixin:
             target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
             cash_balance=float(row["cash_balance"]),
             created_at=row["created_at"],
+            current_cash_balance=self.get_current_cash_balance_value(portfolio_id, user_id),
         )
 
     def clone_portfolio(self, portfolio_id: int, payload: PortfolioCloneRequest, user_id: str) -> PortfolioCloneResponse:
@@ -222,6 +230,7 @@ class PortfolioCrudMixin:
                 target_notional=float(created["target_notional"]) if created["target_notional"] is not None else None,
                 cash_balance=float(created["cash_balance"]),
                 created_at=created["created_at"],
+                current_cash_balance=float(created["cash_balance"]),
             ),
             target_allocations_copied=int(inserted_alloc.rowcount or 0),
         )
