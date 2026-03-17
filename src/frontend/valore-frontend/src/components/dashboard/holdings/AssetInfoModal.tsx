@@ -38,13 +38,20 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <Text size="xs" fw={700} tt="uppercase" c="dimmed" mt={4}>{children}</Text>;
 }
 
+function getEnrichmentSourceLabel(source: string | null | undefined): string {
+  const normalized = (source ?? '').trim().toLowerCase();
+  if (normalized === 'fmp' || normalized === 'fmt') return 'FMT';
+  if (normalized === 'justetf') return 'justETF';
+  return 'ETF';
+}
+
 function formatEnrichmentError(error: unknown): string {
   if (error instanceof ApiRequestError) {
     if (error.code === 'temporarily_blocked') {
-      return 'justETF sta bloccando temporaneamente le richieste dal backend. Riprova più tardi.';
+      return 'Il provider ETF sta bloccando temporaneamente le richieste dal backend. Riprova più tardi.';
     }
     if (error.code === 'disabled') {
-      return 'Integrazione justETF temporaneamente disabilitata sul backend.';
+      return 'Integrazione provider ETF temporaneamente disabilitata sul backend.';
     }
     if (error.code === 'invalid_isin') {
       return 'ISIN mancante o non valido per questo strumento.';
@@ -214,6 +221,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
 
   const isFundLike = info?.asset_type === 'etf' || info?.asset_type === 'fund';
   const hasEnrichment = enrichment != null;
+  const enrichmentSourceLabel = getEnrichmentSourceLabel(enrichment?.source);
 
   return (
     <Modal
@@ -269,6 +277,11 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                 {enrichment.distribution_policy}
               </Badge>
             )}
+            {hasEnrichment && (
+              <Badge variant="light" color="indigo" size="sm">
+                dati ETF: {enrichmentSourceLabel}
+              </Badge>
+            )}
             {info.metadata_status !== 'complete' && (
               <Badge variant="light" color={info.metadata_status === 'missing' ? 'red' : 'yellow'} size="sm">
                 {formatMetadataStatusLabel(info.metadata_status)}
@@ -295,7 +308,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
           )}
 
           {enrichError && (
-            <Alert color="yellow" variant="light" title="justETF non disponibile">
+            <Alert color="yellow" variant="light" title="Provider ETF non disponibile">
               <Text size="sm">{enrichError}</Text>
             </Alert>
           )}
@@ -323,7 +336,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
               <Group justify="space-between" align="center">
                 <SectionTitle>Costi e Fondo</SectionTitle>
                 {isFundLike && info.asset_id != null && (
-                  <Tooltip label={hasEnrichment ? 'Aggiorna dati justETF' : 'Carica dati da justETF'}>
+                  <Tooltip label={hasEnrichment ? 'Aggiorna dati ETF' : 'Carica dati ETF'}>
                     <ActionIcon
                       variant="subtle"
                       size="xs"
@@ -449,7 +462,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                 loading={enrichRefreshing}
                 onClick={handleRefreshEnrichment}
               >
-                Carica dettagli ETF da justETF
+                Carica dettagli ETF
               </Button>
             </>
           )}
@@ -539,7 +552,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
 
           {hasEnrichment && enrichment.fetched_at && (
             <Text size="xs" c="dimmed" ta="right">
-              justETF aggiornato: {new Date(enrichment.fetched_at).toLocaleDateString('it-IT')}
+              {enrichmentSourceLabel} aggiornato: {new Date(enrichment.fetched_at).toLocaleDateString('it-IT')}
             </Text>
           )}
         </Stack>
