@@ -1,6 +1,6 @@
-import { Alert, Button, Card, Group, Stack, Text, Textarea } from '@mantine/core';
+import { Alert, Box, Button, Group, Stack, Text, Textarea } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { IconClipboardText, IconSearch, IconTrash } from '@tabler/icons-react';
+import { IconPlayerPlay, IconTrash } from '@tabler/icons-react';
 import { InstantAnalyzerExamples } from './InstantAnalyzerExamples';
 
 interface InstantAnalyzerFormProps {
@@ -24,29 +24,28 @@ export function InstantAnalyzerForm({
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
+  const emerald = '#10b981';
+  const emeraldDark = '#059669';
+
   return (
-    <Card
-      radius="xl"
-      padding="xl"
-      withBorder
+    <Box
       style={{
+        borderRadius: 16,
+        border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e5e7eb',
         background: isDark
-          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-          : 'linear-gradient(180deg, #f4fbff 0%, #f5fffb 100%)',
-        borderColor: isDark ? theme.colors.dark[4] : 'rgba(37, 99, 235, 0.12)',
-        boxShadow: isDark ? '0 18px 40px rgba(0, 0, 0, 0.28)' : '0 18px 40px rgba(37, 99, 235, 0.08)',
+          ? theme.colors.dark[6]
+          : '#ffffff',
+        padding: 24,
+        boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.04)',
       }}
     >
       <Stack gap="lg">
         <div>
-          <Text tt="uppercase" fw={800} size="xs" c={isDark ? theme.colors.teal[3] : '#0f766e'}>
+          <Text fw={700} c={isDark ? 'white' : '#111827'} mb={4}>
             Incolla le tue posizioni
           </Text>
-          <Text size="sm" c={isDark ? theme.colors.gray[4] : '#334155'} mt={6}>
-            Una riga per posizione. Formato: <code>TICKER QUANTITÀ</code>. Sono supportati ticker e ISIN. Esempio: <code>VWCE 10000</code>
-          </Text>
-          <Text size="sm" c={isDark ? theme.colors.gray[5] : '#475569'} mt={6}>
-            Se alcune righe non possono essere risolte, l'analizzatore elaborera comunque quelle valide e segnalerà le altre qui sotto.
+          <Text size="sm" c={isDark ? theme.colors.gray[4] : '#6b7280'}>
+            Una riga per posizione. Formato: <code style={{ background: isDark ? theme.colors.dark[4] : '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85em' }}>TICKER QUANTITA</code>
           </Text>
         </div>
 
@@ -54,9 +53,9 @@ export function InstantAnalyzerForm({
 
         <Textarea
           autosize
-          minRows={10}
-          maxRows={16}
-          radius="lg"
+          minRows={8}
+          maxRows={14}
+          radius="md"
           size="md"
           placeholder={'VWCE 10000\nAGGH 5000\nEIMI 2000'}
           value={value}
@@ -64,35 +63,51 @@ export function InstantAnalyzerForm({
           styles={{
             input: {
               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace',
-              backgroundColor: isDark ? theme.colors.dark[5] : '#f8fafc',
-              color: isDark ? theme.white : '#0f172a',
-              borderColor: isDark ? theme.colors.dark[4] : 'rgba(37, 99, 235, 0.14)',
+              backgroundColor: isDark ? theme.colors.dark[5] : '#f9fafb',
+              color: isDark ? theme.white : '#111827',
+              borderColor: isDark ? theme.colors.dark[4] : '#e5e7eb',
+              fontSize: '0.9rem',
             },
           }}
         />
 
-        {error && <Alert color="red" variant="light">{error}</Alert>}
+        {error && <Alert color="red" variant="light" radius="md">{error}</Alert>}
 
-        <Group justify="space-between" wrap="wrap">
-          <Group gap="xs">
-            <Button variant="default" leftSection={<IconClipboardText size={16} />} onClick={() => onChange(value.trim())}>
-              Pulisci spazi
-            </Button>
-            <Button variant="subtle" color="gray" leftSection={<IconTrash size={16} />} onClick={onReset}>
-              Azzera
-            </Button>
-          </Group>
+        <Stack gap="sm">
           <Button
+            fullWidth
             size="md"
-            radius="xl"
+            radius="md"
             loading={loading}
-            leftSection={<IconSearch size={16} />}
+            leftSection={<IconPlayerPlay size={18} />}
             onClick={onSubmit}
+            style={{
+              background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+              border: 'none',
+              boxShadow: `0 4px 14px rgba(16, 185, 129, 0.3)`,
+              fontWeight: 700,
+              transition: 'all 300ms ease',
+            }}
           >
             Analizza Portafoglio
           </Button>
-        </Group>
+          <Button
+            fullWidth
+            variant="default"
+            size="sm"
+            radius="md"
+            leftSection={<IconTrash size={14} />}
+            onClick={onReset}
+            style={{
+              borderColor: isDark ? theme.colors.dark[4] : '#e5e7eb',
+              color: isDark ? theme.colors.gray[4] : '#6b7280',
+              fontWeight: 600,
+            }}
+          >
+            Azzera tutto
+          </Button>
+        </Stack>
       </Stack>
-    </Card>
+    </Box>
   );
 }

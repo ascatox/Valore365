@@ -1,7 +1,7 @@
-import { Badge, Button, Card, Group, Progress, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
+import { Badge, Box, Button, Group, Progress, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import {
   IconArrowRight,
   IconChartDonut3,
@@ -23,7 +23,7 @@ interface InstantAnalyzerResultsProps {
 
 const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-const COLORS = ['#2563eb', '#0f766e', '#7c3aed', '#ea580c', '#0891b2', '#d946ef', '#65a30d', '#dc2626'];
+const COLORS = ['#10b981', '#059669', '#0d9488', '#0891b2', '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b'];
 
 function formatPct(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return 'N/D';
@@ -41,12 +41,15 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
-  const cardBg = isDark
-    ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-    : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)';
-  const cardBorder = isDark ? theme.colors.dark[4] : 'rgba(15, 23, 42, 0.1)';
-  const textPrimary = isDark ? 'white' : '#0f172a';
-  const textSecondary = isDark ? theme.colors.gray[4] : '#475569';
+  const textPrimary = isDark ? 'white' : '#111827';
+  const textSecondary = isDark ? theme.colors.gray[4] : '#6b7280';
+  const cardStyle = {
+    borderRadius: 16,
+    border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e5e7eb',
+    background: isDark ? theme.colors.dark[6] : '#ffffff',
+    padding: 24,
+    boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.04)',
+  };
 
   const pieData = result.positions.map((p) => ({
     name: p.resolved_symbol,
@@ -59,15 +62,17 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
 
       <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
         {/* Geographic + key metrics */}
-        <Card withBorder radius="xl" padding="lg" style={{ borderColor: cardBorder, background: cardBg }}>
+        <Box style={cardStyle}>
           <Group gap="sm" mb="md">
-            <ThemeIcon color="blue" variant="light" radius="xl">
+            <ThemeIcon color="teal" variant="light" radius="xl">
               <IconChartDonut3 size={18} />
             </ThemeIcon>
             <Title order={4} c={textPrimary}>Metriche chiave</Title>
           </Group>
           <Stack gap="md">
-            <Text size="xs" tt="uppercase" fw={700} c={textSecondary}>Esposizione geografica</Text>
+            <Text size="xs" tt="uppercase" fw={700} c={textSecondary} style={{ letterSpacing: '0.05em' }}>
+              Esposizione geografica
+            </Text>
             {METRIC_CONFIG.map(({ key, label, icon: Icon, color }) => {
               const val = result.metrics.geographic_exposure[key] ?? 0;
               return (
@@ -88,12 +93,12 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               );
             })}
 
-            <div style={{ borderTop: `1px solid ${isDark ? theme.colors.dark[4] : '#e2e8f0'}`, paddingTop: 12, marginTop: 4 }} />
+            <div style={{ borderTop: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e5e7eb', paddingTop: 12, marginTop: 4 }} />
 
             {[
               { label: 'Posizione max', value: formatPct(result.metrics.max_position_weight), icon: IconTarget, color: 'orange' },
               { label: 'Score overlap', value: formatPct(result.metrics.overlap_score), icon: IconStack2, color: 'grape' },
-              { label: 'Volatilità', value: formatPct(result.metrics.portfolio_volatility), icon: IconChartLine, color: 'red' },
+              { label: 'Volatilita', value: formatPct(result.metrics.portfolio_volatility), icon: IconChartLine, color: 'red' },
               { label: 'TER medio', value: formatPct(result.metrics.weighted_ter), icon: IconCoin, color: 'teal' },
             ].map(({ label, value, icon: Icon, color }) => (
               <Group key={label} justify="space-between" wrap="nowrap">
@@ -107,10 +112,10 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               </Group>
             ))}
           </Stack>
-        </Card>
+        </Box>
 
         {/* Allocation doughnut + positions */}
-        <Card withBorder radius="xl" padding="lg" style={{ borderColor: cardBorder, background: cardBg }}>
+        <Box style={cardStyle}>
           <Title order={4} mb="md" c={textPrimary}>Allocazione</Title>
           {pieData.length > 0 && (
             <div style={{ height: 200, position: 'relative', marginBottom: 12 }}>
@@ -161,13 +166,13 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
                   </Stack>
                 </Group>
                 <Stack gap={0} align="flex-end" style={{ flexShrink: 0 }}>
-                  <Badge variant="light" size="sm">{position.weight.toFixed(1)}%</Badge>
-                  <Text size="xs" c={textSecondary}>€{position.value.toLocaleString('it-IT')}</Text>
+                  <Badge variant="light" color="teal" size="sm">{position.weight.toFixed(1)}%</Badge>
+                  <Text size="xs" c={textSecondary}>EUR {position.value.toLocaleString('it-IT')}</Text>
                 </Stack>
               </Group>
             ))}
           </Stack>
-        </Card>
+        </Box>
       </SimpleGrid>
 
       <InstantAnalyzerInsights result={result} />
@@ -178,36 +183,37 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
       />
 
       {result.cta.show_signup && (
-        <Card
-          radius="xl"
-          padding="xl"
-          withBorder
+        <Box
           style={{
+            borderRadius: 16,
+            padding: 28,
             background: isDark
-              ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.blue[9]} 100%)`
-              : 'linear-gradient(135deg, #1d4ed8 0%, #0f766e 100%)',
+              ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, rgba(16, 185, 129, 0.15) 100%)`
+              : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
             color: 'white',
-            borderColor: 'transparent',
           }}
         >
           <Group justify="space-between" align="center" wrap="wrap" gap="md">
             <div>
-              <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7 }}>Prossimo passo</Text>
+              <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.7, letterSpacing: '0.05em' }}>
+                Prossimo passo
+              </Text>
               <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
             </div>
             <Button
               component="a"
               href={clerkEnabled ? '/sign-up' : '/portfolio'}
               rightSection={<IconArrowRight size={16} />}
-              color="yellow"
-              variant="filled"
-              radius="xl"
+              color="dark"
+              variant="white"
+              radius="md"
               size="md"
+              style={{ fontWeight: 700 }}
             >
               Crea account gratis
             </Button>
           </Group>
-        </Card>
+        </Box>
       )}
     </Stack>
   );
