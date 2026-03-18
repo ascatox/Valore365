@@ -21,6 +21,7 @@ import {
   Text,
   ThemeIcon,
   Title,
+  Tooltip as MantineTooltip,
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
@@ -34,7 +35,7 @@ import {
   Line,
   ReferenceLine,
   ResponsiveContainer,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -106,6 +107,20 @@ function solveRequiredContribution(target: number, current: number, years: numbe
 
 function projectionToValue(indexValue: number, investedValue: number, cashBalance: number): number {
   return (indexValue / 100) * investedValue + cashBalance;
+}
+
+function getDecumulationOutcomeTooltip(
+  depletionProbabilityPct: number,
+  effectiveWithdrawalRatePct: number,
+  guardrailPct: number,
+): string {
+  if (depletionProbabilityPct >= 50) {
+    return `Rischio elevato: probabilità di esaurimento ${depletionProbabilityPct.toFixed(1)}%.`;
+  }
+  if (effectiveWithdrawalRatePct >= guardrailPct) {
+    return `Anno critico: WR mediano ${effectiveWithdrawalRatePct.toFixed(2)}%, sopra il guardrail ${guardrailPct.toFixed(2)}%.`;
+  }
+  return `Scenario sostenibile: WR mediano ${effectiveWithdrawalRatePct.toFixed(2)}%, sotto il guardrail ${guardrailPct.toFixed(2)}%.`;
 }
 
 type FireMode = 'accumulation' | 'decumulation';
@@ -982,7 +997,7 @@ export function FirePage() {
                             domain={['auto', 'auto']}
                           />
                         )}
-                        <Tooltip
+                        <RechartsTooltip
                           content={({ active, payload }) => {
                             if (!active || !payload?.length) return null;
                             const d = payload[0]?.payload as { year: string; p10: number; p25: number; p50: number; p75: number; p90: number };
@@ -1130,9 +1145,20 @@ export function FirePage() {
                         <Table.Td>{formatPct(year.p50_effective_withdrawal_rate_pct, 2)}</Table.Td>
                         <Table.Td>{formatMoney(year.p50_ending_capital, currency)}</Table.Td>
                         <Table.Td>
-                          <Badge color={year.depletion_probability_pct >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
-                            {year.depletion_probability_pct >= 50 ? 'Fragile' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Critico' : 'OK')}
-                          </Badge>
+                          <MantineTooltip
+                            label={getDecumulationOutcomeTooltip(
+                              year.depletion_probability_pct,
+                              year.p50_effective_withdrawal_rate_pct,
+                              swrValue,
+                            )}
+                            withArrow
+                            multiline
+                            maw={280}
+                          >
+                            <Badge color={year.depletion_probability_pct >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
+                              {year.depletion_probability_pct >= 50 ? 'Fragile' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Critico' : 'OK')}
+                            </Badge>
+                          </MantineTooltip>
                         </Table.Td>
                       </Table.Tr>
                     ))}
