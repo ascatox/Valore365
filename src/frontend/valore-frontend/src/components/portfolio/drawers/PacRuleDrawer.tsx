@@ -16,6 +16,7 @@ import {
   type PacRuleRead,
   type PacRuleUpdateInput,
 } from '../../../services/api';
+import { AssetDiscoverSelect } from '../AssetDiscoverSelect';
 
 interface PacRuleDrawerProps {
   opened: boolean;
@@ -146,12 +147,30 @@ export function PacRuleDrawer({
       size="md"
     >
       <Stack>
-        <TextInput
-          label="Asset"
-          value={assetSymbol}
-          disabled
-          description={editingRule ? 'Non modificabile' : 'Seleziona prima un asset dalla lista'}
-        />
+        {editingRule ? (
+          <TextInput
+            label="Asset"
+            value={assetSymbol}
+            disabled
+            description="Non modificabile"
+          />
+        ) : (
+          <AssetDiscoverSelect
+            active={opened}
+            portfolioId={portfolioId}
+            label="ISIN o Simbolo"
+            placeholder="Cerca simbolo, ISIN o nome"
+            onAssetResolved={(result) => {
+              setAssetId(result.assetId);
+              setAssetSymbol(result.label);
+            }}
+            onClear={() => {
+              setAssetId(null);
+              setAssetSymbol('');
+            }}
+            onError={(msg) => setError(msg)}
+          />
+        )}
 
         <Select
           label="Modalità"
