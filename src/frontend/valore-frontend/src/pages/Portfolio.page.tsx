@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Table,
   Card,
@@ -8,10 +9,12 @@ import {
   Loader,
   ActionIcon,
   Tabs,
+  Tooltip,
+  UnstyledButton,
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot, IconInfoCircle } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/modals/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/modals/TargetAllocationCsvImportModal.tsx';
@@ -36,6 +39,7 @@ import { TransactionDrawer } from '../components/portfolio/drawers/TransactionDr
 import { TargetAllocationDrawer } from '../components/portfolio/drawers/TargetAllocationDrawer';
 import { PortfolioEmptyState } from '../components/portfolio/sections/PortfolioEmptyState';
 import { TransactionMobileCard } from '../components/portfolio/TransactionMobileCard';
+import { AssetInfoModal } from '../components/dashboard/holdings/AssetInfoModal';
 
 export function PortfolioPage() {
   const s = usePortfolioPage();
@@ -44,6 +48,7 @@ export function PortfolioPage() {
   const isDark = colorScheme === 'dark';
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
+  const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
 
   // --- Allocation table rows ---
   const allocationRows = s.allocations.map((item) => (
@@ -102,8 +107,19 @@ export function PortfolioPage() {
           </Text>
         </Table.Td>
         <Table.Td>
-          <Text fw={500}>{tx.symbol}</Text>
-          {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
+          <Group gap={4} wrap="nowrap">
+            <div>
+              <Text fw={500}>{tx.symbol}</Text>
+              {tx.asset_name ? <Text size="xs" c="dimmed">{tx.asset_name}</Text> : null}
+            </div>
+            {tx.asset_id != null && (
+              <Tooltip label="Dettaglio asset" withArrow>
+                <UnstyledButton onClick={() => setAssetInfoModal({ assetId: tx.asset_id!, symbol: tx.symbol })}>
+                  <IconInfoCircle size={16} stroke={1.5} style={{ opacity: 0.5 }} />
+                </UnstyledButton>
+              </Tooltip>
+            )}
+          </Group>
         </Table.Td>
         <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{formatNum(tx.quantity, 4)}</Table.Td>
         <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">{formatMoneyOrNA(tx.price, tx.trade_currency)}</Table.Td>
@@ -495,6 +511,15 @@ export function PortfolioPage() {
       )}
 
       <CopilotChat opened={s.copilotOpened} onClose={s.closeCopilot} portfolioId={portfolioId} />
+
+      {assetInfoModal && (
+        <AssetInfoModal
+          assetId={assetInfoModal.assetId}
+          symbol={assetInfoModal.symbol}
+          opened={!!assetInfoModal}
+          onClose={() => setAssetInfoModal(null)}
+        />
+      )}
     </>
   );
 }
