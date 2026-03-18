@@ -103,6 +103,7 @@ class AdminMixin:
                            fire_annual_expenses::float8 as fire_annual_expenses,
                            fire_annual_contribution::float8 as fire_annual_contribution,
                            fire_safe_withdrawal_rate::float8 as fire_safe_withdrawal_rate,
+                           fire_capital_gains_tax_rate::float8 as fire_capital_gains_tax_rate,
                            fire_current_age,
                            fire_target_age
                     from app_user_settings
@@ -122,6 +123,7 @@ class AdminMixin:
             fire_annual_expenses=float(row["fire_annual_expenses"] or 0.0),
             fire_annual_contribution=float(row["fire_annual_contribution"] or 0.0),
             fire_safe_withdrawal_rate=float(row["fire_safe_withdrawal_rate"] or 4.0),
+            fire_capital_gains_tax_rate=float(row["fire_capital_gains_tax_rate"] or 26.0),
             fire_current_age=int(row["fire_current_age"]) if row["fire_current_age"] is not None else None,
             fire_target_age=int(row["fire_target_age"]) if row["fire_target_age"] is not None else None,
         )
@@ -166,6 +168,9 @@ class AdminMixin:
         if "fire_safe_withdrawal_rate" in fields_set and payload.fire_safe_withdrawal_rate is not None:
             set_parts.append("fire_safe_withdrawal_rate = :fire_safe_withdrawal_rate")
             params["fire_safe_withdrawal_rate"] = payload.fire_safe_withdrawal_rate
+        if "fire_capital_gains_tax_rate" in fields_set and payload.fire_capital_gains_tax_rate is not None:
+            set_parts.append("fire_capital_gains_tax_rate = :fire_capital_gains_tax_rate")
+            params["fire_capital_gains_tax_rate"] = payload.fire_capital_gains_tax_rate
         if "fire_current_age" in fields_set:
             set_parts.append("fire_current_age = :fire_current_age")
             params["fire_current_age"] = payload.fire_current_age
@@ -191,6 +196,7 @@ class AdminMixin:
                       fire_annual_expenses,
                       fire_annual_contribution,
                       fire_safe_withdrawal_rate,
+                      fire_capital_gains_tax_rate,
                       fire_current_age,
                       fire_target_age,
                       updated_at
@@ -204,6 +210,7 @@ class AdminMixin:
                       coalesce(:fae, 0),
                       coalesce(:fac, 0),
                       coalesce(:fswr, 4),
+                      coalesce(:fcgtr, 26),
                       :fca,
                       :fta,
                       now()
@@ -221,6 +228,7 @@ class AdminMixin:
                     "fae": payload.fire_annual_expenses,
                     "fac": payload.fire_annual_contribution,
                     "fswr": payload.fire_safe_withdrawal_rate,
+                    "fcgtr": payload.fire_capital_gains_tax_rate,
                     "fca": payload.fire_current_age,
                     "fta": payload.fire_target_age,
                 },

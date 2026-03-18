@@ -133,6 +133,7 @@ create table app_user_settings (
   fire_annual_expenses numeric(28,10) not null default 0,
   fire_annual_contribution numeric(28,10) not null default 0,
   fire_safe_withdrawal_rate numeric(10,4) not null default 4 check (fire_safe_withdrawal_rate > 0 and fire_safe_withdrawal_rate <= 20),
+  fire_capital_gains_tax_rate numeric(10,4) not null default 26 check (fire_capital_gains_tax_rate >= 0 and fire_capital_gains_tax_rate <= 100),
   fire_current_age int check (fire_current_age is null or (fire_current_age >= 18 and fire_current_age <= 100)),
   fire_target_age int check (fire_target_age is null or (fire_target_age >= 18 and fire_target_age <= 100)),
   updated_at timestamptz not null default now()

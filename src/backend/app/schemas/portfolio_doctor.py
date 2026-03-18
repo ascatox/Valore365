@@ -70,8 +70,12 @@ class MonteCarloProjectionResponse(BaseModel):
 class DecumulationYearProjection(BaseModel):
     year: int = Field(ge=1)
     age: int | None = Field(default=None, ge=18, le=120)
+    target_net_spending: float = Field(ge=0)
     gross_withdrawal: float = Field(ge=0)
+    estimated_taxes: float = Field(ge=0)
     net_withdrawal: float = Field(ge=0)
+    other_income: float = Field(ge=0)
+    net_spending_after_tax: float = Field(ge=0)
     p25_ending_capital: float = Field(ge=0)
     p50_ending_capital: float = Field(ge=0)
     p75_ending_capital: float = Field(ge=0)
@@ -85,6 +89,8 @@ class DecumulationPlanResponse(BaseModel):
     annual_withdrawal: float = Field(ge=0)
     annual_other_income: float = Field(ge=0)
     inflation_rate_pct: float = Field(ge=0)
+    capital_gains_tax_rate_pct: float = Field(ge=0, le=100)
+    estimated_embedded_gain_ratio_pct: float = Field(ge=0, le=100)
     horizon_years: int = Field(ge=1)
     num_simulations: int = Field(ge=0)
     annualized_mean_return_pct: float
@@ -106,6 +112,8 @@ class AggregateDecumulationPlanResponse(BaseModel):
     annual_withdrawal: float = Field(ge=0)
     annual_other_income: float = Field(ge=0)
     inflation_rate_pct: float = Field(ge=0)
+    capital_gains_tax_rate_pct: float = Field(ge=0, le=100)
+    estimated_embedded_gain_ratio_pct: float = Field(ge=0, le=100)
     horizon_years: int = Field(ge=1)
     num_simulations: int = Field(ge=0)
     annualized_mean_return_pct: float

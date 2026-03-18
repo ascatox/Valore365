@@ -26,6 +26,7 @@ class UserSettingsRead(BaseModel):
     fire_annual_expenses: float = Field(default=0, ge=0)
     fire_annual_contribution: float = Field(default=0, ge=0)
     fire_safe_withdrawal_rate: float = Field(default=4, gt=0, le=20)
+    fire_capital_gains_tax_rate: float = Field(default=26, ge=0, le=100)
     fire_current_age: int | None = Field(default=None, ge=18, le=100)
     fire_target_age: int | None = Field(default=None, ge=18, le=100)
 
@@ -38,6 +39,7 @@ class UserSettingsUpdate(BaseModel):
     fire_annual_expenses: float | None = Field(default=None, ge=0)
     fire_annual_contribution: float | None = Field(default=None, ge=0)
     fire_safe_withdrawal_rate: float | None = Field(default=None, gt=0, le=20)
+    fire_capital_gains_tax_rate: float | None = Field(default=None, ge=0, le=100)
     fire_current_age: int | None = Field(default=None, ge=18, le=100)
     fire_target_age: int | None = Field(default=None, ge=18, le=100)
 

@@ -82,6 +82,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         years: int = Query(ge=1, le=80),
         inflation_rate_pct: float = Query(default=2.0, ge=0, le=20),
         other_income_annual: float = Query(default=0.0, ge=0),
+        capital_gains_tax_rate_pct: float = Query(default=26.0, ge=0, le=100),
         current_age: int | None = Query(default=None, ge=18, le=100),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> AggregateDecumulationPlanResponse:
@@ -93,6 +94,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
                 years=years,
                 inflation_rate_pct=inflation_rate_pct,
                 other_income_annual=other_income_annual,
+                capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
                 current_age=current_age,
                 user_id=_auth.user_id,
             )
@@ -112,6 +114,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         years: int = Query(ge=1, le=80),
         inflation_rate_pct: float = Query(default=2.0, ge=0, le=20),
         other_income_annual: float = Query(default=0.0, ge=0),
+        capital_gains_tax_rate_pct: float = Query(default=26.0, ge=0, le=100),
         current_age: int | None = Query(default=None, ge=18, le=100),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> DecumulationPlanResponse:
@@ -123,6 +126,7 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
                 years=years,
                 inflation_rate_pct=inflation_rate_pct,
                 other_income_annual=other_income_annual,
+                capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
                 current_age=current_age,
                 user_id=_auth.user_id,
             )

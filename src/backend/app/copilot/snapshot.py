@@ -108,6 +108,7 @@ def build_portfolio_snapshot_light(
                 "annual_expenses": user_settings.fire_annual_expenses,
                 "annual_contribution": user_settings.fire_annual_contribution,
                 "safe_withdrawal_rate_pct": swr,
+                "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
                 "fire_target": round(fire_target, 0),
                 "coverage_pct": round(coverage_pct, 1),
             }
@@ -209,6 +210,7 @@ def build_aggregate_snapshot_light(
                 "annual_expenses": user_settings.fire_annual_expenses,
                 "annual_contribution": user_settings.fire_annual_contribution,
                 "safe_withdrawal_rate_pct": swr,
+                "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
                 "fire_target": round(fire_target, 0),
                 "coverage_pct": round(coverage_pct, 1),
             }

@@ -37,6 +37,7 @@ export function SettingsPage() {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [activeTab, setActiveTab] = useState('general');
   const [brokerDefaultFee, setBrokerDefaultFee] = useState<number | string>(1.99);
+  const [capitalGainsTaxRate, setCapitalGainsTaxRate] = useState<number | string>(26);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
   const [settingsSavedMessage, setSettingsSavedMessage] = useState<string | null>(null);
 
@@ -66,6 +67,10 @@ export function SettingsPage() {
           if (typeof window !== 'undefined') {
             window.localStorage.setItem(STORAGE_KEYS.brokerDefaultFee, String(fee));
           }
+        }
+        const capitalGainsTax = Number(s.fire_capital_gains_tax_rate ?? 26);
+        if (Number.isFinite(capitalGainsTax) && capitalGainsTax >= 0) {
+          setCapitalGainsTaxRate(capitalGainsTax);
         }
         setCopilotProvider(s.copilot_provider || '');
         setCopilotModel(s.copilot_model || '');
@@ -151,14 +156,21 @@ export function SettingsPage() {
 
   const handleSaveTaxSettings = () => {
     const fee = typeof brokerDefaultFee === 'number' ? brokerDefaultFee : Number(brokerDefaultFee);
+    const taxRate = typeof capitalGainsTaxRate === 'number' ? capitalGainsTaxRate : Number(capitalGainsTaxRate);
     if (!Number.isFinite(fee) || fee < 0) {
       setSettingsSavedMessage('Commissioni broker predefinite non valide');
       return;
     }
-    updateUserSettings({ broker_default_fee: fee })
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+      setSettingsSavedMessage('Tassa sulle plusvalenze non valida');
+      return;
+    }
+    updateUserSettings({ broker_default_fee: fee, fire_capital_gains_tax_rate: taxRate })
       .then((saved) => {
         const normalized = Number(saved.broker_default_fee ?? fee);
+        const normalizedTaxRate = Number(saved.fire_capital_gains_tax_rate ?? taxRate);
         setBrokerDefaultFee(normalized);
+        setCapitalGainsTaxRate(normalizedTaxRate);
         if (typeof window !== 'undefined') {
           window.localStorage.setItem(STORAGE_KEYS.brokerDefaultFee, String(normalized));
         }
@@ -400,8 +412,15 @@ export function SettingsPage() {
               <>
                 <NumberInput
                   label="Tassa sulle plusvalenze (%)"
-                  defaultValue={26}
+                  value={capitalGainsTaxRate}
+                  onChange={(value) => {
+                    setCapitalGainsTaxRate(value);
+                    if (settingsSavedMessage) setSettingsSavedMessage(null);
+                  }}
                   suffix=" %"
+                  min={0}
+                  max={100}
+                  decimalScale={2}
                   style={{ maxWidth: 300 }}
                 />
                 <NumberInput

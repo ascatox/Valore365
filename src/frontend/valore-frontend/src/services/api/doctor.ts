@@ -31,6 +31,7 @@ export const getDecumulationPlan = async (
     years: number;
     inflationRatePct?: number;
     otherIncomeAnnual?: number;
+    capitalGainsTaxRatePct?: number;
     currentAge?: number | null;
   },
 ): Promise<DecumulationPlanResponse> => {
@@ -39,6 +40,7 @@ export const getDecumulationPlan = async (
     years: String(params.years),
     inflation_rate_pct: String(params.inflationRatePct ?? 2),
     other_income_annual: String(params.otherIncomeAnnual ?? 0),
+    capital_gains_tax_rate_pct: String(params.capitalGainsTaxRatePct ?? 26),
   });
   if (params.currentAge != null && Number.isFinite(params.currentAge)) {
     query.set('current_age', String(params.currentAge));
@@ -53,6 +55,7 @@ export const getAggregateDecumulationPlan = async (
     years: number;
     inflationRatePct?: number;
     otherIncomeAnnual?: number;
+    capitalGainsTaxRatePct?: number;
     currentAge?: number | null;
   },
 ): Promise<AggregateDecumulationPlanResponse> => {
@@ -61,6 +64,7 @@ export const getAggregateDecumulationPlan = async (
     years: String(params.years),
     inflation_rate_pct: String(params.inflationRatePct ?? 2),
     other_income_annual: String(params.otherIncomeAnnual ?? 0),
+    capital_gains_tax_rate_pct: String(params.capitalGainsTaxRatePct ?? 26),
   });
   portfolioIds.forEach((portfolioId) => query.append('portfolio_ids', String(portfolioId)));
   if (params.currentAge != null && Number.isFinite(params.currentAge)) {

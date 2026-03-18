@@ -99,6 +99,7 @@ export function useDecumulationPlan(
     years: number;
     inflationRatePct: number;
     otherIncomeAnnual: number;
+    capitalGainsTaxRatePct: number;
     currentAge: number | null;
   },
   enabled = true,
@@ -117,6 +118,7 @@ export function useAggregateDecumulationPlan(
     years: number;
     inflationRatePct: number;
     otherIncomeAnnual: number;
+    capitalGainsTaxRatePct: number;
     currentAge: number | null;
   },
   enabled = true,

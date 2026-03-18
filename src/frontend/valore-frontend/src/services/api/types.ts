@@ -83,6 +83,7 @@ export interface UserSettings {
   fire_annual_expenses: number;
   fire_annual_contribution: number;
   fire_safe_withdrawal_rate: number;
+  fire_capital_gains_tax_rate: number;
   fire_current_age: number | null;
   fire_target_age: number | null;
 }
@@ -95,6 +96,7 @@ export interface UserSettingsUpdateInput {
   fire_annual_expenses?: number;
   fire_annual_contribution?: number;
   fire_safe_withdrawal_rate?: number;
+  fire_capital_gains_tax_rate?: number;
   fire_current_age?: number | null;
   fire_target_age?: number | null;
 }
@@ -193,8 +195,12 @@ export interface MonteCarloProjectionResponse {
 export interface DecumulationYearProjection {
   year: number;
   age: number | null;
+  target_net_spending: number;
   gross_withdrawal: number;
+  estimated_taxes: number;
   net_withdrawal: number;
+  other_income: number;
+  net_spending_after_tax: number;
   p25_ending_capital: number;
   p50_ending_capital: number;
   p75_ending_capital: number;
@@ -208,6 +214,8 @@ export interface DecumulationPlanResponse {
   annual_withdrawal: number;
   annual_other_income: number;
   inflation_rate_pct: number;
+  capital_gains_tax_rate_pct: number;
+  estimated_embedded_gain_ratio_pct: number;
   horizon_years: number;
   num_simulations: number;
   annualized_mean_return_pct: number;
@@ -229,6 +237,8 @@ export interface AggregateDecumulationPlanResponse {
   annual_withdrawal: number;
   annual_other_income: number;
   inflation_rate_pct: number;
+  capital_gains_tax_rate_pct: number;
+  estimated_embedded_gain_ratio_pct: number;
   horizon_years: number;
   num_simulations: number;
   annualized_mean_return_pct: number;

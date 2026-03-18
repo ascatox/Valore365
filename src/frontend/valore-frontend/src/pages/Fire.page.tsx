@@ -159,6 +159,7 @@ export function FirePage() {
   const [decumulationYears, setDecumulationYears] = useState<number | string>(30);
   const [inflationRate, setInflationRate] = useState<number | string>(2);
   const [otherIncomeAnnual, setOtherIncomeAnnual] = useState<number | string>(0);
+  const [capitalGainsTaxRate, setCapitalGainsTaxRate] = useState<number | string>(26);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copilotAvailable, setCopilotAvailable] = useState(false);
@@ -199,6 +200,7 @@ export function FirePage() {
     setAnnualExpenses(userSettings.fire_annual_expenses ?? 0);
     setAnnualContribution(userSettings.fire_annual_contribution ?? 0);
     setSafeWithdrawalRate(userSettings.fire_safe_withdrawal_rate ?? 4);
+    setCapitalGainsTaxRate(userSettings.fire_capital_gains_tax_rate ?? 26);
     setCurrentAge(userSettings.fire_current_age ?? '');
     setTargetAge(userSettings.fire_target_age ?? '');
     setAnnualWithdrawal(userSettings.fire_annual_expenses ?? 0);
@@ -311,6 +313,7 @@ export function FirePage() {
   const decumulationYearsValue = typeof decumulationYears === 'number' ? decumulationYears : Number(decumulationYears || 0);
   const inflationRateValue = typeof inflationRate === 'number' ? inflationRate : Number(inflationRate || 0);
   const otherIncomeAnnualValue = typeof otherIncomeAnnual === 'number' ? otherIncomeAnnual : Number(otherIncomeAnnual || 0);
+  const capitalGainsTaxRateValue = typeof capitalGainsTaxRate === 'number' ? capitalGainsTaxRate : Number(capitalGainsTaxRate || 0);
   const decumulationEnabled = fireMode === 'decumulation' && annualWithdrawalValue > 0 && decumulationYearsValue > 0;
   const hasAgePlan = currentAgeValue > 0 && targetAgeValue > currentAgeValue;
   const fireNumber = expensesValue > 0 && swrValue > 0 ? expensesValue / (swrValue / 100) : null;
@@ -449,6 +452,7 @@ export function FirePage() {
       years: Math.max(1, decumulationYearsValue),
       inflationRatePct: inflationRateValue,
       otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
+      capitalGainsTaxRatePct: Math.max(0, capitalGainsTaxRateValue),
       currentAge: currentAgeValue > 0 ? currentAgeValue : null,
     },
     decumulationEnabled && !aggregateModeEnabled,
@@ -468,6 +472,7 @@ export function FirePage() {
       years: Math.max(1, decumulationYearsValue),
       inflationRatePct: inflationRateValue,
       otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
+      capitalGainsTaxRatePct: Math.max(0, capitalGainsTaxRateValue),
       currentAge: currentAgeValue > 0 ? currentAgeValue : null,
     },
     decumulationEnabled && aggregateModeEnabled,
@@ -476,6 +481,8 @@ export function FirePage() {
   const activeDecumulationData = aggregateModeEnabled ? aggregateDecumulationData : decumulationData;
   const decumulationPlan = activeDecumulationData?.projections ?? [];
   const sustainableWithdrawal = activeDecumulationData?.sustainable_withdrawal ?? null;
+  const estimatedEmbeddedGainRatioPct = activeDecumulationData?.estimated_embedded_gain_ratio_pct ?? null;
+  const firstYearProjection = decumulationPlan[0] ?? null;
   const capitalDurationYears = aggregateModeEnabled
     ? (aggregateDecumulationData?.depletion_year_p50 ?? decumulationPlan.length)
     : (decumulationData?.depletion_year_p50 ?? decumulationPlan.length);
@@ -484,7 +491,7 @@ export function FirePage() {
     : ((decumulationData?.success_rate_pct ?? 0) >= 70);
   const firstCriticalYear = decumulationPlan.find((year) => year.p50_effective_withdrawal_rate_pct >= swrValue) ?? null;
   const withdrawalCoveragePct = annualWithdrawalValue > 0
-    ? Math.min(999, (((activeDecumulationData?.annual_other_income ?? 0) + (sustainableWithdrawal ?? 0)) / annualWithdrawalValue) * 100)
+    ? Math.min(999, ((sustainableWithdrawal ?? 0) / annualWithdrawalValue) * 100)
     : null;
 
   const summaryLoadingState = aggregateModeEnabled ? aggregateSummaryLoading : summaryLoading;
@@ -503,6 +510,7 @@ export function FirePage() {
       fire_annual_expenses: Math.max(0, expensesValue || 0),
       fire_annual_contribution: Math.max(0, contributionValue || 0),
       fire_safe_withdrawal_rate: Math.max(0.1, swrValue || 4),
+      fire_capital_gains_tax_rate: Math.max(0, capitalGainsTaxRateValue || 0),
       fire_current_age: currentAgeValue > 0 ? currentAgeValue : null,
       fire_target_age: targetAgeValue > 0 ? targetAgeValue : null,
     });
@@ -651,9 +659,9 @@ export function FirePage() {
                   </>
                 ) : (
                   <>
-                    <HeroMetric label="Prelievo" value={annualWithdrawalValue > 0 ? formatMoney(annualWithdrawalValue, currency) : '—'} />
+                    <HeroMetric label="Spesa netta" value={annualWithdrawalValue > 0 ? formatMoney(annualWithdrawalValue, currency) : '—'} />
                     <HeroMetric label="Altri redditi" value={formatMoney(otherIncomeAnnualValue, currency)} />
-                    <HeroMetric label="Inflazione" value={formatPct(inflationRateValue, 1)} />
+                    <HeroMetric label="Tasse" value={formatPct(capitalGainsTaxRateValue, 1)} />
                     <HeroMetric label="Durata" value={capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D'} />
                   </>
                 )}
@@ -662,7 +670,7 @@ export function FirePage() {
               <Stack gap={8}>
                 <Group justify="space-between">
                   <Text size="sm" c="rgba(255,255,255,0.82)">
-                    {fireMode === 'accumulation' ? 'Avanzamento verso la soglia FIRE' : 'Copertura del prelievo richiesto'}
+                    {fireMode === 'accumulation' ? 'Avanzamento verso la soglia FIRE' : 'Copertura della spesa netta richiesta'}
                   </Text>
                   <Text size="sm" fw={700} c="white">
                     {isPrivacyModeEnabled()
@@ -709,7 +717,7 @@ export function FirePage() {
                 </SimpleGrid>
               ) : (
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                  <NumberInput label="Prelievo annuo lordo" value={annualWithdrawal} onChange={setAnnualWithdrawal} min={0} thousandSeparator="." decimalSeparator="," />
+                  <NumberInput label="Spesa annua netta desiderata" value={annualWithdrawal} onChange={setAnnualWithdrawal} min={0} thousandSeparator="." decimalSeparator="," />
                   <NumberInput label="Altri redditi annui" value={otherIncomeAnnual} onChange={setOtherIncomeAnnual} min={0} thousandSeparator="." decimalSeparator="," />
                   <NumberInput
                     label="Orizzonte di decumulo (anni)"
@@ -725,6 +733,16 @@ export function FirePage() {
                     onChange={setInflationRate}
                     min={0}
                     max={20}
+                    step={0.1}
+                    decimalScale={1}
+                    fixedDecimalScale
+                  />
+                  <NumberInput
+                    label="Tassa plusvalenze (%)"
+                    value={capitalGainsTaxRate}
+                    onChange={setCapitalGainsTaxRate}
+                    min={0}
+                    max={100}
                     step={0.1}
                     decimalScale={1}
                     fixedDecimalScale
@@ -745,6 +763,7 @@ export function FirePage() {
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">
                   Rendimento atteso usato per le stime deterministiche: {formatPct(expectedReturnPct, 1)} annuo.
+                  {fireMode === 'decumulation' ? ` Fiscalità stimata: ${formatPct(capitalGainsTaxRateValue, 1)} sulle plusvalenze.` : ''}
                   {aggregateModeEnabled && fireMode === 'decumulation' ? ' In modalità aggregata il decumulo usa un Monte Carlo reale sul perimetro selezionato.' : ''}
                 </Text>
                 <Button color="red" onClick={handleSave} loading={settingsMutation.isPending || settingsLoading}>
@@ -814,16 +833,16 @@ export function FirePage() {
               <StatCard
                 icon={IconTrendingUp}
                 color="teal"
-                label="Reddito sostenibile"
+                label="Spesa sostenibile netta"
                 value={sustainableWithdrawal != null ? formatMoney(sustainableWithdrawal, currency) : 'N/D'}
                 note={`Success rate ${formatPct(activeDecumulationData?.success_rate_pct, 1)}`}
               />
               <StatCard
                 icon={IconTarget}
                 color="blue"
-                label="Primo anno critico"
-                value={firstCriticalYear ? `Anno ${firstCriticalYear.year}` : 'Nessuno'}
-                note={firstCriticalYear ? `WR mediano ${formatPct(firstCriticalYear.p50_effective_withdrawal_rate_pct, 2)}` : `Guardrail ${formatPct(swrValue, 2)}`}
+                label="Tasse stimate anno 1"
+                value={firstYearProjection ? formatMoney(firstYearProjection.estimated_taxes, currency) : 'N/D'}
+                note={firstYearProjection ? `Lordo richiesto ${formatMoney(firstYearProjection.gross_withdrawal, currency)}` : `Guardrail ${formatPct(swrValue, 2)}`}
               />
             </>
           )}
@@ -848,7 +867,7 @@ export function FirePage() {
                         ? `Con il contributo annuo attuale e il rendimento medio stimato, la soglia FIRE viene raggiunta in circa ${estimatedYearsToFire.toFixed(1)} anni.`
                         : 'Con i dati attuali non è possibile stimare una traiettoria affidabile verso la soglia FIRE.')
                   : (annualWithdrawalValue <= 0
-                      ? 'Inserisci un prelievo annuo per valutare la sostenibilità del decumulo.'
+                      ? 'Inserisci una spesa netta annua per valutare la sostenibilità fiscale del decumulo.'
                     : decumulationPlan.length === 0
                     ? (aggregateModeEnabled
                         ? 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo aggregata di decumulo.'
@@ -859,6 +878,12 @@ export function FirePage() {
                           : `Con le ipotesi correnti la probabilità di chiudere l'orizzonte con capitale residuo è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`)
                         : `Con le ipotesi correnti la probabilità di esaurimento entro l'orizzonte è circa ${activeDecumulationData?.depletion_probability_pct?.toFixed(1) ?? '0'}%.`)}
               </Text>
+              {fireMode === 'decumulation' && firstYearProjection && (
+                <Alert color={firstCriticalYear ? 'yellow' : 'blue'} variant="light">
+                  {`Con tassa plusvalenze ${formatPct(capitalGainsTaxRateValue, 1)} e quota plusvalenze stimata ${formatPct(estimatedEmbeddedGainRatioPct, 1)}, il primo anno richiede ${formatMoney(firstYearProjection.gross_withdrawal, currency)} lordi dal portafoglio per sostenere ${formatMoney(firstYearProjection.net_spending_after_tax, currency)} netti complessivi.`}
+                  {firstCriticalYear ? ` Il guardrail SWR viene toccato entro l'anno ${firstCriticalYear.year}.` : ''}
+                </Alert>
+              )}
               {fireMode === 'accumulation' && hasAgePlan && targetAgeValue > 0 && (
                 <Alert color={estimatedFireAge != null && estimatedFireAge <= targetAgeValue ? 'teal' : 'yellow'} variant="light">
                   {estimatedFireAge != null
@@ -881,10 +906,13 @@ export function FirePage() {
                     </>
                   ) : (
                     <>
-                      <Table.Tr><Table.Td>Prelievo annuo</Table.Td><Table.Td>{annualWithdrawalValue > 0 ? formatMoney(annualWithdrawalValue, currency) : 'N/D'}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Spesa netta target</Table.Td><Table.Td>{annualWithdrawalValue > 0 ? formatMoney(annualWithdrawalValue, currency) : 'N/D'}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Altri redditi annui</Table.Td><Table.Td>{formatMoney(otherIncomeAnnualValue, currency)}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Tassa plusvalenze</Table.Td><Table.Td>{formatPct(capitalGainsTaxRateValue, 1)}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Quota plusvalenze stimata</Table.Td><Table.Td>{formatPct(estimatedEmbeddedGainRatioPct, 1)}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Inflazione spesa</Table.Td><Table.Td>{formatPct(inflationRateValue, 1)}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Orizzonte</Table.Td><Table.Td>{decumulationYearsValue > 0 ? `${decumulationYearsValue} anni` : 'N/D'}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Spesa sostenibile netta</Table.Td><Table.Td>{formatMoney(sustainableWithdrawal, currency)}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Success rate</Table.Td><Table.Td>{formatPct(activeDecumulationData?.success_rate_pct, 1)}</Table.Td></Table.Tr>
                     </>
                   )}
@@ -918,7 +946,7 @@ export function FirePage() {
                 <Text size="sm" c="dimmed">
                 {fireMode === 'accumulation'
                   ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 5000).toLocaleString('it-IT')} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
-                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 5000).toLocaleString('it-IT')} percorsi) anno per anno del capitale residuo, con prelievi indicizzati all'inflazione.`}
+                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 5000).toLocaleString('it-IT')} percorsi) anno per anno del capitale residuo, con spesa netta indicizzata all'inflazione e fiscalità stimata sulle plusvalenze.`}
                 </Text>
               {fireMode === 'accumulation' && monteCarloChartData.length > 0 && (() => {
                 const tealColor = theme.colors.teal[isDark ? 4 : 6];
@@ -1047,7 +1075,7 @@ export function FirePage() {
                 )
               ) : decumulationPlan.length === 0 ? (
                 <Alert color="yellow" variant="light">
-                  Inserisci prelievo annuo e orizzonte per costruire una timeline di decumulo.
+                  Inserisci spesa netta annua e orizzonte per costruire una timeline di decumulo fiscale.
                 </Alert>
               ) : isMobile ? (
                 <Stack gap="sm">
@@ -1067,9 +1095,9 @@ export function FirePage() {
                           </Badge>
                         </Group>
                         <SimpleGrid cols={3} spacing="sm">
-                          <ScenarioMetric label="Prelievo" value={formatMoney(year.net_withdrawal, currency)} />
+                          <ScenarioMetric label="Netto disp." value={formatMoney(year.net_spending_after_tax, currency)} />
+                          <ScenarioMetric label="Tasse" value={formatMoney(year.estimated_taxes, currency)} />
                           <ScenarioMetric label="P50 Finale" value={formatMoney(year.p50_ending_capital, currency)} />
-                          <ScenarioMetric label="Rischio" value={formatPct(year.depletion_probability_pct, 1)} />
                         </SimpleGrid>
                       </Stack>
                     </Card>
@@ -1081,8 +1109,10 @@ export function FirePage() {
                     <Table.Tr>
                       <Table.Th>Anno</Table.Th>
                       <Table.Th>Età</Table.Th>
-                      <Table.Th>Prelievo lordo</Table.Th>
-                      <Table.Th>Prelievo netto</Table.Th>
+                      <Table.Th>Target netto</Table.Th>
+                      <Table.Th>Lordo portafoglio</Table.Th>
+                      <Table.Th>Tasse stimate</Table.Th>
+                      <Table.Th>Netto totale</Table.Th>
                       <Table.Th>WR mediano</Table.Th>
                       <Table.Th>Capitale finale P50</Table.Th>
                       <Table.Th>Esito</Table.Th>
@@ -1093,8 +1123,10 @@ export function FirePage() {
                       <Table.Tr key={year.year}>
                         <Table.Td>{year.year}</Table.Td>
                         <Table.Td>{year.age ?? 'N/D'}</Table.Td>
+                        <Table.Td>{formatMoney(year.target_net_spending, currency)}</Table.Td>
                         <Table.Td>{formatMoney(year.gross_withdrawal, currency)}</Table.Td>
-                        <Table.Td>{formatMoney(year.net_withdrawal, currency)}</Table.Td>
+                        <Table.Td>{formatMoney(year.estimated_taxes, currency)}</Table.Td>
+                        <Table.Td>{formatMoney(year.net_spending_after_tax, currency)}</Table.Td>
                         <Table.Td>{formatPct(year.p50_effective_withdrawal_rate_pct, 2)}</Table.Td>
                         <Table.Td>{formatMoney(year.p50_ending_capital, currency)}</Table.Td>
                         <Table.Td>
