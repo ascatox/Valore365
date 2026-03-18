@@ -309,16 +309,20 @@ export function usePortfolioPage() {
   }, [filteredTransactions, transactionSortKey, transactionSortDir]);
 
   const transactionTotals = useMemo(() => {
-    const totalValue = sortedTransactions.reduce((sum, tx) => {
+    let totalValue = 0;
+    let totalFees = 0;
+    for (const tx of sortedTransactions) {
       const gross = tx.quantity * tx.price;
       const displayed = tx.side === 'buy'
         ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
         : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
-      return sum + displayed;
-    }, 0);
+      totalValue += displayed;
+      totalFees += tx.fees ?? 0;
+    }
     const currencies = Array.from(new Set(sortedTransactions.map((tx) => tx.trade_currency).filter(Boolean)));
     return {
       totalValue,
+      totalFees,
       currency: currencies.length === 1 ? currencies[0] : null,
       mixedCurrencies: currencies.length > 1,
     };

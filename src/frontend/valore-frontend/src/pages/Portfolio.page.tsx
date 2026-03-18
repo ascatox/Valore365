@@ -152,7 +152,16 @@ export function PortfolioPage() {
       <Table.Tr key="transactions-total" style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
         <Table.Td><Text fw={700} size="sm">TOTALE</Text></Table.Td>
         <Table.Td /><Table.Td />
-        <Table.Td visibleFrom="sm" /><Table.Td visibleFrom="sm" /><Table.Td visibleFrom="md" />
+        <Table.Td visibleFrom="sm" /><Table.Td visibleFrom="sm" />
+        <Table.Td visibleFrom="md" style={{ textAlign: 'right' }}>
+          {s.transactionTotals.mixedCurrencies ? (
+            <Text fw={700} size="sm" c="dimmed">—</Text>
+          ) : (
+            <Text fw={700} size="sm">
+              {formatMoneyOrNA(s.transactionTotals.totalFees, s.transactionTotals.currency ?? s.selectedPortfolio?.base_currency)}
+            </Text>
+          )}
+        </Table.Td>
         <Table.Td style={{ textAlign: 'right' }}>
           {s.transactionTotals.mixedCurrencies ? (
             <Text fw={700} size="sm" c="dimmed">Valute miste</Text>
