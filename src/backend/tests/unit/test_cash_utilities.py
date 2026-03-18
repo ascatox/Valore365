@@ -29,10 +29,12 @@ def test_build_cash_breakdown_creates_base_currency_row_when_only_opening_cash_e
     assert [(item.currency, item.balance) for item in breakdown] == [("EUR", 2500.0)]
 
 
-def test_compute_cash_balance_base_includes_opening_cash_and_trade_effects():
+def test_compute_cash_balance_base_only_cash_movements():
+    """Cash is only affected by explicit cash movements (deposit/withdrawal/dividend/fee/interest).
+    Buy/sell transactions do NOT affect the cash balance."""
     total = _compute_cash_balance_base(
         base_currency="EUR",
-        opening_cash_balance=10000.0,
+        opening_cash_balance=0.0,
         rows=[
             {
                 "side": "buy",
@@ -61,6 +63,15 @@ def test_compute_cash_balance_base_includes_opening_cash_and_trade_effects():
                 "taxes": 0.0,
                 "trade_currency": "USD",
             },
+            {
+                "side": "withdrawal",
+                "trade_date": date(2026, 1, 5),
+                "quantity": 100.0,
+                "price": 1.0,
+                "fees": 0.0,
+                "taxes": 0.0,
+                "trade_currency": "EUR",
+            },
         ],
         fx_rows=[
             {
@@ -71,4 +82,5 @@ def test_compute_cash_balance_base_includes_opening_cash_and_trade_effects():
         ],
     )
 
-    assert total == 8710.1
+    # Only deposit (500) - withdrawal (100) = 400. Buy/sell ignored.
+    assert total == 400.0

@@ -71,22 +71,20 @@ def _compute_cash_balance_base(
     cash_balance = float(opening_cash_balance)
     for row in rows:
         side = str(row["side"])
+        # Only explicit cash movements affect liquidity
+        if side not in {"deposit", "withdrawal", "dividend", "fee", "interest"}:
+            continue
         trade_day = row["trade_date"]
         trade_ccy = str(row["trade_currency"])
         quantity = float(row["quantity"])
         price = float(row["price"])
-        fees = float(row["fees"])
-        taxes = float(row["taxes"])
         fx_rate = fx_rate_on_or_before(trade_ccy, trade_day)
         amount_base = quantity * price * fx_rate
-        costs_base = (fees + taxes) * fx_rate
 
-        if side in {"deposit", "interest", "sell", "dividend"}:
-            cash_balance += amount_base if side != "sell" else amount_base - costs_base
+        if side in {"deposit", "interest", "dividend"}:
+            cash_balance += amount_base
         elif side in {"withdrawal", "fee"}:
-            cash_balance -= amount_base + costs_base
-        elif side == "buy":
-            cash_balance -= amount_base + costs_base
+            cash_balance -= amount_base
 
     return round(cash_balance, 2)
 
@@ -235,20 +233,19 @@ class UtilitiesMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-            # Compute net cash per currency from all cash-impacting transactions
+            # Compute cash only from explicit cash movements (no buy/sell)
             rows = conn.execute(
                 text(
                     """
                     select trade_currency,
                            coalesce(sum(case
                              when side in ('deposit', 'interest', 'dividend') then quantity * price
-                             when side = 'sell' then quantity * price - fees - taxes
-                             when side in ('withdrawal', 'fee') then -quantity * price - fees - taxes
-                             when side = 'buy' then -quantity * price - fees - taxes
+                             when side in ('withdrawal', 'fee') then -quantity * price
                              else 0
                            end), 0)::float8 as balance
                     from transactions
                     where portfolio_id = :portfolio_id
+                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
                     group by trade_currency
                     order by trade_currency
                     """
@@ -354,6 +351,7 @@ class UtilitiesMixin:
                            trade_currency
                     from transactions
                     where portfolio_id = :portfolio_id
+                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
                     order by trade_at asc, id asc
                     """
                 ),

@@ -410,24 +410,21 @@ class TransactionsMixin:
             trade_ccy = str(row["trade_currency"])
             fx = fx_rate_on_or_before(trade_ccy, trade_day)
             amount_base = qty * price * fx
-            costs_base = (fees + taxes) * fx
 
             if side == "buy":
                 aid = row["asset_id"]
                 if aid is None:
                     continue
                 holdings[int(aid)] += qty
-                cash_balance -= amount_base + costs_base
             elif side == "sell":
                 aid = row["asset_id"]
                 if aid is None:
                     continue
                 holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
-                cash_balance += amount_base - costs_base
             elif side in {"deposit", "dividend", "interest"}:
                 cash_balance += amount_base
             elif side in {"withdrawal", "fee"}:
-                cash_balance -= amount_base + costs_base
+                cash_balance -= amount_base
 
         price_series: dict[int, list[tuple[date, float]]] = defaultdict(list)
         for row in price_rows:
