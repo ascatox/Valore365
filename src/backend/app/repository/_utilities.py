@@ -235,14 +235,15 @@ class UtilitiesMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-            # Compute total from all cash-impacting transactions
+            # Compute net cash per currency from all cash-impacting transactions
             rows = conn.execute(
                 text(
                     """
                     select trade_currency,
                            coalesce(sum(case
-                             when side in ('deposit', 'interest', 'sell', 'dividend') then quantity * price
-                             when side in ('withdrawal', 'fee') then -quantity * price
+                             when side in ('deposit', 'interest', 'dividend') then quantity * price
+                             when side = 'sell' then quantity * price - fees - taxes
+                             when side in ('withdrawal', 'fee') then -quantity * price - fees - taxes
                              when side = 'buy' then -quantity * price - fees - taxes
                              else 0
                            end), 0)::float8 as balance
@@ -260,7 +261,34 @@ class UtilitiesMixin:
                 opening_cash_balance=portfolio.cash_balance,
                 rows=[dict(r) for r in rows],
             )
-            total_cash = round(sum(b.balance for b in breakdown), 2)
+
+            # Convert each currency to base currency using latest FX rates
+            non_base_currencies = sorted(
+                {b.currency for b in breakdown if b.currency != portfolio.base_currency}
+            )
+            fx_latest: dict[str, float] = {}
+            if non_base_currencies:
+                fx_rows = conn.execute(
+                    text(
+                        """
+                        select distinct on (from_ccy) from_ccy, rate::float8 as rate
+                        from fx_rates_1d
+                        where from_ccy = any(:from_ccy) and to_ccy = :to_ccy
+                        order by from_ccy, price_date desc
+                        """
+                    ),
+                    {"from_ccy": non_base_currencies, "to_ccy": portfolio.base_currency},
+                ).mappings().all()
+                for r in fx_rows:
+                    fx_latest[str(r["from_ccy"])] = float(r["rate"])
+
+            total_cash = 0.0
+            for b in breakdown:
+                if b.currency == portfolio.base_currency:
+                    total_cash += b.balance
+                else:
+                    total_cash += b.balance * fx_latest.get(b.currency, 1.0)
+            total_cash = round(total_cash, 2)
 
             # Recent cash movements (last 20)
             recent_rows = conn.execute(

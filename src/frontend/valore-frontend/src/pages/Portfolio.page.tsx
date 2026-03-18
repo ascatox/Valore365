@@ -377,7 +377,6 @@ export function PortfolioPage() {
         formBaseCurrency={s.portfolioFormBaseCurrency} onFormBaseCurrencyChange={s.setPortfolioFormBaseCurrency}
         formTimezone={s.portfolioFormTimezone} onFormTimezoneChange={s.setPortfolioFormTimezone}
         formTargetNotional={s.portfolioFormTargetNotional} onFormTargetNotionalChange={s.setPortfolioFormTargetNotional}
-        formCashBalance={s.portfolioFormCashBalance} onFormCashBalanceChange={s.setPortfolioFormCashBalance}
         saving={s.portfolioSaving} onSave={s.handleSavePortfolio}
       />
 

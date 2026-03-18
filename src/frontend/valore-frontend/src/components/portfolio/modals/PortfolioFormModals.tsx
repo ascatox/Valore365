@@ -27,8 +27,6 @@ interface PortfolioModalProps {
   onFormTimezoneChange: (value: string) => void;
   formTargetNotional: number | string;
   onFormTargetNotionalChange: (value: number | string) => void;
-  formCashBalance: number | string;
-  onFormCashBalanceChange: (value: number | string) => void;
   saving: boolean;
   onSave: () => void;
 }
@@ -46,8 +44,6 @@ export function PortfolioModal({
   onFormTimezoneChange,
   formTargetNotional,
   onFormTargetNotionalChange,
-  formCashBalance,
-  onFormCashBalanceChange,
   saving,
   onSave,
 }: PortfolioModalProps) {
@@ -87,15 +83,6 @@ export function PortfolioModal({
           decimalScale={2}
           placeholder="Es. 100000"
           description="Opzionale. Usato per calcolare il controvalore target per asset dai pesi %."
-        />
-        <NumberInput
-          label={`Saldo iniziale liquidità (${formBaseCurrency || 'EUR'})`}
-          value={formCashBalance}
-          onChange={onFormCashBalanceChange}
-          min={0}
-          decimalScale={2}
-          placeholder="Es. 5000"
-          description="Liquidità già presente nel portfolio all'avvio. I movimenti successivi vanno registrati nella sezione Liquidità."
         />
         <Button onClick={onSave} loading={saving}>
           {mode === 'create' ? 'Crea Portfolio' : 'Salva Modifiche'}

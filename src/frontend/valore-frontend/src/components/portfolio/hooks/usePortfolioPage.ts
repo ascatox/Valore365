@@ -64,7 +64,7 @@ export function usePortfolioPage() {
   const [portfolioFormBaseCurrency, setPortfolioFormBaseCurrency] = useState('EUR');
   const [portfolioFormTimezone, setPortfolioFormTimezone] = useState('Europe/Rome');
   const [portfolioFormTargetNotional, setPortfolioFormTargetNotional] = useState<number | string>('');
-  const [portfolioFormCashBalance, setPortfolioFormCashBalance] = useState<number | string>(0);
+
 
   // --- Transaction state ---
   const [transactions, setTransactions] = useState<TransactionListItem[]>([]);
@@ -332,7 +332,6 @@ export function usePortfolioPage() {
     setPortfolioFormBaseCurrency('EUR');
     setPortfolioFormTimezone('Europe/Rome');
     setPortfolioFormTargetNotional('');
-    setPortfolioFormCashBalance(0);
     setPortfolioFormError(null);
     setPortfolioModalOpened(true);
   };
@@ -344,7 +343,6 @@ export function usePortfolioPage() {
     setPortfolioFormBaseCurrency(selectedPortfolio.base_currency);
     setPortfolioFormTimezone(selectedPortfolio.timezone);
     setPortfolioFormTargetNotional(selectedPortfolio.target_notional ?? '');
-    setPortfolioFormCashBalance(selectedPortfolio.cash_balance ?? 0);
     setPortfolioFormError(null);
     setPortfolioModalOpened(true);
   };
@@ -394,21 +392,16 @@ export function usePortfolioPage() {
     if (normalizedTargetNotional !== null && (!Number.isFinite(normalizedTargetNotional) || normalizedTargetNotional < 0)) {
       setPortfolioFormError('Controvalore target non valido'); return;
     }
-    const normalizedCashBalance = portfolioFormCashBalance === '' ? 0 : Number(portfolioFormCashBalance);
-    if (!Number.isFinite(normalizedCashBalance) || normalizedCashBalance < 0) {
-      setPortfolioFormError('Cash disponibile non valido'); return;
-    }
-
     try {
       setPortfolioSaving(true);
       if (portfolioModalMode === 'create') {
-        const created = await createPortfolio({ name, base_currency: baseCurrency, timezone, target_notional: normalizedTargetNotional, cash_balance: normalizedCashBalance });
+        const created = await createPortfolio({ name, base_currency: baseCurrency, timezone, target_notional: normalizedTargetNotional });
         await loadPortfolios(String(created.id));
         setFormSuccess(`Portfolio "${created.name}" creato`);
       } else {
         const portfolioId = Number(selectedPortfolioId);
         if (!Number.isFinite(portfolioId)) { setPortfolioFormError('Seleziona un portfolio valido'); return; }
-        const updated = await updatePortfolio(portfolioId, { name, base_currency: baseCurrency, timezone, target_notional: normalizedTargetNotional, cash_balance: normalizedCashBalance });
+        const updated = await updatePortfolio(portfolioId, { name, base_currency: baseCurrency, timezone, target_notional: normalizedTargetNotional });
         await loadPortfolios(String(updated.id));
         setFormSuccess(`Portfolio "${updated.name}" aggiornato`);
       }
@@ -532,7 +525,6 @@ export function usePortfolioPage() {
     portfolioFormBaseCurrency, setPortfolioFormBaseCurrency,
     portfolioFormTimezone, setPortfolioFormTimezone,
     portfolioFormTargetNotional, setPortfolioFormTargetNotional,
-    portfolioFormCashBalance, setPortfolioFormCashBalance,
     portfolioSaving, handleSavePortfolio, openCreatePortfolioModal, openEditPortfolioModal,
     // Clone
     portfolioCloneOpened, setPortfolioCloneOpened,

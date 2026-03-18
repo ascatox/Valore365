@@ -170,9 +170,8 @@ class SummaryMixin:
                 day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
 
-            denominator = previous_market_value + current_cash_balance
-            if denominator > 0:
-                day_change_pct = (day_change / denominator) * 100.0
+            if previous_market_value > 0:
+                day_change_pct = (day_change / previous_market_value) * 100.0
 
         return PortfolioSummary(
             portfolio_id=portfolio_id,
@@ -302,7 +301,7 @@ class SummaryMixin:
             for bar in bars:
                 price_lookup[aid][bar.ts] = bar.close
 
-        cash = portfolio.cash_balance
+        cash = self.get_current_cash_balance_value(portfolio_id, user_id)
         points: list[IntradayTimeseriesPoint] = []
 
         for ts in sorted_ts:
