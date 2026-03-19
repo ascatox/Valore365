@@ -14,7 +14,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconCopy, IconFileImport, IconCoins, IconSettings2, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/modals/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/modals/TargetAllocationCsvImportModal.tsx';
@@ -23,7 +23,7 @@ import { PacSection } from '../components/portfolio/sections/PacSection.tsx';
 import { MobileActionSheet } from '../components/mobile/MobileActionSheet.tsx';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
-import { TargetAllocationSection } from '../components/portfolio/sections/TargetAllocationSection.tsx';
+
 import { TransactionsSection } from '../components/portfolio/sections/TransactionsSection.tsx';
 
 import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel, getTransactionSideColor } from '../components/dashboard/formatters';
@@ -49,50 +49,6 @@ export function PortfolioPage() {
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
-
-  // --- Allocation table rows ---
-  const allocationRows = s.allocations.map((item) => (
-    <Table.Tr key={item.asset_id}>
-      <Table.Td>
-        <Text fw={500}>{item.symbol}</Text>
-        <Text size="xs" c="dimmed">{item.name}</Text>
-      </Table.Td>
-      <Table.Td style={{ textAlign: 'right' }}>{formatNum(item.weight_pct)}%</Table.Td>
-      <Table.Td style={{ textAlign: 'right' }}>
-        {s.portfolioTargetNotional != null
-          ? formatMoneyOrNA((s.portfolioTargetNotional * item.weight_pct) / 100, s.selectedPortfolio?.base_currency)
-          : 'N/D'}
-      </Table.Td>
-      {!s.isMobile && (
-        <Table.Td style={{ textAlign: 'right' }}>
-          <ActionIcon color="red" variant="light" onClick={() => s.handleDeleteAllocation(item.asset_id)} aria-label={`Rimuovi ${item.symbol}`}>
-            <IconTrash size={16} />
-          </ActionIcon>
-        </Table.Td>
-      )}
-    </Table.Tr>
-  ));
-
-  const allocationMobileCards = s.allocations.map((item) => {
-    const targetValue = s.portfolioTargetNotional != null
-      ? formatMoneyOrNA((s.portfolioTargetNotional * item.weight_pct) / 100, s.selectedPortfolio?.base_currency)
-      : 'N/D';
-    return (
-      <Card key={`allocation-mobile-${item.asset_id}`} withBorder>
-        <Group justify="space-between" align="flex-start" wrap="nowrap">
-          <div>
-            <Text fw={600}>{item.symbol}</Text>
-            <Text size="xs" c="dimmed">{item.name}</Text>
-          </div>
-          <Text fw={700}>{formatNum(item.weight_pct)}%</Text>
-        </Group>
-        <Group justify="space-between" mt="sm" gap="xs">
-          <Text size="sm" c="dimmed">Controvalore target</Text>
-          <Text size="sm" fw={600}>{targetValue}</Text>
-        </Group>
-      </Card>
-    );
-  });
 
   // --- Transaction table rows ---
   const transactionRows = s.sortedTransactions.map((tx) => {
@@ -218,7 +174,7 @@ export function PortfolioPage() {
     );
   }
 
-  const mobileTabItems = [{ value: 'target', label: 'Target', icon: IconTarget }];
+  const mobileTabItems: { value: string; label: string; icon: typeof IconTarget }[] = [];
 
   return (
     <>
@@ -267,9 +223,6 @@ export function PortfolioPage() {
               <Tabs.Tab value="transactions" leftSection={<IconArrowsExchange size={16} />}>
                 <Text span>Transazioni</Text>
               </Tabs.Tab>
-              <Tabs.Tab value="target" leftSection={<IconTarget size={16} />}>
-                <Text span>Allocazione target</Text>
-              </Tabs.Tab>
               <Tabs.Tab value="cash" leftSection={<IconWallet size={16} />}>
                 <Text span>Liquidità</Text>
               </Tabs.Tab>
@@ -289,11 +242,6 @@ export function PortfolioPage() {
             </Button>
           </Group>
         )}
-        {s.portfolioView === 'target' && !s.isMobile && (
-          <Button variant="light" leftSection={<IconTarget size={16} />} onClick={s.rebalance.openPreviewModal} disabled={!s.selectedPortfolioId}>
-            Genera da target
-          </Button>
-        )}
         {s.portfolioView === 'pac' && !s.isMobile && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); }} disabled={!s.selectedPortfolioId}>
             Nuova regola PAC
@@ -309,22 +257,6 @@ export function PortfolioPage() {
         <PortfolioEmptyState
           onCreatePortfolio={s.openCreatePortfolioModal}
           onImportFromFile={() => s.setCsvImportOpened(true)}
-        />
-      )}
-
-      {s.portfolioView === 'target' && (
-        <TargetAllocationSection
-          allocationsCount={s.allocations.length}
-          totalWeight={s.totalWeight}
-          portfolioTargetNotionalLabel={formatMoneyOrNA(s.portfolioTargetNotional, s.selectedPortfolio?.base_currency)}
-          assignedTargetValueLabel={s.assignedTargetValue != null ? formatMoneyOrNA(s.assignedTargetValue, s.selectedPortfolio?.base_currency) : null}
-          selectedPortfolioId={s.selectedPortfolioId}
-          rows={allocationRows}
-          mobileCards={allocationMobileCards}
-          hasRows={s.allocations.length > 0}
-          onOpenAddAssetWeight={() => s.setDrawerOpened(true)}
-          onOpenCsvImport={() => s.setTargetCsvImportOpened(true)}
-          showActions={!s.isMobile}
         />
       )}
 
@@ -367,11 +299,7 @@ export function PortfolioPage() {
           items={mobileTabItems}
           value={s.portfolioView === 'target' ? 'target' : null}
           bottomOffset={86}
-          onChange={(value) => {
-            if (value === 'target') {
-              s.setPortfolioView((current) => (current === 'target' ? 'transactions' : 'target'));
-            }
-          }}
+          onChange={() => {}}
         />
       )}
 
@@ -384,15 +312,13 @@ export function PortfolioPage() {
           bottomOffset={12}
           badge={s.selectedPortfolio ? s.selectedPortfolio.name : 'Seleziona portafoglio'}
           primaryAction={{
-            label: s.portfolioView === 'target' ? 'Aggiungi asset' : s.portfolioView === 'pac' ? 'Nuova regola PAC' : 'Nuova transazione',
-            onClick: s.portfolioView === 'target' ? () => s.setDrawerOpened(true) : s.portfolioView === 'pac' ? () => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); } : () => s.setTransactionDrawerOpened(true),
+            label: s.portfolioView === 'pac' ? 'Nuova regola PAC' : 'Nuova transazione',
+            onClick: s.portfolioView === 'pac' ? () => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); } : () => s.setTransactionDrawerOpened(true),
             disabled: !s.selectedPortfolioId,
           }}
           items={[
             { label: 'Nuova transazione', description: 'Apri il drawer rapido per acquisti e vendite', icon: IconArrowsExchange, onClick: () => s.setTransactionDrawerOpened(true), disabled: !s.selectedPortfolioId },
             { label: 'Importa', description: 'Carica movimenti o storico dal file broker', icon: IconFileImport, onClick: () => s.setCsvImportOpened(true), disabled: s.portfolioView !== 'transactions' },
-            { label: 'Aggiungi asset target', description: 'Inserisci un nuovo peso target nel portafoglio', icon: IconTarget, onClick: () => s.setDrawerOpened(true), disabled: !s.selectedPortfolioId || s.portfolioView !== 'target' },
-            { label: 'Genera da target', description: 'Preview di ribilanciamento disponibile su desktop', icon: IconChartArrows, onClick: () => s.setFormSuccess('La preview di ribilanciamento e disponibile solo su desktop'), disabled: !s.selectedPortfolioId || s.portfolioView !== 'target' },
             { label: 'Nuovo portfolio', description: 'Crea un nuovo contenitore con valuta e cash dedicati', icon: IconPlus, onClick: s.openCreatePortfolioModal },
             { label: 'Clona portfolio', description: 'Duplica impostazioni e target allocation', icon: IconCopy, onClick: s.openClonePortfolioModal, disabled: !s.selectedPortfolioId },
             { label: 'Liquidità', description: 'Gestisci la liquidità del portafoglio', icon: IconWallet, onClick: () => { s.setPortfolioView('cash'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
