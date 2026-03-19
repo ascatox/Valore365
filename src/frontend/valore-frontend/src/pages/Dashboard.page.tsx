@@ -110,7 +110,7 @@ export function DashboardPage() {
       try {
         const refreshResult = await refreshPortfolioPrices(portfolioId, 'transactions');
         const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'transactions');
-        await queryClient.invalidateQueries();
+        await queryClient.invalidateQueries({ refetchType: 'all' });
         setRefreshMessage(
           `Aggiornati prezzi: ${refreshResult.refreshed_assets}/${refreshResult.requested_assets}, storico: ${backfillResult.assets_refreshed}/${backfillResult.assets_requested}`,
         );
