@@ -14,7 +14,7 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
+import { IconArrowsHorizontal, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
 
@@ -142,6 +142,7 @@ export function CopilotChat({
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [expanded, setExpanded] = useState(false);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -354,12 +355,23 @@ export function CopilotChat({
       opened={opened}
       onClose={onClose}
       position="right"
-      size={isMobile ? '100%' : 'lg'}
+      size={isMobile ? '100%' : expanded ? '50%' : 'lg'}
       title={
         <Group gap="xs">
           <IconRobot size={20} />
           <Text fw={700}>{title}</Text>
           <Badge size="xs" variant="light" color="teal">AI</Badge>
+          {!isMobile && (
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={() => setExpanded((v) => !v)}
+              title={expanded ? 'Riduci' : 'Espandi'}
+            >
+              <IconArrowsHorizontal size={16} />
+            </ActionIcon>
+          )}
         </Group>
       }
       styles={{
