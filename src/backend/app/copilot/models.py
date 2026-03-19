@@ -14,3 +14,4 @@ class CopilotChatRequest(BaseModel):
     portfolio_id: int
     portfolio_ids: list[int] | None = None
     messages: list[CopilotMessage]
+    page_context: str | None = None

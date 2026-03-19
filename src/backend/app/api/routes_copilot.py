@@ -21,6 +21,8 @@ def register_copilot_routes(
     repo: PortfolioRepository,
     settings: object,
     performance_service: object,
+    finance_client: object = None,
+    justetf_client: object = None,
 ) -> None:
 
     @router.get("/copilot/status")
@@ -74,6 +76,9 @@ def register_copilot_routes(
             generator = stream_copilot_response_agentic(
                 config, snapshot, payload.messages,
                 repo, performance_service, payload.portfolio_id, _auth.user_id,
+                finance_client=finance_client,
+                justetf_client=justetf_client,
+                page_context=payload.page_context,
             )
         else:
             # Fallback for local providers without tool calling

@@ -249,6 +249,6 @@ register_markets_routes(router, repo, finance_client=finance_client)
 register_cash_routes(router, repo)
 register_csv_routes(router, repo, settings=settings, csv_import_service=csv_import_service)
 register_pac_routes(router, repo, engine=engine)
-register_copilot_routes(router, repo, settings=settings, performance_service=performance_service)
+register_copilot_routes(router, repo, settings=settings, performance_service=performance_service, finance_client=finance_client, justetf_client=justetf_client)
 
 app.include_router(router, prefix="/api")

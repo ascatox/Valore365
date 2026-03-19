@@ -32,8 +32,8 @@ logger = logging.getLogger(__name__)
 # Agentic constants
 # ---------------------------------------------------------------------------
 
-MAX_TOOL_ROUNDS = 3
-AGENTIC_TIMEOUT_S = 90
+MAX_TOOL_ROUNDS = 5
+AGENTIC_TIMEOUT_S = 120
 
 # ---------------------------------------------------------------------------
 # System prompts (loaded once at import time)
@@ -101,6 +101,51 @@ def stream_copilot_response(
 
 
 # ---------------------------------------------------------------------------
+# Page-context hints for agentic mode
+# ---------------------------------------------------------------------------
+
+_PAGE_CONTEXT_HINTS: dict[str, str] = {
+    "dashboard": (
+        "L'utente sta guardando la Dashboard. Concentrati su: panoramica generale, "
+        "variazione giornaliera, migliori/peggiori performer, e suggerimenti rapidi."
+    ),
+    "portfolio": (
+        "L'utente sta guardando il dettaglio Portafoglio. Concentrati su: posizioni, "
+        "pesi, drift dal target, ribilanciamento, e analisi singole posizioni."
+    ),
+    "doctor": (
+        "L'utente sta guardando il Portfolio Doctor. Concentrati su: salute del portafoglio, "
+        "diversificazione, costi (TER), overlap, rischio, e suggerimenti di miglioramento. "
+        "Usa get_portfolio_health, get_cost_breakdown, get_stress_test per dati specifici."
+    ),
+    "fire": (
+        "L'utente sta guardando la sezione FIRE. Concentrati su: proiezioni a lungo termine, "
+        "reddito passivo, dividendi, tasso di prelievo sicuro, e tempo al FIRE. "
+        "Usa get_income_projection, get_monte_carlo, get_dividend_summary."
+    ),
+    "xray": (
+        "L'utente sta guardando l'X-Ray del portafoglio. Concentrati su: esposizione "
+        "sottostante, diversificazione geografica/settoriale, concentrazione su singoli titoli. "
+        "Usa get_xray_summary per dati dettagliati."
+    ),
+    "transactions": (
+        "L'utente sta guardando le Transazioni. Concentrati su: cronologia operazioni, "
+        "dividendi ricevuti, costi di transazione. Usa get_recent_transactions, get_dividend_summary."
+    ),
+}
+
+
+def _build_page_context_block(page_context: str | None) -> str:
+    """Build a context hint block for the system prompt based on the current page."""
+    if not page_context:
+        return ""
+    hint = _PAGE_CONTEXT_HINTS.get(page_context, "")
+    if not hint:
+        return ""
+    return f"\n\n--- CONTESTO PAGINA ---\n{hint}\n--- FINE CONTESTO PAGINA ---"
+
+
+# ---------------------------------------------------------------------------
 # Agentic streaming (Fase 2) -- tool calling loop
 # ---------------------------------------------------------------------------
 
@@ -112,10 +157,15 @@ def stream_copilot_response_agentic(
     perf_service: PerformanceService,
     portfolio_id: int,
     user_id: str,
+    *,
+    finance_client: object | None = None,
+    justetf_client: object | None = None,
+    page_context: str | None = None,
 ) -> Generator[str, None, None]:
     """Stream LLM response with tool-calling loop. Max MAX_TOOL_ROUNDS rounds."""
     system_prompt = SYSTEM_PROMPT_AGENTIC.format(
-        context=json.dumps(snapshot, ensure_ascii=False, indent=2)
+        context=json.dumps(snapshot, ensure_ascii=False, indent=2),
+        page_context_block=_build_page_context_block(page_context),
     )
     provider = config.provider
     tools = format_tools_for_provider(provider)
@@ -150,6 +200,8 @@ def stream_copilot_response_agentic(
                     result = execute_tool(
                         tc["name"], tc["args"],
                         repo, perf_service, portfolio_id, user_id,
+                        finance_client=finance_client,
+                        justetf_client=justetf_client,
                     )
                     tool_result_msg = _build_tool_result_message(provider, tc["id"], tc["name"], result)
                     conv_messages.append(tool_result_msg)

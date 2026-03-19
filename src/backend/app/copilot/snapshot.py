@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from ..services.performance_service import PerformanceService
 from ..repository import PortfolioRepository
-from ..services.portfolio_doctor import analyze_portfolio_health, run_monte_carlo_projection
+from ..services.portfolio_doctor import analyze_portfolio_health, compute_weighted_ter, run_monte_carlo_projection
+from ..services.portfolio_doctor._holdings import _load_holdings
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,16 @@ def build_portfolio_snapshot_light(
         }
         for p in sorted_pos
     ]
+
+    # Enrichment: position count and weighted TER
+    snapshot["portfolio"]["total_positions"] = len(positions)
+    try:
+        holdings = _load_holdings(repo, portfolio_id, user_id)
+        wter = compute_weighted_ter(holdings, repo)
+        if wter is not None:
+            snapshot["portfolio"]["weighted_ter_pct"] = round(wter, 3)
+    except Exception:
+        pass
 
     # Target drift (if targets exist)
     try:

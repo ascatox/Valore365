@@ -444,7 +444,7 @@ export function PortfolioPage() {
         </ActionIcon>
       )}
 
-      <CopilotChat opened={s.copilotOpened} onClose={s.closeCopilot} portfolioId={portfolioId} />
+      <CopilotChat opened={s.copilotOpened} onClose={s.closeCopilot} portfolioId={portfolioId} pageContext="portfolio" />
 
       {assetInfoModal && (
         <AssetInfoModal

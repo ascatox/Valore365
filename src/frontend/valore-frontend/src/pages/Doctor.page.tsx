@@ -498,6 +498,7 @@ export function DoctorPage() {
         title="Doctor Copilot"
         quickPrompts={doctorQuickPrompts}
         emptyStateDescription="Interpreto il referto Doctor, spiego rischi e priorita operative del portafoglio."
+        pageContext="doctor"
       />
     </PageLayout>
   );

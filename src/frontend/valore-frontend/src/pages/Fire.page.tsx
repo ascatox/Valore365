@@ -1269,6 +1269,7 @@ export function FirePage() {
         title="FIRE Copilot"
         quickPrompts={fireQuickPrompts}
         emptyStateDescription="Ti aiuto a capire il tuo percorso verso l'indipendenza finanziaria. Ecco qualche spunto:"
+        pageContext="fire"
       />
     </PageLayout>
   );

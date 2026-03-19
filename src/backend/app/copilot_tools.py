@@ -12,7 +12,13 @@ from typing import Any
 
 from .services.performance_service import PerformanceService
 from .repository import PortfolioRepository
-from .services.portfolio_doctor import analyze_portfolio_health, run_monte_carlo_projection
+from .services.portfolio_doctor import (
+    analyze_portfolio_health,
+    compute_weighted_ter,
+    run_monte_carlo_projection,
+    run_stress_test,
+)
+from .services.portfolio_doctor._holdings import _load_holdings
 
 logger = logging.getLogger(__name__)
 
@@ -232,6 +238,76 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["symbol"],
         },
     },
+    # --- T14: Dividend summary ---
+    {
+        "name": "get_dividend_summary",
+        "description": (
+            "Ottieni un riepilogo dei dividendi del portafoglio: dividendi ricevuti "
+            "(totale storico e ultimi 12 mesi), dividend yield atteso del portafoglio, "
+            "e proiezione del reddito annuo da dividendi."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    # --- T15: Cost breakdown ---
+    {
+        "name": "get_cost_breakdown",
+        "description": (
+            "Ottieni l'analisi dettagliata dei costi del portafoglio: TER per ogni "
+            "posizione, TER ponderato totale, costo annuo stimato in EUR e fee drag "
+            "proiettato a 10 anni. Utile per capire quanto costano gli ETF/fondi."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    # --- T16: X-Ray summary ---
+    {
+        "name": "get_xray_summary",
+        "description": (
+            "Ottieni l'X-Ray del portafoglio: titoli sottostanti aggregati degli ETF, "
+            "esposizione geografica e settoriale, concentrazione su singoli titoli. "
+            "Utile per capire cosa si possiede realmente attraverso gli ETF."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    # --- T17: Stress test ---
+    {
+        "name": "get_stress_test",
+        "description": (
+            "Ottieni lo stress test del portafoglio: impatto stimato di scenari storici "
+            "(crisi 2008, COVID, dot-com, ecc.) e shock di mercato. Mostra il drawdown "
+            "stimato per ogni scenario e il livello di rischio."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
+    # --- T18: Income projection ---
+    {
+        "name": "get_income_projection",
+        "description": (
+            "Ottieni la proiezione del reddito da investimenti a 1, 3 e 5 anni. "
+            "Considera dividendi attesi, crescita stimata e tassazione (capital gains tax). "
+            "Utile per pianificazione FIRE e reddito passivo."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+        },
+    },
 ]
 
 
@@ -275,13 +351,19 @@ def execute_tool(
     perf_service: PerformanceService,
     portfolio_id: int,
     user_id: str,
+    *,
+    finance_client: object | None = None,
+    justetf_client: object | None = None,
 ) -> dict:
     """Execute a tool by name and return a JSON-serializable dict."""
     try:
         handler = _TOOL_HANDLERS.get(tool_name)
         if handler is None:
             return {"error": f"Tool sconosciuto: {tool_name}"}
-        return handler(tool_args, repo, perf_service, portfolio_id, user_id)
+        return handler(
+            tool_args, repo, perf_service, portfolio_id, user_id,
+            finance_client=finance_client, justetf_client=justetf_client,
+        )
     except Exception as exc:
         logger.exception("Tool execution error: %s", tool_name)
         return {"error": f"Errore nell'esecuzione del tool {tool_name}: {str(exc)}"}
@@ -293,7 +375,7 @@ def execute_tool(
 
 def _get_portfolio_summary(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     summary = repo.get_summary(portfolio_id, user_id)
     return {
@@ -310,7 +392,7 @@ def _get_portfolio_summary(
 
 def _get_positions(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     positions = repo.get_positions(portfolio_id, user_id)
     sorted_pos = sorted(positions, key=lambda p: p.weight, reverse=True)[:30]
@@ -334,7 +416,7 @@ def _get_positions(
 
 def _get_target_drift(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     allocation = repo.get_allocation(portfolio_id, user_id)
     alloc_map = {a.asset_id: a.weight_pct for a in allocation}
@@ -368,7 +450,7 @@ def _get_target_drift(
 
 def _get_performance(
     _args: dict, _repo: PortfolioRepository, perf_service: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     result = {}
     for period in ("1m", "3m", "ytd", "1y"):
@@ -382,7 +464,7 @@ def _get_performance(
 
 def _get_cash_balance(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     summary = repo.get_summary(portfolio_id, user_id)
     return {
@@ -393,7 +475,7 @@ def _get_cash_balance(
 
 def _get_recent_transactions(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     txns = repo.list_transactions(portfolio_id, user_id)[:20]
     return {
@@ -416,7 +498,7 @@ def _get_recent_transactions(
 
 def _get_portfolio_health(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     doctor = analyze_portfolio_health(repo, portfolio_id, user_id)
     return {
@@ -447,7 +529,7 @@ def _get_portfolio_health(
 
 def _get_day_movers(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     try:
         target_perf = repo.get_portfolio_target_performance(portfolio_id, user_id)
@@ -482,7 +564,7 @@ def _get_day_movers(
 
 def _get_monte_carlo(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     mc = run_monte_carlo_projection(repo, portfolio_id, user_id)
     return {
@@ -502,7 +584,7 @@ def _get_monte_carlo(
 
 def _calculate_rebalance_orders(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     """T10: Calculate buy/sell orders to realign portfolio to target."""
     summary = repo.get_summary(portfolio_id, user_id)
@@ -576,7 +658,7 @@ def _calculate_rebalance_orders(
 
 def _calculate_what_if(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     """T11: Simulate buy/sell impact on portfolio weights."""
     action = args.get("action", "buy")
@@ -655,7 +737,7 @@ def _calculate_what_if(
 
 def _calculate_pac_contribution(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    portfolio_id: int, user_id: str,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     """T12: Distribute a monthly PAC amount across assets to approach target."""
     monthly_amount = args.get("monthly_amount", 0)
@@ -749,7 +831,7 @@ def _calculate_pac_contribution(
 
 def _search_asset_info(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    _portfolio_id: int, _user_id: str,
+    _portfolio_id: int, _user_id: str, **_kw: Any,
 ) -> dict:
     """T13: Search asset info by symbol — returns rich metadata from DB."""
     symbol = args.get("symbol", "")
@@ -798,6 +880,307 @@ def _search_asset_info(
 
 
 # ---------------------------------------------------------------------------
+# T14-T18: Advanced analytical tool handlers
+# ---------------------------------------------------------------------------
+
+def _get_dividend_summary(
+    _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
+    portfolio_id: int, user_id: str, **_kw: Any,
+) -> dict:
+    """T14: Dividend analysis — received dividends, yield, income projection."""
+    from datetime import date, timedelta
+
+    # 1. Aggregate received dividends from transactions
+    txns = repo.list_transactions(portfolio_id, user_id)
+    dividend_txns = [t for t in txns if t.side == "dividend"]
+
+    total_dividends = sum(float(t.quantity) * float(t.price) for t in dividend_txns)
+
+    # Last 12 months
+    one_year_ago = date.today() - timedelta(days=365)
+    recent_divs = [
+        t for t in dividend_txns
+        if t.trade_at and t.trade_at.date() >= one_year_ago
+    ]
+    dividends_last_12m = sum(float(t.quantity) * float(t.price) for t in recent_divs)
+
+    # 2. Expected yield from metadata
+    positions = repo.get_positions(portfolio_id, user_id)
+    summary = repo.get_summary(portfolio_id, user_id)
+    total_mv = summary.market_value
+
+    weighted_yield = 0.0
+    position_yields: list[dict] = []
+    for p in positions:
+        try:
+            asset = repo.get_asset_by_symbol(p.symbol)
+            if not asset:
+                continue
+            meta = repo.get_asset_metadata(asset["id"])
+            if meta and meta.dividend_yield:
+                dy = float(meta.dividend_yield)
+                weighted_yield += dy * (p.weight / 100.0)
+                annual_income = p.market_value * dy / 100.0
+                position_yields.append({
+                    "symbol": p.symbol,
+                    "dividend_yield_pct": round(dy, 2),
+                    "annual_income_eur": round(annual_income, 2),
+                })
+        except Exception:
+            continue
+
+    # Sort by income descending, top 10
+    position_yields.sort(key=lambda x: x["annual_income_eur"], reverse=True)
+
+    projected_annual_income = total_mv * weighted_yield / 100.0
+
+    return {
+        "total_dividends_received": round(total_dividends, 2),
+        "dividends_last_12m": round(dividends_last_12m, 2),
+        "dividend_transactions_count": len(dividend_txns),
+        "portfolio_weighted_yield_pct": round(weighted_yield, 2),
+        "projected_annual_income_eur": round(projected_annual_income, 2),
+        "projected_monthly_income_eur": round(projected_annual_income / 12, 2),
+        "top_yielding_positions": position_yields[:10],
+    }
+
+
+def _get_cost_breakdown(
+    _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
+    portfolio_id: int, user_id: str, **_kw: Any,
+) -> dict:
+    """T15: Detailed cost/TER analysis."""
+    positions = repo.get_positions(portfolio_id, user_id)
+    summary = repo.get_summary(portfolio_id, user_id)
+    total_mv = summary.market_value
+
+    holdings = _load_holdings(repo, portfolio_id, user_id)
+    weighted_ter = compute_weighted_ter(holdings, repo)
+
+    # Per-position TER
+    position_costs: list[dict] = []
+    for p in positions:
+        ter = None
+        try:
+            asset = repo.get_asset_by_symbol(p.symbol)
+            if asset:
+                # Try etf_enrichment first
+                try:
+                    enrichment = repo.get_etf_enrichment(asset["id"])
+                    if enrichment and enrichment.get("ter") is not None:
+                        ter = float(enrichment["ter"])
+                except Exception:
+                    pass
+                # Fallback to asset_metadata
+                if ter is None:
+                    meta = repo.get_asset_metadata(asset["id"])
+                    if meta and meta.expense_ratio is not None:
+                        ter = float(meta.expense_ratio)
+        except Exception:
+            pass
+
+        annual_cost = p.market_value * (ter / 100.0) if ter is not None else None
+        position_costs.append({
+            "symbol": p.symbol,
+            "name": p.name,
+            "weight_pct": round(p.weight, 2),
+            "market_value": round(p.market_value, 2),
+            "ter_pct": round(ter, 3) if ter is not None else None,
+            "annual_cost_eur": round(annual_cost, 2) if annual_cost is not None else None,
+        })
+
+    # Sort by annual cost descending
+    position_costs.sort(
+        key=lambda x: x["annual_cost_eur"] if x["annual_cost_eur"] is not None else 0,
+        reverse=True,
+    )
+
+    total_annual_cost = sum(
+        c["annual_cost_eur"] for c in position_costs if c["annual_cost_eur"] is not None
+    )
+
+    # Fee drag projection: compound effect over 10 years
+    # Simplified: cumulative cost assuming constant portfolio value
+    fee_drag_10y = total_annual_cost * 10 if total_annual_cost else None
+    # More accurate compound drag: value lost vs no-fee scenario
+    if weighted_ter is not None and total_mv > 0:
+        ter_decimal = weighted_ter / 100.0
+        fee_drag_10y_compound = total_mv * (1 - (1 - ter_decimal) ** 10)
+    else:
+        fee_drag_10y_compound = None
+
+    return {
+        "weighted_ter_pct": round(weighted_ter, 3) if weighted_ter is not None else None,
+        "total_annual_cost_eur": round(total_annual_cost, 2),
+        "fee_drag_10y_eur": round(fee_drag_10y_compound, 2) if fee_drag_10y_compound is not None else None,
+        "portfolio_market_value": round(total_mv, 2),
+        "position_costs": position_costs[:20],
+    }
+
+
+def _get_xray_summary(
+    _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
+    portfolio_id: int, user_id: str, **kw: Any,
+) -> dict:
+    """T16: Portfolio X-Ray — underlying holdings, geographic/sector exposure."""
+    from .services.portfolio_doctor import compute_portfolio_xray
+
+    finance_client = kw.get("finance_client")
+    justetf_client = kw.get("justetf_client")
+
+    if not finance_client:
+        return {"error": "X-Ray non disponibile: finance client non configurato."}
+
+    xray = compute_portfolio_xray(
+        repo, portfolio_id, user_id, finance_client, justetf_client,
+    )
+
+    # Top aggregated holdings (underlying stocks across ETFs)
+    top_holdings = [
+        {
+            "symbol": h.symbol,
+            "name": h.name,
+            "aggregated_weight_pct": round(h.aggregated_weight_pct, 2),
+        }
+        for h in xray.aggregated_holdings[:15]
+    ]
+
+    # Geographic exposure
+    geo = {k: round(v, 2) for k, v in xray.aggregated_country_exposure.items()}
+    # Sort by weight descending, top 10
+    geo_sorted = dict(sorted(geo.items(), key=lambda x: x[1], reverse=True)[:10])
+
+    # Sector exposure
+    sectors = {k: round(v, 2) for k, v in xray.aggregated_sector_exposure.items()}
+    sectors_sorted = dict(sorted(sectors.items(), key=lambda x: x[1], reverse=True)[:10])
+
+    return {
+        "etf_count": xray.etf_count,
+        "coverage_pct": round(xray.coverage_pct, 1),
+        "top_underlying_holdings": top_holdings,
+        "geographic_exposure": geo_sorted,
+        "sector_exposure": sectors_sorted,
+        "coverage_issues": [
+            {"symbol": ci.symbol, "reason": ci.reason}
+            for ci in xray.coverage_issues[:5]
+        ],
+    }
+
+
+def _get_stress_test(
+    _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
+    portfolio_id: int, user_id: str, **_kw: Any,
+) -> dict:
+    """T17: Stress test — historical and shock scenarios."""
+    result = run_stress_test(repo, portfolio_id, user_id)
+
+    scenarios = []
+    for s in result.scenarios:
+        scenario_data: dict = {
+            "scenario_name": s.scenario_name,
+            "scenario_type": s.scenario_type,
+            "period": s.period,
+            "estimated_portfolio_impact_pct": round(s.estimated_portfolio_impact_pct, 2),
+            "risk_level": s.risk_level,
+        }
+        if s.max_drawdown_pct is not None:
+            scenario_data["max_drawdown_pct"] = round(s.max_drawdown_pct, 2)
+        if s.recovery_months is not None:
+            scenario_data["recovery_months"] = s.recovery_months
+        if s.most_impacted_assets:
+            scenario_data["most_impacted"] = [
+                {"symbol": a.symbol, "loss_pct": round(a.estimated_loss_pct, 2)}
+                for a in s.most_impacted_assets[:3]
+            ]
+        scenarios.append(scenario_data)
+
+    # Sort by impact (most negative first)
+    scenarios.sort(key=lambda s: s["estimated_portfolio_impact_pct"])
+
+    return {
+        "analysis_date": result.analysis_date,
+        "portfolio_volatility_pct": (
+            round(result.portfolio_volatility_pct, 2)
+            if result.portfolio_volatility_pct is not None else None
+        ),
+        "scenarios": scenarios[:10],
+    }
+
+
+def _get_income_projection(
+    _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
+    portfolio_id: int, user_id: str, **_kw: Any,
+) -> dict:
+    """T18: Income projection — dividends at 1, 3, 5 years with growth and tax."""
+    positions = repo.get_positions(portfolio_id, user_id)
+    summary = repo.get_summary(portfolio_id, user_id)
+    total_mv = summary.market_value
+
+    # Get tax rate from user settings
+    tax_rate = 26.0  # Default Italian capital gains tax
+    try:
+        user_settings = repo.get_user_settings(user_id)
+        if user_settings.fire_capital_gains_tax_rate:
+            tax_rate = float(user_settings.fire_capital_gains_tax_rate)
+    except Exception:
+        pass
+
+    # Gather dividend yields
+    total_annual_dividends = 0.0
+    for p in positions:
+        try:
+            asset = repo.get_asset_by_symbol(p.symbol)
+            if not asset:
+                continue
+            meta = repo.get_asset_metadata(asset["id"])
+            if meta and meta.dividend_yield:
+                dy = float(meta.dividend_yield) / 100.0
+                total_annual_dividends += p.market_value * dy
+        except Exception:
+            continue
+
+    # Assumed dividend growth rate (conservative estimate)
+    dividend_growth_rate = 0.03  # 3% annual dividend growth
+
+    projections = []
+    for years in (1, 3, 5):
+        # Project dividends with growth
+        gross_income = 0.0
+        for y in range(1, years + 1):
+            gross_income += total_annual_dividends * (1 + dividend_growth_rate) ** y
+
+        net_income = gross_income * (1 - tax_rate / 100.0)
+        avg_annual_gross = gross_income / years
+        avg_annual_net = net_income / years
+
+        projections.append({
+            "years": years,
+            "cumulative_gross_eur": round(gross_income, 2),
+            "cumulative_net_eur": round(net_income, 2),
+            "avg_annual_gross_eur": round(avg_annual_gross, 2),
+            "avg_annual_net_eur": round(avg_annual_net, 2),
+        })
+
+    yield_on_cost = 0.0
+    if summary.cost_basis > 0:
+        yield_on_cost = total_annual_dividends / summary.cost_basis * 100
+
+    return {
+        "current_annual_dividends_gross_eur": round(total_annual_dividends, 2),
+        "current_annual_dividends_net_eur": round(
+            total_annual_dividends * (1 - tax_rate / 100.0), 2,
+        ),
+        "current_monthly_net_eur": round(
+            total_annual_dividends * (1 - tax_rate / 100.0) / 12, 2,
+        ),
+        "tax_rate_pct": tax_rate,
+        "dividend_growth_assumption_pct": round(dividend_growth_rate * 100, 1),
+        "yield_on_cost_pct": round(yield_on_cost, 2),
+        "projections": projections,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Handler registry
 # ---------------------------------------------------------------------------
 
@@ -815,4 +1198,9 @@ _TOOL_HANDLERS = {
     "calculate_what_if": _calculate_what_if,
     "calculate_pac_contribution": _calculate_pac_contribution,
     "search_asset_info": _search_asset_info,
+    "get_dividend_summary": _get_dividend_summary,
+    "get_cost_breakdown": _get_cost_breakdown,
+    "get_xray_summary": _get_xray_summary,
+    "get_stress_test": _get_stress_test,
+    "get_income_projection": _get_income_projection,
 }

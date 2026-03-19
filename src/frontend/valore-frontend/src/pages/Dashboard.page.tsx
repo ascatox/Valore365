@@ -312,6 +312,7 @@ export function DashboardPage() {
         opened={copilotOpened}
         onClose={closeCopilot}
         portfolioId={portfolioId}
+        pageContext="dashboard"
       />
     </PageLayout>
   );

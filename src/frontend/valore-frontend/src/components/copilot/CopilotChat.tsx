@@ -118,6 +118,7 @@ interface CopilotChatProps {
   title?: string;
   quickPrompts?: string[];
   emptyStateDescription?: string;
+  pageContext?: string;
 }
 
 const QUICK_PROMPTS = [
@@ -129,15 +130,68 @@ const QUICK_PROMPTS = [
   'Cosa succede se vendo il titolo piu\u0027 pesante?',
 ];
 
+const PAGE_QUICK_PROMPTS: Record<string, string[]> = {
+  dashboard: [
+    'Riassumi il portafoglio',
+    'Come sta andando oggi?',
+    'Qual e\u0027 il miglior performer?',
+    'Sono lontano dal target?',
+    'Il mio portafoglio e\u0027 sano?',
+    'Cosa devo fare?',
+  ],
+  portfolio: [
+    'Analizza le mie posizioni',
+    'Sono lontano dal target?',
+    'Quanto devo investire per ribilanciare?',
+    'Quale posizione e\u0027 troppo pesante?',
+    'Ho 200\u20AC/mese, come li distribuisco?',
+    'Cosa succede se vendo il titolo piu\u0027 pesante?',
+  ],
+  doctor: [
+    'Il mio portafoglio e\u0027 sano?',
+    'Quanto pago di costi (TER)?',
+    'Cosa succede se crolla il mercato?',
+    'Come posso migliorare la diversificazione?',
+    'Quali sono i rischi principali?',
+    'Confronta i costi delle mie posizioni',
+  ],
+  fire: [
+    'Quanto manca al FIRE?',
+    'Quanto ricevo di dividendi all\u0027anno?',
+    'Proiezione reddito a 5 anni',
+    'Il mio portafoglio e\u0027 adatto per il FIRE?',
+    'Come posso aumentare il reddito passivo?',
+    'Simulazione Monte Carlo a 10 anni',
+  ],
+  xray: [
+    'Cosa possiedo realmente attraverso gli ETF?',
+    'Qual e\u0027 la mia esposizione geografica?',
+    'Sono troppo concentrato su qualche titolo?',
+    'Esposizione settoriale del portafoglio',
+    'Ho sovrapposizioni tra gli ETF?',
+    'Quanto sono esposto agli USA?',
+  ],
+  transactions: [
+    'Riassumi le ultime operazioni',
+    'Quanto ho ricevuto di dividendi?',
+    'Storico dividendi degli ultimi 12 mesi',
+    'Quali sono stati i miei ultimi acquisti?',
+    'Quanto ho pagato di commissioni?',
+    'Riepilogo depositi e prelievi',
+  ],
+};
+
 export function CopilotChat({
   opened,
   onClose,
   portfolioId,
   portfolioIds,
   title = 'Portfolio Copilot',
-  quickPrompts = QUICK_PROMPTS,
+  quickPrompts,
   emptyStateDescription = 'Chiedimi qualsiasi cosa sul tuo portafoglio. Ecco qualche spunto:',
+  pageContext,
 }: CopilotChatProps) {
+  const resolvedQuickPrompts = quickPrompts ?? (pageContext && PAGE_QUICK_PROMPTS[pageContext]) ?? QUICK_PROMPTS;
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -240,6 +294,7 @@ export function CopilotChat({
           portfolio_id: portfolioId,
           ...(portfolioIds && portfolioIds.length > 0 ? { portfolio_ids: portfolioIds } : {}),
           messages: newMessages,
+          ...(pageContext ? { page_context: pageContext } : {}),
         }),
         signal: controller.signal,
       });
@@ -297,7 +352,7 @@ export function CopilotChat({
       setThinkingStatus(null);
       abortRef.current = null;
     }
-  }, [messages, portfolioId, streaming]);
+  }, [messages, portfolioId, portfolioIds, streaming, pageContext]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -407,7 +462,7 @@ export function CopilotChat({
               {emptyStateDescription}
             </Text>
             <Stack gap="xs" w="100%" maw={340}>
-              {quickPrompts.map((prompt) => (
+              {resolvedQuickPrompts.map((prompt) => (
                 <Button
                   key={prompt}
                   variant="light"
