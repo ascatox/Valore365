@@ -14,14 +14,13 @@ import {
   useTargetPerformance,
   useTargetAssetPerformance,
   usePortfolioSummary,
-  usePortfolioTimeseries,
   useIntradayTargetPerformance,
   useAssetIntradayTargetPerformance,
   useIntradayDetail,
   usePortfolios,
 } from '../hooks/queries';
 import type { AllocationDoughnutItem, ChartPoint, IntradayChartPoint, PerformerItem } from '../types';
-import { ENABLE_TARGET_ALLOCATION } from '../../../features';
+
 
 interface AnalisiTabProps {
   portfolioId: number | null;
@@ -40,7 +39,6 @@ export function AnalisiTab({ portfolioId, chartWindow, setChartWindow }: Analisi
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
   const { data: assetPerformance } = useTargetAssetPerformance(portfolioId);
   const { data: portfolioSummary } = usePortfolioSummary(portfolioId);
-  const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(portfolioId);
 
   const isIntraday = chartWindow === '1';
   const chartWindowDays = useMemo(
@@ -62,27 +60,15 @@ export function AnalisiTab({ portfolioId, chartWindow, setChartWindow }: Analisi
 
   // --- Computed chart data ---
   const chartData = useMemo<ChartPoint[]>(() => {
-    if (ENABLE_TARGET_ALLOCATION) {
-      return (targetPerformance?.points ?? [])
-        .filter((point) => point.weighted_index > 0)
-        .slice(-chartWindowDays)
-        .map((point) => ({
-          rawDate: point.date,
-          date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
-          value: point.weighted_index,
-        }));
-    }
-    const points = portfolioTimeseries
-      .filter((point) => Number.isFinite(point.market_value) && point.market_value > 0)
-      .slice(-chartWindowDays);
-    const base = points[0]?.market_value ?? 0;
-    if (!Number.isFinite(base) || base <= 0) return [];
-    return points.map((point) => ({
-      rawDate: point.date,
-      date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
-      value: (point.market_value / base) * 100,
-    }));
-  }, [targetPerformance, chartWindowDays, portfolioTimeseries]);
+    return (targetPerformance?.points ?? [])
+      .filter((point) => point.weighted_index > 0)
+      .slice(-chartWindowDays)
+      .map((point) => ({
+        rawDate: point.date,
+        date: new Date(point.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
+        value: point.weighted_index,
+      }));
+  }, [targetPerformance, chartWindowDays]);
 
   const mainIntradayChartData = useMemo<IntradayChartPoint[]>(
     () =>
@@ -199,7 +185,6 @@ export function AnalisiTab({ portfolioId, chartWindow, setChartWindow }: Analisi
   }, [intradayChartData]);
 
   const handleDailyChartClick = (state: any) => {
-    if (!ENABLE_TARGET_ALLOCATION) return;
     const payload = state?.activePayload?.[0]?.payload;
     const rawDate = payload?.rawDate as string | undefined;
     if (!rawDate || !portfolioId) return;

@@ -20,7 +20,7 @@ import type {
 } from '../../../services/api';
 import { STORAGE_KEYS } from '../../dashboard/constants';
 import { formatNum, formatTransactionSideLabel } from '../../dashboard/formatters';
-import { ENABLE_TARGET_ALLOCATION } from '../../../features';
+
 import { useRebalance } from './useRebalance';
 
 // Re-export shared formatters for consumers
@@ -129,10 +129,6 @@ export function usePortfolioPage() {
   // --- Data loading ---
 
   const loadTargetAllocation = async (portfolioId: number) => {
-    if (!ENABLE_TARGET_ALLOCATION) {
-      setAllocations([]);
-      return [];
-    }
     const rows = await getPortfolioTargetAllocation(portfolioId);
     setAllocations(rows);
     return rows;
@@ -196,10 +192,6 @@ export function usePortfolioPage() {
   }, [isMobile, rebalance.previewOpened]);
 
   useEffect(() => {
-    if (!ENABLE_TARGET_ALLOCATION) {
-      setAllocations([]);
-      return;
-    }
     if (!selectedPortfolioId) {
       setAllocations([]);
       return;
@@ -222,12 +214,6 @@ export function usePortfolioPage() {
 
     return () => { active = false; };
   }, [selectedPortfolioId]);
-
-  useEffect(() => {
-    if (!ENABLE_TARGET_ALLOCATION && portfolioView === 'target') {
-      setPortfolioView('transactions');
-    }
-  }, [portfolioView]);
 
   useEffect(() => {
     if (!selectedPortfolioId) {

@@ -25,7 +25,7 @@ import { MobileBottomNav } from '../components/mobile/MobileBottomNav.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
 import { TargetAllocationSection } from '../components/portfolio/sections/TargetAllocationSection.tsx';
 import { TransactionsSection } from '../components/portfolio/sections/TransactionsSection.tsx';
-import { ENABLE_TARGET_ALLOCATION } from '../features';
+
 import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel, getTransactionSideColor } from '../components/dashboard/formatters';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
@@ -218,9 +218,7 @@ export function PortfolioPage() {
     );
   }
 
-  const mobileTabItems = ENABLE_TARGET_ALLOCATION
-    ? [{ value: 'target', label: 'Target', icon: IconTarget }]
-    : [];
+  const mobileTabItems = [{ value: 'target', label: 'Target', icon: IconTarget }];
 
   return (
     <>
@@ -259,7 +257,7 @@ export function PortfolioPage() {
           value={s.portfolioView}
           onChange={(value) => {
             const next = (value as 'transactions' | 'target' | 'pac' | 'cash') ?? 'transactions';
-            s.setPortfolioView(!ENABLE_TARGET_ALLOCATION && next === 'target' ? 'transactions' : next);
+            s.setPortfolioView(next);
           }}
           variant="default"
           style={s.isMobile ? { width: '100%' } : undefined}
@@ -269,11 +267,9 @@ export function PortfolioPage() {
               <Tabs.Tab value="transactions" leftSection={<IconArrowsExchange size={16} />}>
                 <Text span>Transazioni</Text>
               </Tabs.Tab>
-              {ENABLE_TARGET_ALLOCATION && (
-                <Tabs.Tab value="target" leftSection={<IconTarget size={16} />}>
-                  <Text span>Allocazione target</Text>
-                </Tabs.Tab>
-              )}
+              <Tabs.Tab value="target" leftSection={<IconTarget size={16} />}>
+                <Text span>Allocazione target</Text>
+              </Tabs.Tab>
               <Tabs.Tab value="cash" leftSection={<IconWallet size={16} />}>
                 <Text span>Liquidità</Text>
               </Tabs.Tab>
@@ -293,7 +289,7 @@ export function PortfolioPage() {
             </Button>
           </Group>
         )}
-        {ENABLE_TARGET_ALLOCATION && s.portfolioView === 'target' && !s.isMobile && (
+        {s.portfolioView === 'target' && !s.isMobile && (
           <Button variant="light" leftSection={<IconTarget size={16} />} onClick={s.rebalance.openPreviewModal} disabled={!s.selectedPortfolioId}>
             Genera da target
           </Button>
@@ -316,7 +312,7 @@ export function PortfolioPage() {
         />
       )}
 
-      {ENABLE_TARGET_ALLOCATION && s.portfolioView === 'target' && (
+      {s.portfolioView === 'target' && (
         <TargetAllocationSection
           allocationsCount={s.allocations.length}
           totalWeight={s.totalWeight}
@@ -372,7 +368,7 @@ export function PortfolioPage() {
           value={s.portfolioView === 'target' ? 'target' : null}
           bottomOffset={86}
           onChange={(value) => {
-            if (value === 'target' && ENABLE_TARGET_ALLOCATION) {
+            if (value === 'target') {
               s.setPortfolioView((current) => (current === 'target' ? 'transactions' : 'target'));
             }
           }}
@@ -395,8 +391,8 @@ export function PortfolioPage() {
           items={[
             { label: 'Nuova transazione', description: 'Apri il drawer rapido per acquisti e vendite', icon: IconArrowsExchange, onClick: () => s.setTransactionDrawerOpened(true), disabled: !s.selectedPortfolioId },
             { label: 'Importa', description: 'Carica movimenti o storico dal file broker', icon: IconFileImport, onClick: () => s.setCsvImportOpened(true), disabled: s.portfolioView !== 'transactions' },
-            { label: 'Aggiungi asset target', description: 'Inserisci un nuovo peso target nel portafoglio', icon: IconTarget, onClick: () => s.setDrawerOpened(true), disabled: !s.selectedPortfolioId || !ENABLE_TARGET_ALLOCATION || s.portfolioView !== 'target' },
-            { label: 'Genera da target', description: 'Preview di ribilanciamento disponibile su desktop', icon: IconChartArrows, onClick: () => s.setFormSuccess('La preview di ribilanciamento e disponibile solo su desktop'), disabled: !s.selectedPortfolioId || !ENABLE_TARGET_ALLOCATION || s.portfolioView !== 'target' },
+            { label: 'Aggiungi asset target', description: 'Inserisci un nuovo peso target nel portafoglio', icon: IconTarget, onClick: () => s.setDrawerOpened(true), disabled: !s.selectedPortfolioId || s.portfolioView !== 'target' },
+            { label: 'Genera da target', description: 'Preview di ribilanciamento disponibile su desktop', icon: IconChartArrows, onClick: () => s.setFormSuccess('La preview di ribilanciamento e disponibile solo su desktop'), disabled: !s.selectedPortfolioId || s.portfolioView !== 'target' },
             { label: 'Nuovo portfolio', description: 'Crea un nuovo contenitore con valuta e cash dedicati', icon: IconPlus, onClick: s.openCreatePortfolioModal },
             { label: 'Clona portfolio', description: 'Duplica impostazioni e target allocation', icon: IconCopy, onClick: s.openClonePortfolioModal, disabled: !s.selectedPortfolioId },
             { label: 'Liquidità', description: 'Gestisci la liquidità del portafoglio', icon: IconWallet, onClick: () => { s.setPortfolioView('cash'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
@@ -491,7 +487,7 @@ export function PortfolioPage() {
         onImportComplete={(id) => { void s.loadPortfolios(String(id)); void s.loadTransactions(id); }}
       />
 
-      {ENABLE_TARGET_ALLOCATION && s.selectedPortfolioId && (
+      {s.selectedPortfolioId && (
         <TargetAllocationCsvImportModal
           opened={s.targetCsvImportOpened} onClose={() => s.setTargetCsvImportOpened(false)}
           portfolioId={Number(s.selectedPortfolioId)}

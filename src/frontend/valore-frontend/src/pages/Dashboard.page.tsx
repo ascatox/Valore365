@@ -23,16 +23,14 @@ import { PerformanceMetrics } from '../components/dashboard/analysis/Performance
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constants';
-import { ENABLE_TARGET_ALLOCATION } from '../features';
+
 import { refreshPortfolioPrices, backfillPortfolioDailyPrices, getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 
 export function DashboardPage() {
-  const DASHBOARD_TABS = ENABLE_TARGET_ALLOCATION
-    ? (['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const)
-    : (['panoramica', 'posizioni', 'mercati', 'performance'] as const);
+  const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const;
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -145,7 +143,7 @@ export function DashboardPage() {
   const mobileTabItems = [
     { value: 'panoramica', label: 'Home', icon: IconChartPie },
     { value: 'posizioni', label: 'Posizioni', icon: IconList },
-    ...(ENABLE_TARGET_ALLOCATION ? [{ value: 'analisi', label: 'Analisi', icon: IconChartBar }] : []),
+    { value: 'analisi', label: 'Analisi', icon: IconChartBar },
     { value: 'mercati', label: 'Mercati', icon: IconWorld },
     { value: 'performance', label: 'Perf.', icon: IconPercentage },
   ];
@@ -171,7 +169,7 @@ export function DashboardPage() {
             portfoliosLoading={portfoliosLoading}
             refreshing={refreshing}
             refreshMessage={refreshMessage}
-            lastUpdatedAt={!error && ENABLE_TARGET_ALLOCATION && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
+            lastUpdatedAt={!error && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
           />
         </>
       ) : (
@@ -207,7 +205,7 @@ export function DashboardPage() {
             {refreshMessage}
           </Badge>
         )}
-        {!error && ENABLE_TARGET_ALLOCATION && targetPerformance?.last_updated_at && !refreshing && !refreshMessage && (
+        {!error && targetPerformance?.last_updated_at && !refreshing && !refreshMessage && (
           <Badge variant="dot" color="green" size="lg">
             Aggiornato: {formatDateTime(targetPerformance.last_updated_at)}
           </Badge>
@@ -240,11 +238,9 @@ export function DashboardPage() {
             <Tabs.Tab value="posizioni" leftSection={<IconList size={16} />}>
               <Text span>Posizioni</Text>
             </Tabs.Tab>
-            {ENABLE_TARGET_ALLOCATION && (
-              <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
-                <Text span>Analisi</Text>
-              </Tabs.Tab>
-            )}
+            <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
+              <Text span>Analisi</Text>
+            </Tabs.Tab>
             <Tabs.Tab
               value="mercati"
               leftSection={<IconWorld size={16} />}
@@ -269,11 +265,9 @@ export function DashboardPage() {
             <PosizioniTab portfolioId={portfolioId} />
           </Tabs.Panel>
 
-          {ENABLE_TARGET_ALLOCATION && (
-            <Tabs.Panel value="analisi">
-              <AnalisiTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
-            </Tabs.Panel>
-          )}
+          <Tabs.Panel value="analisi">
+            <AnalisiTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
+          </Tabs.Panel>
 
           <Tabs.Panel value="mercati">
             <MercatiTab />

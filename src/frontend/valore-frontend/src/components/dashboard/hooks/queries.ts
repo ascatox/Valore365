@@ -29,7 +29,7 @@ import {
   getTWRTimeseries,
   getUserSettings,
 } from '../../../services/api';
-import { ENABLE_TARGET_ALLOCATION } from '../../../features';
+
 
 function todayLocalDate(): string {
   const now = new Date();
@@ -158,17 +158,17 @@ export function usePortfolioDataCoverage(portfolioId: number | null) {
   return useQuery({
     queryKey: ['portfolio-data-coverage', portfolioId],
     queryFn: () => getPortfolioDataCoverage(portfolioId!),
-    enabled: portfolioId != null && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null,
   });
 }
 
-// ---- Target allocation (feature-gated) ----
+// ---- Target allocation ----
 
 export function useTargetAllocation(portfolioId: number | null) {
   return useQuery({
     queryKey: ['target-allocation', portfolioId],
     queryFn: () => getPortfolioTargetAllocation(portfolioId!),
-    enabled: portfolioId != null && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null,
     initialData: [] as Awaited<ReturnType<typeof getPortfolioTargetAllocation>>,
   });
 }
@@ -177,7 +177,7 @@ export function useTargetPerformance(portfolioId: number | null) {
   return useQuery({
     queryKey: ['target-performance', portfolioId],
     queryFn: () => getPortfolioTargetPerformance(portfolioId!),
-    enabled: portfolioId != null && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null,
   });
 }
 
@@ -185,7 +185,7 @@ export function useTargetAssetPerformance(portfolioId: number | null) {
   return useQuery({
     queryKey: ['target-asset-performance', portfolioId],
     queryFn: () => getPortfolioTargetAssetPerformance(portfolioId!),
-    enabled: portfolioId != null && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null,
   });
 }
 
@@ -196,7 +196,7 @@ export function useIntradayTargetPerformance(portfolioId: number | null, isIntra
   return useQuery({
     queryKey: ['intraday-target-performance', portfolioId, date],
     queryFn: () => getPortfolioTargetIntradayPerformance(portfolioId!, date),
-    enabled: portfolioId != null && isIntraday && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null && isIntraday,
   });
 }
 
@@ -205,7 +205,7 @@ export function useAssetIntradayTargetPerformance(portfolioId: number | null, is
   return useQuery({
     queryKey: ['asset-intraday-target-performance', portfolioId, date],
     queryFn: () => getPortfolioTargetAssetIntradayPerformance(portfolioId!, date),
-    enabled: portfolioId != null && isIntraday && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null && isIntraday,
   });
 }
 
@@ -221,7 +221,7 @@ export function useIntradayDetail(portfolioId: number | null, date: string | nul
   return useQuery({
     queryKey: ['intraday-detail', portfolioId, date],
     queryFn: () => getPortfolioTargetIntradayPerformance(portfolioId!, date!),
-    enabled: portfolioId != null && date != null && ENABLE_TARGET_ALLOCATION,
+    enabled: portfolioId != null && date != null,
   });
 }
 
