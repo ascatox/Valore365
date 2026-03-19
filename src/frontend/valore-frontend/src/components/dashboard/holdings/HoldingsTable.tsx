@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Card, Group, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Badge, Card, Group, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../../services/api';
@@ -26,6 +26,7 @@ interface ColumnDef {
 
 const BASE_COLUMNS: ColumnDef[] = [
   { label: 'Asset', key: 'symbol', align: 'left', sortable: true },
+  { label: 'Focus', key: 'symbol' as SortKey, align: 'left', visibleFrom: 'md', sortable: false },
   { label: 'Qta', key: 'quantity', align: 'right', visibleFrom: 'sm', sortable: true },
   { label: 'Prezzo Mkt', key: 'market_price', align: 'right', visibleFrom: 'sm', sortable: true },
   { label: 'Valore', key: 'market_value', align: 'right', sortable: true },
@@ -149,7 +150,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
           <Table.Thead>
             <Table.Tr>
               {BASE_COLUMNS.map((col) => (
-                <React.Fragment key={col.key}>
+                <React.Fragment key={col.label}>
                   <Table.Th
                     style={{ textAlign: col.align }}
                     visibleFrom={col.visibleFrom}
@@ -183,6 +184,13 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
                       <StaleIcon position={p} />
                     </Group>
                     <Text size="xs" c="dimmed">{p.symbol}</Text>
+                  </Table.Td>
+                  <Table.Td visibleFrom="md">
+                    {p.investment_focus ? (
+                      <Badge size="xs" variant="light" color="gray">{p.investment_focus}</Badge>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} visibleFrom="sm">
                     <Text size="sm">{formatNum(p.quantity)}</Text>
@@ -250,6 +258,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
                 <Table.Td>
                   <Text fw={700} size="sm">TOTALE</Text>
                 </Table.Td>
+                <Table.Td visibleFrom="md" />
                 <Table.Td visibleFrom="sm" />
                 <Table.Td visibleFrom="sm" />
                 <Table.Td style={{ textAlign: 'right' }}>

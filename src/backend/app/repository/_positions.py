@@ -46,6 +46,22 @@ class PositionsMixin:
             assets = self._get_assets(conn, asset_ids)
             asset_meta = self._get_asset_meta(conn, asset_ids)
             daily_prices = self._get_latest_daily_prices(conn, asset_ids)
+
+            # Fetch investment_focus from etf_enrichment
+            inv_focus_rows = conn.execute(
+                text(
+                    """
+                    select asset_id, investment_focus
+                    from etf_enrichment
+                    where asset_id = any(:asset_ids)
+                      and investment_focus is not null
+                    """
+                ),
+                {"asset_ids": asset_ids},
+            ).mappings().all()
+            inv_focus_by_asset: dict[int, str] = {
+                int(r["asset_id"]): str(r["investment_focus"]) for r in inv_focus_rows
+            }
             base_ccy = portfolio.base_currency
 
             # Fetch previous_close from the latest price tick per asset (yFinance previous_close).
@@ -221,6 +237,7 @@ class PositionsMixin:
                         symbol=symbol,
                         name=name,
                         asset_type=asset_type,
+                        investment_focus=inv_focus_by_asset.get(aid),
                         quantity=round(_finite(qty), 8),
                         avg_cost=round(_finite(avg_cost), 4),
                         market_price=round(_finite(market_price), 4),

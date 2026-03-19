@@ -206,6 +206,7 @@ def compute_portfolio_xray(
             asset_id=h.asset_id,
             symbol=h.symbol,
             name=h.name,
+            investment_focus=enrich.get("investment_focus") if enrich else None,
             portfolio_weight_pct=round(h.weight_pct, 2),
             holdings_available=bool(detail_holdings),
             holdings_source=holdings_source,

@@ -344,6 +344,7 @@ export interface Position {
   symbol: string;
   name: string;
   asset_type: string;
+  investment_focus?: string | null;
   quantity: number;
   avg_cost: number;
   market_price: number;
@@ -782,6 +783,7 @@ export interface XRayEtfDetail {
   asset_id?: number | null;
   symbol: string;
   name: string;
+  investment_focus?: string | null;
   portfolio_weight_pct: number;
   holdings_available: boolean;
   holdings_source: 'justetf' | 'yfinance' | 'missing';

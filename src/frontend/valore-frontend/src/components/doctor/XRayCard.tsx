@@ -384,6 +384,11 @@ export function XRayCard({ portfolioId }: Props) {
                             </div>
                           </Group>
                           <Group gap="xs" wrap="wrap">
+                            {etf.investment_focus && (
+                              <Badge size="sm" variant="light" color="grape">
+                                {etf.investment_focus}
+                              </Badge>
+                            )}
                             <Badge size="sm" variant="light" color="blue">
                               {privacy ? PRIVACY_MASK : `${etf.portfolio_weight_pct.toFixed(1)}%`} del portafoglio
                             </Badge>

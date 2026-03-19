@@ -166,6 +166,7 @@ class XRayEtfDetail(BaseModel):
     asset_id: int | None = Field(default=None, ge=1)
     symbol: str
     name: str
+    investment_focus: str | None = None
     portfolio_weight_pct: float
     holdings_available: bool
     holdings_source: Literal["justetf", "yfinance", "missing"] = "missing"
