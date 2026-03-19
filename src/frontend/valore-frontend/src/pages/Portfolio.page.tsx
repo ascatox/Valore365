@@ -14,7 +14,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot, IconInfoCircle } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconTarget, IconCopy, IconFileImport, IconCoins, IconChartArrows, IconSettings2, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/modals/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/modals/TargetAllocationCsvImportModal.tsx';
@@ -258,7 +258,7 @@ export function PortfolioPage() {
         <Tabs
           value={s.portfolioView}
           onChange={(value) => {
-            const next = (value as 'transactions' | 'target' | 'pac') ?? 'transactions';
+            const next = (value as 'transactions' | 'target' | 'pac' | 'cash') ?? 'transactions';
             s.setPortfolioView(!ENABLE_TARGET_ALLOCATION && next === 'target' ? 'transactions' : next);
           }}
           variant="default"
@@ -274,6 +274,9 @@ export function PortfolioPage() {
                   <Text span>Allocazione target</Text>
                 </Tabs.Tab>
               )}
+              <Tabs.Tab value="cash" leftSection={<IconWallet size={16} />}>
+                <Text span>Liquidità</Text>
+              </Tabs.Tab>
               <Tabs.Tab value="pac" leftSection={<IconCoins size={16} />}>
                 <Text span>Piano di Accumulo</Text>
               </Tabs.Tab>
@@ -348,7 +351,7 @@ export function PortfolioPage() {
         />
       )}
 
-      {s.portfolioView === 'transactions' && s.selectedPortfolioId && (
+      {s.portfolioView === 'cash' && s.selectedPortfolioId && (
         <CashSection selectedPortfolioId={s.selectedPortfolioId} baseCurrency={s.selectedPortfolio?.base_currency ?? 'EUR'} />
       )}
 
@@ -396,6 +399,7 @@ export function PortfolioPage() {
             { label: 'Genera da target', description: 'Preview di ribilanciamento disponibile su desktop', icon: IconChartArrows, onClick: () => s.setFormSuccess('La preview di ribilanciamento e disponibile solo su desktop'), disabled: !s.selectedPortfolioId || !ENABLE_TARGET_ALLOCATION || s.portfolioView !== 'target' },
             { label: 'Nuovo portfolio', description: 'Crea un nuovo contenitore con valuta e cash dedicati', icon: IconPlus, onClick: s.openCreatePortfolioModal },
             { label: 'Clona portfolio', description: 'Duplica impostazioni e target allocation', icon: IconCopy, onClick: s.openClonePortfolioModal, disabled: !s.selectedPortfolioId },
+            { label: 'Liquidità', description: 'Gestisci la liquidità del portafoglio', icon: IconWallet, onClick: () => { s.setPortfolioView('cash'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
             { label: 'Piano di Accumulo', description: 'Visualizza e gestisci le regole PAC', icon: IconCoins, onClick: () => { s.setPortfolioView('pac'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
             { label: 'Modifica portfolio', description: 'Aggiorna nome, valuta base, timezone e cash', icon: IconSettings2, onClick: s.openEditPortfolioModal, disabled: !s.selectedPortfolioId },
           ]}

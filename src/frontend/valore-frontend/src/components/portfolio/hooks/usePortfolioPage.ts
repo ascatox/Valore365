@@ -47,7 +47,7 @@ export function usePortfolioPage() {
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
-  const [portfolioView, setPortfolioView] = useState<'transactions' | 'target' | 'pac'>('transactions');
+  const [portfolioView, setPortfolioView] = useState<'transactions' | 'target' | 'pac' | 'cash'>('transactions');
 
   // --- Portfolio modal state ---
   const [portfolioModalOpened, setPortfolioModalOpened] = useState(false);
