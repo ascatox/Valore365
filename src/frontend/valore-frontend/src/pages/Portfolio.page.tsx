@@ -218,10 +218,9 @@ export function PortfolioPage() {
     );
   }
 
-  const mobileTabItems = [
-    ...(ENABLE_TARGET_ALLOCATION ? [{ value: 'target', label: 'Target', icon: IconTarget }] : []),
-    { value: 'pac', label: 'PAC', icon: IconCoins },
-  ];
+  const mobileTabItems = ENABLE_TARGET_ALLOCATION
+    ? [{ value: 'target', label: 'Target', icon: IconTarget }]
+    : [];
 
   return (
     <>
@@ -367,13 +366,11 @@ export function PortfolioPage() {
       {s.isMobile && (
         <MobileBottomNav
           items={mobileTabItems}
-          value={s.portfolioView !== 'transactions' ? s.portfolioView : null}
+          value={s.portfolioView === 'target' ? 'target' : null}
           bottomOffset={86}
           onChange={(value) => {
             if (value === 'target' && ENABLE_TARGET_ALLOCATION) {
               s.setPortfolioView((current) => (current === 'target' ? 'transactions' : 'target'));
-            } else if (value === 'pac') {
-              s.setPortfolioView((current) => (current === 'pac' ? 'transactions' : 'pac'));
             }
           }}
         />
