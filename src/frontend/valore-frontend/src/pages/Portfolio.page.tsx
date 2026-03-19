@@ -218,9 +218,10 @@ export function PortfolioPage() {
     );
   }
 
-  const mobileTabItems = ENABLE_TARGET_ALLOCATION
-    ? [{ value: 'target', label: 'Target', icon: IconTarget }]
-    : [];
+  const mobileTabItems = [
+    ...(ENABLE_TARGET_ALLOCATION ? [{ value: 'target', label: 'Target', icon: IconTarget }] : []),
+    { value: 'pac', label: 'PAC', icon: IconCoins },
+  ];
 
   return (
     <>
@@ -258,7 +259,7 @@ export function PortfolioPage() {
         <Tabs
           value={s.portfolioView}
           onChange={(value) => {
-            const next = (value as 'transactions' | 'target') ?? 'transactions';
+            const next = (value as 'transactions' | 'target' | 'pac') ?? 'transactions';
             s.setPortfolioView(!ENABLE_TARGET_ALLOCATION && next === 'target' ? 'transactions' : next);
           }}
           variant="default"
@@ -274,6 +275,9 @@ export function PortfolioPage() {
                   <Text span>Allocazione target</Text>
                 </Tabs.Tab>
               )}
+              <Tabs.Tab value="pac" leftSection={<IconCoins size={16} />}>
+                <Text span>Piano di Accumulo</Text>
+              </Tabs.Tab>
             </Tabs.List>
           )}
         </Tabs>
@@ -290,6 +294,11 @@ export function PortfolioPage() {
         {ENABLE_TARGET_ALLOCATION && s.portfolioView === 'target' && !s.isMobile && (
           <Button variant="light" leftSection={<IconTarget size={16} />} onClick={s.rebalance.openPreviewModal} disabled={!s.selectedPortfolioId}>
             Genera da target
+          </Button>
+        )}
+        {s.portfolioView === 'pac' && !s.isMobile && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); }} disabled={!s.selectedPortfolioId}>
+            Nuova regola PAC
           </Button>
         )}
       </Group>
@@ -321,7 +330,7 @@ export function PortfolioPage() {
         />
       )}
 
-      {(!s.isMobile || s.portfolioView !== 'target') && (
+      {s.portfolioView === 'transactions' && (
         <TransactionsSection
           loading={s.loadingTransactions}
           filterQuery={s.transactionFilterQuery}
@@ -344,7 +353,7 @@ export function PortfolioPage() {
         <CashSection selectedPortfolioId={s.selectedPortfolioId} baseCurrency={s.selectedPortfolio?.base_currency ?? 'EUR'} />
       )}
 
-      {s.portfolioView === 'transactions' && s.selectedPortfolioId && (
+      {s.portfolioView === 'pac' && s.selectedPortfolioId && (
         <PacSection
           selectedPortfolioId={s.selectedPortfolioId}
           baseCurrency={s.selectedPortfolio?.base_currency ?? 'EUR'}
@@ -358,11 +367,13 @@ export function PortfolioPage() {
       {s.isMobile && (
         <MobileBottomNav
           items={mobileTabItems}
-          value={s.portfolioView === 'target' ? 'target' : null}
+          value={s.portfolioView !== 'transactions' ? s.portfolioView : null}
           bottomOffset={86}
           onChange={(value) => {
             if (value === 'target' && ENABLE_TARGET_ALLOCATION) {
               s.setPortfolioView((current) => (current === 'target' ? 'transactions' : 'target'));
+            } else if (value === 'pac') {
+              s.setPortfolioView((current) => (current === 'pac' ? 'transactions' : 'pac'));
             }
           }}
         />
@@ -377,8 +388,8 @@ export function PortfolioPage() {
           bottomOffset={12}
           badge={s.selectedPortfolio ? s.selectedPortfolio.name : 'Seleziona portafoglio'}
           primaryAction={{
-            label: s.portfolioView === 'target' ? 'Aggiungi asset' : 'Nuova transazione',
-            onClick: s.portfolioView === 'target' ? () => s.setDrawerOpened(true) : () => s.setTransactionDrawerOpened(true),
+            label: s.portfolioView === 'target' ? 'Aggiungi asset' : s.portfolioView === 'pac' ? 'Nuova regola PAC' : 'Nuova transazione',
+            onClick: s.portfolioView === 'target' ? () => s.setDrawerOpened(true) : s.portfolioView === 'pac' ? () => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); } : () => s.setTransactionDrawerOpened(true),
             disabled: !s.selectedPortfolioId,
           }}
           items={[
@@ -388,7 +399,7 @@ export function PortfolioPage() {
             { label: 'Genera da target', description: 'Preview di ribilanciamento disponibile su desktop', icon: IconChartArrows, onClick: () => s.setFormSuccess('La preview di ribilanciamento e disponibile solo su desktop'), disabled: !s.selectedPortfolioId || !ENABLE_TARGET_ALLOCATION || s.portfolioView !== 'target' },
             { label: 'Nuovo portfolio', description: 'Crea un nuovo contenitore con valuta e cash dedicati', icon: IconPlus, onClick: s.openCreatePortfolioModal },
             { label: 'Clona portfolio', description: 'Duplica impostazioni e target allocation', icon: IconCopy, onClick: s.openClonePortfolioModal, disabled: !s.selectedPortfolioId },
-            { label: 'Gestisci PAC', description: 'Apri configurazione regole PAC e pianificazione', icon: IconCoins, onClick: () => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); }, disabled: !s.selectedPortfolioId || s.portfolioView !== 'transactions' },
+            { label: 'Piano di Accumulo', description: 'Visualizza e gestisci le regole PAC', icon: IconCoins, onClick: () => { s.setPortfolioView('pac'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
             { label: 'Modifica portfolio', description: 'Aggiorna nome, valuta base, timezone e cash', icon: IconSettings2, onClick: s.openEditPortfolioModal, disabled: !s.selectedPortfolioId },
           ]}
         />
