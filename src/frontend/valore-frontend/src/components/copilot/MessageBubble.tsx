@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Box, Paper, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconRobot } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -42,6 +43,7 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isUser = role === 'user';
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const normalizedContent = content.toLowerCase();
   const hasDisclaimer = normalizedContent.includes('supporto informativo') || normalizedContent.includes('consulenza finanziaria');
   const mdRef = useRef<HTMLDivElement | null>(null);
@@ -120,8 +122,8 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
       {!isUser && (
         <Box
           style={{
-            width: 28,
-            height: 28,
+            width: isMobile ? 22 : 28,
+            height: isMobile ? 22 : 28,
             borderRadius: '50%',
             background: isDark ? theme.colors.teal[8] : theme.colors.teal[1],
             display: 'flex',
@@ -131,16 +133,16 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
             marginTop: 2,
           }}
         >
-          <IconRobot size={16} color={isDark ? theme.colors.teal[2] : theme.colors.teal[7]} />
+          <IconRobot size={isMobile ? 13 : 16} color={isDark ? theme.colors.teal[2] : theme.colors.teal[7]} />
         </Box>
       )}
       <Paper
         shadow="xs"
         radius="lg"
-        px="md"
+        px={isMobile ? 'sm' : 'md'}
         py="sm"
         style={{
-          maxWidth: isUser ? '80%' : '92%',
+          maxWidth: isUser ? '80%' : (isMobile ? 'calc(100% - 30px)' : '92%'),
           minWidth: 0,
           overflow: 'hidden',
           background: isUser

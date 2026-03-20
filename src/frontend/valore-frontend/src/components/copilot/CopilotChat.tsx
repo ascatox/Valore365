@@ -439,7 +439,7 @@ export function CopilotChat({
       {/* Messages */}
       <ScrollArea
         flex={1}
-        px="md"
+        px={isMobile ? 'xs' : 'md'}
         pt="sm"
         viewportRef={viewportRef}
       >
@@ -578,7 +578,7 @@ export function CopilotChat({
 
       {/* Input */}
       <Box
-        px="md"
+        px={isMobile ? 'xs' : 'md'}
         py="sm"
         style={{
           borderTop: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}`,
