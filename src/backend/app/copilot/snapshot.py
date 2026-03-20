@@ -131,6 +131,33 @@ def build_portfolio_snapshot_light(
     except Exception:
         pass
 
+    # Active PAC rules and pending executions
+    try:
+        pac_rules = repo.list_pac_rules(portfolio_id, user_id)
+        active_rules = [r for r in pac_rules if r.active]
+        if active_rules:
+            pending_execs = repo.list_pending_pac_executions(portfolio_id, user_id)
+            snapshot["pac_plans"] = {
+                "active_rules": [
+                    {
+                        "symbol": r.symbol,
+                        "asset_name": r.asset_name,
+                        "mode": r.mode,
+                        "amount": r.amount,
+                        "quantity": r.quantity,
+                        "frequency": r.frequency,
+                        "day_of_month": r.day_of_month,
+                        "day_of_week": r.day_of_week,
+                        "start_date": str(r.start_date),
+                        "end_date": str(r.end_date) if r.end_date else None,
+                    }
+                    for r in active_rules
+                ],
+                "pending_executions_count": len(pending_execs),
+            }
+    except Exception:
+        pass
+
     return snapshot
 
 
@@ -230,6 +257,41 @@ def build_aggregate_snapshot_light(
             if user_settings.fire_target_age:
                 fire_data["target_age"] = user_settings.fire_target_age
             snapshot["fire"] = fire_data
+    except Exception:
+        pass
+
+    # Active PAC rules across all portfolios
+    try:
+        all_pac_rules: list[dict] = []
+        total_pending = 0
+        for pid in portfolio_ids:
+            try:
+                pac_rules = repo.list_pac_rules(pid, user_id)
+                active_rules = [r for r in pac_rules if r.active]
+                if active_rules:
+                    pending_execs = repo.list_pending_pac_executions(pid, user_id)
+                    total_pending += len(pending_execs)
+                    for r in active_rules:
+                        all_pac_rules.append({
+                            "symbol": r.symbol,
+                            "asset_name": r.asset_name,
+                            "portfolio": name_map.get(pid, f"#{pid}"),
+                            "mode": r.mode,
+                            "amount": r.amount,
+                            "quantity": r.quantity,
+                            "frequency": r.frequency,
+                            "day_of_month": r.day_of_month,
+                            "day_of_week": r.day_of_week,
+                            "start_date": str(r.start_date),
+                            "end_date": str(r.end_date) if r.end_date else None,
+                        })
+            except Exception:
+                continue
+        if all_pac_rules:
+            snapshot["pac_plans"] = {
+                "active_rules": all_pac_rules,
+                "pending_executions_count": total_pending,
+            }
     except Exception:
         pass
 
@@ -368,6 +430,33 @@ def build_portfolio_snapshot(
             if p.id == portfolio_id:
                 snapshot["portfolio"]["name"] = p.name
                 break
+    except Exception:
+        pass
+
+    # Active PAC rules and pending executions
+    try:
+        pac_rules = repo.list_pac_rules(portfolio_id, user_id)
+        active_rules = [r for r in pac_rules if r.active]
+        if active_rules:
+            pending_execs = repo.list_pending_pac_executions(portfolio_id, user_id)
+            snapshot["pac_plans"] = {
+                "active_rules": [
+                    {
+                        "symbol": r.symbol,
+                        "asset_name": r.asset_name,
+                        "mode": r.mode,
+                        "amount": r.amount,
+                        "quantity": r.quantity,
+                        "frequency": r.frequency,
+                        "day_of_month": r.day_of_month,
+                        "day_of_week": r.day_of_week,
+                        "start_date": str(r.start_date),
+                        "end_date": str(r.end_date) if r.end_date else None,
+                    }
+                    for r in active_rules
+                ],
+                "pending_executions_count": len(pending_execs),
+            }
     except Exception:
         pass
 
