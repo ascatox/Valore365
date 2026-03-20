@@ -64,27 +64,37 @@ class PositionsMixin:
             }
             base_ccy = portfolio.base_currency
 
-            # Fetch previous_close from the latest price tick per asset (yFinance previous_close).
-            # Falls back to the penultimate daily bar from price_bars_1d when not available.
-            prev_close_rows = conn.execute(
+            # Fetch the latest tick snapshot per asset. When available, use tick last/previous_close
+            # for day-change so the percentage is computed from a coherent quote source.
+            latest_tick_rows = conn.execute(
                 text(
                     """
                     select distinct on (asset_id)
                         asset_id,
+                        ts::date as tick_date,
+                        last::float8 as last,
                         previous_close::float8 as previous_close
                     from price_ticks
                     where asset_id = any(:asset_ids)
-                      and previous_close is not null
                     order by asset_id, ts desc
                     """
                 ),
                 {"asset_ids": asset_ids},
             ).mappings().all()
+            tick_last_by_asset: dict[int, float] = {}
             prev_close_by_asset: dict[int, float] = {}
-            for r in prev_close_rows:
-                v = float(r["previous_close"])
-                if math.isfinite(v):
-                    prev_close_by_asset[int(r["asset_id"])] = v
+            for r in latest_tick_rows:
+                asset_id = int(r["asset_id"])
+                last = r.get("last")
+                if last is not None:
+                    last_value = float(last)
+                    if math.isfinite(last_value):
+                        tick_last_by_asset[asset_id] = last_value
+                prev_close = r.get("previous_close")
+                if prev_close is not None:
+                    prev_close_value = float(prev_close)
+                    if math.isfinite(prev_close_value):
+                        prev_close_by_asset[asset_id] = prev_close_value
 
             # Fallback: for assets without previous_close in ticks, use penultimate daily bar
             missing_assets = [aid for aid in asset_ids if aid not in prev_close_by_asset]
@@ -225,11 +235,14 @@ class PositionsMixin:
                 )
 
                 prev_close = prev_close_by_asset.get(aid)
+                current_quote_price = tick_last_by_asset.get(aid)
+                if current_quote_price is None:
+                    current_quote_price = raw_price
                 pos_day_change_pct = 0.0
-                # Compare in quote currency (no FX) to match yFinance modal behaviour
-                current_for_pct = raw_price if raw_price is not None else market_price
-                if prev_close is not None and prev_close > 0 and math.isfinite(current_for_pct):
-                    pos_day_change_pct = ((current_for_pct / prev_close) - 1) * 100.0
+                # Compare in quote currency (no FX) to match yFinance modal behaviour.
+                # Avoid falling back to market_price here because that is in base currency.
+                if prev_close is not None and prev_close > 0 and current_quote_price is not None and math.isfinite(current_quote_price):
+                    pos_day_change_pct = ((current_quote_price / prev_close) - 1) * 100.0
 
                 positions.append(
                     Position(

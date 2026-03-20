@@ -34,7 +34,6 @@ class SummaryMixin:
         if positions:
             asset_ids = [p.asset_id for p in positions]
             qty_by_asset = {p.asset_id: p.quantity for p in positions}
-            market_price_by_asset = {p.asset_id: p.market_price for p in positions}
 
             with self.engine.begin() as conn:
                 asset_meta = self._get_asset_meta(conn, asset_ids)
@@ -106,67 +105,96 @@ class SummaryMixin:
 
             _log = logging.getLogger(__name__)
 
-            # Fetch previous_close from latest tick (yFinance) per asset
+            # Fetch the latest tick snapshot per asset. When available, use tick last/previous_close
+            # for day-change so current and previous prices come from the same quote source.
+            tick_last: dict[int, float] = {}
             tick_prev_close: dict[int, float] = {}
+            tick_day_by_asset: dict[int, date] = {}
             with self.engine.begin() as conn2:
                 tick_rows = conn2.execute(
                     text(
                         """
                         select distinct on (asset_id)
                             asset_id,
+                            ts::date as tick_date,
+                            last::float8 as last,
                             previous_close::float8 as previous_close
                         from price_ticks
                         where asset_id = any(:asset_ids)
-                          and previous_close is not null
                         order by asset_id, ts desc
                         """
                     ),
                     {"asset_ids": asset_ids},
                 ).mappings().all()
             for r in tick_rows:
-                v = float(r["previous_close"])
-                if math.isfinite(v):
-                    tick_prev_close[int(r["asset_id"])] = v
+                asset_id = int(r["asset_id"])
+                tick_day = r.get("tick_date")
+                if isinstance(tick_day, date):
+                    tick_day_by_asset[asset_id] = tick_day
+                last = r.get("last")
+                if last is not None:
+                    last_value = float(last)
+                    if math.isfinite(last_value):
+                        tick_last[asset_id] = last_value
+                prev_close = r.get("previous_close")
+                if prev_close is not None:
+                    prev_close_value = float(prev_close)
+                    if math.isfinite(prev_close_value):
+                        tick_prev_close[asset_id] = prev_close_value
 
             previous_market_value = 0.0
             for asset_id, quantity in qty_by_asset.items():
-                # Prefer yFinance previous_close, fall back to penultimate daily bar
+                series = daily_by_asset.get(asset_id, [])
+                latest_day = series[0][0] if series else None
+                latest_close = series[0][1] if series else None
+
+                current_quote: float | None = tick_last.get(asset_id)
+                current_day: date | None = tick_day_by_asset.get(asset_id)
+                if current_quote is None and latest_close is not None:
+                    current_quote = latest_close
+                    current_day = latest_day
+
+                # Prefer yFinance previous_close, fall back to penultimate daily bar.
                 prev_close: float | None = tick_prev_close.get(asset_id)
                 prev_day: date | None = None
 
                 if prev_close is None:
-                    series = daily_by_asset.get(asset_id, [])
                     if len(series) < 2:
                         _log.warning("day_change: asset %s has only %d bars in price_bars_1d and no tick previous_close, skipping", asset_id, len(series))
                         continue
-                    latest_day, _latest_close = series[0]
                     prev_day, prev_close = series[1]
                     if latest_day == prev_day:
                         _log.warning("day_change: asset %s latest_day==prev_day (%s), skipping", asset_id, latest_day)
                         continue
+                    if current_quote is None or current_day is None:
+                        current_quote = latest_close
+                        current_day = latest_day
+                elif len(series) >= 2:
+                    prev_day = series[1][0]
+                elif latest_day is not None:
+                    prev_day = latest_day
                 else:
-                    # Use latest daily bar date for FX lookup
-                    series = daily_by_asset.get(asset_id, [])
-                    if series:
-                        prev_day = series[1][0] if len(series) >= 2 else series[0][0]
-                    else:
-                        prev_day = date.today()
+                    prev_day = current_day or date.today()
 
                 meta = asset_meta.get(asset_id)
                 if meta is None:
                     _log.warning("day_change: asset %s has no meta, skipping", asset_id)
                     continue
+                current_fx = fx_rate_on_or_before(meta.quote_currency, current_day)
                 prev_fx = fx_rate_on_or_before(meta.quote_currency, prev_day)
+                if current_quote is None or current_day is None or current_fx is None:
+                    _log.warning("day_change: asset %s no current quote/fx for %s on %s, skipping", asset_id, meta.quote_currency, current_day)
+                    continue
                 if prev_fx is None:
                     _log.warning("day_change: asset %s no FX rate for %s on %s, skipping", asset_id, meta.quote_currency, prev_day)
                     continue
-                current_price_base = market_price_by_asset.get(asset_id, 0.0)
+                current_price_base = current_quote * current_fx
                 previous_price_base = prev_close * prev_fx
                 if not math.isfinite(current_price_base) or not math.isfinite(previous_price_base):
                     _log.warning("day_change: asset %s has NaN/Inf price (curr=%.4f prev=%.4f), skipping", asset_id, current_price_base, previous_price_base)
                     continue
-                _log.info("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (close=%.4f fx=%.4f) dates=%s→%s",
-                          asset_id, quantity, current_price_base, previous_price_base, prev_close, prev_fx, prev_day, series[0][0] if series else prev_day)
+                _log.info("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (quote=%.4f prev_close=%.4f fx=%.4f/%.4f) dates=%s→%s",
+                          asset_id, quantity, current_price_base, previous_price_base, current_quote, prev_close, current_fx, prev_fx, prev_day, current_day)
                 day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
 
