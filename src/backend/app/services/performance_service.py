@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
 from math import isfinite
 
@@ -12,6 +13,8 @@ try:
 except Exception:  # pragma: no cover - optional dependency in runtime
     scipy_brentq = None
     scipy_newton = None
+
+logger = logging.getLogger(__name__)
 
 
 _PERIOD_TO_DAYS: dict[str, int] = {
@@ -517,8 +520,28 @@ class PerformanceService:
                 total += (-t * cf) / ((1.0 + rate) ** (t + 1.0))
             return total
 
-        low = -0.9999
+        # Realistic bounds: -99% to +1000% annualized
+        low = -0.99
         high = 10.0
+
+        # Detect multiple zero crossings (sign changes) to warn about
+        # ambiguous IRR when cashflows change sign multiple times.
+        probe_points = [-0.99, -0.9, -0.5, -0.2, 0.0, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+        sign_changes = 0
+        prev_f = npv(probe_points[0])
+        for x in probe_points[1:]:
+            f_x = npv(x)
+            if isfinite(prev_f) and isfinite(f_x) and prev_f * f_x < 0:
+                sign_changes += 1
+            if isfinite(f_x):
+                prev_f = f_x
+        if sign_changes > 1:
+            logger.warning(
+                "IRR: NPV curve has %d zero crossings in [%.2f, %.2f] — "
+                "multiple IRR solutions possible; returning the first root found.",
+                sign_changes, low, high,
+            )
+
         f_low = npv(low)
         f_high = npv(high)
 
@@ -533,7 +556,7 @@ class PerformanceService:
         if scipy_newton is not None:
             try:
                 value = float(scipy_newton(npv, x0=0.1, fprime=d_npv, maxiter=100, tol=1e-8))
-                if value > -0.999999 and isfinite(value):
+                if low <= value <= high and isfinite(value):
                     return value
             except Exception:
                 pass
@@ -561,7 +584,7 @@ class PerformanceService:
         return (low + high) / 2.0
 
     def _search_bisection(self, fn) -> float | None:
-        low = -0.9999
+        low = -0.99
         probes = [-0.9, -0.5, -0.2, 0.0, 0.1, 0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
         prev_x = low
         prev_f = fn(prev_x)

@@ -37,11 +37,11 @@ def run_monte_carlo_projection(
     if not holdings:
         return _empty_monte_carlo_response(portfolio_id)
 
-    mu_annual, sigma_annual = _compute_portfolio_return_params(repo, holdings)
+    mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings)
     if sigma_annual == 0.0:
         return _empty_monte_carlo_response(portfolio_id)
 
-    projections = _simulate_paths(mu_annual, sigma_annual)
+    projections = _simulate_paths(mu_annual, sigma_annual, df_t)
 
     return MonteCarloProjectionResponse(
         portfolio_id=portfolio_id,
@@ -73,7 +73,7 @@ def run_decumulation_plan(
     estimated_embedded_gain_ratio_pct = _estimate_embedded_gain_ratio(initial_capital, initial_cost_basis) * 100
     holdings = _load_holdings(repo, portfolio_id, user_id)
 
-    mu_annual, sigma_annual = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0)
+    mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0, 30.0)
     sustainable_withdrawal = _solve_sustainable_withdrawal(
         initial_capital=initial_capital,
         years=years,
@@ -106,6 +106,7 @@ def run_decumulation_plan(
         capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
         mu_annual=mu_annual,
         sigma_annual=sigma_annual,
+        df_t=df_t,
     )
     final_values = sorted(path["ending_capitals"][-1] for path in paths)
     success_count = sum(1 for path in paths if path["ending_capitals"][-1] > 0)
@@ -173,7 +174,7 @@ def run_aggregate_decumulation_plan(
     initial_cost_basis = sum(max(0.0, float(summary.cost_basis) + float(summary.cash_balance)) for summary in summaries)
     estimated_embedded_gain_ratio_pct = _estimate_embedded_gain_ratio(initial_capital, initial_cost_basis) * 100
     holdings = _load_aggregate_holdings(repo, normalized_ids, user_id)
-    mu_annual, sigma_annual = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0)
+    mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0, 30.0)
     sustainable_withdrawal = _solve_sustainable_withdrawal(
         initial_capital=initial_capital,
         years=years,
@@ -207,6 +208,7 @@ def run_aggregate_decumulation_plan(
         capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
         mu_annual=mu_annual,
         sigma_annual=sigma_annual,
+        df_t=df_t,
     )
     final_values = sorted(path["ending_capitals"][-1] for path in paths)
     success_count = sum(1 for path in paths if path["ending_capitals"][-1] > 0)
@@ -242,19 +244,41 @@ def run_aggregate_decumulation_plan(
     )
 
 
+def _t_random(rng: random.Random, df: float) -> float:
+    """Generate a Student-t distributed random variate.
+
+    Uses the ratio of a standard normal to the sqrt of a chi-squared/df.
+    When df >= 30 the distribution is effectively Gaussian.
+    """
+    if df >= 30.0:
+        return rng.gauss(0, 1)
+    # chi-squared(df) = sum of df standard normals squared
+    # For efficiency use the gamma distribution: chi2 ~ Gamma(df/2, 2)
+    chi2 = rng.gammavariate(df / 2.0, 2.0)
+    if chi2 <= 0:
+        return rng.gauss(0, 1)
+    return rng.gauss(0, 1) / math.sqrt(chi2 / df)
+
+
 def _simulate_paths(
     mu_annual: float,
     sigma_annual: float,
+    df_t: float = 30.0,
 ) -> list[MonteCarloYearProjection]:
     drift = mu_annual - 0.5 * sigma_annual**2
     rng = random.Random(42)
+
+    # Scale factor: the Student-t with df degrees of freedom has variance
+    # df/(df-2) for df>2.  We scale the shock so that the overall variance
+    # still matches sigma_annual (preserves calibration while adding fat tails).
+    t_scale = math.sqrt((df_t - 2.0) / df_t) if df_t > 2.0 else 1.0
 
     all_paths: list[list[float]] = []
     for _ in range(NUM_SIMULATIONS):
         cum = 0.0
         path = [100.0]
         for _ in range(MAX_PROJECTION_YEARS):
-            shock = rng.gauss(0, 1)
+            shock = _t_random(rng, df_t) * t_scale
             cum += drift + sigma_annual * shock
             path.append(100.0 * math.exp(cum))
         all_paths.append(path)
@@ -286,10 +310,12 @@ def _simulate_decumulation_paths(
     capital_gains_tax_rate_pct: float,
     mu_annual: float,
     sigma_annual: float,
+    df_t: float = 30.0,
 ) -> list[dict[str, list[float]]]:
     drift = mu_annual - 0.5 * sigma_annual**2
     inflation = max(0.0, inflation_rate_pct) / 100.0
     tax_rate = max(0.0, capital_gains_tax_rate_pct) / 100.0
+    t_scale = math.sqrt((df_t - 2.0) / df_t) if df_t > 2.0 else 1.0
     rng = random.Random(42)
     paths: list[dict[str, list[float]]] = []
 
@@ -308,7 +334,7 @@ def _simulate_decumulation_paths(
 
         for _year in range(years):
             starting_capital = capital
-            annual_return = math.exp(drift + sigma_annual * rng.gauss(0, 1)) - 1 if sigma_annual > 0 else mu_annual
+            annual_return = math.exp(drift + sigma_annual * _t_random(rng, df_t) * t_scale) - 1 if sigma_annual > 0 else mu_annual
             capital = max(0.0, capital * (1 + annual_return))
             capital_before_sale = capital
 

@@ -280,7 +280,7 @@ def run_stress_test(
         )
 
     # Compute portfolio volatility
-    mu_annual, sigma_annual = _compute_portfolio_return_params(repo, holdings)
+    mu_annual, sigma_annual, _df_t = _compute_portfolio_return_params(repo, holdings)
     volatility_pct = round(sigma_annual * 100, 2) if sigma_annual > 0 else None
 
     scenarios: list[StressTestScenarioResult] = []

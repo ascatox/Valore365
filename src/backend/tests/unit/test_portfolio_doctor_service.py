@@ -243,10 +243,11 @@ def test_portfolio_return_params_use_portfolio_series_not_weighted_asset_sigmas(
     class _Repo:
         engine = _Engine()
 
-    mu_annual, sigma_annual = _compute_portfolio_return_params(_Repo(), holdings)
+    mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(_Repo(), holdings)
 
     assert abs(mu_annual) < 1e-6
     assert sigma_annual < 0.001
+    assert 3.0 <= df_t <= 30.0
 
 
 def test_scoring_and_alerts_penalize_concentration_risk_and_costs():

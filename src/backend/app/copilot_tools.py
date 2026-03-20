@@ -1125,7 +1125,13 @@ def _get_income_projection(
     except Exception:
         pass
 
-    # Gather dividend yields
+    # Gather dividend yields, split by asset class for differentiated growth
+    EQUITY_GROWTH_RATE = 0.03   # 3% annual dividend growth for equity-like assets
+    FIXED_INCOME_GROWTH_RATE = 0.0  # 0% for bonds / fixed income (coupons don't grow)
+    FIXED_INCOME_TYPES = {"bond"}
+
+    equity_annual_dividends = 0.0
+    fixed_income_annual_dividends = 0.0
     total_annual_dividends = 0.0
     for p in positions:
         try:
@@ -1135,19 +1141,25 @@ def _get_income_projection(
             meta = repo.get_asset_metadata(asset["id"])
             if meta and meta.dividend_yield:
                 dy = float(meta.dividend_yield) / 100.0
-                total_annual_dividends += p.market_value * dy
+                annual_div = p.market_value * dy
+                total_annual_dividends += annual_div
+                asset_type = asset.get("asset_type", "stock") if isinstance(asset, dict) else getattr(asset, "asset_type", "stock")
+                if str(asset_type).lower() in FIXED_INCOME_TYPES:
+                    fixed_income_annual_dividends += annual_div
+                else:
+                    equity_annual_dividends += annual_div
         except Exception:
             continue
 
-    # Assumed dividend growth rate (conservative estimate)
-    dividend_growth_rate = 0.03  # 3% annual dividend growth
-
     projections = []
     for years in (1, 3, 5):
-        # Project dividends with growth
+        # Project dividends with differentiated growth rates
         gross_income = 0.0
         for y in range(1, years + 1):
-            gross_income += total_annual_dividends * (1 + dividend_growth_rate) ** y
+            gross_income += (
+                equity_annual_dividends * (1 + EQUITY_GROWTH_RATE) ** y
+                + fixed_income_annual_dividends * (1 + FIXED_INCOME_GROWTH_RATE) ** y
+            )
 
         net_income = gross_income * (1 - tax_rate / 100.0)
         avg_annual_gross = gross_income / years
@@ -1174,7 +1186,10 @@ def _get_income_projection(
             total_annual_dividends * (1 - tax_rate / 100.0) / 12, 2,
         ),
         "tax_rate_pct": tax_rate,
-        "dividend_growth_assumption_pct": round(dividend_growth_rate * 100, 1),
+        "dividend_growth_equity_pct": round(EQUITY_GROWTH_RATE * 100, 1),
+        "dividend_growth_fixed_income_pct": round(FIXED_INCOME_GROWTH_RATE * 100, 1),
+        "equity_annual_dividends_eur": round(equity_annual_dividends, 2),
+        "fixed_income_annual_dividends_eur": round(fixed_income_annual_dividends, 2),
         "yield_on_cost_pct": round(yield_on_cost, 2),
         "projections": projections,
     }

@@ -115,10 +115,14 @@ def _rebalance_holdings_by_market_value(holdings: list[AnalyzedHolding]) -> list
 def _compute_portfolio_return_params(
     repo: PortfolioRepository,
     holdings: list[AnalyzedHolding],
-) -> tuple[float, float]:
+) -> tuple[float, float, float]:
+    """Return (mu_annual, sigma_annual, df_t) where df_t is the estimated
+    degrees-of-freedom for a Student-t model of returns (used by Monte Carlo
+    to capture fat tails).  Falls back to a large df (normal-like) when
+    kurtosis estimation is not reliable."""
     asset_ids = [h.asset_id for h in holdings if h.asset_type != "cash"]
     if not asset_ids:
-        return 0.0, 0.0
+        return 0.0, 0.0, 30.0
 
     start_date = date.today() - timedelta(days=370)
     with repo.engine.begin() as conn:
@@ -148,7 +152,7 @@ def _compute_portfolio_return_params(
     for series_dates in dates_by_asset.values():
         all_dates.update(series_dates)
     if len(all_dates) < 20:
-        return 0.0, 0.0
+        return 0.0, 0.0, 30.0
 
     sorted_dates = sorted(all_dates)
     price_lookup: dict[int, dict[date, float]] = {}
@@ -188,11 +192,28 @@ def _compute_portfolio_return_params(
         if prev > 0 and curr > 0
     ]
     if len(log_returns) < 20:
-        return 0.0, 0.0
+        return 0.0, 0.0, 30.0
 
     mu_daily = statistics.mean(log_returns)
     sigma_daily = statistics.pstdev(log_returns)
-    return mu_daily * 252, sigma_daily * math.sqrt(252)
+
+    # Estimate excess kurtosis to calibrate Student-t degrees of freedom.
+    # For a t-distribution with df > 4, excess_kurtosis = 6 / (df - 4),
+    # so df = 6 / excess_kurtosis + 4.
+    # Clamp df to [3, 30]: df=30 is effectively Gaussian, df=3 captures
+    # heavy tails observed in real equity markets.
+    n = len(log_returns)
+    if n >= 30 and sigma_daily > 0:
+        m4 = sum((r - mu_daily) ** 4 for r in log_returns) / n
+        excess_kurt = (m4 / sigma_daily**4) - 3.0
+        if excess_kurt > 0.2:
+            df_t = max(3.0, min(30.0, 6.0 / excess_kurt + 4.0))
+        else:
+            df_t = 30.0  # near-Gaussian
+    else:
+        df_t = 30.0
+
+    return mu_daily * 252, sigma_daily * math.sqrt(252), df_t
 
 
 def _percentile(sorted_values: list[float], pct: int) -> float:
