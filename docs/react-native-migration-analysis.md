@@ -2,6 +2,8 @@
 
 ## Sommario Esecutivo
 
+**Decisione: React Native (Expo)** — scelta obbligata per il supporto ai widget nativi iOS/Android, requisito non realizzabile con Capacitor o PWA.
+
 La migrazione da React Web a React Native è **fattibile ma di complessità medio-alta**. Il livello di business logic riutilizzabile è buono (~60-70%), ma l'intero layer UI (Mantine) e diverse API web-specific devono essere sostituite. Stima di effort: **3-5 mesi** per un team di 2 sviluppatori.
 
 ---
@@ -219,16 +221,25 @@ Clerk offre `@clerk/clerk-expo` per React Native/Expo. La migrazione è relativa
 - Creator wizard (multi-step)
 - Copilot chat (AI interface)
 
-#### Fase 4: Polish e Funzionalità Piattaforma (2-3 settimane)
+#### Fase 4: Widget Nativi (2-3 settimane)
+- Setup Widget Extension iOS (Xcode, App Groups, entitlements)
+- Modulo nativo bridge per shared storage (RN ↔ Widget)
+- Widget Portfolio Summary (SwiftUI + Kotlin)
+- Widget Performance Chart con sparkline
+- Widget Allocation Donut e Rebalance Alert
+- Testing widget su dispositivi reali iOS/Android
+
+#### Fase 5: Polish e Funzionalità Piattaforma (2-3 settimane)
 - Pull-to-refresh (già concettualmente presente)
 - Push notifications
 - Biometric auth
 - Dark/light mode (Mantine scheme → RN appearance)
 - CSV import/export (adattato per mobile)
 - Screenshot/share dei grafici
+- Background refresh per aggiornamento dati widget
 
-#### Fase 5: Testing e Release (2-3 settimane)
-- Test su iOS e Android
+#### Fase 6: Testing e Release (2-3 settimane)
+- Test su iOS e Android (app + widget)
 - Performance optimization
 - App Store / Play Store submission
 
@@ -306,32 +317,153 @@ valore-mobile/
 
 ---
 
-## 9. Alternativa: PWA / Capacitor
+## 9. Widget Nativi iOS e Android
 
-Prima di impegnarsi in una riscrittura RN, valutare:
+I widget nativi della home screen sono un requisito chiave e rappresentano il motivo principale per cui **React Native è l'unica scelta possibile**. Capacitor e PWA non supportano questa funzionalità.
 
-| Approccio | Pro | Contro |
-|---|---|---|
-| **React Native** | Performance nativa, UX ottimale, accesso API native | Riscrittura UI completa |
-| **Capacitor/Ionic** | Riutilizzo ~90% codice web, effort minimo | Performance inferiore, UX non nativa |
-| **PWA** | Zero riscrittura, installabile | Nessun app store, limitazioni iOS |
+### 9.1 Supporto Widget per Piattaforma
 
-**Se il goal è "avere un'app negli store" con effort minimo**, Capacitor è l'opzione migliore: permette di wrappare l'app React/Mantine esistente in un container nativo con accesso a push notifications, camera, etc.
+| Funzionalità | React Native | Capacitor | PWA |
+|---|---|---|---|
+| iOS Home Screen Widget (WidgetKit) | Si | No | No |
+| Android Home Screen Widget (App Widgets) | Si | No | No |
+| iOS Lock Screen Widget | Si | No | No |
+| iOS Dynamic Island (Live Activities) | Si | No | No |
+| watchOS Complications | Si | No | No |
 
-**Se il goal è "UX mobile nativa di alta qualità"**, React Native è la scelta giusta ma richiede significativamente più effort.
+### 9.2 Architettura Widget iOS (WidgetKit)
+
+I widget iOS vengono scritti in **Swift/SwiftUI** come Widget Extension separata all'interno del progetto Xcode generato da Expo/RN.
+
+```
+ios/
+├── Valore365/                    # App principale RN
+├── Valore365Widget/              # Widget Extension (Swift)
+│   ├── Valore365Widget.swift     # Entry point widget
+│   ├── PortfolioSummaryWidget.swift
+│   ├── PerformanceWidget.swift
+│   └── Assets.xcassets
+└── Valore365WidgetExtension.entitlements
+```
+
+**Comunicazione App ↔ Widget**:
+- **App Groups**: Storage condiviso tra app e widget via `UserDefaults(suiteName:)`
+- L'app RN scrive i dati portfolio nel shared storage tramite modulo nativo
+- Il widget li legge e li renderizza in SwiftUI
+- **Timeline Provider**: WidgetKit richiede un `TimelineProvider` che determina quando aggiornare i dati
+
+**Librerie utili**:
+- `react-native-shared-group-preferences` — accesso a App Groups da RN
+- `@baked-apps/react-native-widget-extension` — helper per setup WidgetKit
+- `react-native-widget-center` — gestione timeline widget
+
+### 9.3 Architettura Widget Android (App Widgets)
+
+I widget Android vengono scritti in **Kotlin/Java** come `AppWidgetProvider`.
+
+```
+android/
+├── app/src/main/
+│   ├── java/.../widgets/
+│   │   ├── PortfolioSummaryWidget.kt
+│   │   ├── PerformanceWidget.kt
+│   │   └── WidgetDataProvider.kt
+│   ├── res/
+│   │   ├── layout/
+│   │   │   ├── widget_portfolio_summary.xml
+│   │   │   └── widget_performance.xml
+│   │   └── xml/
+│   │       ├── portfolio_summary_widget_info.xml
+│   │       └── performance_widget_info.xml
+│   └── AndroidManifest.xml       # Widget receivers
+```
+
+**Comunicazione App ↔ Widget**:
+- **SharedPreferences**: L'app RN scrive i dati, il widget li legge
+- **WorkManager**: Per aggiornamenti periodici in background
+- **RemoteViews**: Layout XML per la UI del widget
+
+### 9.4 Widget Proposti per Valore365
+
+#### Widget 1: Portfolio Summary (Small/Medium)
+- Valore totale del portfolio selezionato
+- Variazione giornaliera (% e valore assoluto)
+- Colore verde/rosso in base alla performance
+- Tap → apre la Dashboard
+
+#### Widget 2: Performance Chart (Medium/Large)
+- Mini grafico sparkline dell'andamento (7g/30g/YTD)
+- Valore attuale e variazione
+- Tap → apre la Dashboard con il grafico espanso
+
+#### Widget 3: Allocation Donut (Medium)
+- Mini donut chart con le top 5 allocazioni
+- Percentuali per categoria/asset
+- Tap → apre la sezione Holdings
+
+#### Widget 4: Rebalance Alert (Small)
+- Indicatore di drift dal target allocation
+- Badge con numero di azioni suggerite
+- Tap → apre il Doctor
+
+### 9.5 Impatto sui Tempi
+
+I widget aggiungono **2-3 settimane** al piano di migrazione:
+
+| Attività | Effort |
+|---|---|
+| Setup Widget Extension iOS (Xcode, App Groups, entitlements) | 2-3 giorni |
+| Modulo nativo RN per shared storage | 2-3 giorni |
+| Widget Portfolio Summary (iOS + Android) | 3-4 giorni |
+| Widget Performance Chart (iOS + Android) | 3-4 giorni |
+| Widget Allocation / Rebalance Alert | 2-3 giorni |
+| Testing e polish cross-platform | 2-3 giorni |
+| **Totale** | **~2-3 settimane** |
+
+### 9.6 Considerazioni Tecniche Widget
+
+**Limitazioni WidgetKit (iOS)**:
+- I widget sono **read-only** — non possono avere input complessi
+- Aggiornamenti limitati (budget di timeline gestito dal sistema)
+- SwiftUI obbligatorio — non si può usare React Native nel widget stesso
+- Dimensioni fisse: Small (2x2), Medium (4x2), Large (4x4), Extra Large (iPad)
+
+**Limitazioni App Widgets (Android)**:
+- Layout limitato a `RemoteViews` (no custom Views arbitrarie)
+- Da Android 12+ supporto per Rounded Corners e Dynamic Colors
+- Aggiornamenti minimi ogni 30 minuti (o su richiesta dell'app)
+
+**Background Refresh**:
+- L'app deve aggiornare i dati widget periodicamente
+- iOS: `BGAppRefreshTask` + WidgetKit timeline reload
+- Android: `WorkManager` periodic task
+- Entrambi richiedono gestione attenta della batteria
 
 ---
 
-## 10. Conclusione
+## 10. Alternativa Scartata: Capacitor / PWA
+
+| Approccio | Widget Nativi | UX | Effort |
+|---|---|---|---|
+| **React Native** | Si (iOS + Android) | Nativa | 3-5 mesi |
+| **Capacitor** | No | Web in wrapper | 2-4 settimane |
+| **PWA** | No | Web | Minimo |
+
+**Verdetto**: Capacitor e PWA sono stati scartati perché **non supportano widget nativi**, requisito fondamentale per il progetto.
+
+---
+
+## 11. Conclusione
 
 | Metrica | Valore |
 |---|---|
+| **Decisione** | React Native (Expo) — unica opzione per widget nativi |
 | **Codice riutilizzabile** | ~60-70% (logic, API, queries, types) |
-| **Codice da riscrivere** | ~30-40% (UI, navigation, charts, storage) |
+| **Codice da riscrivere** | ~30-40% (UI, navigation, charts, storage, widget) |
 | **Complessità complessiva** | Media-Alta |
-| **Effort stimato (RN)** | 3-5 mesi (2 sviluppatori) |
-| **Effort stimato (Capacitor)** | 2-4 settimane (1 sviluppatore) |
-| **Rischio principale** | Riscrittura grafici finanziari |
+| **Effort stimato totale** | 4-6 mesi (2 sviluppatori, inclusi widget) |
+| **Di cui widget** | ~2-3 settimane |
+| **Rischio principale** | Riscrittura grafici finanziari + codice nativo widget |
 
 Il progetto è in buona posizione per la migrazione grazie a:
 - Separazione pulita tra UI e business logic
@@ -340,4 +472,4 @@ Il progetto è in buona posizione per la migrazione grazie a:
 - TypeScript per type safety condivisa
 - Componenti mobile-aware già presenti
 
-La decisione chiave è: **React Native (UX nativa, effort alto) vs Capacitor (UX web, effort basso)**.
+I widget nativi richiedono competenze **Swift/SwiftUI** (iOS) e **Kotlin** (Android) in aggiunta a React Native, ma rappresentano un forte valore aggiunto per l'esperienza utente mobile.
