@@ -14,7 +14,7 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconArrowsHorizontal, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
+import { IconArrowsHorizontal, IconChevronDown, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
 
@@ -405,6 +405,37 @@ export function CopilotChat({
   const hasHistory = savedConversations.length > 0;
   const otherConversations = savedConversations.filter((c) => c.id !== conversationId);
 
+  // Track whether the virtual keyboard is open on mobile
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    if (!isMobile || !opened) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      // If the visual viewport is significantly smaller than the window height,
+      // the virtual keyboard is likely open
+      setKeyboardOpen(vv.height < window.innerHeight * 0.75);
+    };
+    vv.addEventListener('resize', onResize);
+    onResize();
+    return () => vv.removeEventListener('resize', onResize);
+  }, [isMobile, opened]);
+
+  // Swipe-down to close on mobile
+  const touchStartY = useRef<number | null>(null);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartY.current === null) return;
+    const diff = e.changedTouches[0].clientY - touchStartY.current;
+    // Swipe down more than 80px from the top area closes the drawer
+    if (diff > 80 && touchStartY.current < 100) {
+      onClose();
+    }
+    touchStartY.current = null;
+  }, [onClose]);
+
   return (
     <Drawer
       opened={opened}
@@ -431,10 +462,12 @@ export function CopilotChat({
       }
       styles={{
         body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', padding: 0, overflowX: 'hidden' },
-        content: { display: 'flex', flexDirection: 'column', overflowX: 'hidden' },
-        header: { zIndex: 10 },
+        content: { display: 'flex', flexDirection: 'column', overflowX: 'hidden', height: isMobile ? '100dvh' : undefined },
+        header: { zIndex: 10, position: 'sticky' as const, top: 0 },
         close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
       }}
+      onTouchStart={isMobile ? handleTouchStart : undefined}
+      onTouchEnd={isMobile ? handleTouchEnd : undefined}
     >
       {/* Messages */}
       <ScrollArea
@@ -585,6 +618,21 @@ export function CopilotChat({
           background: isDark ? theme.colors.dark[7] : '#fff',
         }}
       >
+        {/* Mobile close button visible when keyboard hides the header X */}
+        {isMobile && keyboardOpen && (
+          <Group justify="center" mb={4}>
+            <ActionIcon
+              variant="subtle"
+              color="gray"
+              size="sm"
+              onClick={onClose}
+              aria-label="Chiudi copilot"
+              title="Chiudi copilot"
+            >
+              <IconChevronDown size={18} />
+            </ActionIcon>
+          </Group>
+        )}
         <Group gap="xs" align="flex-end">
           {messages.length > 0 && (
             <>
