@@ -118,6 +118,7 @@ def build_portfolio_snapshot_light(
             fire_data: dict = {
                 "annual_expenses": user_settings.fire_annual_expenses,
                 "annual_contribution": user_settings.fire_annual_contribution,
+                "expected_return_pct": user_settings.fire_expected_return_pct,
                 "safe_withdrawal_rate_pct": swr,
                 "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
                 "fire_target": round(fire_target, 0),
@@ -247,6 +248,7 @@ def build_aggregate_snapshot_light(
             fire_data: dict = {
                 "annual_expenses": user_settings.fire_annual_expenses,
                 "annual_contribution": user_settings.fire_annual_contribution,
+                "expected_return_pct": user_settings.fire_expected_return_pct,
                 "safe_withdrawal_rate_pct": swr,
                 "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
                 "fire_target": round(fire_target, 0),

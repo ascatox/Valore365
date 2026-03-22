@@ -49,6 +49,7 @@ import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProject
 import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
 
 const PRIVACY_MASK = '******';
+const DEFAULT_FIRE_EXPECTED_RETURN_PCT = 5;
 
 function isPrivacyModeEnabled(): boolean {
   if (typeof window === 'undefined') return false;
@@ -167,6 +168,7 @@ export function FirePage() {
 
   const [annualExpenses, setAnnualExpenses] = useState<number | string>(0);
   const [annualContribution, setAnnualContribution] = useState<number | string>(0);
+  const [expectedReturnPctInput, setExpectedReturnPctInput] = useState<number | string>(DEFAULT_FIRE_EXPECTED_RETURN_PCT);
   const [safeWithdrawalRate, setSafeWithdrawalRate] = useState<number | string>(4);
   const [currentAge, setCurrentAge] = useState<number | string>('');
   const [targetAge, setTargetAge] = useState<number | string>('');
@@ -214,6 +216,7 @@ export function FirePage() {
     if (!userSettings) return;
     setAnnualExpenses(userSettings.fire_annual_expenses ?? 0);
     setAnnualContribution(userSettings.fire_annual_contribution ?? 0);
+    setExpectedReturnPctInput(userSettings.fire_expected_return_pct ?? DEFAULT_FIRE_EXPECTED_RETURN_PCT);
     setSafeWithdrawalRate(userSettings.fire_safe_withdrawal_rate ?? 4);
     setCapitalGainsTaxRate(userSettings.fire_capital_gains_tax_rate ?? 26);
     setCurrentAge(userSettings.fire_current_age ?? '');
@@ -321,6 +324,7 @@ export function FirePage() {
   const aggregateMonteCarloError = aggregateMonteCarloQueries.find((query) => query.error)?.error;
   const expensesValue = typeof annualExpenses === 'number' ? annualExpenses : Number(annualExpenses || 0);
   const contributionValue = typeof annualContribution === 'number' ? annualContribution : Number(annualContribution || 0);
+  const configuredExpectedReturnPct = typeof expectedReturnPctInput === 'number' ? expectedReturnPctInput : Number(expectedReturnPctInput || 0);
   const swrValue = typeof safeWithdrawalRate === 'number' ? safeWithdrawalRate : Number(safeWithdrawalRate || 0);
   const currentAgeValue = typeof currentAge === 'number' ? currentAge : Number(currentAge || 0);
   const targetAgeValue = typeof targetAge === 'number' ? targetAge : Number(targetAge || 0);
@@ -366,7 +370,7 @@ export function FirePage() {
   const coveragePct = fireNumber && fireNumber > 0 ? (totalNetWorth / fireNumber) * 100 : null;
   const fireGap = fireNumber != null ? Math.max(0, fireNumber - totalNetWorth) : null;
 
-  const aggregateExpectedReturnPct = useMemo(() => {
+  const aggregateMonteCarloMeanReturnPct = useMemo(() => {
     if (!aggregateMonteCarlo.length || !aggregateSummaries.length) return null;
     const totals = aggregateSummaries.reduce((sum, item) => sum + item.market_value + item.cash_balance, 0);
     if (totals <= 0) return null;
@@ -418,7 +422,8 @@ export function FirePage() {
     });
   }, [aggregateMonteCarlo, aggregateSummaries, aggregateSummary, fireNumber]);
 
-  const expectedReturnPct = aggregateModeEnabled ? (aggregateExpectedReturnPct ?? 5) : (monteCarlo?.annualized_mean_return_pct ?? 5);
+  const expectedReturnPct = configuredExpectedReturnPct > 0 ? configuredExpectedReturnPct : DEFAULT_FIRE_EXPECTED_RETURN_PCT;
+  const monteCarloMeanReturnPct = aggregateModeEnabled ? aggregateMonteCarloMeanReturnPct : (monteCarlo?.annualized_mean_return_pct ?? null);
   const estimatedYearsToFire = fireNumber != null
     ? solveYearsToTarget(fireNumber, totalNetWorth, contributionValue, expectedReturnPct)
     : null;
@@ -524,6 +529,7 @@ export function FirePage() {
     settingsMutation.mutate({
       fire_annual_expenses: Math.max(0, expensesValue || 0),
       fire_annual_contribution: Math.max(0, contributionValue || 0),
+      fire_expected_return_pct: Math.max(0.1, expectedReturnPct || DEFAULT_FIRE_EXPECTED_RETURN_PCT),
       fire_safe_withdrawal_rate: Math.max(0.1, swrValue || 4),
       fire_capital_gains_tax_rate: Math.max(0, capitalGainsTaxRateValue || 0),
       fire_current_age: currentAgeValue > 0 ? currentAgeValue : null,
@@ -718,6 +724,16 @@ export function FirePage() {
                   <NumberInput label="Spesa annua target" value={annualExpenses} onChange={setAnnualExpenses} min={0} thousandSeparator="." decimalSeparator="," />
                   <NumberInput label="Contributo annuo" value={annualContribution} onChange={setAnnualContribution} min={0} thousandSeparator="." decimalSeparator="," />
                   <NumberInput
+                    label="Rendimento atteso annuo (%)"
+                    value={expectedReturnPctInput}
+                    onChange={setExpectedReturnPctInput}
+                    min={0.1}
+                    max={20}
+                    step={0.1}
+                    decimalScale={1}
+                    fixedDecimalScale
+                  />
+                  <NumberInput
                     label="Safe withdrawal rate (%)"
                     value={safeWithdrawalRate}
                     onChange={setSafeWithdrawalRate}
@@ -778,6 +794,7 @@ export function FirePage() {
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">
                   Rendimento atteso usato per le stime deterministiche: {formatPct(expectedReturnPct, 1)} annuo.
+                  {fireMode === 'accumulation' && monteCarloMeanReturnPct != null ? ` Monte Carlo attuale: ${formatPct(monteCarloMeanReturnPct, 1)} annuo.` : ''}
                   {fireMode === 'decumulation' ? ` Fiscalità stimata: ${formatPct(capitalGainsTaxRateValue, 1)} sulle plusvalenze.` : ''}
                   {aggregateModeEnabled && fireMode === 'decumulation' ? ' In modalità aggregata il decumulo usa un Monte Carlo reale sul perimetro selezionato.' : ''}
                 </Text>
@@ -913,6 +930,9 @@ export function FirePage() {
                   <Table.Tr><Table.Td>Perimetro FIRE</Table.Td><Table.Td>{fireScopeLabel}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Base currency</Table.Td><Table.Td>{currency}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Rendimento atteso</Table.Td><Table.Td>{formatPct(expectedReturnPct, 1)}</Table.Td></Table.Tr>
+                  {fireMode === 'accumulation' && monteCarloMeanReturnPct != null && (
+                    <Table.Tr><Table.Td>Rendimento medio Monte Carlo</Table.Td><Table.Td>{formatPct(monteCarloMeanReturnPct, 1)}</Table.Td></Table.Tr>
+                  )}
                   <Table.Tr><Table.Td>Volatilità attesa</Table.Td><Table.Td>{formatPct(activeVolatilityPct, 1)}</Table.Td></Table.Tr>
                   {fireMode === 'accumulation' ? (
                     <>

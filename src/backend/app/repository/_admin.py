@@ -102,6 +102,7 @@ class AdminMixin:
                            copilot_api_key_enc,
                            fire_annual_expenses::float8 as fire_annual_expenses,
                            fire_annual_contribution::float8 as fire_annual_contribution,
+                           fire_expected_return_pct::float8 as fire_expected_return_pct,
                            fire_safe_withdrawal_rate::float8 as fire_safe_withdrawal_rate,
                            fire_capital_gains_tax_rate::float8 as fire_capital_gains_tax_rate,
                            fire_current_age,
@@ -122,6 +123,7 @@ class AdminMixin:
             copilot_api_key_set=bool(row["copilot_api_key_enc"]),
             fire_annual_expenses=float(row["fire_annual_expenses"] or 0.0),
             fire_annual_contribution=float(row["fire_annual_contribution"] or 0.0),
+            fire_expected_return_pct=float(row["fire_expected_return_pct"] or 5.0),
             fire_safe_withdrawal_rate=float(row["fire_safe_withdrawal_rate"] or 4.0),
             fire_capital_gains_tax_rate=float(row["fire_capital_gains_tax_rate"] or 26.0),
             fire_current_age=int(row["fire_current_age"]) if row["fire_current_age"] is not None else None,
@@ -165,6 +167,9 @@ class AdminMixin:
         if "fire_annual_contribution" in fields_set and payload.fire_annual_contribution is not None:
             set_parts.append("fire_annual_contribution = :fire_annual_contribution")
             params["fire_annual_contribution"] = payload.fire_annual_contribution
+        if "fire_expected_return_pct" in fields_set and payload.fire_expected_return_pct is not None:
+            set_parts.append("fire_expected_return_pct = :fire_expected_return_pct")
+            params["fire_expected_return_pct"] = payload.fire_expected_return_pct
         if "fire_safe_withdrawal_rate" in fields_set and payload.fire_safe_withdrawal_rate is not None:
             set_parts.append("fire_safe_withdrawal_rate = :fire_safe_withdrawal_rate")
             params["fire_safe_withdrawal_rate"] = payload.fire_safe_withdrawal_rate
@@ -195,6 +200,7 @@ class AdminMixin:
                       copilot_api_key_enc,
                       fire_annual_expenses,
                       fire_annual_contribution,
+                      fire_expected_return_pct,
                       fire_safe_withdrawal_rate,
                       fire_capital_gains_tax_rate,
                       fire_current_age,
@@ -209,6 +215,7 @@ class AdminMixin:
                       coalesce(:ck, ''),
                       coalesce(:fae, 0),
                       coalesce(:fac, 0),
+                      coalesce(:ferp, 5),
                       coalesce(:fswr, 4),
                       coalesce(:fcgtr, 26),
                       :fca,
@@ -227,6 +234,7 @@ class AdminMixin:
                     "ck": api_key_enc,
                     "fae": payload.fire_annual_expenses,
                     "fac": payload.fire_annual_contribution,
+                    "ferp": payload.fire_expected_return_pct,
                     "fswr": payload.fire_safe_withdrawal_rate,
                     "fcgtr": payload.fire_capital_gains_tax_rate,
                     "fca": payload.fire_current_age,

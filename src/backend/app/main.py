@@ -117,10 +117,11 @@ def _apply_pending_migrations():
             from .sql import load_sql
             conn.execute(text(load_sql("migrations/create_asset_metadata")))
             conn.execute(text(load_sql("migrations/create_etf_enrichment")))
+            conn.execute(text(load_sql("migrations/add_fire_expected_return_pct")))
             conn.execute(text("""
                 CREATE INDEX IF NOT EXISTS idx_etf_enrichment_isin ON etf_enrichment(isin)
             """))
-        logging.getLogger(__name__).info("asset_metadata and etf_enrichment tables ensured")
+        logging.getLogger(__name__).info("asset_metadata, etf_enrichment and fire settings migrations ensured")
     except Exception as exc:
         logging.getLogger(__name__).warning("Migration check failed: %s", exc)
 

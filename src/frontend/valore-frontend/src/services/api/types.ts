@@ -82,6 +82,7 @@ export interface UserSettings {
   copilot_api_key_set: boolean;
   fire_annual_expenses: number;
   fire_annual_contribution: number;
+  fire_expected_return_pct: number;
   fire_safe_withdrawal_rate: number;
   fire_capital_gains_tax_rate: number;
   fire_current_age: number | null;
@@ -95,6 +96,7 @@ export interface UserSettingsUpdateInput {
   copilot_api_key?: string;
   fire_annual_expenses?: number;
   fire_annual_contribution?: number;
+  fire_expected_return_pct?: number;
   fire_safe_withdrawal_rate?: number;
   fire_capital_gains_tax_rate?: number;
   fire_current_age?: number | null;
