@@ -66,7 +66,6 @@
         # watch-backend = "npm run watch-backend";
         codex="npm i -g @openai/codex | bash | codex";
         claude="curl -fsSL https://claude.ai/install.sh | bash | claude --dangerously-skip-permissions";
-        backlog="npm i -g backlog.md";
       };
     };
   };
