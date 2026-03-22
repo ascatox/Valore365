@@ -673,7 +673,7 @@ export function FirePage() {
               <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
                 {fireMode === 'accumulation' ? (
                   <>
-                    <HeroMetric label="Spesa annua" value={expensesValue > 0 ? formatMoney(expensesValue, currency) : '—'} />
+                    <HeroMetric label="Spesa annua netta" value={expensesValue > 0 ? formatMoney(expensesValue, currency) : '—'} />
                     <HeroMetric label="SWR" value={swrValue > 0 ? formatPct(swrValue, 2) : '—'} />
                     <HeroMetric label="Gap" value={fireGap != null ? formatMoney(fireGap, currency) : '—'} />
                     <HeroMetric label="ETA" value={estimatedYearsToFire != null ? `${Math.ceil(estimatedYearsToFire)} anni` : 'N/D'} />
@@ -721,7 +721,7 @@ export function FirePage() {
               </Group>
               {fireMode === 'accumulation' ? (
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                  <NumberInput label="Spesa annua target" value={annualExpenses} onChange={setAnnualExpenses} min={0} thousandSeparator="." decimalSeparator="," />
+                  <NumberInput label="Spesa annua netta target" value={annualExpenses} onChange={setAnnualExpenses} min={0} thousandSeparator="." decimalSeparator="," />
                   <NumberInput label="Contributo annuo" value={annualContribution} onChange={setAnnualContribution} min={0} thousandSeparator="." decimalSeparator="," />
                   <NumberInput
                     label="Rendimento atteso annuo (%)"
@@ -843,7 +843,7 @@ export function FirePage() {
                 color="blue"
                 label="Capitale target"
                 value={fireNumber != null ? formatMoney(fireNumber, currency) : 'N/D'}
-                note={expensesValue > 0 ? `${formatMoney(expensesValue, currency)} / anno con SWR ${formatPct(swrValue, 2)}` : 'Imposta la spesa annua'}
+                note={expensesValue > 0 ? `${formatMoney(expensesValue, currency)} / anno netti con SWR ${formatPct(swrValue, 2)}` : 'Imposta la spesa annua netta'}
               />
             </>
           ) : (
@@ -892,7 +892,7 @@ export function FirePage() {
               <Text c="dimmed">
                 {fireMode === 'accumulation'
                   ? (fireNumber == null
-                    ? 'Inserisci una spesa annua e un withdrawal rate per ottenere la soglia FIRE.'
+                    ? 'Inserisci una spesa annua netta e un withdrawal rate per ottenere la soglia FIRE.'
                     : fireGap === 0
                       ? 'Il portafoglio ha gia raggiunto o superato la soglia FIRE impostata.'
                       : estimatedYearsToFire != null
@@ -936,7 +936,7 @@ export function FirePage() {
                   <Table.Tr><Table.Td>Volatilità attesa</Table.Td><Table.Td>{formatPct(activeVolatilityPct, 1)}</Table.Td></Table.Tr>
                   {fireMode === 'accumulation' ? (
                     <>
-                      <Table.Tr><Table.Td>Spesa annua</Table.Td><Table.Td>{expensesValue > 0 ? formatMoney(expensesValue, currency) : 'N/D'}</Table.Td></Table.Tr>
+                      <Table.Tr><Table.Td>Spesa annua netta</Table.Td><Table.Td>{expensesValue > 0 ? formatMoney(expensesValue, currency) : 'N/D'}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Contributo annuo</Table.Td><Table.Td>{formatMoney(contributionValue, currency)}</Table.Td></Table.Tr>
                     </>
                   ) : (
