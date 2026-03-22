@@ -533,7 +533,7 @@ export function FirePage() {
 
   return (
     <PageLayout variant="fire">
-      <Stack gap="lg" pb={isMobile ? 96 : 0}>
+      <Stack gap="lg" pb={isMobile ? 'calc(96px + var(--safe-area-bottom))' : 0}>
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
           title="FIRE"
@@ -1185,8 +1185,12 @@ export function FirePage() {
         opened={aggregateSelectionOpened}
         onClose={() => setAggregateSelectionOpened(false)}
         title="Perimetro FIRE aggregato"
-        size="lg"
-        centered
+        size={isMobile ? '100%' : 'lg'}
+        fullScreen={isMobile}
+        centered={!isMobile}
+        styles={{
+          body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+        }}
       >
         <Stack gap="md">
           <Text size="sm" c="dimmed">
@@ -1251,7 +1255,7 @@ export function FirePage() {
           aria-label="Apri FIRE Copilot"
           style={{
             position: 'fixed',
-            bottom: isMobile ? 80 : 24,
+            bottom: isMobile ? 'calc(80px + var(--safe-area-bottom))' : 24,
             right: 24,
             zIndex: 100,
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',

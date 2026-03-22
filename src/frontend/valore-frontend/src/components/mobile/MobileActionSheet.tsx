@@ -48,9 +48,9 @@ export function MobileActionSheet({
         gap="xs"
         style={{
           position: 'fixed',
-          left: 12,
-          right: 12,
-          bottom: bottomOffset,
+          left: 'calc(12px + var(--safe-area-left))',
+          right: 'calc(12px + var(--safe-area-right))',
+          bottom: `calc(${bottomOffset}px + var(--safe-area-bottom))`,
           zIndex: 44,
           padding: 8,
           borderRadius: 24,
@@ -113,6 +113,10 @@ export function MobileActionSheet({
         size="82%"
         radius="24px 24px 0 0"
         title={title}
+        styles={{
+          content: { paddingBottom: 'var(--safe-area-bottom)' },
+          body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+        }}
       >
         <Stack gap="sm">
           <Group gap="xs" wrap="wrap">

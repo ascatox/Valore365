@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ColorSchemeScript, Drawer, MantineProvider, Modal, NumberInput, createTheme } from '@mantine/core';
+import { Drawer, MantineProvider, Modal, NumberInput, createTheme } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
@@ -8,6 +8,7 @@ import App from './App.tsx';
 
 // Importa gli stili obbligatori di Mantine
 import '@mantine/core/styles.css';
+import './index.css';
 
 const queryClient = new QueryClient({
   defaultOptions: {

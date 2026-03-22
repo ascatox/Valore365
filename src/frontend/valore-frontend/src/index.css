@@ -3,69 +3,61 @@
   50% { opacity: 0.5; }
 }
 
-:root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
-[data-mantine-color-scheme='light'] {
-  color: #213547;
-  background-color: #ffffff;
+:root {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+}
 
+html {
+  min-height: 100%;
+  background-color: #ffffff;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+body,
+#root {
+  min-width: 320px;
+  min-height: 100dvh;
 }
 
 body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  background-color: #ffffff;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+[data-mantine-color-scheme='dark'] html,
+[data-mantine-color-scheme='dark'] body {
+  background-color: #242424;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+a {
+  text-decoration: inherit;
 }
 
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+button:focus-visible,
+[role='button']:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--mantine-color-blue-6);
+  outline-offset: 2px;
+}
+
+.safe-bottom {
+  padding-bottom: max(var(--safe-area-bottom), 0px);
 }
 
 /* Copilot Markdown styles */
@@ -82,7 +74,6 @@ button:focus-visible {
 .copilot-markdown h1:first-child,
 .copilot-markdown h2:first-child,
 .copilot-markdown h3:first-child { margin-top: 0; }
-/* Desktop: scrollable table */
 .copilot-markdown table {
   border-collapse: separate;
   border-spacing: 0;
@@ -94,7 +85,6 @@ button:focus-visible {
   overflow: hidden;
   border: 1px solid var(--mantine-color-default-border);
 }
-/* Scroll wrapper: the parent .copilot-markdown handles overflow */
 .copilot-markdown { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .copilot-markdown th, .copilot-markdown td {
   padding: 0.5em 0.75em;
@@ -118,29 +108,37 @@ button:focus-visible {
 .copilot-markdown tr:hover td {
   background: rgba(128, 128, 128, 0.06);
 }
-/* Mobile: stack tables as cards */
+
 @media (max-width: 48em) {
   .copilot-markdown {
     overflow-x: hidden;
   }
-  .copilot-markdown table, .copilot-markdown thead,
-  .copilot-markdown tbody, .copilot-markdown th,
-  .copilot-markdown td, .copilot-markdown tr {
+
+  .copilot-markdown table,
+  .copilot-markdown thead,
+  .copilot-markdown tbody,
+  .copilot-markdown th,
+  .copilot-markdown td,
+  .copilot-markdown tr {
     display: block;
   }
+
   .copilot-markdown table {
     width: 100%;
     min-width: unset;
     border: none;
     border-radius: 0;
   }
+
   .copilot-markdown thead { display: none; }
+
   .copilot-markdown tr {
     margin-bottom: 0.6em;
     border: 1px solid var(--mantine-color-default-border);
     border-radius: 8px;
     overflow: hidden;
   }
+
   .copilot-markdown td {
     padding: 0.4em 0.75em;
     border-right: none;
@@ -149,24 +147,32 @@ button:focus-visible {
     justify-content: space-between;
     gap: 0.5em;
   }
+
   .copilot-markdown td::before {
     content: attr(data-label);
     font-weight: 600;
     flex-shrink: 0;
   }
+
   .copilot-markdown td:last-child { border-bottom: none; }
 }
+
 .copilot-markdown code {
   background: rgba(128, 128, 128, 0.15);
   padding: 0.1em 0.3em;
   border-radius: 4px;
   font-size: 0.9em;
 }
+
 .copilot-markdown blockquote {
   border-left: 3px solid var(--mantine-color-teal-5);
   margin: 0.5em 0;
   padding: 0.2em 0.8em;
   opacity: 0.85;
 }
-.copilot-markdown hr { border: none; border-top: 1px solid var(--mantine-color-default-border); margin: 0.5em 0; }
 
+.copilot-markdown hr {
+  border: none;
+  border-top: 1px solid var(--mantine-color-default-border);
+  margin: 0.5em 0;
+}

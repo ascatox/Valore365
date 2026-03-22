@@ -15,6 +15,7 @@ import {
   TextInput,
   Alert,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconFileImport, IconCheck, IconX, IconChartPie } from '@tabler/icons-react';
 import { formatNum } from '../../dashboard/formatters';
 import {
@@ -70,6 +71,7 @@ export function CsvImportModal({
   onImportComplete,
   onPortfolioCreated,
 }: CsvImportModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const navigate = useNavigate();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [broker, setBroker] = useState<string>('fineco');
@@ -204,7 +206,12 @@ export function CsvImportModal({
       opened={opened}
       onClose={handleClose}
       title="Importa Operazioni"
-      size="xl"
+      size={isMobile ? '100%' : 'xl'}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {step === 'upload' && (

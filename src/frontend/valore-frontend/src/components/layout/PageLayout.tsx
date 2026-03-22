@@ -6,7 +6,7 @@ type PageLayoutVariant = 'default' | 'editorial' | 'fire' | 'settings';
 interface PageLayoutProps {
   children: ReactNode;
   variant?: PageLayoutVariant;
-  mobileBottomPadding?: number;
+  mobileBottomPadding?: number | string;
   style?: CSSProperties;
 }
 

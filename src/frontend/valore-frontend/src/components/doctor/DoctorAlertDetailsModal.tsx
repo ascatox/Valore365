@@ -1,4 +1,5 @@
 import { Badge, Group, Modal, SimpleGrid, Stack, Table, Text, ThemeIcon, Title } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconArrowsShuffle, IconBriefcase } from '@tabler/icons-react';
 import type { PortfolioHealthAlert } from '../../services/api';
 
@@ -70,6 +71,7 @@ export function DoctorAlertDetailsModal({
   onClose,
   currency = 'EUR',
 }: DoctorAlertDetailsModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const details = isRecord(alert?.details) ? alert.details : null;
   const dominantPosition = isHoldingDetail(details?.dominant_position) ? details.dominant_position : null;
   const topPositions = asHoldingArray(details?.top_positions);
@@ -77,7 +79,17 @@ export function DoctorAlertDetailsModal({
   const overlapScore = typeof details?.overlap_score === 'number' ? details.overlap_score : null;
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Approfondimento alert" size="lg" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Approfondimento alert"
+      size={isMobile ? '100%' : 'lg'}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
+    >
       {!alert ? null : (
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">

@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconCopy } from '@tabler/icons-react';
 import type { Portfolio } from '../../../services/api';
 import { formatGrossTotal } from '../../dashboard/formatters';
@@ -47,12 +48,18 @@ export function PortfolioModal({
   saving,
   onSave,
 }: PortfolioModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   return (
     <Modal
       opened={opened}
       onClose={onClose}
       title={mode === 'create' ? 'Nuovo Portfolio' : 'Modifica Portfolio'}
-      centered
+      size={isMobile ? '100%' : undefined}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {formError && <Alert color="red">{formError}</Alert>}
@@ -113,8 +120,19 @@ export function PortfolioCloneModal({
   cloning,
   onClone,
 }: PortfolioCloneModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   return (
-    <Modal opened={opened} onClose={onClose} title="Clona portfolio" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Clona portfolio"
+      size={isMobile ? '100%' : undefined}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
+    >
       <Stack>
         {cloneError && <Alert color="red">{cloneError}</Alert>}
         <Text size="sm">
@@ -156,8 +174,19 @@ export function PortfolioDeleteModal({
   deleting,
   onDelete,
 }: PortfolioDeleteModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   return (
-    <Modal opened={opened} onClose={onClose} title="Conferma eliminazione portfolio" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Conferma eliminazione portfolio"
+      size={isMobile ? '100%' : undefined}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
+    >
       <Stack>
         <Text size="sm">
           Vuoi eliminare il portfolio {selectedPortfolio ? `"${selectedPortfolio.name}"` : ''}?
@@ -221,6 +250,7 @@ export function EditTransactionModal({
   saving,
   onSave,
 }: EditTransactionModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const grossTotal = formatGrossTotal(quantity, price);
 
   return (
@@ -228,7 +258,12 @@ export function EditTransactionModal({
       opened={opened}
       onClose={onClose}
       title={`Modifica Transazione${label ? ` - ${label}` : ''}`}
-      centered
+      size={isMobile ? '100%' : undefined}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
@@ -278,8 +313,19 @@ export function DeleteTransactionModal({
   transactionId,
   onConfirm,
 }: DeleteTransactionModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   return (
-    <Modal opened={opened} onClose={onClose} title="Conferma eliminazione transazione" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Conferma eliminazione transazione"
+      size={isMobile ? '100%' : undefined}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
+    >
       <Stack>
         <Text size="sm">
           Vuoi eliminare la transazione {label ? `"${label}"` : ''}?

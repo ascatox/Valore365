@@ -84,6 +84,7 @@ function App() {
 function ProtectedApp() {
   const location = useLocation();
   const navigate = useNavigate();
+  const mainRef = useRef<HTMLElement | null>(null);
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
@@ -222,7 +223,7 @@ function ProtectedApp() {
   const toggleAutoRefresh = () => setAutoRefresh((v) => !v);
   const countdownSec = Math.ceil(countdown / 1000);
 
-  const { pulling, pullDistance, reached } = usePullToRefresh(handleGlobalRefresh);
+  const { pulling, pullDistance, reached } = usePullToRefresh(mainRef, handleGlobalRefresh, { enabled: Boolean(isMobile) });
   const lockNonPortfolioNavigation = hasPortfolios === false;
 
   return (
@@ -393,7 +394,7 @@ function ProtectedApp() {
           </Box>
         </AppShell.Navbar>
 
-        <AppShell.Main>
+        <AppShell.Main ref={mainRef}>
           <Transition mounted={pulling} transition="slide-down" duration={150}>
             {(styles) => (
               <div

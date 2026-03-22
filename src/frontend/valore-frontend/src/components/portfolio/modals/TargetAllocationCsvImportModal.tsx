@@ -10,6 +10,7 @@ import {
   Table,
   Text,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconCheck, IconFileImport, IconX, IconAlertTriangle } from '@tabler/icons-react';
 import { formatNum } from '../../dashboard/formatters';
 import {
@@ -106,6 +107,7 @@ export function TargetAllocationCsvImportModal({
   portfolioId,
   onImportComplete,
 }: Props) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [step, setStep] = useState<Step>('upload');
   const [resolvedRows, setResolvedRows] = useState<ResolvedRow[]>([]);
   const [resolving, setResolving] = useState(false);
@@ -312,7 +314,12 @@ export function TargetAllocationCsvImportModal({
       opened={opened}
       onClose={handleClose}
       title="Importa Allocazione Target da CSV"
-      size="xl"
+      size={isMobile ? '100%' : 'xl'}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {step === 'upload' && (

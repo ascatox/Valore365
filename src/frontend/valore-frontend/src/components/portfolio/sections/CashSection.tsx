@@ -14,6 +14,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { IconPlus } from '@tabler/icons-react';
 import {
   createCashMovement,
@@ -45,6 +46,7 @@ const SIDE_COLORS: Record<string, string> = {
 };
 
 export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreated }: CashSectionProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [cashData, setCashData] = useState<CashBalanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawerOpened, setDrawerOpened] = useState(false);
@@ -191,8 +193,13 @@ export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreat
         opened={drawerOpened}
         onClose={() => setDrawerOpened(false)}
         title="Registra Movimento di Cassa"
-        position="right"
-        size="md"
+        position={isMobile ? 'bottom' : 'right'}
+        size={isMobile ? '100%' : 'md'}
+        radius={isMobile ? '24px 24px 0 0' : undefined}
+        styles={{
+          content: { paddingBottom: 'var(--safe-area-bottom)' },
+          body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+        }}
       >
         <Stack>
           <Select

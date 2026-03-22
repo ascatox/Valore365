@@ -9,6 +9,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import {
   createPacRule,
   updatePacRule,
@@ -49,6 +50,7 @@ export function PacRuleDrawer({
   selectedAssetSymbol,
   onSaved,
 }: PacRuleDrawerProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [mode, setMode] = useState<'amount' | 'quantity'>('amount');
   const [amount, setAmount] = useState<number | string>('');
   const [quantity, setQuantity] = useState<number | string>('');
@@ -143,8 +145,13 @@ export function PacRuleDrawer({
       opened={opened}
       onClose={onClose}
       title={editingRule ? 'Modifica PAC' : 'Nuovo Piano di Accumulo'}
-      position="right"
-      size="md"
+      position={isMobile ? 'bottom' : 'right'}
+      size={isMobile ? '100%' : 'md'}
+      radius={isMobile ? '24px 24px 0 0' : undefined}
+      styles={{
+        content: { paddingBottom: 'var(--safe-area-bottom)' },
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {editingRule ? (

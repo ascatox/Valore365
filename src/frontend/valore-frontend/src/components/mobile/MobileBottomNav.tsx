@@ -29,9 +29,9 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
       gap={6}
       style={{
         position: 'fixed',
-        left: 12,
-        right: 12,
-        bottom: bottomOffset,
+        left: 'calc(12px + var(--safe-area-left))',
+        right: 'calc(12px + var(--safe-area-right))',
+        bottom: `calc(${bottomOffset}px + var(--safe-area-bottom))`,
         zIndex: 45,
         padding: 6,
         borderRadius: 20,

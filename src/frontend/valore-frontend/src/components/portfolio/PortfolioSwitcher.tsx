@@ -392,9 +392,13 @@ export function PortfolioSwitcher({
               setQuery('');
             }}
             position="bottom"
-            size="88%"
+            size="100%"
             radius="24px 24px 0 0"
             title="Seleziona portafoglio"
+            styles={{
+              content: { paddingBottom: 'var(--safe-area-bottom)' },
+              body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+            }}
           >
             {list}
           </Drawer>

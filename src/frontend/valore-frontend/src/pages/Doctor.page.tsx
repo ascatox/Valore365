@@ -481,7 +481,7 @@ export function DoctorPage() {
           aria-label="Apri Doctor Copilot"
           style={{
             position: 'fixed',
-            bottom: isMobile ? 24 : 24,
+            bottom: isMobile ? 'calc(24px + var(--safe-area-bottom))' : 24,
             right: 24,
             zIndex: 100,
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',

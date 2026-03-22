@@ -6,6 +6,7 @@ import {
   NumberInput,
   Stack,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { upsertPortfolioTargetAllocation } from '../../../services/api';
 import { AssetDiscoverSelect } from '../AssetDiscoverSelect';
 
@@ -22,6 +23,7 @@ export function TargetAllocationDrawer({
   portfolioId,
   onSaved,
 }: TargetAllocationDrawerProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [resolvedAssetId, setResolvedAssetId] = useState<number | null>(null);
   const [targetWeight, setTargetWeight] = useState<number | string>(0);
   const [saving, setSaving] = useState(false);
@@ -62,7 +64,18 @@ export function TargetAllocationDrawer({
   };
 
   return (
-    <Drawer opened={opened} onClose={onClose} title="Aggiungi Asset al Portafoglio" position="right" size="md">
+    <Drawer
+      opened={opened}
+      onClose={onClose}
+      title="Aggiungi Asset al Portafoglio"
+      position={isMobile ? 'bottom' : 'right'}
+      size={isMobile ? '100%' : 'md'}
+      radius={isMobile ? '24px 24px 0 0' : undefined}
+      styles={{
+        content: { paddingBottom: 'var(--safe-area-bottom)' },
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
+    >
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
         {success && <Alert color="teal">{success}</Alert>}

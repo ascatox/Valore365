@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import type { RebalancePreviewResponse, RebalanceCommitResponse } from '../../../services/api';
 import { formatNum, formatMoneyOrNA as formatMoney } from '../../dashboard/formatters';
 
@@ -71,13 +72,18 @@ export function RebalancePreviewModal({
   onLoadPreview,
   onCommitPreview,
 }: RebalancePreviewModalProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   return (
     <Modal
       opened={opened}
       onClose={onClose}
       title="Genera transazioni da target (Preview)"
-      size="min(1100px, 95vw)"
-      centered
+      size={isMobile ? '100%' : 'min(1100px, 95vw)'}
+      fullScreen={isMobile}
+      centered={!isMobile}
+      styles={{
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {rebalancePreviewError && <Alert color="red">{rebalancePreviewError}</Alert>}

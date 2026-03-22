@@ -462,8 +462,19 @@ export function CopilotChat({
       }
       styles={{
         body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', padding: 0, overflowX: 'hidden' },
-        content: { display: 'flex', flexDirection: 'column', overflowX: 'hidden', height: isMobile ? '100dvh' : undefined },
-        header: { zIndex: 10, position: 'sticky' as const, top: 0 },
+        content: {
+          display: 'flex',
+          flexDirection: 'column',
+          overflowX: 'hidden',
+          height: isMobile ? '100dvh' : undefined,
+          paddingBottom: isMobile ? 'var(--safe-area-bottom)' : undefined,
+        },
+        header: {
+          zIndex: 10,
+          position: 'sticky' as const,
+          top: 0,
+          paddingTop: isMobile ? 'calc(var(--mantine-spacing-xs) + var(--safe-area-top) / 2)' : undefined,
+        },
         close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
       }}
       onTouchStart={isMobile ? handleTouchStart : undefined}
@@ -616,6 +627,7 @@ export function CopilotChat({
         style={{
           borderTop: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}`,
           background: isDark ? theme.colors.dark[7] : '#fff',
+          paddingBottom: isMobile ? 'calc(var(--mantine-spacing-sm) + var(--safe-area-bottom))' : undefined,
         }}
       >
         {/* Mobile close button visible when keyboard hides the header X */}

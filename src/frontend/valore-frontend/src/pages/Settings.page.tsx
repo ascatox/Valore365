@@ -189,7 +189,7 @@ export function SettingsPage() {
   ];
 
   return (
-    <PageLayout variant="settings" mobileBottomPadding={isMobile ? 104 : undefined}>
+    <PageLayout variant="settings" mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
     <Stack gap={isMobile ? 'xs' : 0}>
       <PageHeader
         eyebrow="Preferenze, tema e configurazione"

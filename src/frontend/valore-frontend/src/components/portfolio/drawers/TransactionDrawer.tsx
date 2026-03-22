@@ -9,6 +9,7 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 import { createTransaction } from '../../../services/api';
 import type { Portfolio } from '../../../services/api';
 import { formatGrossTotal } from '../../dashboard/formatters';
@@ -44,6 +45,7 @@ export function TransactionDrawer({
   selectedPortfolio,
   onTransactionCreated,
 }: TransactionDrawerProps) {
+  const isMobile = useMediaQuery('(max-width: 48em)');
   const [resolvedAssetId, setResolvedAssetId] = useState<number | null>(null);
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [tradeAt, setTradeAt] = useState(() => currentDateTimeLocalValue());
@@ -122,8 +124,13 @@ export function TransactionDrawer({
       opened={opened}
       onClose={onClose}
       title="Nuova Transazione"
-      position="right"
-      size="md"
+      position={isMobile ? 'bottom' : 'right'}
+      size={isMobile ? '100%' : 'md'}
+      radius={isMobile ? '24px 24px 0 0' : undefined}
+      styles={{
+        content: { paddingBottom: 'var(--safe-area-bottom)' },
+        body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
+      }}
     >
       <Stack>
         {error && <Alert color="red">{error}</Alert>}

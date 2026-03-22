@@ -178,7 +178,7 @@ export function PortfolioPage() {
 
   return (
     <>
-      <PageLayout mobileBottomPadding={s.isMobile ? 180 : undefined} style={s.isMobile ? { paddingTop: 4 } : undefined}>
+      <PageLayout mobileBottomPadding={s.isMobile ? 'calc(180px + var(--safe-area-bottom))' : undefined} style={s.isMobile ? { paddingTop: 4 } : undefined}>
       <PageHeader
         eyebrow="Gestione movimenti, liquidita e target"
         title="Portfolio"
@@ -438,7 +438,7 @@ export function PortfolioPage() {
         <ActionIcon
           variant="filled" color="teal" size={52} radius="xl"
           onClick={s.openCopilot} aria-label="Apri Portfolio Copilot"
-          style={{ position: 'fixed', bottom: s.isMobile ? 80 : 24, right: 24, zIndex: 100, boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
+          style={{ position: 'fixed', bottom: s.isMobile ? 'calc(80px + var(--safe-area-bottom))' : 24, right: 24, zIndex: 100, boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
         >
           <IconRobot size={24} />
         </ActionIcon>
