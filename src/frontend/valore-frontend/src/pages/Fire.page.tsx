@@ -538,8 +538,8 @@ export function FirePage() {
   };
 
   return (
-    <PageLayout variant="fire">
-      <Stack gap="lg" pb={isMobile ? 'calc(96px + var(--safe-area-bottom))' : 0}>
+    <PageLayout variant="fire" mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
+      <Stack gap="lg">
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
           title="FIRE"
