@@ -14,7 +14,7 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconArrowsHorizontal, IconChevronDown, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
+import { IconArrowRight, IconArrowsHorizontal, IconChevronDown, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
 import { useVirtualKeyboard } from '../../hooks/useVirtualKeyboard';
@@ -198,7 +198,15 @@ export function CopilotChat({
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const [expanded, setExpanded] = useState(false);
+  type PanelSize = 'default' | 'half' | 'wide';
+  const PANEL_SIZES: PanelSize[] = ['default', 'half', 'wide'];
+  const PANEL_SIZE_MAP: Record<PanelSize, string> = { default: 'lg', half: '50%', wide: '75%' };
+  const PANEL_LABELS: Record<PanelSize, string> = { default: 'Espandi (50%)', half: 'Espandi (75%)', wide: 'Riduci' };
+  const [panelSize, setPanelSize] = useState<PanelSize>('default');
+  const cyclePanelSize = () => {
+    const idx = PANEL_SIZES.indexOf(panelSize);
+    setPanelSize(PANEL_SIZES[(idx + 1) % PANEL_SIZES.length]);
+  };
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -415,7 +423,7 @@ export function CopilotChat({
       opened={opened}
       onClose={onClose}
       position="right"
-      size={isMobile ? '100%' : expanded ? '50%' : 'lg'}
+      size={isMobile ? '100%' : PANEL_SIZE_MAP[panelSize]}
       title={
         <Group gap="xs">
           <IconRobot size={20} />
@@ -426,10 +434,10 @@ export function CopilotChat({
               variant="subtle"
               color="gray"
               size="sm"
-              onClick={() => setExpanded((v) => !v)}
-              title={expanded ? 'Riduci' : 'Espandi'}
+              onClick={cyclePanelSize}
+              title={PANEL_LABELS[panelSize]}
             >
-              <IconArrowsHorizontal size={16} />
+              {panelSize === 'wide' ? <IconArrowRight size={16} /> : <IconArrowsHorizontal size={16} />}
             </ActionIcon>
           )}
         </Group>
