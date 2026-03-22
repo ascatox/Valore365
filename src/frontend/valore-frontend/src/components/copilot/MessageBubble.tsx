@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { Box, Paper, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import React, { useRef, useEffect, useState } from 'react';
+import { ActionIcon, Box, Group, Paper, Text, Tooltip, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconRobot } from '@tabler/icons-react';
+import { IconCheck, IconCopy, IconRobot } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -44,6 +44,14 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const isDark = colorScheme === 'dark';
   const isUser = role === 'user';
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
   const normalizedContent = content.toLowerCase();
   const hasDisclaimer = normalizedContent.includes('supporto informativo') || normalizedContent.includes('consulenza finanziaria');
   const mdRef = useRef<HTMLDivElement | null>(null);
@@ -156,19 +164,37 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
         }}
       >
         {renderContent()}
-        {!isUser && content && !hasDisclaimer && (
-          <Text
-            size="xs"
+        {!isUser && content && !streaming && (
+          <Group
+            justify="space-between"
+            align="center"
             mt="sm"
-            c={isDark ? theme.colors.gray[4] : theme.colors.gray[7]}
             style={{
-              fontFamily: COPILOT_FONT,
               borderTop: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[3]}`,
               paddingTop: 8,
             }}
           >
-            {COPILOT_DISCLAIMER}
-          </Text>
+            {!hasDisclaimer ? (
+              <Text
+                size="xs"
+                c={isDark ? theme.colors.gray[4] : theme.colors.gray[7]}
+                style={{ fontFamily: COPILOT_FONT }}
+              >
+                {COPILOT_DISCLAIMER}
+              </Text>
+            ) : <span />}
+            <Tooltip label={copied ? 'Copiato!' : 'Copia risposta'} withArrow>
+              <ActionIcon
+                variant="subtle"
+                color={copied ? 'teal' : 'gray'}
+                size="xs"
+                onClick={handleCopy}
+                aria-label="Copia risposta"
+              >
+                {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         )}
       </Paper>
     </Box>
