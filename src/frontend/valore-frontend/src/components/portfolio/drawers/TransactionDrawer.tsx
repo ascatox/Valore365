@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Alert,
   Button,
@@ -15,6 +15,7 @@ import type { Portfolio } from '../../../services/api';
 import { formatGrossTotal } from '../../dashboard/formatters';
 import { AssetDiscoverSelect } from '../AssetDiscoverSelect';
 import { STORAGE_KEYS } from '../../dashboard/constants';
+import { useSwipeToClose } from '../../../hooks/useSwipeToClose';
 
 interface TransactionDrawerProps {
   opened: boolean;
@@ -46,6 +47,18 @@ export function TransactionDrawer({
   onTransactionCreated,
 }: TransactionDrawerProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
+  const firstInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus the first interactive field when drawer opens on mobile
+  useEffect(() => {
+    if (opened && isMobile && firstInputRef.current) {
+      // Small delay to let the drawer animation finish
+      const timer = setTimeout(() => firstInputRef.current?.focus(), 350);
+      return () => clearTimeout(timer);
+    }
+  }, [opened, isMobile]);
+
   const [resolvedAssetId, setResolvedAssetId] = useState<number | null>(null);
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [tradeAt, setTradeAt] = useState(() => currentDateTimeLocalValue());
@@ -131,6 +144,8 @@ export function TransactionDrawer({
         content: { paddingBottom: 'var(--safe-area-bottom)' },
         body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
       }}
+      onTouchStart={isMobile ? swipeHandlers.onTouchStart : undefined}
+      onTouchEnd={isMobile ? swipeHandlers.onTouchEnd : undefined}
     >
       <Stack>
         {error && <Alert color="red">{error}</Alert>}

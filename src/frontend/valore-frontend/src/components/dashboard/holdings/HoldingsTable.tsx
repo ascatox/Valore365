@@ -247,7 +247,10 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'center' }}>
                     <Tooltip label="Dettaglio asset" withArrow>
-                      <UnstyledButton onClick={() => setInfoModal({ assetId: p.asset_id, symbol: p.symbol })}>
+                      <UnstyledButton
+                        onClick={() => setInfoModal({ assetId: p.asset_id, symbol: p.symbol })}
+                        style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 36, minHeight: 36, borderRadius: 8 }}
+                      >
                         <IconInfoCircle size={16} stroke={1.5} style={{ opacity: 0.5 }} />
                       </UnstyledButton>
                     </Tooltip>

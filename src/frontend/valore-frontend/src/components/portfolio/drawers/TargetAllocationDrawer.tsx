@@ -9,6 +9,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import { upsertPortfolioTargetAllocation } from '../../../services/api';
 import { AssetDiscoverSelect } from '../AssetDiscoverSelect';
+import { useSwipeToClose } from '../../../hooks/useSwipeToClose';
 
 interface TargetAllocationDrawerProps {
   opened: boolean;
@@ -24,6 +25,7 @@ export function TargetAllocationDrawer({
   onSaved,
 }: TargetAllocationDrawerProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
   const [resolvedAssetId, setResolvedAssetId] = useState<number | null>(null);
   const [targetWeight, setTargetWeight] = useState<number | string>(0);
   const [saving, setSaving] = useState(false);
@@ -75,6 +77,8 @@ export function TargetAllocationDrawer({
         content: { paddingBottom: 'var(--safe-area-bottom)' },
         body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
       }}
+      onTouchStart={isMobile ? swipeHandlers.onTouchStart : undefined}
+      onTouchEnd={isMobile ? swipeHandlers.onTouchEnd : undefined}
     >
       <Stack>
         {error && <Alert color="red">{error}</Alert>}

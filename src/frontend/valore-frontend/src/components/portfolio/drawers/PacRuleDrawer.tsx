@@ -18,6 +18,7 @@ import {
   type PacRuleUpdateInput,
 } from '../../../services/api';
 import { AssetDiscoverSelect } from '../AssetDiscoverSelect';
+import { useSwipeToClose } from '../../../hooks/useSwipeToClose';
 
 interface PacRuleDrawerProps {
   opened: boolean;
@@ -51,6 +52,7 @@ export function PacRuleDrawer({
   onSaved,
 }: PacRuleDrawerProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
   const [mode, setMode] = useState<'amount' | 'quantity'>('amount');
   const [amount, setAmount] = useState<number | string>('');
   const [quantity, setQuantity] = useState<number | string>('');
@@ -152,6 +154,8 @@ export function PacRuleDrawer({
         content: { paddingBottom: 'var(--safe-area-bottom)' },
         body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
       }}
+      onTouchStart={isMobile ? swipeHandlers.onTouchStart : undefined}
+      onTouchEnd={isMobile ? swipeHandlers.onTouchEnd : undefined}
     >
       <Stack>
         {editingRule ? (

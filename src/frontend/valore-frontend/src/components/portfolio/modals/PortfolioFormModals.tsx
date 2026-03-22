@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import {
   Alert,
   Button,
@@ -12,6 +13,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { IconCopy } from '@tabler/icons-react';
 import type { Portfolio } from '../../../services/api';
 import { formatGrossTotal } from '../../dashboard/formatters';
+import { useVirtualKeyboard } from '../../../hooks/useVirtualKeyboard';
 
 // --- Portfolio Create/Edit Modal ---
 
@@ -49,6 +51,19 @@ export function PortfolioModal({
   onSave,
 }: PortfolioModalProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const keyboardOpen = useVirtualKeyboard(Boolean(isMobile) && opened);
+  const stackRef = useRef<HTMLDivElement>(null);
+
+  // When virtual keyboard opens, scroll the focused input into view
+  useEffect(() => {
+    if (keyboardOpen && stackRef.current) {
+      const active = document.activeElement as HTMLElement | null;
+      if (active && stackRef.current.contains(active)) {
+        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [keyboardOpen]);
+
   return (
     <Modal
       opened={opened}
@@ -61,7 +76,7 @@ export function PortfolioModal({
         body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
       }}
     >
-      <Stack>
+      <Stack ref={stackRef}>
         {formError && <Alert color="red">{formError}</Alert>}
         <TextInput
           label="Nome"
@@ -251,7 +266,18 @@ export function EditTransactionModal({
   onSave,
 }: EditTransactionModalProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const keyboardOpen = useVirtualKeyboard(Boolean(isMobile) && opened);
+  const editStackRef = useRef<HTMLDivElement>(null);
   const grossTotal = formatGrossTotal(quantity, price);
+
+  useEffect(() => {
+    if (keyboardOpen && editStackRef.current) {
+      const active = document.activeElement as HTMLElement | null;
+      if (active && editStackRef.current.contains(active)) {
+        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [keyboardOpen]);
 
   return (
     <Modal
@@ -265,7 +291,7 @@ export function EditTransactionModal({
         body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
       }}
     >
-      <Stack>
+      <Stack ref={editStackRef}>
         {error && <Alert color="red">{error}</Alert>}
         <TextInput
           label="Data / ora operazione"

@@ -24,6 +24,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
   return (
     <Portal>
     <Group
+      className="mobile-bottom-nav"
       justify="space-between"
       wrap="nowrap"
       gap={6}
@@ -50,17 +51,18 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
             onClick={() => onChange(item.value)}
             style={{
               flex: '1 1 0',
-              minWidth: 0,
+              minWidth: 44,
+              minHeight: 44,
               borderRadius: 16,
-              padding: '8px 4px',
+              padding: '10px 4px',
               background: isActive ? 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)' : 'transparent',
               color: isActive ? '#ffffff' : (isDark ? theme.colors.gray[3] : '#475569'),
               textAlign: 'center',
               transition: 'all 140ms ease',
             }}
           >
-            <Icon size={16} style={{ margin: '0 auto 3px auto', display: 'block' }} />
-            <Text size="xs" fw={700} truncate="end" style={{ lineHeight: 1.1 }}>
+            <Icon size={20} className="nav-icon" style={{ margin: '0 auto 3px auto', display: 'block' }} />
+            <Text size="xs" className="nav-label" fw={700} truncate="end" style={{ lineHeight: 1.1 }}>
               {item.label}
             </Text>
           </UnstyledButton>

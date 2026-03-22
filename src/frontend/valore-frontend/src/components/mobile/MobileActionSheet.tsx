@@ -44,6 +44,7 @@ export function MobileActionSheet({
     <>
       <Portal>
       <Group
+        className="mobile-action-sheet"
         wrap="nowrap"
         gap="xs"
         style={{
@@ -159,9 +160,9 @@ export function MobileActionSheet({
                   <Group wrap="nowrap" gap="sm" style={{ minWidth: 0 }}>
                     <Box
                       style={{
-                        width: 42,
-                        height: 42,
-                        minWidth: 42,
+                        width: 44,
+                        height: 44,
+                        minWidth: 44,
                         borderRadius: 14,
                         display: 'grid',
                         placeItems: 'center',

@@ -89,6 +89,8 @@ function ProtectedApp() {
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const isLandscape = useMediaQuery('(max-width: 48em) and (orientation: landscape)');
+  const headerHeight = isLandscape ? 44 : 60;
   const [hasPortfolios, setHasPortfolios] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [privacyMode, setPrivacyMode] = useState(() =>
@@ -228,9 +230,9 @@ function ProtectedApp() {
 
   return (
       <AppShell
-        header={{ height: 60 }}
+        header={{ height: headerHeight }}
         navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: !opened } }}
-        padding="md"
+        padding={isLandscape ? 'xs' : 'md'}
       >
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">

@@ -36,6 +36,22 @@ body,
 body {
   margin: 0;
   background-color: #ffffff;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Prevent accidental text selection on interactive UI elements */
+nav,
+[role="navigation"],
+.mantine-NavLink-root,
+.mantine-UnstyledButton-root,
+.mantine-ActionIcon-root,
+.mantine-Button-root,
+.mobile-bottom-nav,
+.mobile-action-sheet {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 
 [data-mantine-color-scheme='dark'] html,
@@ -175,4 +191,23 @@ select:focus-visible {
   border: none;
   border-top: 1px solid var(--mantine-color-default-border);
   margin: 0.5em 0;
+}
+
+/* Landscape mobile: compact header and bottom nav */
+@media (max-width: 48em) and (orientation: landscape) {
+  :root {
+    --app-header-height: 44px;
+  }
+
+  .mobile-bottom-nav {
+    padding: 4px 6px !important;
+  }
+
+  .mobile-bottom-nav .nav-icon {
+    margin-bottom: 1px !important;
+  }
+
+  .mobile-bottom-nav .nav-label {
+    display: none;
+  }
 }
