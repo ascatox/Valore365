@@ -1,10 +1,10 @@
 import { Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import type { TablerIconsProps } from '@tabler/icons-react';
+import type { CSSProperties } from 'react';
 
 interface MobileBottomNavItem {
   value: string;
   label: string;
-  icon: React.ComponentType<TablerIconsProps>;
+  icon: React.ComponentType<{ size?: string | number; className?: string; style?: CSSProperties }>;
 }
 
 interface MobileBottomNavProps {

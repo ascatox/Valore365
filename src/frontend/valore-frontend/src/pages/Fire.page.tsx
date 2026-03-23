@@ -43,7 +43,7 @@ import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
-import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
+import { MobileBottomControl } from '../components/mobile/MobileBottomControl';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
 import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
@@ -1190,14 +1190,22 @@ export function FirePage() {
         </SimpleGrid>
 
         {isMobile && (
-          <MobileBottomNav
-            items={[
-              { value: 'accumulation', label: 'Accumulo', icon: IconTrendingUp },
-              { value: 'decumulation', label: 'Decumulo', icon: IconWallet },
-            ]}
-            value={fireMode}
-            onChange={(value) => setFireMode(value as FireMode)}
+          <MobileBottomControl
             bottomOffset={12}
+            leftAction={{
+              label: 'Accumulo',
+              onClick: () => setFireMode('accumulation'),
+              icon: fireMode === 'decumulation' ? IconTrendingUp : undefined,
+              variant: fireMode === 'accumulation' ? 'filled' : 'dark',
+              grow: fireMode === 'accumulation',
+            }}
+            rightAction={{
+              label: 'Decumulo',
+              onClick: () => setFireMode('decumulation'),
+              icon: fireMode === 'accumulation' ? IconWallet : undefined,
+              variant: fireMode === 'decumulation' ? 'filled' : 'dark',
+              grow: fireMode === 'decumulation',
+            }}
           />
         )}
       </Stack>

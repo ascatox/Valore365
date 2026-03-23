@@ -1,11 +1,12 @@
-import { Badge, Box, Button, Drawer, Group, Portal, Stack, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import type { TablerIconsProps } from '@tabler/icons-react';
+import { Badge, Box, Drawer, Group, Stack, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import type { CSSProperties } from 'react';
 import { IconBolt, IconChevronUp } from '@tabler/icons-react';
+import { MobileBottomControl } from './MobileBottomControl';
 
 interface MobileActionItem {
   label: string;
   description: string;
-  icon: React.ComponentType<TablerIconsProps>;
+  icon: React.ComponentType<{ size?: string | number; className?: string; style?: CSSProperties }>;
   onClick: () => void;
   disabled?: boolean;
   color?: string;
@@ -42,70 +43,23 @@ export function MobileActionSheet({
 
   return (
     <>
-      <Portal>
-      <Group
-        className="mobile-action-sheet"
-        wrap="nowrap"
-        gap="xs"
-        style={{
-          position: 'fixed',
-          left: 'calc(12px + var(--safe-area-left))',
-          right: 'calc(12px + var(--safe-area-right))',
-          bottom: `calc(${bottomOffset}px + var(--safe-area-bottom))`,
-          zIndex: 44,
-          padding: 8,
-          borderRadius: 24,
-          background: isDark ? 'rgba(30, 41, 59, 0.94)' : 'rgba(255,255,255,0.94)',
-          backdropFilter: 'blur(16px)',
-          border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
-          boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',
+      <MobileBottomControl
+        bottomOffset={bottomOffset}
+        leftAction={primaryAction ? {
+          label: primaryAction.label,
+          onClick: primaryAction.onClick,
+          disabled: primaryAction.disabled,
+          variant: 'filled',
+        } : undefined}
+        rightAction={{
+          label: 'Azioni',
+          onClick: onOpen,
+          icon: IconBolt,
+          description: title,
+          variant: 'dark',
+          rightSection: <IconChevronUp size={18} />,
         }}
-      >
-        {primaryAction && (
-          <Button
-            radius="xl"
-            size="md"
-            variant="filled"
-            color="teal"
-            disabled={primaryAction.disabled}
-            onClick={primaryAction.onClick}
-            style={{ flex: '1 1 0' }}
-          >
-            {primaryAction.label}
-          </Button>
-        )}
-
-        <UnstyledButton
-          onClick={onOpen}
-          style={{
-            flex: primaryAction ? '0 0 auto' : '1 1 0',
-            minWidth: primaryAction ? 112 : undefined,
-            borderRadius: 18,
-            padding: primaryAction ? '12px 16px' : '14px 18px',
-            background: isDark
-              ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[6]} 100%)`
-              : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-            color: '#ffffff',
-            boxShadow: isDark ? '0 14px 30px rgba(0, 0, 0, 0.34)' : '0 14px 30px rgba(15, 23, 42, 0.22)',
-          }}
-        >
-          <Group justify="space-between" wrap="nowrap" gap="sm">
-            <Group gap="xs" wrap="nowrap">
-              <IconBolt size={18} />
-              <Box>
-                <Text fw={700} size="sm">Azioni</Text>
-                {!primaryAction && (
-                  <Text size="xs" c="rgba(255,255,255,0.68)">
-                    {title}
-                  </Text>
-                )}
-              </Box>
-            </Group>
-            <IconChevronUp size={18} />
-          </Group>
-        </UnstyledButton>
-      </Group>
-      </Portal>
+      />
 
       <Drawer
         opened={opened}
