@@ -35,6 +35,8 @@ const EXCHANGE_SCHEDULES: Record<string, ExchangeSchedule> = {
   '^GDAXI':     { exchange: 'XETRA',     tz: 'Europe/Berlin',     openHour: 9,  openMin: 0,  closeHour: 17, closeMin: 30, weekdays: true },
   // Japan
   '^N225':      { exchange: 'TSE',       tz: 'Asia/Tokyo',        openHour: 9,  openMin: 0,  closeHour: 15, closeMin: 0,  weekdays: true },
+  // Volatility
+  '^VIX':       { exchange: 'CBOE',      tz: 'America/Chicago',   openHour: 8,  openMin: 30, closeHour: 15, closeMin: 15, weekdays: true },
   // Commodities (CME futures: Sun 17:00 – Fri 16:00 CT, with daily break 16:00-17:00)
   'GC=F':       { exchange: 'CME',       tz: 'America/Chicago',   openHour: 17, openMin: 0,  closeHour: 16, closeMin: 0,  weekdays: true },
   'SI=F':       { exchange: 'CME',       tz: 'America/Chicago',   openHour: 17, openMin: 0,  closeHour: 16, closeMin: 0,  weekdays: true },

@@ -12,6 +12,7 @@ MARKET_SYMBOLS: dict[str, dict[str, list[tuple[str, str]]]] = {
             ("^FTSE", "FTSE 100"),
             ("^GDAXI", "DAX"),
             ("^N225", "Nikkei 225"),
+            ("^VIX", "VIX"),
         ],
     },
     "commodities": {
