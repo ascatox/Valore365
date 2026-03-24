@@ -20,7 +20,6 @@ const METHODS: { method: CreatorMethod; icon: typeof IconLayoutList; color: stri
     color: 'teal',
     title: 'Profilo guidato',
     description: 'Rispondi a 3 domande su orizzonte, rischio e obiettivi e ricevi un suggerimento su misura.',
-    disabled: true,
   },
   {
     method: 'manual',

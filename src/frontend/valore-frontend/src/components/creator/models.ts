@@ -1,4 +1,4 @@
-import type { PortfolioModel } from './types';
+import type { PortfolioModel, PortfolioModelRecommendation, ProfileAnswers, RiskLevel } from './types';
 
 /**
  * Palette colori per le asset class — coerente con i chart del dashboard.
@@ -163,3 +163,111 @@ export const RISK_META: Record<string, { label: string; color: string; bars: num
   'high':       { label: 'Alto',        color: 'orange', bars: 4 },
   'very-high':  { label: 'Molto alto',  color: 'red',    bars: 5 },
 };
+
+const RISK_SCORE: Record<RiskLevel, number> = {
+  low: 1,
+  'medium-low': 2,
+  medium: 3,
+  high: 4,
+  'very-high': 5,
+};
+
+const HORIZON_SCORE: Record<ProfileAnswers['horizon'], number> = {
+  lt5: 1,
+  '5to10': 2,
+  '10to20': 4,
+  gt20: 5,
+};
+
+const TOLERANCE_SCORE: Record<ProfileAnswers['riskTolerance'], number> = {
+  sell_all: 1,
+  sell_some: 2,
+  hold: 4,
+  buy_more: 5,
+};
+
+const OBJECTIVE_SCORE: Record<ProfileAnswers['objective'], number> = {
+  capital_preservation: 1,
+  income: 2,
+  moderate_growth: 3,
+  max_growth: 5,
+};
+
+function getTargetRiskScore(answers: ProfileAnswers): number {
+  const weightedScore = (
+    HORIZON_SCORE[answers.horizon] * 0.3
+    + TOLERANCE_SCORE[answers.riskTolerance] * 0.45
+    + OBJECTIVE_SCORE[answers.objective] * 0.25
+  );
+
+  return Math.max(1, Math.min(5, Math.round(weightedScore)));
+}
+
+function getObjectiveBonus(model: PortfolioModel, objective: ProfileAnswers['objective']): number {
+  if (objective === 'capital_preservation') {
+    return model.tags.includes('difensivo') ? 10 : 0;
+  }
+  if (objective === 'moderate_growth') {
+    return model.tags.includes('bilanciato') || model.tags.includes('semplice') ? 8 : 0;
+  }
+  if (objective === 'max_growth') {
+    return model.tags.includes('crescita') || model.tags.includes('aggressivo') ? 12 : 0;
+  }
+  return model.tags.includes('difensivo') || model.tags.includes('bilanciato') ? 8 : 0;
+}
+
+function getHorizonBonus(model: PortfolioModel, horizon: ProfileAnswers['horizon']): number {
+  if (horizon === 'lt5') {
+    return RISK_SCORE[model.risk] <= 2 ? 8 : 0;
+  }
+  if (horizon === '5to10') {
+    return RISK_SCORE[model.risk] <= 3 ? 6 : 0;
+  }
+  if (horizon === '10to20') {
+    return RISK_SCORE[model.risk] >= 3 ? 6 : 0;
+  }
+  return RISK_SCORE[model.risk] >= 4 ? 8 : 0;
+}
+
+function getRecommendationReason(model: PortfolioModel, answers: ProfileAnswers, targetRiskScore: number): string {
+  const riskMeta = RISK_META[model.risk];
+  const riskSentence = targetRiskScore <= 2
+    ? `Ha un profilo ${riskMeta.label.toLowerCase()} coerente con un approccio prudente.`
+    : targetRiskScore === 3
+      ? `Mantiene un equilibrio credibile tra crescita e stabilita'.`
+      : `Spinge di piu' sulla crescita ed e' coerente con una tolleranza al rischio elevata.`;
+
+  const objectiveSentence = answers.objective === 'capital_preservation'
+    ? 'La composizione privilegia protezione e resilienza.'
+    : answers.objective === 'moderate_growth'
+      ? 'La composizione cerca crescita moderata senza estremizzare la volatilita\'.'
+      : answers.objective === 'income'
+        ? 'La presenza obbligazionaria aiuta a contenere gli sbalzi e sostenere un profilo da rendita.'
+        : 'La componente azionaria resta centrale per il lungo periodo.';
+
+  return `${riskSentence} ${objectiveSentence}`;
+}
+
+export function recommendPortfolioModels(
+  answers: ProfileAnswers,
+  limit = 2,
+): PortfolioModelRecommendation[] {
+  const targetRiskScore = getTargetRiskScore(answers);
+
+  return PORTFOLIO_MODELS
+    .map((model) => {
+      const riskDistance = Math.abs(RISK_SCORE[model.risk] - targetRiskScore);
+      const riskScore = Math.max(0, 70 - riskDistance * 18);
+      const objectiveBonus = getObjectiveBonus(model, answers.objective);
+      const horizonBonus = getHorizonBonus(model, answers.horizon);
+      const score = riskScore + objectiveBonus + horizonBonus;
+
+      return {
+        model,
+        score,
+        reason: getRecommendationReason(model, answers, targetRiskScore),
+      };
+    })
+    .sort((left, right) => right.score - left.score)
+    .slice(0, limit);
+}

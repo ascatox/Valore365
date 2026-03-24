@@ -6,6 +6,7 @@ import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { CreatorMethodPicker } from '../components/creator/CreatorMethodPicker';
 import { CreatorModelLibrary } from '../components/creator/CreatorModelLibrary';
+import { CreatorProfileQuiz } from '../components/creator/CreatorProfileQuiz';
 import { CreatorCustomize } from '../components/creator/CreatorCustomize';
 import { CreatorCapital } from '../components/creator/CreatorCapital';
 import { CreatorConfirm } from '../components/creator/CreatorConfirm';
@@ -18,7 +19,7 @@ import {
 } from '../services/api';
 import type { AllocationSlot, CreatorMethod, PortfolioModel } from '../components/creator/types';
 
-const STEP_LABELS = ['Scegli', 'Modello', 'Personalizza', 'Capitale', 'Conferma'];
+const STEP_LABELS = ['Scegli', 'Seleziona', 'Personalizza', 'Capitale', 'Conferma'];
 
 export function CreatorPage() {
   const navigate = useNavigate();
@@ -36,10 +37,15 @@ export function CreatorPage() {
   /* ---- Step 1 ---- */
   const handleMethodPick = (m: CreatorMethod) => {
     setMethod(m);
-    if (m === 'model') {
+    setSelectedModelId(null);
+    setSlots([]);
+    setPortfolioName('');
+    setCapital('');
+    setError(null);
+    if (m === 'model' || m === 'profile') {
       setActive(1);
     }
-    // profile e manual verranno gestiti nelle prossime iterazioni
+    // manual verra' gestito nelle prossime iterazioni
   };
 
   /* ---- Step 2: modello selezionato ---- */
@@ -137,6 +143,7 @@ export function CreatorPage() {
     if (active === 1 && method) {
       setActive(0);
       setMethod(null);
+      setSelectedModelId(null);
     } else if (active > 0) {
       setActive((a) => a - 1);
     }
@@ -169,6 +176,13 @@ export function CreatorPage() {
           <CreatorModelLibrary
             selected={selectedModelId}
             onSelect={handleModelSelect}
+          />
+        )}
+
+        {active === 1 && method === 'profile' && (
+          <CreatorProfileQuiz
+            selectedModelId={selectedModelId}
+            onSelectModel={handleModelSelect}
           />
         )}
 
