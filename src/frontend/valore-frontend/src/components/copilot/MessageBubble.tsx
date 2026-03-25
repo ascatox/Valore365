@@ -47,7 +47,8 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(content).then(() => {
+    const text = mdRef.current?.innerText || content;
+    navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

@@ -39,6 +39,7 @@ import {
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
+import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { BrandMark } from './components/BrandMark';
 import { STORAGE_KEYS } from './components/dashboard/constants';
 import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
@@ -396,6 +397,7 @@ function ProtectedApp() {
           </Box>
         </AppShell.Navbar>
 
+        <UpdatePrompt />
         <AppShell.Main ref={mainRef}>
           <Transition mounted={pulling} transition="slide-down" duration={150}>
             {(styles) => (
