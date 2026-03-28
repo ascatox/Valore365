@@ -2,12 +2,14 @@ import { Badge, Group, Modal, SimpleGrid, Stack, Table, Text, ThemeIcon, Title }
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconArrowsShuffle, IconBriefcase } from '@tabler/icons-react';
 import type { PortfolioHealthAlert } from '../../services/api';
+import { EducationBlock } from './EducationBlock';
 
 interface DoctorAlertDetailsModalProps {
   alert: PortfolioHealthAlert | null;
   opened: boolean;
   onClose: () => void;
   currency?: string;
+  onPromptSelect?: (prompt: string, alert: PortfolioHealthAlert) => void;
 }
 
 interface HoldingDetail {
@@ -70,6 +72,7 @@ export function DoctorAlertDetailsModal({
   opened,
   onClose,
   currency = 'EUR',
+  onPromptSelect,
 }: DoctorAlertDetailsModalProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const details = isRecord(alert?.details) ? alert.details : null;
@@ -108,6 +111,13 @@ export function DoctorAlertDetailsModal({
               {alert.type}
             </Badge>
           </Group>
+
+          {alert.education && (
+            <EducationBlock
+              education={alert.education}
+              onPromptSelect={onPromptSelect ? (prompt) => onPromptSelect(prompt, alert) : undefined}
+            />
+          )}
 
           {alert.type === 'position_concentration' && dominantPosition && (
             <Stack gap="md">
@@ -192,7 +202,7 @@ export function DoctorAlertDetailsModal({
             </Stack>
           )}
 
-          {(!details || (alert.type !== 'position_concentration' && alert.type !== 'etf_overlap')) && (
+          {(!details || (alert.type !== 'position_concentration' && alert.type !== 'etf_overlap')) && !alert.education && (
             <Text c="dimmed">
               Nessun approfondimento strutturato disponibile per questo alert.
             </Text>

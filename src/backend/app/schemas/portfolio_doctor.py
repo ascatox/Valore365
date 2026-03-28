@@ -27,11 +27,22 @@ class PortfolioHealthCategoryScores(BaseModel):
     cost_efficiency: int = Field(default=0, ge=0, le=15)
 
 
+class PortfolioHealthEducation(BaseModel):
+    code: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    what_it_means: str = Field(min_length=1)
+    why_it_matters: str = Field(min_length=1)
+    how_to_read_it: str = Field(min_length=1)
+    concept: str = Field(min_length=1)
+    copilot_prompts: list[str] = Field(default_factory=list)
+
+
 class PortfolioHealthAlert(BaseModel):
     severity: Literal["info", "warning", "critical"]
     type: str = Field(min_length=1)
     message: str = Field(min_length=1)
     details: dict[str, object] | None = None
+    education: PortfolioHealthEducation | None = None
 
 
 class PortfolioHealthSuggestion(BaseModel):

@@ -7,7 +7,9 @@ import app.api.instant_portfolio_analyzer as instant_portfolio_api
 import app.main as api_main
 from app.errors import AppError
 from app.schemas.portfolio_doctor import (
+    PortfolioHealthAlert,
     PortfolioHealthCategoryScores,
+    PortfolioHealthEducation,
     PortfolioHealthMetrics,
     PortfolioHealthResponse,
     PortfolioHealthSummary,
@@ -383,7 +385,22 @@ def test_portfolio_health_route(monkeypatch):
                 overlap=11,
                 cost_efficiency=14,
             ),
-            alerts=[],
+            alerts=[
+                PortfolioHealthAlert(
+                    severity='warning',
+                    type='geographic_concentration',
+                    message='Il portafoglio e fortemente esposto al mercato statunitense (67.2%).',
+                    education=PortfolioHealthEducation(
+                        code='geographic_concentration',
+                        title='Esposizione geografica concentrata',
+                        what_it_means='Una parte molto ampia del portafoglio dipende dalla stessa area geografica.',
+                        why_it_matters='Quando un solo mercato pesa troppo, il portafoglio reagisce in modo meno bilanciato.',
+                        how_to_read_it='Nel tuo caso gli USA pesano circa 67.2% del portafoglio.',
+                        concept='Diversificazione geografica',
+                        copilot_prompts=['Spiegamelo semplice'],
+                    ),
+                )
+            ],
             suggestions=[],
         )
 
@@ -397,6 +414,7 @@ def test_portfolio_health_route(monkeypatch):
     assert payload['portfolio_id'] == 7
     assert payload['score'] == 74
     assert payload['summary']['diversification'] == 'good'
+    assert payload['alerts'][0]['education']['code'] == 'geographic_concentration'
 
 
 def test_portfolio_health_route_not_found(monkeypatch):

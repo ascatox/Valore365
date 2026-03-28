@@ -159,6 +159,17 @@ export interface PortfolioHealthAlert {
   type: string;
   message: string;
   details?: Record<string, unknown> | null;
+  education?: PortfolioHealthEducation | null;
+}
+
+export interface PortfolioHealthEducation {
+  code: string;
+  title: string;
+  what_it_means: string;
+  why_it_matters: string;
+  how_to_read_it: string;
+  concept: string;
+  copilot_prompts: string[];
 }
 
 export interface PortfolioHealthSuggestion {

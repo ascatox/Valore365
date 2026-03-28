@@ -2,6 +2,7 @@ from datetime import date
 
 from app.schemas.portfolio_doctor import PortfolioHealthMetrics
 from app.services.portfolio_doctor._holdings import _compute_portfolio_return_params
+from app.services.portfolio_doctor.education_templates import enrich_alerts_with_education
 from app.services.portfolio_doctor._stress import (
     _compute_historical_scenario,
     _compute_weighted_drawdown,
@@ -290,6 +291,39 @@ def test_scoring_and_alerts_penalize_concentration_risk_and_costs():
     assert len(overlap_alert.details["pairs"]) >= 1
 
 
+def test_alerts_are_enriched_with_education_payload():
+    metrics = PortfolioHealthMetrics(
+        geographic_exposure={"usa": 72.0, "europe": 8.0, "emerging": 3.0, "other": 17.0},
+        max_position_weight=48.0,
+        overlap_score=58.0,
+        portfolio_volatility=16.4,
+        weighted_ter=0.54,
+    )
+    holdings = [
+        _holding(1, "VWCE", "Vanguard FTSE All-World UCITS ETF", "etf", 48.0, "EUR"),
+        _holding(2, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 28.0, "USD"),
+        _holding(3, "EIMI", "iShares Core MSCI Emerging Markets IMI", "etf", 16.0, "USD"),
+        _holding(4, "XNAS", "Nasdaq 100 UCITS ETF", "etf", 8.0, "USD"),
+    ]
+
+    alerts = enrich_alerts_with_education(build_alerts(metrics, holdings), metrics)
+
+    geo_alert = next(alert for alert in alerts if alert.type == "geographic_concentration")
+    risk_alert = next(alert for alert in alerts if alert.type == "portfolio_risk")
+    cost_alert = next(alert for alert in alerts if alert.type == "high_costs")
+
+    assert geo_alert.education is not None
+    assert geo_alert.education.code == "geographic_concentration"
+    assert geo_alert.education.concept == "Diversificazione geografica"
+    assert len(geo_alert.education.copilot_prompts) == 3
+
+    assert risk_alert.education is not None
+    assert "16.4%" in risk_alert.education.how_to_read_it
+
+    assert cost_alert.education is not None
+    assert "0.54%" in cost_alert.education.how_to_read_it
+
+
 def test_position_concentration_details_include_top_holdings():
     holdings = [
         _holding(1, "VWCE", "Vanguard FTSE All-World UCITS ETF", "etf", 52.5, "EUR"),
@@ -329,6 +363,8 @@ def test_sustainable_withdrawal_stays_positive_with_real_return():
         annual_return_pct=5.0,
         inflation_rate_pct=2.0,
         other_income_annual=10_000,
+        capital_gains_tax_rate_pct=0.0,
+        embedded_gain_ratio_pct=0.0,
     )
 
     assert sustainable > 0
@@ -338,10 +374,12 @@ def test_sustainable_withdrawal_stays_positive_with_real_return():
 def test_decumulation_paths_deplete_with_zero_return_and_high_withdrawals():
     paths = _simulate_decumulation_paths(
         initial_capital=100_000,
+        initial_cost_basis=100_000,
         annual_withdrawal=30_000,
         years=5,
         inflation_rate_pct=0.0,
         other_income_annual=0.0,
+        capital_gains_tax_rate_pct=0.0,
         mu_annual=0.0,
         sigma_annual=0.0,
     )
@@ -349,8 +387,6 @@ def test_decumulation_paths_deplete_with_zero_return_and_high_withdrawals():
     projections = _build_decumulation_projections(
         paths=paths,
         years=5,
-        annual_withdrawal=30_000,
-        inflation_rate_pct=0.0,
         other_income_annual=0.0,
         current_age=50,
     )

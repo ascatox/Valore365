@@ -24,6 +24,7 @@ from ...constants.geo_classification import (
 )
 from ...finance_client import normalize_expense_ratio_pct
 from ._holdings import AnalyzedHolding, _load_holdings, _is_equity_like
+from .education_templates import enrich_alerts_with_education
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ def analyze_portfolio_health(
     score = compute_total_score(category_scores)
     summary = build_summary(metrics, category_scores)
     alerts = build_alerts(metrics, holdings)
+    alerts = enrich_alerts_with_education(alerts, metrics)
     suggestions = build_suggestions(metrics, equity_weight=equity_weight)
 
     return PortfolioHealthResponse(
