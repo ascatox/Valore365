@@ -21,7 +21,7 @@ A differenza dei normali portfolio tracker, Valore365 si concentra sulla **strut
 # ⚡ Demo
 
 Puoi provare l'analisi del portafoglio **senza registrazione**.
-https://valore365.vercel.app/instant-analyzer
+https://valore365.vercel.app
 
 ### 🧾 Input esempio
 
