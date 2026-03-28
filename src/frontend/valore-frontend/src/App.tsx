@@ -36,7 +36,7 @@ import {
   IconInfoCircle,
   IconSparkles,
 } from '@tabler/icons-react';
-import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
@@ -45,6 +45,7 @@ import { STORAGE_KEYS } from './components/dashboard/constants';
 import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
+const LandingPage = lazy(() => import('./pages/LandingPage.tsx').then((module) => ({ default: module.LandingPage })));
 const AdminPage = lazy(() => import('./pages/Admin.page.tsx').then((module) => ({ default: module.AdminPage })));
 const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
 const FirePage = lazy(() => import('./pages/Fire.page.tsx').then((module) => ({ default: module.FirePage })));
@@ -67,6 +68,7 @@ function App() {
         )}
       >
         <Routes>
+          <Route path="/" element={<LandingPage />} />
           <Route path="/instant-analyzer" element={<InstantPortfolioAnalyzerPage />} />
           <Route
             path="/*"
@@ -298,7 +300,7 @@ function ProtectedApp() {
           <Tooltip label="Dashboard" position="right" withArrow disabled={navbarExpanded}>
             <NavLink
                 component={Link}
-                to="/"
+                to="/dashboard"
                 label={navbarExpanded ? 'Dashboard' : undefined}
                 leftSection={<IconLayoutDashboard size={16} />}
                 aria-label="Dashboard"
@@ -425,7 +427,7 @@ function ProtectedApp() {
           </Transition>
           <Container fluid key={`privacy-${privacyMode}`}>
             <Routes>
-              <Route path="/" element={<DashboardPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />
               <Route path="/doctor" element={<DoctorPage />} />
               <Route path="/fire" element={<FirePage />} />
@@ -433,6 +435,7 @@ function ProtectedApp() {
               <Route path="/creator" element={<CreatorPage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/admin" element={<AdminPage />} />
+              <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
           </Container>
         </AppShell.Main>

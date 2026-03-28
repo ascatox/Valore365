@@ -114,7 +114,7 @@ export function CreatorPage() {
       window.dispatchEvent(
         new CustomEvent('valore365:portfolios-changed', { detail: { count: 1 } }),
       );
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Errore durante la creazione del portafoglio');
     } finally {
