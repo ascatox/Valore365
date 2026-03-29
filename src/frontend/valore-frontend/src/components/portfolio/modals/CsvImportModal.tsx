@@ -438,7 +438,7 @@ export function CsvImportModal({
                 leftSection={<IconChartPie size={16} />}
                 onClick={() => {
                   handleClose();
-                  navigate('/');
+                  navigate('/dashboard');
                   window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
                 }}
               >

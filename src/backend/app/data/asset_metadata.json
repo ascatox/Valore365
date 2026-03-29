@@ -8,7 +8,8 @@
     "estimated_volatility": 15.5,
     "ter": 0.22,
     "overlap_tags": ["global_equity", "acwi", "us_large_cap"],
-    "region_profile": {"usa": 58.0, "europe": 18.0, "emerging": 11.0, "other": 13.0}
+    "region_profile": {"usa": 58.0, "europe": 18.0, "emerging": 11.0, "other": 13.0},
+    "top_holdings": {"Apple": 0.042, "Microsoft": 0.036, "NVIDIA": 0.031, "Amazon": 0.021, "Meta": 0.014}
   },
   {
     "symbol": "AGGH",
@@ -19,7 +20,8 @@
     "estimated_volatility": 6.5,
     "ter": 0.10,
     "overlap_tags": ["global_bond", "aggregate_bond"],
-    "region_profile": {"usa": 40.0, "europe": 30.0, "emerging": 5.0, "other": 25.0}
+    "region_profile": {"usa": 40.0, "europe": 30.0, "emerging": 5.0, "other": 25.0},
+    "top_holdings": {}
   },
   {
     "symbol": "EIMI",
@@ -30,7 +32,8 @@
     "estimated_volatility": 18.8,
     "ter": 0.18,
     "overlap_tags": ["emerging_equity"],
-    "region_profile": {"usa": 0.0, "europe": 0.0, "emerging": 100.0, "other": 0.0}
+    "region_profile": {"usa": 0.0, "europe": 0.0, "emerging": 100.0, "other": 0.0},
+    "top_holdings": {"TSMC": 0.094, "Tencent": 0.046, "Alibaba": 0.024, "Samsung Electronics": 0.022, "Reliance Industries": 0.013}
   },
   {
     "symbol": "CSPX",
@@ -41,7 +44,8 @@
     "estimated_volatility": 16.8,
     "ter": 0.07,
     "overlap_tags": ["broad_us_equity", "sp500", "us_large_cap"],
-    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0},
+    "top_holdings": {"Apple": 0.071, "Microsoft": 0.064, "NVIDIA": 0.061, "Amazon": 0.038, "Meta": 0.027}
   },
   {
     "symbol": "VUAA",
@@ -52,7 +56,8 @@
     "estimated_volatility": 16.8,
     "ter": 0.07,
     "overlap_tags": ["broad_us_equity", "sp500", "us_large_cap"],
-    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0},
+    "top_holdings": {"Apple": 0.071, "Microsoft": 0.064, "NVIDIA": 0.061, "Amazon": 0.038, "Meta": 0.027}
   },
   {
     "symbol": "SWDA",
@@ -63,7 +68,8 @@
     "estimated_volatility": 15.0,
     "ter": 0.20,
     "overlap_tags": ["global_equity", "msci_world", "us_large_cap"],
-    "region_profile": {"usa": 69.0, "europe": 18.0, "emerging": 0.0, "other": 13.0}
+    "region_profile": {"usa": 69.0, "europe": 18.0, "emerging": 0.0, "other": 13.0},
+    "top_holdings": {"Apple": 0.051, "Microsoft": 0.046, "NVIDIA": 0.040, "Amazon": 0.027, "Meta": 0.018}
   },
   {
     "symbol": "IWDA",
@@ -74,7 +80,8 @@
     "estimated_volatility": 15.0,
     "ter": 0.20,
     "overlap_tags": ["global_equity", "msci_world", "us_large_cap"],
-    "region_profile": {"usa": 69.0, "europe": 18.0, "emerging": 0.0, "other": 13.0}
+    "region_profile": {"usa": 69.0, "europe": 18.0, "emerging": 0.0, "other": 13.0},
+    "top_holdings": {"Apple": 0.051, "Microsoft": 0.046, "NVIDIA": 0.040, "Amazon": 0.027, "Meta": 0.018}
   },
   {
     "symbol": "AAPL",
@@ -85,7 +92,8 @@
     "estimated_volatility": 28.0,
     "ter": 0.0,
     "overlap_tags": ["single_stock", "technology", "usa"],
-    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0},
+    "top_holdings": {"Apple": 1.0}
   },
   {
     "symbol": "MSFT",
@@ -96,6 +104,7 @@
     "estimated_volatility": 26.0,
     "ter": 0.0,
     "overlap_tags": ["single_stock", "technology", "usa"],
-    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0}
+    "region_profile": {"usa": 100.0, "europe": 0.0, "emerging": 0.0, "other": 0.0},
+    "top_holdings": {"Microsoft": 1.0}
   }
 ]

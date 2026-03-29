@@ -14,6 +14,7 @@ from .instant_portfolio_analyzer import (
 from .portfolio_doctor import (
     PortfolioHealthAlert,
     PortfolioHealthCategoryScores,
+    PortfolioHealthEducation,
     PortfolioHealthMetrics,
     PortfolioHealthResponse,
     PortfolioHealthSuggestion,
@@ -33,6 +34,7 @@ __all__ = [
     "PortfolioAnalyzeSummary",
     "PortfolioHealthAlert",
     "PortfolioHealthCategoryScores",
+    "PortfolioHealthEducation",
     "PortfolioHealthMetrics",
     "PortfolioHealthResponse",
     "PortfolioHealthSuggestion",

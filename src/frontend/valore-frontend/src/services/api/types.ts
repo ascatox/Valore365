@@ -31,10 +31,13 @@ export interface PortfolioAnalyzeSummary {
 
 export interface PortfolioAnalyzeMetrics {
   geographic_exposure: Record<string, number>;
+  asset_allocation: Record<string, number>;
   max_position_weight: number;
   overlap_score: number;
   portfolio_volatility: number | null;
   weighted_ter: number | null;
+  risk_score: number;
+  estimated_drawdown: number;
 }
 
 export interface ResolvedPublicPosition {
@@ -62,6 +65,17 @@ export interface InstantAnalyzeCta {
   message: string;
 }
 
+export interface PortfolioTopInsight {
+  id: string;
+  type: 'geo_concentration' | 'holding_overlap' | 'portfolio_risk';
+  severity: 'medium' | 'high';
+  score: number;
+  title: string;
+  short_description: string;
+  explanation_data: Record<string, unknown>;
+  cta_label: string;
+}
+
 export interface InstantAnalyzeResponse {
   summary: PortfolioAnalyzeSummary;
   positions: ResolvedPublicPosition[];
@@ -71,7 +85,36 @@ export interface InstantAnalyzeResponse {
   category_scores: PortfolioHealthCategoryScores;
   alerts: PortfolioAnalyzeAlert[];
   suggestions: PortfolioAnalyzeSuggestion[];
+  insights: PortfolioTopInsight[];
   cta: InstantAnalyzeCta;
+}
+
+export interface InstantInsightExplainRequest {
+  insight: PortfolioTopInsight;
+}
+
+export interface InstantInsightExplainResponse {
+  insight_id: string;
+  explanation: string;
+  source: 'ai';
+}
+
+export interface InstantImportedPosition {
+  identifier: string;
+  value: number;
+  label: string | null;
+  line: number | null;
+}
+
+export interface InstantPortfolioImportResponse {
+  filename: string | null;
+  broker: string;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  positions: InstantImportedPosition[];
+  parse_errors: InstantAnalyzeLineError[];
+  raw_text: string;
 }
 
 export interface UserSettings {
@@ -159,6 +202,17 @@ export interface PortfolioHealthAlert {
   type: string;
   message: string;
   details?: Record<string, unknown> | null;
+  education?: PortfolioHealthEducation | null;
+}
+
+export interface PortfolioHealthEducation {
+  code: string;
+  title: string;
+  what_it_means: string;
+  why_it_matters: string;
+  how_to_read_it: string;
+  concept: string;
+  copilot_prompts: string[];
 }
 
 export interface PortfolioHealthSuggestion {

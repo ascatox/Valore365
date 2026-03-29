@@ -1,7 +1,8 @@
-import { useState } from 'react';
-import { Alert, Box, Container, Grid, Group, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
+import { useEffect, useState } from 'react';
+import { Alert, Box, Button, Container, Grid, Group, Progress, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
+import { SignInButton, SignUpButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import {
   IconArrowRight,
   IconBolt,
@@ -19,10 +20,32 @@ import { InstantAnalyzerResults } from '../components/instant-analyzer/InstantAn
 import {
   ApiRequestError,
   analyzeInstantPortfolio,
+  importInstantPortfolioCsv,
   type InstantAnalyzeLineError,
   type InstantAnalyzeResponse,
   type InstantAnalyzeUnresolvedItem,
 } from '../services/api';
+import type { ManualPositionDraft } from '../components/instant-analyzer/InstantAnalyzerForm';
+
+function createManualPosition(): ManualPositionDraft {
+  return {
+    id: Math.random().toString(36).slice(2, 10),
+    identifier: '',
+    value: '',
+  };
+}
+
+function buildRawTextFromManualPositions(positions: ManualPositionDraft[]): string {
+  return positions
+    .map((position) => {
+      const identifier = position.identifier.trim().toUpperCase();
+      const value = position.value.trim();
+      if (!identifier || !value) return '';
+      return `${identifier} ${value}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
 
 interface InstantAnalyzerErrorDetails {
   parseErrors: InstantAnalyzeLineError[];
@@ -47,20 +70,32 @@ function readErrorDetails(error: unknown): InstantAnalyzerErrorDetails {
 const STEPS = [
   {
     number: '1',
-    title: 'Incolla le posizioni',
-    description: 'Inserisci ticker e quantità, una riga per posizione. Supportiamo ticker e ISIN.',
+    title: 'Login',
+    description: 'Accedi con Google o email se vuoi importare e salvare il portafoglio.',
     icon: IconSparkles,
   },
   {
     number: '2',
-    title: 'Analisi istantanea',
-    description: 'Il nostro motore analizza diversificazione, rischio, overlap e costi in tempo reale.',
+    title: 'Import',
+    description: 'Manuale, CSV in app o demo immediata per vedere il risultato in pochi secondi.',
     icon: IconBolt,
   },
   {
     number: '3',
-    title: 'Risultati actionable',
-    description: 'Ricevi score, avvisi e suggerimenti concreti per migliorare il tuo portafoglio.',
+    title: 'Analisi',
+    description: 'Il motore controlla concentrazione geografica, overlap e rischio.',
+    icon: IconChartDonut3,
+  },
+  {
+    number: '4',
+    title: 'Top insight',
+    description: 'Ricevi al massimo 3 insight, ordinati per priorita e facili da capire.',
+    icon: IconChartDonut3,
+  },
+  {
+    number: '5',
+    title: 'AI Explain',
+    description: 'Ogni insight puo essere spiegato con un linguaggio semplice e non operativo.',
     icon: IconChartDonut3,
   },
 ];
@@ -68,18 +103,18 @@ const STEPS = [
 const TRUST_FEATURES = [
   {
     icon: IconClockHour4,
-    title: '30 secondi',
-    description: 'Analisi completa in pochi istanti, senza attese.',
+    title: 'Meno di 2 minuti',
+    description: 'Dal primo input ai 3 insight principali con un percorso molto breve.',
   },
   {
     icon: IconLock,
-    title: 'Nessun login',
-    description: 'Risultati immediati, senza registrazione né dati personali.',
+    title: 'Login rapido',
+    description: 'Google o email in pochi secondi se vuoi salvare o importare in modo persistente.',
   },
   {
     icon: IconShieldCheck,
     title: 'Privacy first',
-    description: 'I tuoi dati non vengono salvati. Analisi anonima e sicura.',
+    description: 'La demo pubblica resta anonima e non salva il portafoglio.',
   },
   {
     icon: IconTargetArrow,
@@ -88,9 +123,28 @@ const TRUST_FEATURES = [
   },
 ];
 
+const LOADING_MESSAGES = [
+  'Sto normalizzando le posizioni del portafoglio...',
+  'Controllo la concentrazione geografica dominante...',
+  'Cerco eventuali sovrapposizioni tra holdings sottostanti...',
+  'Stimo rischio e drawdown del mix complessivo...',
+  'Ordino gli insight per mostrarti solo quelli piu importanti...',
+];
+
+const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 export function InstantPortfolioAnalyzerPage() {
   const [rawText, setRawText] = useState('VWCE 10000\nAGGH 5000\nEIMI 2000');
+  const [inputMode, setInputMode] = useState<'demo' | 'manual' | 'csv'>('demo');
+  const [manualPositions, setManualPositions] = useState<ManualPositionDraft[]>([
+    createManualPosition(),
+    createManualPosition(),
+  ]);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvSummary, setCsvSummary] = useState<string | null>(null);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingStepIndex, setLoadingStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InstantAnalyzeResponse | null>(null);
   const [errorDetails, setErrorDetails] = useState<InstantAnalyzerErrorDetails>({ parseErrors: [], unresolved: [] });
@@ -105,17 +159,44 @@ export function InstantPortfolioAnalyzerPage() {
   const emeraldLight = '#ecfdf5';
   const emeraldBorder = '#a7f3d0';
 
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStepIndex(0);
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      setLoadingStepIndex((current) => (current + 1) % LOADING_MESSAGES.length);
+    }, 900);
+
+    return () => window.clearInterval(timer);
+  }, [loading]);
+
   const handleSubmit = async () => {
-    if (!rawText.trim()) {
-      setError('Incolla almeno una posizione prima di avviare l\'analisi.');
+    const payloadText = inputMode === 'manual'
+      ? buildRawTextFromManualPositions(manualPositions)
+      : rawText;
+
+    if (!payloadText.trim()) {
+      setError(
+        inputMode === 'manual'
+          ? 'Inserisci almeno una posizione manuale prima di avviare l\'analisi.'
+          : 'Incolla almeno una posizione prima di avviare l\'analisi.',
+      );
       setErrorDetails({ parseErrors: [], unresolved: [] });
       return;
     }
+
+    if (inputMode === 'manual') {
+      setRawText(payloadText);
+    }
+
     setLoading(true);
     setError(null);
+    setResult(null);
     setErrorDetails({ parseErrors: [], unresolved: [] });
     try {
-      const response = await analyzeInstantPortfolio({ input_mode: 'raw_text', raw_text: rawText });
+      const response = await analyzeInstantPortfolio({ input_mode: 'raw_text', raw_text: payloadText });
       setResult(response);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Impossibile analizzare questo portafoglio in questo momento.');
@@ -123,6 +204,30 @@ export function InstantPortfolioAnalyzerPage() {
       setErrorDetails(readErrorDetails(requestError));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCsvFileSelect = async (file: File | null) => {
+    if (!file) return;
+    setCsvImporting(true);
+    setError(null);
+    setErrorDetails({ parseErrors: [], unresolved: [] });
+    try {
+      const response = await importInstantPortfolioCsv(file, 'fineco');
+      setCsvFileName(response.filename);
+      setCsvSummary(
+        `${response.positions.length} posizioni ricostruite da ${response.valid_rows} righe valide`
+        + (response.error_rows > 0 ? `, ${response.error_rows} righe con problemi.` : '.'),
+      );
+      setRawText(response.raw_text);
+      setInputMode('csv');
+      setErrorDetails({ parseErrors: response.parse_errors, unresolved: [] });
+    } catch (requestError) {
+      setCsvSummary(null);
+      setCsvFileName(file.name);
+      setError(requestError instanceof Error ? requestError.message : 'Impossibile importare il file CSV.');
+    } finally {
+      setCsvImporting(false);
     }
   };
 
@@ -230,14 +335,14 @@ export function InstantPortfolioAnalyzerPage() {
               maw={620}
               style={{ lineHeight: 1.6 }}
             >
-              Incolla le tue posizioni in ETF e azioni e ottieni subito uno score,
-              una diagnosi del rischio e indicazioni sulla diversificazione.
+              Capisci i problemi principali del tuo portafoglio in meno di due minuti:
+              fino a 3 insight chiari, semplici e spiegabili.
             </Text>
 
             <Group gap="lg" wrap="wrap" justify="center">
               {[
-                { icon: IconTargetArrow, text: 'Valore prima del signup' },
-                { icon: IconShieldCheck, text: 'Nessun login richiesto' },
+                { icon: IconTargetArrow, text: '3 insight prioritizzati' },
+                { icon: IconShieldCheck, text: 'Modalita demo immediata' },
               ].map(({ icon: Icon, text }) => (
                 <Group key={text} gap={8}>
                   <ThemeIcon color="teal" variant="light" radius="xl" size="sm">
@@ -248,6 +353,72 @@ export function InstantPortfolioAnalyzerPage() {
                   </Text>
                 </Group>
               ))}
+            </Group>
+
+            <Group gap="sm" wrap="wrap" justify="center">
+              {clerkEnabled ? (
+                <SignedOut>
+                  <SignUpButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                    <Button
+                      radius="md"
+                      size="md"
+                      rightSection={<IconArrowRight size={16} />}
+                      style={{
+                        background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                        border: 'none',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Accedi e importa il portafoglio
+                    </Button>
+                  </SignUpButton>
+                </SignedOut>
+              ) : (
+                <Button
+                  component="a"
+                  href="/portfolio"
+                  radius="md"
+                  size="md"
+                  rightSection={<IconArrowRight size={16} />}
+                  style={{
+                    background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                    border: 'none',
+                    fontWeight: 700,
+                  }}
+                >
+                  Accedi e importa il portafoglio
+                </Button>
+              )}
+              {clerkEnabled && (
+                <SignedIn>
+                  <Button
+                    component="a"
+                    href="/portfolio"
+                    radius="md"
+                    size="md"
+                    rightSection={<IconArrowRight size={16} />}
+                    style={{
+                      background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                      border: 'none',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Vai al portfolio
+                  </Button>
+                </SignedIn>
+              )}
+              <Button
+                variant="light"
+                radius="md"
+                size="md"
+                onClick={() => {
+                  setInputMode('demo');
+                  setRawText('VWCE 10000\nAGGH 5000\nEIMI 2000');
+                  window.scrollTo({ top: 820, behavior: 'smooth' });
+                }}
+              >
+                Prova la demo
+              </Button>
             </Group>
           </Stack>
         </Container>
@@ -269,11 +440,11 @@ export function InstantPortfolioAnalyzerPage() {
                 Come funziona
               </Text>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.5rem' : '2rem' }}>
-                Tre passaggi, zero complicazioni
+                Un percorso rapido, zero frizione inutile
               </Title>
             </Stack>
 
-            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="xl">
               {STEPS.map((step) => (
                 <Stack
                   key={step.number}
@@ -328,25 +499,135 @@ export function InstantPortfolioAnalyzerPage() {
       >
         <Container size="1200" px={isMobile ? 'md' : 'xl'}>
           <Stack gap="xl">
+            <Box
+              style={{
+                borderRadius: 20,
+                border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                background: isDark
+                  ? `linear-gradient(135deg, ${theme.colors.dark[6]} 0%, rgba(16, 185, 129, 0.12) 100%)`
+                  : 'linear-gradient(135deg, #ffffff 0%, #ecfdf5 100%)',
+                padding: isMobile ? 20 : 28,
+              }}
+            >
+              <Stack gap="md">
+                <Group gap="xs">
+                  <ThemeIcon color="teal" variant="light" radius="xl">
+                    <IconLock size={16} />
+                  </ThemeIcon>
+                  <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+                    Step 1 attivo
+                  </Text>
+                </Group>
+
+                <Title order={3} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.25rem' : '1.5rem' }}>
+                  Login veloce per importare e salvare il portafoglio
+                </Title>
+
+                <Text size="sm" c={isDark ? theme.colors.gray[4] : '#4b5563'} maw={720}>
+                  Se vuoi un percorso completo con portfolio persistente, entra con Google o email.
+                  Se preferisci, puoi comunque continuare sotto con demo, inserimento manuale o CSV Fineco senza salvare nulla.
+                </Text>
+
+                {clerkEnabled ? (
+                  <>
+                    <SignedOut>
+                      <Group gap="sm" wrap="wrap">
+                        <SignInButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                          <Button radius="md" size="md" rightSection={<IconArrowRight size={16} />}>
+                            Accedi con Google o email
+                          </Button>
+                        </SignInButton>
+                        <SignUpButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                          <Button variant="default" radius="md" size="md">
+                            Crea account gratis
+                          </Button>
+                        </SignUpButton>
+                      </Group>
+                    </SignedOut>
+
+                    <SignedIn>
+                      <Group gap="sm" wrap="wrap">
+                        <Button component="a" href="/portfolio" radius="md" size="md" rightSection={<IconArrowRight size={16} />}>
+                          Vai al portfolio
+                        </Button>
+                        <Button
+                          variant="light"
+                          radius="md"
+                          size="md"
+                          onClick={() => window.scrollTo({ top: 1280, behavior: 'smooth' })}
+                        >
+                          Continua con l&apos;analyzer pubblico
+                        </Button>
+                      </Group>
+                    </SignedIn>
+                  </>
+                ) : (
+                  <Group gap="sm" wrap="wrap">
+                    <Button component="a" href="/portfolio" radius="md" size="md" rightSection={<IconArrowRight size={16} />}>
+                      Apri il portfolio
+                    </Button>
+                    <Button
+                      variant="light"
+                      radius="md"
+                      size="md"
+                      onClick={() => window.scrollTo({ top: 1280, behavior: 'smooth' })}
+                    >
+                      Continua con l&apos;analyzer pubblico
+                    </Button>
+                  </Group>
+                )}
+              </Stack>
+            </Box>
+
             <Stack gap={4} align="center" style={{ textAlign: 'center' }}>
               <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
                 Prova subito
               </Text>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.5rem' : '2rem' }}>
-                Analizza il tuo portafoglio
+                Demo mode: analizza il portafoglio
               </Title>
+              <Text size="sm" c={isDark ? theme.colors.gray[4] : '#6b7280'} maw={620}>
+                Puoi usare demo, inserimento manuale minimo o upload Fineco. L&apos;account serve solo se vuoi salvare il portafoglio in modo permanente.
+              </Text>
             </Stack>
 
             <Grid gutter="xl" align="start">
               <Grid.Col span={{ base: 12, lg: 5 }}>
                 <InstantAnalyzerForm
+                  mode={inputMode}
                   value={rawText}
                   error={error}
                   loading={loading}
+                  csvImporting={csvImporting}
+                  csvSummary={csvSummary}
+                  csvFileName={csvFileName}
+                  onModeChange={setInputMode}
                   onChange={setRawText}
                   onSubmit={handleSubmit}
+                  onSelectExample={(example) => {
+                    setInputMode('demo');
+                    setRawText(example);
+                  }}
+                  manualPositions={manualPositions}
+                  onManualChange={(id, field, value) => {
+                    setManualPositions((current) => current.map((position) => (
+                      position.id === id ? { ...position, [field]: value } : position
+                    )));
+                  }}
+                  onManualAdd={() => setManualPositions((current) => [...current, createManualPosition()])}
+                  onManualRemove={(id) => {
+                    setManualPositions((current) => {
+                      if (current.length === 1) return current;
+                      return current.filter((position) => position.id !== id);
+                    });
+                  }}
+                  onCsvFileSelect={(file) => { void handleCsvFileSelect(file); }}
                   onReset={() => {
+                    setInputMode('demo');
                     setRawText('');
+                    setManualPositions([createManualPosition(), createManualPosition()]);
+                    setCsvSummary(null);
+                    setCsvFileName(null);
                     setResult(null);
                     setError(null);
                     setErrorDetails({ parseErrors: [], unresolved: [] });
@@ -355,7 +636,56 @@ export function InstantPortfolioAnalyzerPage() {
               </Grid.Col>
 
               <Grid.Col span={{ base: 12, lg: 7 }}>
-                {result ? (
+                {loading ? (
+                  <Box
+                    style={{
+                      padding: isMobile ? 20 : 28,
+                      borderRadius: 16,
+                      border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                      background: isDark ? theme.colors.dark[6] : '#ffffff',
+                      boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    <Stack gap="lg">
+                      <div>
+                        <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+                          Step 3 · Analisi in corso
+                        </Text>
+                        <Title order={3} c={isDark ? 'white' : '#111827'} mt={4}>
+                          Stiamo analizzando il tuo portafoglio...
+                        </Title>
+                      </div>
+                      <Progress
+                        value={Math.max(18, ((loadingStepIndex + 1) / LOADING_MESSAGES.length) * 100)}
+                        color="teal"
+                        radius="xl"
+                        size="lg"
+                        animated
+                      />
+                      <Stack gap="xs">
+                        {LOADING_MESSAGES.map((message, index) => (
+                          <Group key={message} gap="sm" wrap="nowrap">
+                            <Box
+                              style={{
+                                width: 10,
+                                height: 10,
+                                borderRadius: '50%',
+                                background: index <= loadingStepIndex ? emerald : (isDark ? theme.colors.dark[4] : '#d1d5db'),
+                                flexShrink: 0,
+                              }}
+                            />
+                            <Text
+                              size="sm"
+                              c={index <= loadingStepIndex ? (isDark ? 'white' : '#111827') : (isDark ? theme.colors.gray[5] : '#9ca3af')}
+                            >
+                              {message}
+                            </Text>
+                          </Group>
+                        ))}
+                      </Stack>
+                    </Stack>
+                  </Box>
+                ) : result ? (
                   <InstantAnalyzerResults result={result} />
                 ) : (
                   <Stack gap="lg">
@@ -377,11 +707,11 @@ export function InstantPortfolioAnalyzerPage() {
                       </Group>
                       <Stack gap={8}>
                         {[
-                          'Score complessivo da 0 a 100',
-                          'Quadro della diversificazione geografica',
-                          'Breakdown per categorie: rischio, concentrazione, overlap, costi',
-                          'Avvisi su sovrapposizioni e costi elevati',
-                          'Suggerimenti concreti per migliorare',
+                          'Massimo 3 insight principali, gia ordinati per priorita',
+                          'Titolo chiaro e descrizione breve per ogni problema rilevante',
+                          'Spiegazione semplice on demand con CTA “Spiegamelo meglio”',
+                          'Metriche di supporto su geografia, overlap, drawdown e allocazione',
+                          'Demo immediata per capire se vale la pena fare login e import completo',
                         ].map((item) => (
                           <Group key={item} gap={8} wrap="nowrap">
                             <Box

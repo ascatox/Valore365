@@ -214,7 +214,7 @@ def get_admin_usage_summary(_auth: AuthContext = Depends(require_admin)) -> Admi
 
 
 # Register all route modules
-register_instant_portfolio_analyzer_routes(router, repo)
+register_instant_portfolio_analyzer_routes(router, repo, csv_import_service=csv_import_service)
 register_portfolio_health_routes(router, repo, finance_client, justetf_client=justetf_client)
 register_portfolio_routes(router, repo, settings=settings)
 register_assets_routes(

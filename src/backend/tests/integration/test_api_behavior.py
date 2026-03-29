@@ -7,7 +7,9 @@ import app.api.instant_portfolio_analyzer as instant_portfolio_api
 import app.main as api_main
 from app.errors import AppError
 from app.schemas.portfolio_doctor import (
+    PortfolioHealthAlert,
     PortfolioHealthCategoryScores,
+    PortfolioHealthEducation,
     PortfolioHealthMetrics,
     PortfolioHealthResponse,
     PortfolioHealthSummary,
@@ -15,12 +17,16 @@ from app.schemas.portfolio_doctor import (
 from app.schemas.instant_portfolio_analyzer import (
     InstantAnalyzeCta,
     InstantAnalyzeLineError,
+    InstantImportedPosition,
+    InstantInsightExplainResponse,
     InstantAnalyzeResponse,
     InstantAnalyzeUnresolvedItem,
+    InstantPortfolioImportResponse,
     PortfolioAnalyzeAlert,
     PortfolioAnalyzeMetrics,
     PortfolioAnalyzeSuggestion,
     PortfolioAnalyzeSummary,
+    PortfolioTopInsight,
     ResolvedPosition,
 )
 from app.models import AdminUsageSummary
@@ -383,7 +389,22 @@ def test_portfolio_health_route(monkeypatch):
                 overlap=11,
                 cost_efficiency=14,
             ),
-            alerts=[],
+            alerts=[
+                PortfolioHealthAlert(
+                    severity='warning',
+                    type='geographic_concentration',
+                    message='Il portafoglio e fortemente esposto al mercato statunitense (67.2%).',
+                    education=PortfolioHealthEducation(
+                        code='geographic_concentration',
+                        title='Esposizione geografica concentrata',
+                        what_it_means='Una parte molto ampia del portafoglio dipende dalla stessa area geografica.',
+                        why_it_matters='Quando un solo mercato pesa troppo, il portafoglio reagisce in modo meno bilanciato.',
+                        how_to_read_it='Nel tuo caso gli USA pesano circa 67.2% del portafoglio.',
+                        concept='Diversificazione geografica',
+                        copilot_prompts=['Spiegamelo semplice'],
+                    ),
+                )
+            ],
             suggestions=[],
         )
 
@@ -397,6 +418,7 @@ def test_portfolio_health_route(monkeypatch):
     assert payload['portfolio_id'] == 7
     assert payload['score'] == 74
     assert payload['summary']['diversification'] == 'good'
+    assert payload['alerts'][0]['education']['code'] == 'geographic_concentration'
 
 
 def test_portfolio_health_route_not_found(monkeypatch):
@@ -440,10 +462,13 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
             parse_errors=[],
             metrics=PortfolioAnalyzeMetrics(
                 geographic_exposure={'usa': 68.0, 'europe': 17.0, 'emerging': 10.0, 'other': 5.0},
+                asset_allocation={'Equity': 82.4, 'Bond': 17.6},
                 max_position_weight=58.82,
                 overlap_score=61.0,
                 portfolio_volatility=14.8,
                 weighted_ter=0.21,
+                risk_score=4.47,
+                estimated_drawdown=30.6,
             ),
             category_scores=PortfolioHealthCategoryScores(
                 diversification=18,
@@ -465,6 +490,18 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
                     message='Consider increasing exposure to non-US markets.',
                 )
             ],
+            insights=[
+                PortfolioTopInsight(
+                    id='geo_usa',
+                    type='geo_concentration',
+                    severity='medium',
+                    score=12,
+                    title='Sei molto concentrato su USA',
+                    short_description='Il 68.0% del tuo portafoglio dipende da quest\'area.',
+                    explanation_data={'region': 'USA', 'weight': 0.68},
+                    cta_label='Spiegamelo meglio',
+                )
+            ],
             cta=InstantAnalyzeCta(
                 show_signup=True,
                 message='Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
@@ -482,6 +519,114 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
     assert payload['category_scores']['diversification'] == 18
     assert payload['cta']['show_signup'] is True
     assert payload['positions'][0]['resolved_symbol'] == 'VWCE'
+    assert payload['insights'][0]['id'] == 'geo_usa'
+
+
+def test_public_instant_portfolio_explain_route(monkeypatch):
+    def _fake_explain(insight):
+        assert insight.id == 'geo_usa'
+        return InstantInsightExplainResponse(
+            insight_id='geo_usa',
+            explanation='Questo significa che una parte ampia del portafoglio dipende dagli Stati Uniti.',
+            source='ai',
+        )
+
+    monkeypatch.setattr(instant_portfolio_api, 'explain_public_insight', _fake_explain)
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/public/portfolio/explain-insight',
+        json={
+            'insight': {
+                'id': 'geo_usa',
+                'type': 'geo_concentration',
+                'severity': 'medium',
+                'score': 12,
+                'title': 'Sei molto concentrato su USA',
+                'short_description': 'Il 68% del tuo portafoglio dipende da quest\'area.',
+                'explanation_data': {'region': 'USA', 'weight': 0.68},
+                'cta_label': 'Spiegamelo meglio',
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['insight_id'] == 'geo_usa'
+    assert payload['source'] == 'ai'
+
+
+def test_public_instant_portfolio_explain_route_returns_503_when_ai_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        instant_portfolio_api,
+        'explain_public_insight',
+        lambda insight: (_ for _ in ()).throw(instant_portfolio_api.InstantInsightExplainUnavailable('missing ai')),
+    )
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/public/portfolio/explain-insight',
+        json={
+            'insight': {
+                'id': 'geo_usa',
+                'type': 'geo_concentration',
+                'severity': 'medium',
+                'score': 12,
+                'title': 'Sei molto concentrato su USA',
+                'short_description': 'Il 68% del tuo portafoglio dipende da quest\'area.',
+                'explanation_data': {'region': 'USA', 'weight': 0.68},
+                'cta_label': 'Spiegamelo meglio',
+            }
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()['error']['code'] == 'copilot_unavailable'
+
+
+def test_public_instant_portfolio_import_csv_route(monkeypatch):
+    class _FakeCsvImportService:
+        def parse_public_portfolio_file(self, **kwargs):
+            assert kwargs["broker"] == "fineco"
+            return InstantPortfolioImportResponse(
+                filename="fineco.csv",
+                broker="fineco",
+                total_rows=3,
+                valid_rows=3,
+                error_rows=0,
+                positions=[
+                    InstantImportedPosition(
+                        identifier="IE00BK5BQT80",
+                        value=1500.0,
+                        label="Vanguard FTSE All-World",
+                        line=1,
+                    )
+                ],
+                parse_errors=[],
+                raw_text="IE00BK5BQT80 1500.00",
+            )
+
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+    router = APIRouter()
+    instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo(), csv_import_service=_FakeCsvImportService())
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(_: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
+
+    app.include_router(router, prefix="/api")
+    client = TestClient(app)
+    response = client.post(
+        "/api/public/portfolio/import-csv",
+        files={"file": ("fineco.csv", b"dummy", "text/csv")},
+        data={"broker": "fineco"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["positions"][0]["identifier"] == "IE00BK5BQT80"
+    assert payload["raw_text"] == "IE00BK5BQT80 1500.00"
 
 
 def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):

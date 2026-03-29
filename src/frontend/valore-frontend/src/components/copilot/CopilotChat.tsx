@@ -121,6 +121,7 @@ interface CopilotChatProps {
   quickPrompts?: string[];
   emptyStateDescription?: string;
   pageContext?: string;
+  pendingPrompt?: { id: number; text: string } | null;
 }
 
 const QUICK_PROMPTS = [
@@ -192,6 +193,7 @@ export function CopilotChat({
   quickPrompts,
   emptyStateDescription = 'Chiedimi qualsiasi cosa sul tuo portafoglio. Ecco qualche spunto:',
   pageContext,
+  pendingPrompt = null,
 }: CopilotChatProps) {
   const resolvedQuickPrompts = quickPrompts ?? (pageContext && PAGE_QUICK_PROMPTS[pageContext]) ?? QUICK_PROMPTS;
   const theme = useMantineTheme();
@@ -219,6 +221,7 @@ export function CopilotChat({
   const abortRef = useRef<AbortController | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const prevPortfolioRef = useRef<number | null>(portfolioId);
+  const consumedPromptIdRef = useRef<number | null>(null);
 
   // Load conversations when portfolio changes
   useEffect(() => {
@@ -363,6 +366,13 @@ export function CopilotChat({
       abortRef.current = null;
     }
   }, [messages, portfolioId, portfolioIds, streaming, pageContext]);
+
+  useEffect(() => {
+    if (!opened || !pendingPrompt || !portfolioId || streaming) return;
+    if (consumedPromptIdRef.current === pendingPrompt.id) return;
+    consumedPromptIdRef.current = pendingPrompt.id;
+    void sendMessage(pendingPrompt.text);
+  }, [opened, pendingPrompt, portfolioId, sendMessage, streaming]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 from .portfolio_doctor import PortfolioHealthCategoryScores
@@ -35,6 +35,13 @@ class InstantAnalyzeUnresolvedItem(BaseModel):
     error: str
 
 
+class InstantImportedPosition(BaseModel):
+    identifier: str = Field(min_length=1)
+    value: float = Field(gt=0)
+    label: str | None = None
+    line: int | None = Field(default=None, ge=1)
+
+
 class PortfolioAnalyzeSummary(BaseModel):
     total_value: float = Field(ge=0)
     score: int = Field(ge=0, le=100)
@@ -46,10 +53,13 @@ class PortfolioAnalyzeSummary(BaseModel):
 
 class PortfolioAnalyzeMetrics(BaseModel):
     geographic_exposure: dict[str, float] = Field(default_factory=dict)
+    asset_allocation: dict[str, float] = Field(default_factory=dict)
     max_position_weight: float = Field(default=0, ge=0, le=100)
     overlap_score: float = Field(default=0, ge=0, le=100)
     portfolio_volatility: float | None = Field(default=None, ge=0)
     weighted_ter: float | None = Field(default=None, ge=0)
+    risk_score: float = Field(default=0, ge=0)
+    estimated_drawdown: float = Field(default=0, ge=0, le=100)
 
 
 class ResolvedPosition(BaseModel):
@@ -77,6 +87,17 @@ class InstantAnalyzeCta(BaseModel):
     message: str
 
 
+class PortfolioTopInsight(BaseModel):
+    id: str = Field(min_length=1)
+    type: Literal["geo_concentration", "holding_overlap", "portfolio_risk"]
+    severity: Literal["medium", "high"]
+    score: int = Field(ge=1)
+    title: str = Field(min_length=1)
+    short_description: str = Field(min_length=1)
+    explanation_data: dict[str, Any] = Field(default_factory=dict)
+    cta_label: str = Field(default="Spiegamelo meglio")
+
+
 class InstantAnalyzeResponse(BaseModel):
     summary: PortfolioAnalyzeSummary
     positions: list[ResolvedPosition] = Field(default_factory=list)
@@ -86,4 +107,26 @@ class InstantAnalyzeResponse(BaseModel):
     category_scores: PortfolioHealthCategoryScores
     alerts: list[PortfolioAnalyzeAlert] = Field(default_factory=list)
     suggestions: list[PortfolioAnalyzeSuggestion] = Field(default_factory=list)
+    insights: list[PortfolioTopInsight] = Field(default_factory=list, max_length=3)
     cta: InstantAnalyzeCta
+
+
+class InstantPortfolioImportResponse(BaseModel):
+    filename: str | None = None
+    broker: str = Field(min_length=1)
+    total_rows: int = Field(ge=0)
+    valid_rows: int = Field(ge=0)
+    error_rows: int = Field(ge=0)
+    positions: list[InstantImportedPosition] = Field(default_factory=list)
+    parse_errors: list[InstantAnalyzeLineError] = Field(default_factory=list)
+    raw_text: str = ""
+
+
+class InstantInsightExplainRequest(BaseModel):
+    insight: PortfolioTopInsight
+
+
+class InstantInsightExplainResponse(BaseModel):
+    insight_id: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+    source: Literal["ai"]

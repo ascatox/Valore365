@@ -31,12 +31,36 @@ import { PageLayout } from '../components/layout/PageLayout';
 
 export function DashboardPage() {
   const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const;
+  const DASHBOARD_QUERY_PREFIXES = new Set([
+    'portfolio-summary',
+    'portfolio-positions',
+    'portfolio-allocation',
+    'portfolio-timeseries',
+    'portfolio-data-coverage',
+    'portfolio-health',
+    'portfolio-xray',
+    'target-allocation',
+    'target-performance',
+    'target-asset-performance',
+    'intraday-target-performance',
+    'asset-intraday-target-performance',
+    'portfolio-intraday-timeseries',
+    'intraday-detail',
+    'gain-timeseries',
+    'performance-summary',
+    'twr-timeseries',
+    'mwr-timeseries',
+    'benchmark-prices',
+    'benchmarks',
+    'market-quotes',
+    'market-news',
+    'portfolios',
+  ]);
 
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
 
-  // --- Shared UI state ---
   const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null;
     return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
@@ -46,7 +70,7 @@ export function DashboardPage() {
     if (typeof window === 'undefined') return '1';
     const stored = window.localStorage.getItem(STORAGE_KEYS.chartWindow);
     const isValid = stored ? DASHBOARD_WINDOWS.some((w) => w.value === stored) : false;
-    return isValid ? (stored as string) : '1';
+    return isValid ? stored : '1';
   });
 
   const [activeTab, setActiveTab] = useState<string | null>(() => {
@@ -58,8 +82,8 @@ export function DashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshVersion, setRefreshVersion] = useState(0);
 
-  // --- Copilot ---
   const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
   const [copilotAvailable, setCopilotAvailable] = useState(false);
 
@@ -67,13 +91,11 @@ export function DashboardPage() {
     getCopilotStatus().then((s) => setCopilotAvailable(s.available)).catch(() => {});
   }, []);
 
-  // --- Queries ---
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
 
-  // --- Auto-select portfolio ---
   useEffect(() => {
     if (!portfolios.length) return;
     setSelectedPortfolioId((prev) => {
@@ -82,7 +104,6 @@ export function DashboardPage() {
     });
   }, [portfolios]);
 
-  // --- Persist UI state ---
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (selectedPortfolioId) {
@@ -97,20 +118,41 @@ export function DashboardPage() {
     window.localStorage.setItem(STORAGE_KEYS.chartWindow, chartWindow);
   }, [chartWindow]);
 
-  // --- Global refresh listener ---
   useEffect(() => {
     const onRefresh = async () => {
       if (!portfolioId || !Number.isFinite(portfolioId)) {
         setRefreshMessage('Seleziona un portfolio prima di aggiornare');
         return;
       }
+
       setRefreshError(null);
       setRefreshMessage(null);
       setRefreshing(true);
+
       try {
-        const refreshResult = await refreshPortfolioPrices(portfolioId, 'transactions');
-        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'transactions');
-        await queryClient.invalidateQueries({ refetchType: 'all' });
+        const refreshResult = await refreshPortfolioPrices(portfolioId, 'all');
+        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'all');
+
+        await queryClient.resetQueries({
+          predicate: (query) => {
+            const [prefix, queryPortfolioId] = query.queryKey as [string | undefined, unknown];
+            if (!prefix || !DASHBOARD_QUERY_PREFIXES.has(prefix)) return false;
+            if (queryPortfolioId == null) return true;
+            return queryPortfolioId === portfolioId;
+          },
+        });
+
+        await queryClient.refetchQueries({
+          predicate: (query) => {
+            const [prefix, queryPortfolioId] = query.queryKey as [string | undefined, unknown];
+            if (!prefix || !DASHBOARD_QUERY_PREFIXES.has(prefix)) return false;
+            if (queryPortfolioId == null) return true;
+            return queryPortfolioId === portfolioId;
+          },
+          type: 'active',
+        });
+
+        setRefreshVersion((current) => current + 1);
         setRefreshMessage(
           `Aggiornati prezzi: ${refreshResult.refreshed_assets}/${refreshResult.requested_assets}, storico: ${backfillResult.assets_refreshed}/${backfillResult.assets_requested}`,
         );
@@ -120,11 +162,13 @@ export function DashboardPage() {
         setRefreshing(false);
       }
     };
+
     window.addEventListener('valore365:refresh-dashboard', onRefresh);
-    return () => { window.removeEventListener('valore365:refresh-dashboard', onRefresh); };
+    return () => {
+      window.removeEventListener('valore365:refresh-dashboard', onRefresh);
+    };
   }, [portfolioId, queryClient]);
 
-  // --- Tab navigation ---
   const handleTabChange = (tab: string | null) => {
     setActiveTab(tab);
     if (typeof window !== 'undefined' && tab) {
@@ -132,7 +176,6 @@ export function DashboardPage() {
     }
   };
 
-  // Auto-dismiss refresh message after 5s
   useEffect(() => {
     if (!refreshMessage) return;
     const timer = window.setTimeout(() => setRefreshMessage(null), 5000);
@@ -194,31 +237,36 @@ export function DashboardPage() {
       {error && <Alert color="red" mb="md">{error}</Alert>}
 
       {!isMobile && (
-      <Group mb="md" gap="xs" wrap="wrap">
-        {refreshing && (
-          <Badge variant="light" color="blue" size="lg" leftSection={<Loader size={12} />}>
-            Aggiornamento in corso...
-          </Badge>
-        )}
-        {refreshMessage && (
-          <Badge variant="light" color="teal" size="lg">
-            {refreshMessage}
-          </Badge>
-        )}
-        {!error && targetPerformance?.last_updated_at && !refreshing && !refreshMessage && (
-          <Badge variant="dot" color="green" size="lg">
-            Aggiornato: {formatDateTime(targetPerformance.last_updated_at)}
-          </Badge>
-        )}
-        {portfoliosLoading && (
-          <Badge variant="light" color="gray" size="lg" leftSection={<Loader size={12} />}>
-            Caricamento portafogli...
-          </Badge>
-        )}
-      </Group>
+        <Group mb="md" gap="xs" wrap="wrap">
+          {refreshing && (
+            <Badge variant="light" color="blue" size="lg" leftSection={<Loader size={12} />}>
+              Aggiornamento in corso...
+            </Badge>
+          )}
+          {refreshMessage && (
+            <Badge variant="light" color="teal" size="lg">
+              {refreshMessage}
+            </Badge>
+          )}
+          {!error && targetPerformance?.last_updated_at && !refreshing && !refreshMessage && (
+            <Badge variant="dot" color="green" size="lg">
+              Aggiornato: {formatDateTime(targetPerformance.last_updated_at)}
+            </Badge>
+          )}
+          {portfoliosLoading && (
+            <Badge variant="light" color="gray" size="lg" leftSection={<Loader size={12} />}>
+              Caricamento portafogli...
+            </Badge>
+          )}
+        </Group>
       )}
 
-      <Tabs value={activeTab} onChange={handleTabChange} variant="default">
+      <Tabs
+        key={`dashboard-refresh-${portfolioId ?? 'none'}-${refreshVersion}`}
+        value={activeTab}
+        onChange={handleTabChange}
+        variant="default"
+      >
         {!isMobile && (
           <Tabs.List
             mb="md"
@@ -241,16 +289,10 @@ export function DashboardPage() {
             <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
               <Text span>Analisi</Text>
             </Tabs.Tab>
-            <Tabs.Tab
-              value="mercati"
-              leftSection={<IconWorld size={16} />}
-            >
+            <Tabs.Tab value="mercati" leftSection={<IconWorld size={16} />}>
               <Text span>Mercati</Text>
             </Tabs.Tab>
-            <Tabs.Tab
-              value="performance"
-              leftSection={<IconPercentage size={16} />}
-            >
+            <Tabs.Tab value="performance" leftSection={<IconPercentage size={16} />}>
               <Text span>Performance</Text>
             </Tabs.Tab>
           </Tabs.List>
@@ -287,7 +329,6 @@ export function DashboardPage() {
         />
       )}
 
-      {/* Copilot FAB */}
       {copilotAvailable && (
         <ActionIcon
           variant="filled"

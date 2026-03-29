@@ -1,6 +1,7 @@
 import { Badge, Box, Button, Group, Progress, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { Paper } from '@mantine/core';
+import { SignUpButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import {
   IconArrowRight,
@@ -28,6 +29,11 @@ const COLORS = ['#10b981', '#059669', '#0d9488', '#0891b2', '#6366f1', '#8b5cf6'
 function formatPct(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return `${value.toFixed(1)}%`;
+}
+
+function formatNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return 'N/D';
+  return value.toFixed(2);
 }
 
 const METRIC_CONFIG = [
@@ -100,6 +106,9 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               { label: 'Score overlap', value: formatPct(result.metrics.overlap_score), icon: IconStack2, color: 'grape' },
               { label: 'Volatilita', value: formatPct(result.metrics.portfolio_volatility), icon: IconChartLine, color: 'red' },
               { label: 'TER medio', value: formatPct(result.metrics.weighted_ter), icon: IconCoin, color: 'teal' },
+              { label: 'Quota equity', value: formatPct(result.metrics.asset_allocation?.Equity), icon: IconChartDonut3, color: 'blue' },
+              { label: 'Drawdown stimato', value: formatPct(result.metrics.estimated_drawdown), icon: IconChartLine, color: 'orange' },
+              { label: 'Risk score', value: formatNumber(result.metrics.risk_score), icon: IconTarget, color: 'gray' },
             ].map(({ label, value, icon: Icon, color }) => (
               <Group key={label} justify="space-between" wrap="nowrap">
                 <Group gap="xs" wrap="nowrap">
@@ -200,18 +209,51 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               </Text>
               <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
             </div>
-            <Button
-              component="a"
-              href={clerkEnabled ? '/sign-up' : '/portfolio'}
-              rightSection={<IconArrowRight size={16} />}
-              color="dark"
-              variant="white"
-              radius="md"
-              size="md"
-              style={{ fontWeight: 700 }}
-            >
-              Crea account gratis
-            </Button>
+            {clerkEnabled ? (
+              <>
+                <SignedOut>
+                  <SignUpButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                    <Button
+                      rightSection={<IconArrowRight size={16} />}
+                      color="dark"
+                      variant="white"
+                      radius="md"
+                      size="md"
+                      style={{ fontWeight: 700 }}
+                    >
+                      Crea account gratis
+                    </Button>
+                  </SignUpButton>
+                </SignedOut>
+                <SignedIn>
+                  <Button
+                    component="a"
+                    href="/portfolio"
+                    rightSection={<IconArrowRight size={16} />}
+                    color="dark"
+                    variant="white"
+                    radius="md"
+                    size="md"
+                    style={{ fontWeight: 700 }}
+                  >
+                    Vai al portfolio
+                  </Button>
+                </SignedIn>
+              </>
+            ) : (
+              <Button
+                component="a"
+                href="/portfolio"
+                rightSection={<IconArrowRight size={16} />}
+                color="dark"
+                variant="white"
+                radius="md"
+                size="md"
+                style={{ fontWeight: 700 }}
+              >
+                Crea account gratis
+              </Button>
+            )}
           </Group>
         </Box>
       )}

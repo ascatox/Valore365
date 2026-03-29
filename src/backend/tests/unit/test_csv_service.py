@@ -2,7 +2,7 @@ import io
 
 import openpyxl
 
-from app.services.csv_service import BANK_EXPORT_COLUMNS, _prepare_fineco_csv_content, _read_xlsx_rows
+from app.services.csv_service import BANK_EXPORT_COLUMNS, CsvImportService, _prepare_fineco_csv_content, _read_xlsx_rows
 
 
 def test_prepare_fineco_csv_content_keeps_embedded_header_row():
@@ -111,3 +111,39 @@ def test_read_xlsx_rows_detects_fineco_header_without_fixed_skip():
 
     assert len(rows) == 1
     assert rows[0]["Operazione"] == "01/03/2026"
+
+
+class _FakeRepo:
+    pass
+
+
+def test_parse_public_portfolio_file_aggregates_fineco_rows_into_positions():
+    service = CsvImportService(_FakeRepo())
+    content = "\n".join(
+        [
+            "metadata 1",
+            "metadata 2",
+            "metadata 3",
+            "metadata 4",
+            "metadata 5",
+            "metadata 6",
+            "metadata 7",
+            "01/03/2026;04/03/2026;ACQUISTO;ETF TEST;IE00TEST0001;A;10;EUR;100,00;1;1000,00;0;0;0;2,95",
+            "05/03/2026;06/03/2026;ACQUISTO;ETF TEST;IE00TEST0001;A;5;EUR;100,00;1;500,00;0;0;0;2,95",
+            "08/03/2026;09/03/2026;VENDITA;ETF TEST;IE00TEST0001;V;2;EUR;100,00;1;200,00;0;0;0;2,95",
+        ]
+    )
+
+    response = service.parse_public_portfolio_file(
+        file_content=content,
+        filename="fineco.csv",
+        broker="fineco",
+    )
+
+    assert response.total_rows == 3
+    assert response.valid_rows == 3
+    assert response.error_rows == 0
+    assert len(response.positions) == 1
+    assert response.positions[0].identifier == "IE00TEST0001"
+    assert response.positions[0].value == 1300.0
+    assert "IE00TEST0001 1300.00" in response.raw_text
