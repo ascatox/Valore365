@@ -96,7 +96,7 @@ export interface InstantInsightExplainRequest {
 export interface InstantInsightExplainResponse {
   insight_id: string;
   explanation: string;
-  source: 'ai' | 'template';
+  source: 'ai';
 }
 
 export interface InstantImportedPosition {

@@ -24,6 +24,7 @@ from ..schemas.instant_portfolio_analyzer import (
 )
 from ..services.instant_portfolio_analyzer import (
     InstantPortfolioAnalysisError,
+    InstantInsightExplainUnavailable,
     analyze_public_portfolio,
     explain_public_insight,
 )
@@ -188,11 +189,17 @@ def register_instant_portfolio_analyzer_routes(
     @router.post(
         "/public/portfolio/explain-insight",
         response_model=InstantInsightExplainResponse,
-        responses={400: {"model": ErrorResponse}},
+        responses={400: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
     )
     def explain_insight(payload: InstantInsightExplainRequest) -> InstantInsightExplainResponse:
         try:
             return explain_public_insight(payload.insight)
+        except InstantInsightExplainUnavailable as exc:
+            raise AppError(
+                code="copilot_unavailable",
+                message="AI Explain non e disponibile in questo momento. Riprova tra poco.",
+                status_code=503,
+            ) from exc
         except ValueError as exc:
             raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
 

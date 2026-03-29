@@ -528,7 +528,7 @@ def test_public_instant_portfolio_explain_route(monkeypatch):
         return InstantInsightExplainResponse(
             insight_id='geo_usa',
             explanation='Questo significa che una parte ampia del portafoglio dipende dagli Stati Uniti.',
-            source='template',
+            source='ai',
         )
 
     monkeypatch.setattr(instant_portfolio_api, 'explain_public_insight', _fake_explain)
@@ -553,7 +553,35 @@ def test_public_instant_portfolio_explain_route(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload['insight_id'] == 'geo_usa'
-    assert payload['source'] == 'template'
+    assert payload['source'] == 'ai'
+
+
+def test_public_instant_portfolio_explain_route_returns_503_when_ai_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        instant_portfolio_api,
+        'explain_public_insight',
+        lambda insight: (_ for _ in ()).throw(instant_portfolio_api.InstantInsightExplainUnavailable('missing ai')),
+    )
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/public/portfolio/explain-insight',
+        json={
+            'insight': {
+                'id': 'geo_usa',
+                'type': 'geo_concentration',
+                'severity': 'medium',
+                'score': 12,
+                'title': 'Sei molto concentrato su USA',
+                'short_description': 'Il 68% del tuo portafoglio dipende da quest\'area.',
+                'explanation_data': {'region': 'USA', 'weight': 0.68},
+                'cta_label': 'Spiegamelo meglio',
+            }
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()['error']['code'] == 'copilot_unavailable'
 
 
 def test_public_instant_portfolio_import_csv_route(monkeypatch):

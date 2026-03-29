@@ -120,6 +120,10 @@ class InstantPortfolioAnalysisError(ValueError):
         }
 
 
+class InstantInsightExplainUnavailable(RuntimeError):
+    pass
+
+
 def analyze_public_portfolio(repo: PortfolioRepository, payload: InstantAnalyzeRequest) -> InstantAnalyzeResponse:
     normalized_positions, parse_errors = parse_request_positions(payload)
     resolved_positions, unresolved = resolve_positions(repo, normalized_positions)
@@ -193,16 +197,11 @@ def analyze_public_portfolio(repo: PortfolioRepository, payload: InstantAnalyzeR
 
 
 def explain_public_insight(insight: PortfolioTopInsight) -> InstantInsightExplainResponse:
-    template = build_insight_explanation_template(insight)
     settings = get_settings()
     config = resolve_copilot_config(settings)
 
     if config is None:
-        return InstantInsightExplainResponse(
-            insight_id=insight.id,
-            explanation=template,
-            source="template",
-        )
+        raise InstantInsightExplainUnavailable("AI Explain is not configured")
 
     try:
         explanation = generate_ai_explanation(config, insight)
@@ -211,12 +210,10 @@ def explain_public_insight(insight: PortfolioTopInsight) -> InstantInsightExplai
             explanation=explanation,
             source="ai",
         )
-    except Exception:
-        return InstantInsightExplainResponse(
-            insight_id=insight.id,
-            explanation=template,
-            source="template",
-        )
+    except InstantInsightExplainUnavailable:
+        raise
+    except Exception as exc:
+        raise InstantInsightExplainUnavailable("AI Explain is temporarily unavailable") from exc
 
 
 def parse_request_positions(payload: InstantAnalyzeRequest) -> tuple[list[tuple[ParsedPositionInput, int | None, str | None]], list[InstantAnalyzeLineError]]:
@@ -867,7 +864,7 @@ def generate_ai_explanation(config: CopilotConfig, insight: PortfolioTopInsight)
     cleaned = clean_explanation_text(response)
     if cleaned:
         return cleaned
-    return build_insight_explanation_template(insight)
+    raise InstantInsightExplainUnavailable("AI Explain returned an empty response")
 
 
 def clean_explanation_text(value: str) -> str:

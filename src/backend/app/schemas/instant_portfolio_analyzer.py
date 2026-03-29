@@ -129,4 +129,4 @@ class InstantInsightExplainRequest(BaseModel):
 class InstantInsightExplainResponse(BaseModel):
     insight_id: str = Field(min_length=1)
     explanation: str = Field(min_length=1)
-    source: Literal["ai", "template"]
+    source: Literal["ai"]

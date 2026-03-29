@@ -1,5 +1,6 @@
 from app.schemas.instant_portfolio_analyzer import InstantAnalyzeRequest, ParsedPositionInput
 from app.services.instant_portfolio_analyzer import (
+    InstantInsightExplainUnavailable,
     analyze_public_portfolio,
     explain_public_insight,
     parse_raw_text,
@@ -75,8 +76,34 @@ def test_analyze_public_portfolio_uses_catalog_and_generates_score():
     assert response.cta.show_signup is True
 
 
-def test_explain_public_insight_returns_template_when_ai_is_unavailable(monkeypatch):
+def test_explain_public_insight_raises_when_ai_is_unavailable(monkeypatch):
     monkeypatch.setattr("app.services.instant_portfolio_analyzer.resolve_copilot_config", lambda settings: None)
+
+    try:
+        explain_public_insight(
+            PortfolioTopInsight(
+                id="geo_usa",
+                type="geo_concentration",
+                severity="high",
+                score=27,
+                title="Sei molto concentrato su USA",
+                short_description="Il 78% del tuo portafoglio dipende da quest'area.",
+                explanation_data={"region": "USA", "weight": 0.78},
+                cta_label="Spiegamelo meglio",
+            )
+        )
+    except InstantInsightExplainUnavailable as exc:
+        assert "not configured" in str(exc)
+    else:
+        raise AssertionError("Expected AI explain to fail when copilot is unavailable")
+
+
+def test_explain_public_insight_returns_ai_response(monkeypatch):
+    monkeypatch.setattr("app.services.instant_portfolio_analyzer.resolve_copilot_config", lambda settings: object())
+    monkeypatch.setattr(
+        "app.services.instant_portfolio_analyzer.generate_ai_explanation",
+        lambda config, insight: "Questa spiegazione arriva dal modello AI.",
+    )
 
     response = explain_public_insight(
         PortfolioTopInsight(
@@ -92,5 +119,5 @@ def test_explain_public_insight_returns_template_when_ai_is_unavailable(monkeypa
     )
 
     assert response.insight_id == "geo_usa"
-    assert response.source == "template"
-    assert "USA" in response.explanation
+    assert response.source == "ai"
+    assert "AI" in response.explanation

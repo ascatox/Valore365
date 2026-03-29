@@ -118,7 +118,7 @@ describe('InstantPortfolioAnalyzerPage', () => {
     explainInstantInsightMock.mockResolvedValue({
       insight_id: 'geo_usa',
       explanation: 'Questo significa che una parte ampia del portafoglio dipende dagli Stati Uniti.',
-      source: 'template',
+      source: 'ai',
     });
 
     renderPage();
