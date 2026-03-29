@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Box, Button, Container, Grid, Group, Progress, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
+import { SignInButton, SignUpButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import {
   IconArrowRight,
   IconBolt,
@@ -19,10 +20,32 @@ import { InstantAnalyzerResults } from '../components/instant-analyzer/InstantAn
 import {
   ApiRequestError,
   analyzeInstantPortfolio,
+  importInstantPortfolioCsv,
   type InstantAnalyzeLineError,
   type InstantAnalyzeResponse,
   type InstantAnalyzeUnresolvedItem,
 } from '../services/api';
+import type { ManualPositionDraft } from '../components/instant-analyzer/InstantAnalyzerForm';
+
+function createManualPosition(): ManualPositionDraft {
+  return {
+    id: Math.random().toString(36).slice(2, 10),
+    identifier: '',
+    value: '',
+  };
+}
+
+function buildRawTextFromManualPositions(positions: ManualPositionDraft[]): string {
+  return positions
+    .map((position) => {
+      const identifier = position.identifier.trim().toUpperCase();
+      const value = position.value.trim();
+      if (!identifier || !value) return '';
+      return `${identifier} ${value}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
 
 interface InstantAnalyzerErrorDetails {
   parseErrors: InstantAnalyzeLineError[];
@@ -85,13 +108,13 @@ const TRUST_FEATURES = [
   },
   {
     icon: IconLock,
-    title: 'Nessun login',
-    description: 'Risultati immediati, senza registrazione né dati personali.',
+    title: 'Login rapido',
+    description: 'Google o email in pochi secondi se vuoi salvare o importare in modo persistente.',
   },
   {
     icon: IconShieldCheck,
     title: 'Privacy first',
-    description: 'I tuoi dati non vengono salvati. Analisi anonima e sicura.',
+    description: 'La demo pubblica resta anonima e non salva il portafoglio.',
   },
   {
     icon: IconTargetArrow,
@@ -112,6 +135,14 @@ const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export function InstantPortfolioAnalyzerPage() {
   const [rawText, setRawText] = useState('VWCE 10000\nAGGH 5000\nEIMI 2000');
+  const [inputMode, setInputMode] = useState<'demo' | 'manual' | 'csv'>('demo');
+  const [manualPositions, setManualPositions] = useState<ManualPositionDraft[]>([
+    createManualPosition(),
+    createManualPosition(),
+  ]);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvSummary, setCsvSummary] = useState<string | null>(null);
+  const [csvFileName, setCsvFileName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -142,17 +173,30 @@ export function InstantPortfolioAnalyzerPage() {
   }, [loading]);
 
   const handleSubmit = async () => {
-    if (!rawText.trim()) {
-      setError('Incolla almeno una posizione prima di avviare l\'analisi.');
+    const payloadText = inputMode === 'manual'
+      ? buildRawTextFromManualPositions(manualPositions)
+      : rawText;
+
+    if (!payloadText.trim()) {
+      setError(
+        inputMode === 'manual'
+          ? 'Inserisci almeno una posizione manuale prima di avviare l\'analisi.'
+          : 'Incolla almeno una posizione prima di avviare l\'analisi.',
+      );
       setErrorDetails({ parseErrors: [], unresolved: [] });
       return;
     }
+
+    if (inputMode === 'manual') {
+      setRawText(payloadText);
+    }
+
     setLoading(true);
     setError(null);
     setResult(null);
     setErrorDetails({ parseErrors: [], unresolved: [] });
     try {
-      const response = await analyzeInstantPortfolio({ input_mode: 'raw_text', raw_text: rawText });
+      const response = await analyzeInstantPortfolio({ input_mode: 'raw_text', raw_text: payloadText });
       setResult(response);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Impossibile analizzare questo portafoglio in questo momento.');
@@ -160,6 +204,30 @@ export function InstantPortfolioAnalyzerPage() {
       setErrorDetails(readErrorDetails(requestError));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCsvFileSelect = async (file: File | null) => {
+    if (!file) return;
+    setCsvImporting(true);
+    setError(null);
+    setErrorDetails({ parseErrors: [], unresolved: [] });
+    try {
+      const response = await importInstantPortfolioCsv(file, 'fineco');
+      setCsvFileName(response.filename);
+      setCsvSummary(
+        `${response.positions.length} posizioni ricostruite da ${response.valid_rows} righe valide`
+        + (response.error_rows > 0 ? `, ${response.error_rows} righe con problemi.` : '.'),
+      );
+      setRawText(response.raw_text);
+      setInputMode('csv');
+      setErrorDetails({ parseErrors: response.parse_errors, unresolved: [] });
+    } catch (requestError) {
+      setCsvSummary(null);
+      setCsvFileName(file.name);
+      setError(requestError instanceof Error ? requestError.message : 'Impossibile importare il file CSV.');
+    } finally {
+      setCsvImporting(false);
     }
   };
 
@@ -288,25 +356,63 @@ export function InstantPortfolioAnalyzerPage() {
             </Group>
 
             <Group gap="sm" wrap="wrap" justify="center">
-              <Button
-                component="a"
-                href={clerkEnabled ? '/sign-up' : '/portfolio'}
-                radius="md"
-                size="md"
-                rightSection={<IconArrowRight size={16} />}
-                style={{
-                  background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
-                  border: 'none',
-                  fontWeight: 700,
-                }}
-              >
-                Accedi e importa il portafoglio
-              </Button>
+              {clerkEnabled ? (
+                <SignedOut>
+                  <SignUpButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                    <Button
+                      radius="md"
+                      size="md"
+                      rightSection={<IconArrowRight size={16} />}
+                      style={{
+                        background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                        border: 'none',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Accedi e importa il portafoglio
+                    </Button>
+                  </SignUpButton>
+                </SignedOut>
+              ) : (
+                <Button
+                  component="a"
+                  href="/portfolio"
+                  radius="md"
+                  size="md"
+                  rightSection={<IconArrowRight size={16} />}
+                  style={{
+                    background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                    border: 'none',
+                    fontWeight: 700,
+                  }}
+                >
+                  Accedi e importa il portafoglio
+                </Button>
+              )}
+              {clerkEnabled && (
+                <SignedIn>
+                  <Button
+                    component="a"
+                    href="/portfolio"
+                    radius="md"
+                    size="md"
+                    rightSection={<IconArrowRight size={16} />}
+                    style={{
+                      background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                      border: 'none',
+                      fontWeight: 700,
+                    }}
+                  >
+                    Vai al portfolio
+                  </Button>
+                </SignedIn>
+              )}
               <Button
                 variant="light"
                 radius="md"
                 size="md"
                 onClick={() => {
+                  setInputMode('demo');
                   setRawText('VWCE 10000\nAGGH 5000\nEIMI 2000');
                   window.scrollTo({ top: 820, behavior: 'smooth' });
                 }}
@@ -334,7 +440,7 @@ export function InstantPortfolioAnalyzerPage() {
                 Come funziona
               </Text>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.5rem' : '2rem' }}>
-                Tre passaggi, zero complicazioni
+                Un percorso rapido, zero frizione inutile
               </Title>
             </Stack>
 
@@ -393,6 +499,86 @@ export function InstantPortfolioAnalyzerPage() {
       >
         <Container size="1200" px={isMobile ? 'md' : 'xl'}>
           <Stack gap="xl">
+            <Box
+              style={{
+                borderRadius: 20,
+                border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                background: isDark
+                  ? `linear-gradient(135deg, ${theme.colors.dark[6]} 0%, rgba(16, 185, 129, 0.12) 100%)`
+                  : 'linear-gradient(135deg, #ffffff 0%, #ecfdf5 100%)',
+                padding: isMobile ? 20 : 28,
+              }}
+            >
+              <Stack gap="md">
+                <Group gap="xs">
+                  <ThemeIcon color="teal" variant="light" radius="xl">
+                    <IconLock size={16} />
+                  </ThemeIcon>
+                  <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+                    Step 1 attivo
+                  </Text>
+                </Group>
+
+                <Title order={3} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.25rem' : '1.5rem' }}>
+                  Login veloce per importare e salvare il portafoglio
+                </Title>
+
+                <Text size="sm" c={isDark ? theme.colors.gray[4] : '#4b5563'} maw={720}>
+                  Se vuoi un percorso completo con portfolio persistente, entra con Google o email.
+                  Se preferisci, puoi comunque continuare sotto con demo, inserimento manuale o CSV Fineco senza salvare nulla.
+                </Text>
+
+                {clerkEnabled ? (
+                  <>
+                    <SignedOut>
+                      <Group gap="sm" wrap="wrap">
+                        <SignInButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                          <Button radius="md" size="md" rightSection={<IconArrowRight size={16} />}>
+                            Accedi con Google o email
+                          </Button>
+                        </SignInButton>
+                        <SignUpButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                          <Button variant="default" radius="md" size="md">
+                            Crea account gratis
+                          </Button>
+                        </SignUpButton>
+                      </Group>
+                    </SignedOut>
+
+                    <SignedIn>
+                      <Group gap="sm" wrap="wrap">
+                        <Button component="a" href="/portfolio" radius="md" size="md" rightSection={<IconArrowRight size={16} />}>
+                          Vai al portfolio
+                        </Button>
+                        <Button
+                          variant="light"
+                          radius="md"
+                          size="md"
+                          onClick={() => window.scrollTo({ top: 1280, behavior: 'smooth' })}
+                        >
+                          Continua con l&apos;analyzer pubblico
+                        </Button>
+                      </Group>
+                    </SignedIn>
+                  </>
+                ) : (
+                  <Group gap="sm" wrap="wrap">
+                    <Button component="a" href="/portfolio" radius="md" size="md" rightSection={<IconArrowRight size={16} />}>
+                      Apri il portfolio
+                    </Button>
+                    <Button
+                      variant="light"
+                      radius="md"
+                      size="md"
+                      onClick={() => window.scrollTo({ top: 1280, behavior: 'smooth' })}
+                    >
+                      Continua con l&apos;analyzer pubblico
+                    </Button>
+                  </Group>
+                )}
+              </Stack>
+            </Box>
+
             <Stack gap={4} align="center" style={{ textAlign: 'center' }}>
               <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
                 Prova subito
@@ -401,20 +587,47 @@ export function InstantPortfolioAnalyzerPage() {
                 Demo mode: analizza il portafoglio
               </Title>
               <Text size="sm" c={isDark ? theme.colors.gray[4] : '#6b7280'} maw={620}>
-                Per l&apos;import Fineco e il salvataggio permanente usa l&apos;account. Qui puoi testare subito il motore con input manuale o demo.
+                Puoi usare demo, inserimento manuale minimo o upload Fineco. L&apos;account serve solo se vuoi salvare il portafoglio in modo permanente.
               </Text>
             </Stack>
 
             <Grid gutter="xl" align="start">
               <Grid.Col span={{ base: 12, lg: 5 }}>
                 <InstantAnalyzerForm
+                  mode={inputMode}
                   value={rawText}
                   error={error}
                   loading={loading}
+                  csvImporting={csvImporting}
+                  csvSummary={csvSummary}
+                  csvFileName={csvFileName}
+                  onModeChange={setInputMode}
                   onChange={setRawText}
                   onSubmit={handleSubmit}
+                  onSelectExample={(example) => {
+                    setInputMode('demo');
+                    setRawText(example);
+                  }}
+                  manualPositions={manualPositions}
+                  onManualChange={(id, field, value) => {
+                    setManualPositions((current) => current.map((position) => (
+                      position.id === id ? { ...position, [field]: value } : position
+                    )));
+                  }}
+                  onManualAdd={() => setManualPositions((current) => [...current, createManualPosition()])}
+                  onManualRemove={(id) => {
+                    setManualPositions((current) => {
+                      if (current.length === 1) return current;
+                      return current.filter((position) => position.id !== id);
+                    });
+                  }}
+                  onCsvFileSelect={(file) => { void handleCsvFileSelect(file); }}
                   onReset={() => {
+                    setInputMode('demo');
                     setRawText('');
+                    setManualPositions([createManualPosition(), createManualPosition()]);
+                    setCsvSummary(null);
+                    setCsvFileName(null);
                     setResult(null);
                     setError(null);
                     setErrorDetails({ parseErrors: [], unresolved: [] });

@@ -99,6 +99,24 @@ export interface InstantInsightExplainResponse {
   source: 'ai' | 'template';
 }
 
+export interface InstantImportedPosition {
+  identifier: string;
+  value: number;
+  label: string | null;
+  line: number | null;
+}
+
+export interface InstantPortfolioImportResponse {
+  filename: string | null;
+  broker: string;
+  total_rows: number;
+  valid_rows: number;
+  error_rows: number;
+  positions: InstantImportedPosition[];
+  parse_errors: InstantAnalyzeLineError[];
+  raw_text: string;
+}
+
 export interface UserSettings {
   user_id: string;
   broker_default_fee: number;

@@ -35,6 +35,13 @@ class InstantAnalyzeUnresolvedItem(BaseModel):
     error: str
 
 
+class InstantImportedPosition(BaseModel):
+    identifier: str = Field(min_length=1)
+    value: float = Field(gt=0)
+    label: str | None = None
+    line: int | None = Field(default=None, ge=1)
+
+
 class PortfolioAnalyzeSummary(BaseModel):
     total_value: float = Field(ge=0)
     score: int = Field(ge=0, le=100)
@@ -102,6 +109,17 @@ class InstantAnalyzeResponse(BaseModel):
     suggestions: list[PortfolioAnalyzeSuggestion] = Field(default_factory=list)
     insights: list[PortfolioTopInsight] = Field(default_factory=list, max_length=3)
     cta: InstantAnalyzeCta
+
+
+class InstantPortfolioImportResponse(BaseModel):
+    filename: str | None = None
+    broker: str = Field(min_length=1)
+    total_rows: int = Field(ge=0)
+    valid_rows: int = Field(ge=0)
+    error_rows: int = Field(ge=0)
+    positions: list[InstantImportedPosition] = Field(default_factory=list)
+    parse_errors: list[InstantAnalyzeLineError] = Field(default_factory=list)
+    raw_text: str = ""
 
 
 class InstantInsightExplainRequest(BaseModel):

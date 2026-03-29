@@ -5,10 +5,13 @@ import type {
   CopilotStatus,
   InstantAnalyzeRequest,
   InstantAnalyzeResponse,
+  InstantPortfolioImportResponse,
   InstantInsightExplainRequest,
   InstantInsightExplainResponse,
   AdminUsageSummary,
 } from './types';
+import type { ApiErrorPayload } from './client';
+import { API_URL } from './client';
 
 export const getUserSettings = async (): Promise<UserSettings> => {
   return apiFetch<UserSettings>('/settings/user');
@@ -39,6 +42,33 @@ export const explainInstantInsight = async (
     method: 'POST',
     body: JSON.stringify(payload),
   });
+};
+
+export const importInstantPortfolioCsv = async (
+  file: File,
+  broker = 'fineco',
+): Promise<InstantPortfolioImportResponse> => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('broker', broker);
+
+  const response = await fetch(`${API_URL}/public/portfolio/import-csv`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    let message = `HTTP ${response.status}`;
+    try {
+      const body = (await response.json()) as ApiErrorPayload;
+      if (body?.error?.message) message = body.error.message;
+    } catch {
+      // ignore
+    }
+    throw new Error(message);
+  }
+
+  return response.json() as Promise<InstantPortfolioImportResponse>;
 };
 
 export const getAdminUsageSummary = async (): Promise<AdminUsageSummary> => {

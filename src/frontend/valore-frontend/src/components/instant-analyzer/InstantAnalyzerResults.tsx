@@ -1,6 +1,7 @@
 import { Badge, Box, Button, Group, Progress, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { Paper } from '@mantine/core';
+import { SignUpButton, SignedIn, SignedOut } from '@clerk/clerk-react';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import {
   IconArrowRight,
@@ -208,18 +209,51 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               </Text>
               <Title order={3} c="white" mt={4}>{result.cta.message}</Title>
             </div>
-            <Button
-              component="a"
-              href={clerkEnabled ? '/sign-up' : '/portfolio'}
-              rightSection={<IconArrowRight size={16} />}
-              color="dark"
-              variant="white"
-              radius="md"
-              size="md"
-              style={{ fontWeight: 700 }}
-            >
-              Crea account gratis
-            </Button>
+            {clerkEnabled ? (
+              <>
+                <SignedOut>
+                  <SignUpButton mode="modal" forceRedirectUrl="/portfolio" fallbackRedirectUrl="/portfolio">
+                    <Button
+                      rightSection={<IconArrowRight size={16} />}
+                      color="dark"
+                      variant="white"
+                      radius="md"
+                      size="md"
+                      style={{ fontWeight: 700 }}
+                    >
+                      Crea account gratis
+                    </Button>
+                  </SignUpButton>
+                </SignedOut>
+                <SignedIn>
+                  <Button
+                    component="a"
+                    href="/portfolio"
+                    rightSection={<IconArrowRight size={16} />}
+                    color="dark"
+                    variant="white"
+                    radius="md"
+                    size="md"
+                    style={{ fontWeight: 700 }}
+                  >
+                    Vai al portfolio
+                  </Button>
+                </SignedIn>
+              </>
+            ) : (
+              <Button
+                component="a"
+                href="/portfolio"
+                rightSection={<IconArrowRight size={16} />}
+                color="dark"
+                variant="white"
+                radius="md"
+                size="md"
+                style={{ fontWeight: 700 }}
+              >
+                Crea account gratis
+              </Button>
+            )}
           </Group>
         </Box>
       )}

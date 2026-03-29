@@ -4,16 +4,23 @@ import time
 from collections import defaultdict, deque
 
 from fastapi import APIRouter, Request
+from fastapi import File, Form, UploadFile
 
 from ..config import get_settings
 from ..errors import AppError
 from ..models import ErrorResponse
 from ..repository import PortfolioRepository
+from .routes_csv import (
+    CSV_IMPORT_ALLOWED_CONTENT_TYPES,
+    CSV_IMPORT_ALLOWED_EXTENSIONS,
+    _format_file_size_limit,
+)
 from ..schemas.instant_portfolio_analyzer import (
     InstantAnalyzeRequest,
     InstantAnalyzeResponse,
     InstantInsightExplainRequest,
     InstantInsightExplainResponse,
+    InstantPortfolioImportResponse,
 )
 from ..services.instant_portfolio_analyzer import (
     InstantPortfolioAnalysisError,
@@ -111,7 +118,11 @@ def reset_public_instant_analyzer_rate_limiter() -> None:
     _public_instant_rate_limiter.reset()
 
 
-def register_instant_portfolio_analyzer_routes(router: APIRouter, repo: PortfolioRepository) -> None:
+def register_instant_portfolio_analyzer_routes(
+    router: APIRouter,
+    repo: PortfolioRepository,
+    csv_import_service: object | None = None,
+) -> None:
     @router.post(
         "/public/portfolio/analyze",
         response_model=InstantAnalyzeResponse,
@@ -182,5 +193,65 @@ def register_instant_portfolio_analyzer_routes(router: APIRouter, repo: Portfoli
     def explain_insight(payload: InstantInsightExplainRequest) -> InstantInsightExplainResponse:
         try:
             return explain_public_insight(payload.insight)
+        except ValueError as exc:
+            raise AppError(code="bad_request", message=str(exc), status_code=400) from exc
+
+    @router.post(
+        "/public/portfolio/import-csv",
+        response_model=InstantPortfolioImportResponse,
+        responses={400: {"model": ErrorResponse}, 429: {"model": ErrorResponse}},
+    )
+    async def import_csv_for_analyzer(
+        request: Request,
+        file: UploadFile = File(...),
+        broker: str = Form("fineco"),
+    ) -> InstantPortfolioImportResponse:
+        if csv_import_service is None:
+            raise AppError(code="bad_request", message="CSV import service not configured", status_code=400)
+
+        client_ip = _client_ip(request)
+        if not _public_instant_rate_limiter.allow(client_ip):
+            raise AppError(
+                code="rate_limited",
+                message="Too many analysis requests. Please try again later.",
+                status_code=429,
+            )
+
+        filename = file.filename or ""
+        if not filename.lower().endswith(CSV_IMPORT_ALLOWED_EXTENSIONS):
+            raise AppError(
+                code="bad_request",
+                message="Formato file non supportato. Usa CSV o Excel (XLSX).",
+                status_code=400,
+            )
+        if file.content_type and file.content_type not in CSV_IMPORT_ALLOWED_CONTENT_TYPES:
+            raise AppError(
+                code="bad_request",
+                message="Content-Type file non supportato.",
+                status_code=400,
+            )
+
+        content = await file.read()
+        max_upload = get_settings().csv_import_max_upload_bytes
+        if len(content) > max_upload:
+            raise AppError(
+                code="bad_request",
+                message=f"File troppo grande. Limite massimo {_format_file_size_limit(max_upload)}",
+                status_code=400,
+            )
+
+        try:
+            is_xlsx = filename.lower().endswith((".xlsx", ".xls"))
+            if is_xlsx:
+                return csv_import_service.parse_public_portfolio_file(
+                    file_bytes=content,
+                    filename=filename,
+                    broker=broker,
+                )
+            return csv_import_service.parse_public_portfolio_file(
+                file_content=content.decode("utf-8-sig"),
+                filename=filename,
+                broker=broker,
+            )
         except ValueError as exc:
             raise AppError(code="bad_request", message=str(exc), status_code=400) from exc

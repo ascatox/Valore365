@@ -7,6 +7,14 @@ import { ApiRequestError } from '../services/api';
 const analyzeInstantPortfolioMock = vi.fn();
 const explainInstantInsightMock = vi.fn();
 
+class ResizeObserverMock {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+
 vi.mock('../services/api', async () => {
   const actual = await vi.importActual<typeof import('../services/api')>('../services/api');
   return {

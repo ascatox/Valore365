@@ -19,6 +19,11 @@ from ..models import (
 from ..config import get_settings
 from ..finance_client import make_finance_client
 from ..repository import PortfolioRepository
+from ..schemas.instant_portfolio_analyzer import (
+    InstantAnalyzeLineError,
+    InstantImportedPosition,
+    InstantPortfolioImportResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -299,15 +304,14 @@ class CsvImportService:
             return header + "\n" + file_content
         return file_content
 
-    def parse_and_validate(
+    def _load_raw_rows(
         self,
-        portfolio_id: int,
-        user_id: str,
-        file_content: str | None = None,
-        filename: str | None = None,
-        file_bytes: bytes | None = None,
-        broker: str = "generic",
-    ) -> CsvImportPreviewResponse:
+        *,
+        file_content: str | None,
+        filename: str | None,
+        file_bytes: bytes | None,
+        broker: str,
+    ) -> tuple[list[dict[str, str]], list[str]]:
         profile = BROKER_PROFILES.get(broker, BROKER_PROFILES["generic"])
         skip_rows = profile.get("skip_rows", 0)
         is_xlsx = filename and filename.lower().endswith((".xlsx", ".xls"))
@@ -317,7 +321,9 @@ class CsvImportService:
             if not raw_rows:
                 raise ValueError("File Excel vuoto o senza righe dati")
             normalized_fields = [f.strip().lower() for f in raw_rows[0].keys()]
-        elif file_content:
+            return raw_rows, normalized_fields
+
+        if file_content:
             if broker == "fineco":
                 file_content = _prepare_fineco_csv_content(file_content, skip_rows)
             else:
@@ -332,8 +338,25 @@ class CsvImportService:
                 raise ValueError("File CSV vuoto o intestazioni mancanti")
             normalized_fields = [f.strip().lower() for f in reader.fieldnames]
             raw_rows = list(reader)
-        else:
-            raise ValueError("Nessun contenuto file fornito")
+            return raw_rows, normalized_fields
+
+        raise ValueError("Nessun contenuto file fornito")
+
+    def parse_and_validate(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        file_content: str | None = None,
+        filename: str | None = None,
+        file_bytes: bytes | None = None,
+        broker: str = "generic",
+    ) -> CsvImportPreviewResponse:
+        raw_rows, normalized_fields = self._load_raw_rows(
+            file_content=file_content,
+            filename=filename,
+            file_bytes=file_bytes,
+            broker=broker,
+        )
 
         missing = [c for c in REQUIRED_COLUMNS if c not in normalized_fields]
         if missing:
@@ -549,6 +572,149 @@ class CsvImportService:
             valid_rows=valid_count,
             error_rows=error_count,
             rows=rows,
+        )
+
+    def parse_public_portfolio_file(
+        self,
+        *,
+        file_content: str | None = None,
+        filename: str | None = None,
+        file_bytes: bytes | None = None,
+        broker: str = "fineco",
+    ) -> InstantPortfolioImportResponse:
+        raw_rows, normalized_fields = self._load_raw_rows(
+            file_content=file_content,
+            filename=filename,
+            file_bytes=file_bytes,
+            broker=broker,
+        )
+
+        missing = [c for c in REQUIRED_COLUMNS if c not in normalized_fields]
+        if missing:
+            raise ValueError(f"Colonne obbligatorie mancanti: {', '.join(missing)}")
+
+        aggregated_positions: dict[str, dict[str, object]] = {}
+        parse_errors: list[InstantAnalyzeLineError] = []
+        valid_count = 0
+        error_count = 0
+
+        for idx, raw_row in enumerate(raw_rows, start=1):
+            row_data = {k.strip().lower(): (str(v).strip() if v else "") for k, v in raw_row.items()}
+            errors: list[str] = []
+
+            isin = row_data.get("isin", "").strip().upper()
+            if not isin:
+                errors.append("isin obbligatorio")
+
+            segno = row_data.get("segno", "").strip().upper()
+            descrizione_lower = row_data.get("descrizione", "").strip().lower()
+            if not segno and ("dividendo" in descrizione_lower or "rimborso" in descrizione_lower):
+                side = "dividend"
+            else:
+                side = SEGNO_MAP.get(segno)
+            if side is None:
+                errors.append(f"segno non valido: '{segno}'. Valori ammessi: A (acquisto), V (vendita)")
+
+            quantity: float | None = None
+            quantita_str = row_data.get("quantita", "")
+            if not quantita_str:
+                errors.append("quantita obbligatorio")
+            else:
+                try:
+                    quantity = _parse_italian_number(quantita_str)
+                    if quantity is not None and quantity <= 0:
+                        errors.append("quantita deve essere > 0")
+                except ValueError:
+                    errors.append(f"quantita non numerico: {quantita_str}")
+
+            price: float | None = None
+            prezzo_str = row_data.get("prezzo", "")
+            if not prezzo_str:
+                errors.append("prezzo obbligatorio")
+            else:
+                try:
+                    price = _parse_italian_number(prezzo_str)
+                    if price is not None and price < 0:
+                        errors.append("prezzo deve essere >= 0")
+                except ValueError:
+                    errors.append(f"prezzo non numerico: {prezzo_str}")
+
+            controvalore: float | None = None
+            controvalore_str = row_data.get("controvalore", "")
+            if controvalore_str:
+                try:
+                    controvalore = _parse_italian_number(controvalore_str)
+                except ValueError:
+                    errors.append(f"controvalore non numerico: {controvalore_str}")
+
+            if errors:
+                error_count += 1
+                parse_errors.append(
+                    InstantAnalyzeLineError(
+                        line=idx,
+                        raw="; ".join(f"{key}={value}" for key, value in row_data.items() if value),
+                        error="; ".join(errors),
+                    )
+                )
+                continue
+
+            valid_count += 1
+            if side == "dividend":
+                continue
+
+            if controvalore is not None and controvalore > 0:
+                exposure_value = abs(controvalore)
+            else:
+                exposure_value = abs((quantity or 0.0) * (price or 0.0))
+
+            if exposure_value <= 0:
+                error_count += 1
+                parse_errors.append(
+                    InstantAnalyzeLineError(
+                        line=idx,
+                        raw="; ".join(f"{key}={value}" for key, value in row_data.items() if value),
+                        error="Controvalore non disponibile o non valido per questa riga",
+                    )
+                )
+                continue
+
+            signed_value = exposure_value if side == "buy" else -exposure_value
+            titolo = row_data.get("titolo", "").strip() or None
+            bucket = aggregated_positions.setdefault(
+                isin,
+                {
+                    "identifier": isin,
+                    "value": 0.0,
+                    "label": titolo,
+                    "line": idx,
+                },
+            )
+            bucket["value"] = float(bucket["value"]) + signed_value
+            if not bucket.get("label") and titolo:
+                bucket["label"] = titolo
+
+        positions = [
+            InstantImportedPosition(
+                identifier=str(data["identifier"]),
+                value=round(float(data["value"]), 2),
+                label=str(data["label"]) if data.get("label") else None,
+                line=int(data["line"]) if data.get("line") is not None else None,
+            )
+            for data in aggregated_positions.values()
+            if float(data["value"]) > 0
+        ]
+        positions.sort(key=lambda item: item.value, reverse=True)
+        raw_text = "\n".join(f"{position.identifier} {position.value:.2f}" for position in positions)
+
+        return InstantPortfolioImportResponse(
+            filename=filename,
+            broker=broker,
+            total_rows=len(raw_rows),
+            valid_rows=valid_count,
+            error_rows=error_count,
+            positions=positions,
+            parse_errors=parse_errors,
+            raw_text=raw_text,
         )
 
     def commit_batch(self, batch_id: int, user_id: str) -> CsvImportCommitResponse:

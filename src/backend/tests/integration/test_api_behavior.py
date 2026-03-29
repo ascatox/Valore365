@@ -17,9 +17,11 @@ from app.schemas.portfolio_doctor import (
 from app.schemas.instant_portfolio_analyzer import (
     InstantAnalyzeCta,
     InstantAnalyzeLineError,
+    InstantImportedPosition,
     InstantInsightExplainResponse,
     InstantAnalyzeResponse,
     InstantAnalyzeUnresolvedItem,
+    InstantPortfolioImportResponse,
     PortfolioAnalyzeAlert,
     PortfolioAnalyzeMetrics,
     PortfolioAnalyzeSuggestion,
@@ -552,6 +554,51 @@ def test_public_instant_portfolio_explain_route(monkeypatch):
     payload = response.json()
     assert payload['insight_id'] == 'geo_usa'
     assert payload['source'] == 'template'
+
+
+def test_public_instant_portfolio_import_csv_route(monkeypatch):
+    class _FakeCsvImportService:
+        def parse_public_portfolio_file(self, **kwargs):
+            assert kwargs["broker"] == "fineco"
+            return InstantPortfolioImportResponse(
+                filename="fineco.csv",
+                broker="fineco",
+                total_rows=3,
+                valid_rows=3,
+                error_rows=0,
+                positions=[
+                    InstantImportedPosition(
+                        identifier="IE00BK5BQT80",
+                        value=1500.0,
+                        label="Vanguard FTSE All-World",
+                        line=1,
+                    )
+                ],
+                parse_errors=[],
+                raw_text="IE00BK5BQT80 1500.00",
+            )
+
+    instant_portfolio_api.reset_public_instant_analyzer_rate_limiter()
+    router = APIRouter()
+    instant_portfolio_api.register_instant_portfolio_analyzer_routes(router, _FakeRepo(), csv_import_service=_FakeCsvImportService())
+    app = FastAPI()
+
+    @app.exception_handler(AppError)
+    async def app_error_handler(_: object, exc: AppError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}})
+
+    app.include_router(router, prefix="/api")
+    client = TestClient(app)
+    response = client.post(
+        "/api/public/portfolio/import-csv",
+        files={"file": ("fineco.csv", b"dummy", "text/csv")},
+        data={"broker": "fineco"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["positions"][0]["identifier"] == "IE00BK5BQT80"
+    assert payload["raw_text"] == "IE00BK5BQT80 1500.00"
 
 
 def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):
