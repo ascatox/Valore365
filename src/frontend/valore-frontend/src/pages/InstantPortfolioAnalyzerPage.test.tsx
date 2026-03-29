@@ -5,12 +5,14 @@ import { InstantPortfolioAnalyzerPage } from './InstantPortfolioAnalyzerPage';
 import { ApiRequestError } from '../services/api';
 
 const analyzeInstantPortfolioMock = vi.fn();
+const explainInstantInsightMock = vi.fn();
 
 vi.mock('../services/api', async () => {
   const actual = await vi.importActual<typeof import('../services/api')>('../services/api');
   return {
     ...actual,
     analyzeInstantPortfolio: (...args: unknown[]) => analyzeInstantPortfolioMock(...args),
+    explainInstantInsight: (...args: unknown[]) => explainInstantInsightMock(...args),
   };
 });
 
@@ -25,6 +27,7 @@ function renderPage() {
 describe('InstantPortfolioAnalyzerPage', () => {
   beforeEach(() => {
     analyzeInstantPortfolioMock.mockReset();
+    explainInstantInsightMock.mockReset();
   });
 
   it('renders analysis results after a successful submission', async () => {
@@ -56,10 +59,16 @@ describe('InstantPortfolioAnalyzerPage', () => {
           emerging: 10,
           other: 5,
         },
+        asset_allocation: {
+          Equity: 82.4,
+          Bond: 17.6,
+        },
         max_position_weight: 58.82,
         overlap_score: 61,
         portfolio_volatility: 14.8,
         weighted_ter: 0.21,
+        risk_score: 4.47,
+        estimated_drawdown: 30.6,
       },
       category_scores: {
         diversification: 18,
@@ -81,23 +90,44 @@ describe('InstantPortfolioAnalyzerPage', () => {
           message: 'Consider increasing exposure to non-US markets.',
         },
       ],
+      insights: [
+        {
+          id: 'geo_usa',
+          type: 'geo_concentration',
+          severity: 'medium',
+          score: 12,
+          title: 'Sei molto concentrato su USA',
+          short_description: 'Il 68.0% del tuo portafoglio dipende da quest\'area.',
+          explanation_data: { region: 'USA', weight: 0.68 },
+          cta_label: 'Spiegamelo meglio',
+        },
+      ],
       cta: {
         show_signup: true,
         message: 'Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
       },
     });
+    explainInstantInsightMock.mockResolvedValue({
+      insight_id: 'geo_usa',
+      explanation: 'Questo significa che una parte ampia del portafoglio dipende dagli Stati Uniti.',
+      source: 'template',
+    });
 
     renderPage();
 
-    expect(screen.getByAltText('Logo Valore365')).toBeInTheDocument();
+    expect(screen.getAllByAltText('Valore365').length).toBeGreaterThan(0);
 
     await userEvent.click(screen.getByRole('button', { name: /analizza portafoglio/i }));
 
-    expect(await screen.findByText('74 / 100')).toBeInTheDocument();
+    expect(await screen.findByText('74/100')).toBeInTheDocument();
     expect(screen.getAllByText('18 / 25')).toHaveLength(2);
     expect(screen.getByText('Vanguard FTSE All-World UCITS ETF')).toBeInTheDocument();
-    expect(screen.getByText('Your portfolio is heavily exposed to US markets (68%).')).toBeInTheDocument();
+    expect(screen.getByText('Sei molto concentrato su USA')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /crea account gratis/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /spiegamelo meglio/i }));
+
+    expect(await screen.findByText('Questo significa che una parte ampia del portafoglio dipende dagli Stati Uniti.')).toBeInTheDocument();
   }, 10000);
 
   it('hides the signup CTA when the response disables it', async () => {
@@ -129,10 +159,16 @@ describe('InstantPortfolioAnalyzerPage', () => {
           emerging: 10,
           other: 5,
         },
+        asset_allocation: {
+          Equity: 82.4,
+          Bond: 17.6,
+        },
         max_position_weight: 58.82,
         overlap_score: 61,
         portfolio_volatility: 14.8,
         weighted_ter: 0.21,
+        risk_score: 4.47,
+        estimated_drawdown: 30.6,
       },
       category_scores: {
         diversification: 18,
@@ -143,6 +179,7 @@ describe('InstantPortfolioAnalyzerPage', () => {
       },
       alerts: [],
       suggestions: [],
+      insights: [],
       cta: {
         show_signup: false,
         message: 'Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
@@ -153,7 +190,7 @@ describe('InstantPortfolioAnalyzerPage', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /analizza portafoglio/i }));
 
-    expect(await screen.findByText('74 / 100')).toBeInTheDocument();
+    expect(await screen.findByText('74/100')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /crea account gratis/i })).not.toBeInTheDocument();
   }, 10000);
 

@@ -31,10 +31,13 @@ export interface PortfolioAnalyzeSummary {
 
 export interface PortfolioAnalyzeMetrics {
   geographic_exposure: Record<string, number>;
+  asset_allocation: Record<string, number>;
   max_position_weight: number;
   overlap_score: number;
   portfolio_volatility: number | null;
   weighted_ter: number | null;
+  risk_score: number;
+  estimated_drawdown: number;
 }
 
 export interface ResolvedPublicPosition {
@@ -62,6 +65,17 @@ export interface InstantAnalyzeCta {
   message: string;
 }
 
+export interface PortfolioTopInsight {
+  id: string;
+  type: 'geo_concentration' | 'holding_overlap' | 'portfolio_risk';
+  severity: 'medium' | 'high';
+  score: number;
+  title: string;
+  short_description: string;
+  explanation_data: Record<string, unknown>;
+  cta_label: string;
+}
+
 export interface InstantAnalyzeResponse {
   summary: PortfolioAnalyzeSummary;
   positions: ResolvedPublicPosition[];
@@ -71,7 +85,18 @@ export interface InstantAnalyzeResponse {
   category_scores: PortfolioHealthCategoryScores;
   alerts: PortfolioAnalyzeAlert[];
   suggestions: PortfolioAnalyzeSuggestion[];
+  insights: PortfolioTopInsight[];
   cta: InstantAnalyzeCta;
+}
+
+export interface InstantInsightExplainRequest {
+  insight: PortfolioTopInsight;
+}
+
+export interface InstantInsightExplainResponse {
+  insight_id: string;
+  explanation: string;
+  source: 'ai' | 'template';
 }
 
 export interface UserSettings {

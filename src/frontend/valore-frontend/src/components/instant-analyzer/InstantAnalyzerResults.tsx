@@ -30,6 +30,11 @@ function formatPct(value: number | null | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
+function formatNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return 'N/D';
+  return value.toFixed(2);
+}
+
 const METRIC_CONFIG = [
   { key: 'usa', label: 'USA', icon: IconGlobe, color: 'blue' },
   { key: 'europe', label: 'Europa', icon: IconMapPin, color: 'indigo' },
@@ -100,6 +105,9 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
               { label: 'Score overlap', value: formatPct(result.metrics.overlap_score), icon: IconStack2, color: 'grape' },
               { label: 'Volatilita', value: formatPct(result.metrics.portfolio_volatility), icon: IconChartLine, color: 'red' },
               { label: 'TER medio', value: formatPct(result.metrics.weighted_ter), icon: IconCoin, color: 'teal' },
+              { label: 'Quota equity', value: formatPct(result.metrics.asset_allocation?.Equity), icon: IconChartDonut3, color: 'blue' },
+              { label: 'Drawdown stimato', value: formatPct(result.metrics.estimated_drawdown), icon: IconChartLine, color: 'orange' },
+              { label: 'Risk score', value: formatNumber(result.metrics.risk_score), icon: IconTarget, color: 'gray' },
             ].map(({ label, value, icon: Icon, color }) => (
               <Group key={label} justify="space-between" wrap="nowrap">
                 <Group gap="xs" wrap="nowrap">

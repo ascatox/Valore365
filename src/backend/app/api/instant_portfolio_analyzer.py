@@ -9,8 +9,17 @@ from ..config import get_settings
 from ..errors import AppError
 from ..models import ErrorResponse
 from ..repository import PortfolioRepository
-from ..schemas.instant_portfolio_analyzer import InstantAnalyzeRequest, InstantAnalyzeResponse
-from ..services.instant_portfolio_analyzer import InstantPortfolioAnalysisError, analyze_public_portfolio
+from ..schemas.instant_portfolio_analyzer import (
+    InstantAnalyzeRequest,
+    InstantAnalyzeResponse,
+    InstantInsightExplainRequest,
+    InstantInsightExplainResponse,
+)
+from ..services.instant_portfolio_analyzer import (
+    InstantPortfolioAnalysisError,
+    analyze_public_portfolio,
+    explain_public_insight,
+)
 
 
 class SlidingWindowRateLimiter:
@@ -164,3 +173,14 @@ def register_instant_portfolio_analyzer_routes(router: APIRouter, repo: Portfoli
             except Exception:
                 pass
             raise
+
+    @router.post(
+        "/public/portfolio/explain-insight",
+        response_model=InstantInsightExplainResponse,
+        responses={400: {"model": ErrorResponse}},
+    )
+    def explain_insight(payload: InstantInsightExplainRequest) -> InstantInsightExplainResponse:
+        try:
+            return explain_public_insight(payload.insight)
+        except ValueError as exc:
+            raise AppError(code="bad_request", message=str(exc), status_code=400) from exc

@@ -17,12 +17,14 @@ from app.schemas.portfolio_doctor import (
 from app.schemas.instant_portfolio_analyzer import (
     InstantAnalyzeCta,
     InstantAnalyzeLineError,
+    InstantInsightExplainResponse,
     InstantAnalyzeResponse,
     InstantAnalyzeUnresolvedItem,
     PortfolioAnalyzeAlert,
     PortfolioAnalyzeMetrics,
     PortfolioAnalyzeSuggestion,
     PortfolioAnalyzeSummary,
+    PortfolioTopInsight,
     ResolvedPosition,
 )
 from app.models import AdminUsageSummary
@@ -458,10 +460,13 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
             parse_errors=[],
             metrics=PortfolioAnalyzeMetrics(
                 geographic_exposure={'usa': 68.0, 'europe': 17.0, 'emerging': 10.0, 'other': 5.0},
+                asset_allocation={'Equity': 82.4, 'Bond': 17.6},
                 max_position_weight=58.82,
                 overlap_score=61.0,
                 portfolio_volatility=14.8,
                 weighted_ter=0.21,
+                risk_score=4.47,
+                estimated_drawdown=30.6,
             ),
             category_scores=PortfolioHealthCategoryScores(
                 diversification=18,
@@ -483,6 +488,18 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
                     message='Consider increasing exposure to non-US markets.',
                 )
             ],
+            insights=[
+                PortfolioTopInsight(
+                    id='geo_usa',
+                    type='geo_concentration',
+                    severity='medium',
+                    score=12,
+                    title='Sei molto concentrato su USA',
+                    short_description='Il 68.0% del tuo portafoglio dipende da quest\'area.',
+                    explanation_data={'region': 'USA', 'weight': 0.68},
+                    cta_label='Spiegamelo meglio',
+                )
+            ],
             cta=InstantAnalyzeCta(
                 show_signup=True,
                 message='Crea un account gratuito per salvare e monitorare questo portafoglio nel tempo.',
@@ -500,6 +517,41 @@ def test_public_instant_portfolio_analyzer_route(monkeypatch):
     assert payload['category_scores']['diversification'] == 18
     assert payload['cta']['show_signup'] is True
     assert payload['positions'][0]['resolved_symbol'] == 'VWCE'
+    assert payload['insights'][0]['id'] == 'geo_usa'
+
+
+def test_public_instant_portfolio_explain_route(monkeypatch):
+    def _fake_explain(insight):
+        assert insight.id == 'geo_usa'
+        return InstantInsightExplainResponse(
+            insight_id='geo_usa',
+            explanation='Questo significa che una parte ampia del portafoglio dipende dagli Stati Uniti.',
+            source='template',
+        )
+
+    monkeypatch.setattr(instant_portfolio_api, 'explain_public_insight', _fake_explain)
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/public/portfolio/explain-insight',
+        json={
+            'insight': {
+                'id': 'geo_usa',
+                'type': 'geo_concentration',
+                'severity': 'medium',
+                'score': 12,
+                'title': 'Sei molto concentrato su USA',
+                'short_description': 'Il 68% del tuo portafoglio dipende da quest\'area.',
+                'explanation_data': {'region': 'USA', 'weight': 0.68},
+                'cta_label': 'Spiegamelo meglio',
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['insight_id'] == 'geo_usa'
+    assert payload['source'] == 'template'
 
 
 def test_public_instant_portfolio_analyzer_route_bad_request(monkeypatch):

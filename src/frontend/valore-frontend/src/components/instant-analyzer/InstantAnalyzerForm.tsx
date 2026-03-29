@@ -45,7 +45,7 @@ export function InstantAnalyzerForm({
             Incolla le tue posizioni
           </Text>
           <Text size="sm" c={isDark ? theme.colors.gray[4] : '#6b7280'}>
-            Una riga per posizione. Formato: <code style={{ background: isDark ? theme.colors.dark[4] : '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85em' }}>TICKER QUANTITA</code>
+            Una riga per posizione. Formato: <code style={{ background: isDark ? theme.colors.dark[4] : '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85em' }}>TICKER VALORE</code>
           </Text>
         </div>
 
