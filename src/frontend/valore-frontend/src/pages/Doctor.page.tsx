@@ -438,7 +438,7 @@ export function DoctorPage() {
 
   return (
     <PageLayout variant="editorial">
-      <Container fluid>
+      <Container fluid px={0}>
         <Stack gap="lg">
           <PageHeader
             eyebrow="Diagnostica pronta da condividere"

@@ -68,6 +68,7 @@ export function LandingPage() {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const sectionPx = isMobile ? 'xs' : 'xl';
 
   const emerald = '#10b981';
   const emeraldDark = '#059669';
@@ -88,7 +89,7 @@ export function LandingPage() {
           zIndex: 100,
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <Group justify="space-between" h={64} wrap="nowrap">
             <Group gap="sm" wrap="nowrap">
               <Box
@@ -134,7 +135,7 @@ export function LandingPage() {
           paddingBottom: isMobile ? 56 : 88,
         }}
       >
-        <Container size="1100" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1100" px={sectionPx}>
           <Stack gap="xl" align="center" style={{ textAlign: 'center' }}>
             <Group
               gap={6}
@@ -196,7 +197,7 @@ export function LandingPage() {
       </Box>
 
       <Box py={isMobile ? 56 : 76} bg={softBackground}>
-        <Container size="980" px={isMobile ? 'md' : 'xl'}>
+        <Container size="980" px={sectionPx}>
           <Stack gap="lg" align="center" style={{ textAlign: 'center' }}>
             <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.8rem' : '2.5rem' }}>
               Stai investendo... ma sai davvero cosa stai facendo?
@@ -221,7 +222,7 @@ export function LandingPage() {
       </Box>
 
       <Box py={isMobile ? 64 : 88} bg={isDark ? theme.colors.dark[8] : '#ffffff'}>
-        <Container size="1100" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1100" px={sectionPx}>
           <Stack gap="xl">
             <Stack gap="sm" align="center" style={{ textAlign: 'center' }}>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.9rem' : '2.6rem' }}>
@@ -261,7 +262,7 @@ export function LandingPage() {
       </Box>
 
       <Box py={isMobile ? 64 : 88} bg={softBackground}>
-        <Container size="1100" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1100" px={sectionPx}>
           <Stack gap="xl">
             <Stack gap="sm" align="center" style={{ textAlign: 'center' }}>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.9rem' : '2.6rem' }}>
@@ -294,7 +295,7 @@ export function LandingPage() {
       </Box>
 
       <Box py={isMobile ? 64 : 88} bg={isDark ? theme.colors.dark[8] : '#ffffff'}>
-        <Container size="920" px={isMobile ? 'md' : 'xl'}>
+        <Container size="920" px={sectionPx}>
           <Stack gap="xl" align="center" style={{ textAlign: 'center' }}>
             <Card
               withBorder
@@ -347,7 +348,7 @@ export function LandingPage() {
           borderTop: isDark ? `1px solid ${theme.colors.dark[5]}` : '1px solid #e5e7eb',
         }}
       >
-        <Container size="920" px={isMobile ? 'md' : 'xl'}>
+        <Container size="920" px={sectionPx}>
           <Stack gap="lg" align="center" style={{ textAlign: 'center' }}>
             <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '2rem' : '2.8rem' }}>
               Inizia a capire i tuoi soldi

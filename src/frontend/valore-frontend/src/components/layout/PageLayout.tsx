@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Box, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { useMediaQuery } from '@mantine/hooks';
 
 type PageLayoutVariant = 'default' | 'editorial' | 'fire' | 'settings';
 
@@ -19,6 +20,7 @@ export function PageLayout({
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const isMobile = useMediaQuery('(max-width: 48em)');
 
   const background = variant === 'editorial'
     ? (isDark
@@ -40,8 +42,9 @@ export function PageLayout({
     <Box
       style={{
         minHeight: '100%',
-        padding: 'var(--mantine-spacing-sm)',
-        paddingBottom: mobileBottomPadding,
+        paddingTop: 'var(--mantine-spacing-sm)',
+        paddingBottom: mobileBottomPadding ?? 'var(--mantine-spacing-sm)',
+        paddingInline: isMobile ? 'var(--mantine-spacing-xs)' : 'var(--mantine-spacing-sm)',
         background,
         ...style,
       }}

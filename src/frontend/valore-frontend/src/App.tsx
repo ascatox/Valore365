@@ -236,6 +236,11 @@ function ProtectedApp() {
         header={{ height: headerHeight }}
         navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: !opened } }}
         padding={isLandscape ? 'xs' : 'md'}
+        styles={{
+          main: isMobile
+            ? { paddingInline: 'var(--mantine-spacing-xs)' }
+            : undefined,
+        }}
       >
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
@@ -425,7 +430,7 @@ function ProtectedApp() {
               </div>
             )}
           </Transition>
-          <Container fluid key={`privacy-${privacyMode}`}>
+          <Container fluid px={0} key={`privacy-${privacyMode}`}>
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />

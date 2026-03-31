@@ -153,6 +153,7 @@ export function InstantPortfolioAnalyzerPage() {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const sectionPx = isMobile ? 'xs' : 'xl';
 
   const emerald = '#10b981';
   const emeraldDark = '#059669';
@@ -245,7 +246,7 @@ export function InstantPortfolioAnalyzerPage() {
           zIndex: 100,
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <Group justify="space-between" h={64}>
             <Group gap="sm" wrap="nowrap">
               <Box
@@ -295,7 +296,7 @@ export function InstantPortfolioAnalyzerPage() {
           paddingBottom: isMobile ? 40 : 64,
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <Stack gap="xl" align="center" style={{ textAlign: 'center' }}>
             <Group
               gap={6}
@@ -433,7 +434,7 @@ export function InstantPortfolioAnalyzerPage() {
           padding: isMobile ? '40px 0' : '64px 0',
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <Stack gap="xl">
             <Stack gap={4} align="center" style={{ textAlign: 'center' }}>
               <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
@@ -497,7 +498,7 @@ export function InstantPortfolioAnalyzerPage() {
           padding: isMobile ? '40px 0 48px' : '64px 0 80px',
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <Stack gap="xl">
             <Box
               style={{
@@ -750,7 +751,7 @@ export function InstantPortfolioAnalyzerPage() {
           padding: isMobile ? '40px 0' : '64px 0',
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xl">
             {TRUST_FEATURES.map((feature) => (
               <Stack
@@ -798,7 +799,7 @@ export function InstantPortfolioAnalyzerPage() {
           borderTop: '1px solid rgba(255,255,255,0.05)',
         }}
       >
-        <Container size="1200" px={isMobile ? 'md' : 'xl'}>
+        <Container size="1200" px={sectionPx}>
           <Group justify="space-between" wrap="wrap" gap="md">
             <Group gap="sm">
               <Box
