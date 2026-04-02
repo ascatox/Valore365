@@ -1,5 +1,5 @@
-import { Badge, Box, Card, Group, Progress, Stack, Text, Tooltip, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { IconAlertTriangle, IconArrowUpRight, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
+import { ActionIcon, Badge, Box, Card, Group, Progress, Stack, Text, Tooltip, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { IconAlertTriangle, IconArrowUpRight, IconRefresh, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../dashboard/formatters';
 
@@ -8,6 +8,8 @@ interface MobileHoldingsCardsProps {
   currency: string;
   summary?: PortfolioSummary | null;
   targetMap?: Map<number, number>;
+  onRefreshPrices?: () => Promise<void>;
+  refreshing?: boolean;
 }
 
 function formatFirstTrade(value?: string | null): string {
@@ -24,7 +26,7 @@ function formatPriceDate(value?: string | null): string {
   return dt.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-export function MobileHoldingsCards({ positions, currency, summary, targetMap }: MobileHoldingsCardsProps) {
+export function MobileHoldingsCards({ positions, currency, summary, targetMap, onRefreshPrices, refreshing }: MobileHoldingsCardsProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -138,7 +140,22 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap }:
                     <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
                       Var. Giorn.
                     </Text>
-                    <IconTrendingUp size={14} color={dayColor === 'green' ? '#16a34a' : dayColor === 'red' ? '#dc2626' : (isDark ? theme.colors.gray[4] : '#64748b')} />
+                    <Group gap={4} wrap="nowrap">
+                      {onRefreshPrices && (
+                        <Tooltip label="Aggiorna variazione %" withArrow>
+                          <ActionIcon
+                            variant="subtle"
+                            size="xs"
+                            loading={refreshing}
+                            onClick={onRefreshPrices}
+                            color={isDark ? 'gray.4' : 'gray.6'}
+                          >
+                            <IconRefresh size={12} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
+                      <IconTrendingUp size={14} color={dayColor === 'green' ? '#16a34a' : dayColor === 'red' ? '#dc2626' : (isDark ? theme.colors.gray[4] : '#64748b')} />
+                    </Group>
                   </Group>
                   <Text fw={800} size="sm" c={dayColor}>{formatPct(position.day_change_pct)}</Text>
                 </Box>

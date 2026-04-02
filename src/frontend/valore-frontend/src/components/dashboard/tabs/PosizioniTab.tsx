@@ -4,7 +4,7 @@ import { IconRefresh } from '@tabler/icons-react';
 import { HoldingsTable } from '../holdings/HoldingsTable';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { usePortfolioSummary, usePortfolioPositions, usePortfolioXray, useTargetAllocation } from '../hooks/queries';
-import { reclassifyPortfolioAssets } from '../../../services/api';
+import { reclassifyPortfolioAssets, refreshPortfolioPrices } from '../../../services/api';
 import type { AllocationDoughnutItem } from '../types';
 
 const ASSET_TYPE_LABELS: Record<string, string> = {
@@ -27,6 +27,7 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
   const { data: targetAllocation = [] } = useTargetAllocation(portfolioId);
   const currency = summary?.base_currency ?? 'EUR';
   const [reclassifying, setReclassifying] = useState(false);
+  const [refreshingPrices, setRefreshingPrices] = useState(false);
 
   const targetMap = useMemo(() => {
     const map = new Map<number, number>();
@@ -91,6 +92,17 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
     }
   };
 
+  const handleRefreshPrices = async () => {
+    if (!portfolioId || refreshingPrices) return;
+    setRefreshingPrices(true);
+    try {
+      await refreshPortfolioPrices(portfolioId, 'all');
+      await refetch();
+    } finally {
+      setRefreshingPrices(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <Group>
@@ -107,7 +119,7 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
           <Text fw={600} size="sm">Posizioni correnti</Text>
           <Badge variant="light">{positions.length} posizioni</Badge>
         </Group>
-        <HoldingsTable positions={positions} currency={currency} summary={summary ?? null} targetMap={targetMap} />
+        <HoldingsTable positions={positions} currency={currency} summary={summary ?? null} targetMap={targetMap} onRefreshPrices={handleRefreshPrices} refreshing={refreshingPrices} />
       </Card>
 
       {positions.length > 0 && (

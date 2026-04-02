@@ -14,6 +14,8 @@ interface HoldingsTableProps {
   currency: string;
   summary?: PortfolioSummary | null;
   targetMap?: Map<number, number>;
+  onRefreshPrices?: () => Promise<void>;
+  refreshing?: boolean;
 }
 
 interface ColumnDef {
@@ -81,7 +83,7 @@ function StaleIcon({ position }: { position: Position }) {
   );
 }
 
-export function HoldingsTable({ positions, currency, summary, targetMap }: HoldingsTableProps) {
+export function HoldingsTable({ positions, currency, summary, targetMap, onRefreshPrices, refreshing }: HoldingsTableProps) {
   const hasTargets = targetMap && targetMap.size > 0;
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -142,6 +144,8 @@ export function HoldingsTable({ positions, currency, summary, targetMap }: Holdi
           currency={currency}
           summary={summary}
           targetMap={targetMap}
+          onRefreshPrices={onRefreshPrices}
+          refreshing={refreshing}
         />
       </div>
 
