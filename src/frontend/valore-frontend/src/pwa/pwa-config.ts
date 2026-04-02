@@ -7,7 +7,7 @@ export const pwaConfig: Partial<VitePWAOptions> = {
     name: 'Valore365',
     short_name: 'Valore365',
     description: 'Il tuo assistente finanziario personale',
-    start_url: '/',
+    start_url: '/dashboard',
     display: 'standalone',
     background_color: '#242424',
     theme_color: '#242424',
