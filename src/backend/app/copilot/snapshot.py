@@ -8,6 +8,81 @@ from ..services.portfolio_doctor import analyze_portfolio_health, compute_weight
 from ..services.portfolio_doctor._holdings import _load_holdings
 
 
+_DEFAULT_LIGHT_SNAPSHOT_SCOPE: dict[str, object] = {
+    "include_positions": True,
+    "positions_limit": 15,
+    "include_weighted_ter": True,
+    "include_target_drift": True,
+    "include_performance": True,
+    "include_fire": True,
+    "include_pac": True,
+}
+
+_LIGHT_SNAPSHOT_SCOPE_BY_PAGE: dict[str, dict[str, object]] = {
+    "dashboard": {
+        "include_positions": True,
+        "positions_limit": 10,
+        "include_weighted_ter": False,
+        "include_target_drift": True,
+        "include_performance": True,
+        "include_fire": False,
+        "include_pac": False,
+    },
+    "portfolio": {
+        "include_positions": True,
+        "positions_limit": 15,
+        "include_weighted_ter": True,
+        "include_target_drift": True,
+        "include_performance": True,
+        "include_fire": False,
+        "include_pac": True,
+    },
+    "doctor": {
+        "include_positions": True,
+        "positions_limit": 12,
+        "include_weighted_ter": True,
+        "include_target_drift": False,
+        "include_performance": False,
+        "include_fire": False,
+        "include_pac": False,
+    },
+    "fire": {
+        "include_positions": True,
+        "positions_limit": 10,
+        "include_weighted_ter": False,
+        "include_target_drift": False,
+        "include_performance": True,
+        "include_fire": True,
+        "include_pac": False,
+    },
+    "xray": {
+        "include_positions": True,
+        "positions_limit": 12,
+        "include_weighted_ter": False,
+        "include_target_drift": False,
+        "include_performance": False,
+        "include_fire": False,
+        "include_pac": False,
+    },
+    "transactions": {
+        "include_positions": False,
+        "positions_limit": 0,
+        "include_weighted_ter": False,
+        "include_target_drift": False,
+        "include_performance": False,
+        "include_fire": False,
+        "include_pac": False,
+    },
+}
+
+
+def _resolve_light_snapshot_scope(page_context: str | None) -> dict[str, object]:
+    scope = dict(_DEFAULT_LIGHT_SNAPSHOT_SCOPE)
+    if page_context and page_context in _LIGHT_SNAPSHOT_SCOPE_BY_PAGE:
+        scope.update(_LIGHT_SNAPSHOT_SCOPE_BY_PAGE[page_context])
+    return scope
+
+
 # ---------------------------------------------------------------------------
 # Lightweight snapshot builder (for agentic mode -- less tokens)
 # ---------------------------------------------------------------------------
@@ -16,6 +91,7 @@ def build_portfolio_snapshot_light(
     repo: PortfolioRepository,
     portfolio_id: int,
     user_id: str,
+    page_context: str | None = None,
 ) -> dict:
     """Build a compact snapshot for the agentic system prompt.
 
@@ -23,9 +99,10 @@ def build_portfolio_snapshot_light(
     context to give rich answers and decide which tools to call.
     Heavier data (doctor, monte carlo, transactions) is fetched on-demand.
     """
+    scope = _resolve_light_snapshot_scope(page_context)
     summary = repo.get_summary(portfolio_id, user_id)
-    positions = repo.get_positions(portfolio_id, user_id)
-    allocation = repo.get_allocation(portfolio_id, user_id)
+    positions = repo.get_positions(portfolio_id, user_id) if bool(scope["include_positions"]) or bool(scope["include_weighted_ter"]) else []
+    allocation = repo.get_allocation(portfolio_id, user_id) if bool(scope["include_target_drift"]) else []
 
     snapshot: dict = {
         "portfolio": {
@@ -41,62 +118,68 @@ def build_portfolio_snapshot_light(
         },
     }
 
-    # Positions (top 15 by weight -- compact)
-    sorted_pos = sorted(positions, key=lambda p: p.weight, reverse=True)[:15]
-    snapshot["positions"] = [
-        {
-            "symbol": p.symbol,
-            "name": p.name,
-            "weight": round(p.weight, 2),
-            "market_value": round(p.market_value, 2),
-            "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
-            "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
-        }
-        for p in sorted_pos
-    ]
+    # Positions (page-scoped, compact)
+    if bool(scope["include_positions"]):
+        positions_limit = int(scope["positions_limit"])
+        sorted_pos = sorted(positions, key=lambda p: p.weight, reverse=True)[:positions_limit]
+        snapshot["positions"] = [
+            {
+                "symbol": p.symbol,
+                "name": p.name,
+                "weight": round(p.weight, 2),
+                "market_value": round(p.market_value, 2),
+                "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
+                "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
+            }
+            for p in sorted_pos
+        ]
 
     # Enrichment: position count and weighted TER
-    snapshot["portfolio"]["total_positions"] = len(positions)
-    try:
-        holdings = _load_holdings(repo, portfolio_id, user_id)
-        wter = compute_weighted_ter(holdings, repo)
-        if wter is not None:
-            snapshot["portfolio"]["weighted_ter_pct"] = round(wter, 3)
-    except Exception:
-        pass
+    if positions:
+        snapshot["portfolio"]["total_positions"] = len(positions)
+    if bool(scope["include_weighted_ter"]):
+        try:
+            holdings = _load_holdings(repo, portfolio_id, user_id)
+            wter = compute_weighted_ter(holdings, repo)
+            if wter is not None:
+                snapshot["portfolio"]["weighted_ter_pct"] = round(wter, 3)
+        except Exception:
+            pass
 
     # Target drift (if targets exist)
-    try:
-        target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
-        if target_alloc:
-            alloc_map = {a.asset_id: a.weight_pct for a in allocation}
-            snapshot["target_drift"] = [
-                {
-                    "symbol": ta.symbol,
-                    "current_weight": round(alloc_map.get(ta.asset_id, 0.0), 2),
-                    "target_weight": round(ta.weight_pct, 2),
-                    "drift": round(alloc_map.get(ta.asset_id, 0.0) - ta.weight_pct, 2),
-                }
-                for ta in target_alloc
-            ]
-    except Exception:
-        pass
+    if bool(scope["include_target_drift"]):
+        try:
+            target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
+            if target_alloc:
+                alloc_map = {a.asset_id: a.weight_pct for a in allocation}
+                snapshot["target_drift"] = [
+                    {
+                        "symbol": ta.symbol,
+                        "current_weight": round(alloc_map.get(ta.asset_id, 0.0), 2),
+                        "target_weight": round(ta.weight_pct, 2),
+                        "drift": round(alloc_map.get(ta.asset_id, 0.0) - ta.weight_pct, 2),
+                    }
+                    for ta in target_alloc
+                ]
+        except Exception:
+            pass
 
     # Performance summary (compact -- just TWR percentages)
-    try:
-        from ..services.performance_service import PerformanceService
-        perf_service = PerformanceService(repo)
-        perf_data = {}
-        for period in ("1m", "3m", "ytd", "1y"):
-            try:
-                ps = perf_service.get_performance_summary(portfolio_id, user_id, period)
-                perf_data[f"twr_{period}"] = round(ps.twr.twr_pct, 2) if ps.twr.twr_pct is not None else None
-            except Exception:
-                pass
-        if perf_data:
-            snapshot["performance"] = perf_data
-    except Exception:
-        pass
+    if bool(scope["include_performance"]):
+        try:
+            from ..services.performance_service import PerformanceService
+            perf_service = PerformanceService(repo)
+            perf_data = {}
+            for period in ("1m", "3m", "ytd", "1y"):
+                try:
+                    ps = perf_service.get_performance_summary(portfolio_id, user_id, period)
+                    perf_data[f"twr_{period}"] = round(ps.twr.twr_pct, 2) if ps.twr.twr_pct is not None else None
+                except Exception:
+                    pass
+            if perf_data:
+                snapshot["performance"] = perf_data
+        except Exception:
+            pass
 
     # Resolve actual portfolio name
     try:
@@ -109,55 +192,57 @@ def build_portfolio_snapshot_light(
         pass
 
     # FIRE settings (if configured)
-    try:
-        user_settings = repo.get_user_settings(user_id)
-        if user_settings.fire_annual_expenses > 0:
-            swr = user_settings.fire_safe_withdrawal_rate or 4
-            fire_target = user_settings.fire_annual_expenses / (swr / 100)
-            coverage_pct = (summary.market_value / fire_target * 100) if fire_target > 0 else 0
-            fire_data: dict = {
-                "annual_expenses": user_settings.fire_annual_expenses,
-                "annual_contribution": user_settings.fire_annual_contribution,
-                "expected_return_pct": user_settings.fire_expected_return_pct,
-                "safe_withdrawal_rate_pct": swr,
-                "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
-                "fire_target": round(fire_target, 0),
-                "coverage_pct": round(coverage_pct, 1),
-            }
-            if user_settings.fire_current_age:
-                fire_data["current_age"] = user_settings.fire_current_age
-            if user_settings.fire_target_age:
-                fire_data["target_age"] = user_settings.fire_target_age
-            snapshot["fire"] = fire_data
-    except Exception:
-        pass
+    if bool(scope["include_fire"]):
+        try:
+            user_settings = repo.get_user_settings(user_id)
+            if user_settings.fire_annual_expenses > 0:
+                swr = user_settings.fire_safe_withdrawal_rate or 4
+                fire_target = user_settings.fire_annual_expenses / (swr / 100)
+                coverage_pct = (summary.market_value / fire_target * 100) if fire_target > 0 else 0
+                fire_data: dict = {
+                    "annual_expenses": user_settings.fire_annual_expenses,
+                    "annual_contribution": user_settings.fire_annual_contribution,
+                    "expected_return_pct": user_settings.fire_expected_return_pct,
+                    "safe_withdrawal_rate_pct": swr,
+                    "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
+                    "fire_target": round(fire_target, 0),
+                    "coverage_pct": round(coverage_pct, 1),
+                }
+                if user_settings.fire_current_age:
+                    fire_data["current_age"] = user_settings.fire_current_age
+                if user_settings.fire_target_age:
+                    fire_data["target_age"] = user_settings.fire_target_age
+                snapshot["fire"] = fire_data
+        except Exception:
+            pass
 
     # Active PAC rules and pending executions
-    try:
-        pac_rules = repo.list_pac_rules(portfolio_id, user_id)
-        active_rules = [r for r in pac_rules if r.active]
-        if active_rules:
-            pending_execs = repo.list_pending_pac_executions(portfolio_id, user_id)
-            snapshot["pac_plans"] = {
-                "active_rules": [
-                    {
-                        "symbol": r.symbol,
-                        "asset_name": r.asset_name,
-                        "mode": r.mode,
-                        "amount": r.amount,
-                        "quantity": r.quantity,
-                        "frequency": r.frequency,
-                        "day_of_month": r.day_of_month,
-                        "day_of_week": r.day_of_week,
-                        "start_date": str(r.start_date),
-                        "end_date": str(r.end_date) if r.end_date else None,
-                    }
-                    for r in active_rules
-                ],
-                "pending_executions_count": len(pending_execs),
-            }
-    except Exception:
-        pass
+    if bool(scope["include_pac"]):
+        try:
+            pac_rules = repo.list_pac_rules(portfolio_id, user_id)
+            active_rules = [r for r in pac_rules if r.active]
+            if active_rules:
+                pending_execs = repo.list_pending_pac_executions(portfolio_id, user_id)
+                snapshot["pac_plans"] = {
+                    "active_rules": [
+                        {
+                            "symbol": r.symbol,
+                            "asset_name": r.asset_name,
+                            "mode": r.mode,
+                            "amount": r.amount,
+                            "quantity": r.quantity,
+                            "frequency": r.frequency,
+                            "day_of_month": r.day_of_month,
+                            "day_of_week": r.day_of_week,
+                            "start_date": str(r.start_date),
+                            "end_date": str(r.end_date) if r.end_date else None,
+                        }
+                        for r in active_rules
+                    ],
+                    "pending_executions_count": len(pending_execs),
+                }
+        except Exception:
+            pass
 
     return snapshot
 
@@ -166,8 +251,10 @@ def build_aggregate_snapshot_light(
     repo: PortfolioRepository,
     portfolio_ids: list[int],
     user_id: str,
+    page_context: str | None = None,
 ) -> dict:
     """Build a combined snapshot from multiple portfolios for the agentic system prompt."""
+    scope = _resolve_light_snapshot_scope(page_context)
     all_positions: list[dict] = []
     total_market_value = 0.0
     total_cost_basis = 0.0
@@ -194,30 +281,33 @@ def build_aggregate_snapshot_light(
             base_currency = s.base_currency
             portfolio_names.append(name_map.get(pid, f"Portfolio #{pid}"))
 
-            positions = repo.get_positions(pid, user_id)
-            for p in positions:
-                all_positions.append({
-                    "symbol": p.symbol,
-                    "name": p.name,
-                    "market_value": p.market_value,
-                    "weight": p.weight,
-                    "unrealized_pl_pct": p.unrealized_pl_pct,
-                    "day_change_pct": p.day_change_pct or 0,
-                    "portfolio": name_map.get(pid, f"#{pid}"),
-                })
+            if bool(scope["include_positions"]):
+                positions = repo.get_positions(pid, user_id)
+                for p in positions:
+                    all_positions.append({
+                        "symbol": p.symbol,
+                        "name": p.name,
+                        "market_value": p.market_value,
+                        "weight": p.weight,
+                        "unrealized_pl_pct": p.unrealized_pl_pct,
+                        "day_change_pct": p.day_change_pct or 0,
+                        "portfolio": name_map.get(pid, f"#{pid}"),
+                    })
         except Exception:
             continue
 
     # Recalculate weights based on total market value
-    if total_market_value > 0:
+    if bool(scope["include_positions"]) and total_market_value > 0:
         for pos in all_positions:
             pos["weight"] = round(pos["market_value"] / total_market_value * 100, 2)
 
-    sorted_pos = sorted(all_positions, key=lambda p: p["market_value"], reverse=True)[:20]
-    for pos in sorted_pos:
-        pos["market_value"] = round(pos["market_value"], 2)
-        pos["unrealized_pl_pct"] = round(pos["unrealized_pl_pct"], 2)
-        pos["day_change_pct"] = round(pos["day_change_pct"], 2)
+    sorted_pos: list[dict] = []
+    if bool(scope["include_positions"]):
+        sorted_pos = sorted(all_positions, key=lambda p: p["market_value"], reverse=True)[: int(scope["positions_limit"])]
+        for pos in sorted_pos:
+            pos["market_value"] = round(pos["market_value"], 2)
+            pos["unrealized_pl_pct"] = round(pos["unrealized_pl_pct"], 2)
+            pos["day_change_pct"] = round(pos["day_change_pct"], 2)
 
     unrealized_pl_pct = (total_unrealized_pl / total_cost_basis * 100) if total_cost_basis > 0 else 0
     day_change_pct = (total_day_change / (total_market_value - total_day_change) * 100) if (total_market_value - total_day_change) > 0 else 0
@@ -235,67 +325,70 @@ def build_aggregate_snapshot_light(
             "day_change_pct": round(day_change_pct, 2),
             "cash_balance": round(total_cash, 2),
         },
-        "positions": sorted_pos,
     }
+    if sorted_pos:
+        snapshot["positions"] = sorted_pos
 
     # FIRE settings
-    try:
-        user_settings = repo.get_user_settings(user_id)
-        if user_settings.fire_annual_expenses > 0:
-            swr = user_settings.fire_safe_withdrawal_rate or 4
-            fire_target = user_settings.fire_annual_expenses / (swr / 100)
-            coverage_pct = (total_market_value / fire_target * 100) if fire_target > 0 else 0
-            fire_data: dict = {
-                "annual_expenses": user_settings.fire_annual_expenses,
-                "annual_contribution": user_settings.fire_annual_contribution,
-                "expected_return_pct": user_settings.fire_expected_return_pct,
-                "safe_withdrawal_rate_pct": swr,
-                "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
-                "fire_target": round(fire_target, 0),
-                "coverage_pct": round(coverage_pct, 1),
-            }
-            if user_settings.fire_current_age:
-                fire_data["current_age"] = user_settings.fire_current_age
-            if user_settings.fire_target_age:
-                fire_data["target_age"] = user_settings.fire_target_age
-            snapshot["fire"] = fire_data
-    except Exception:
-        pass
+    if bool(scope["include_fire"]):
+        try:
+            user_settings = repo.get_user_settings(user_id)
+            if user_settings.fire_annual_expenses > 0:
+                swr = user_settings.fire_safe_withdrawal_rate or 4
+                fire_target = user_settings.fire_annual_expenses / (swr / 100)
+                coverage_pct = (total_market_value / fire_target * 100) if fire_target > 0 else 0
+                fire_data: dict = {
+                    "annual_expenses": user_settings.fire_annual_expenses,
+                    "annual_contribution": user_settings.fire_annual_contribution,
+                    "expected_return_pct": user_settings.fire_expected_return_pct,
+                    "safe_withdrawal_rate_pct": swr,
+                    "capital_gains_tax_rate_pct": user_settings.fire_capital_gains_tax_rate,
+                    "fire_target": round(fire_target, 0),
+                    "coverage_pct": round(coverage_pct, 1),
+                }
+                if user_settings.fire_current_age:
+                    fire_data["current_age"] = user_settings.fire_current_age
+                if user_settings.fire_target_age:
+                    fire_data["target_age"] = user_settings.fire_target_age
+                snapshot["fire"] = fire_data
+        except Exception:
+            pass
 
     # Active PAC rules across all portfolios
-    try:
-        all_pac_rules: list[dict] = []
-        total_pending = 0
-        for pid in portfolio_ids:
-            try:
-                pac_rules = repo.list_pac_rules(pid, user_id)
-                active_rules = [r for r in pac_rules if r.active]
-                if active_rules:
-                    pending_execs = repo.list_pending_pac_executions(pid, user_id)
-                    total_pending += len(pending_execs)
-                    for r in active_rules:
-                        all_pac_rules.append({
-                            "symbol": r.symbol,
-                            "asset_name": r.asset_name,
-                            "portfolio": name_map.get(pid, f"#{pid}"),
-                            "mode": r.mode,
-                            "amount": r.amount,
-                            "quantity": r.quantity,
-                            "frequency": r.frequency,
-                            "day_of_month": r.day_of_month,
-                            "day_of_week": r.day_of_week,
-                            "start_date": str(r.start_date),
-                            "end_date": str(r.end_date) if r.end_date else None,
-                        })
-            except Exception:
-                continue
-        if all_pac_rules:
-            snapshot["pac_plans"] = {
-                "active_rules": all_pac_rules,
-                "pending_executions_count": total_pending,
-            }
-    except Exception:
-        pass
+    if bool(scope["include_pac"]):
+        try:
+            all_pac_rules: list[dict] = []
+            total_pending = 0
+            for pid in portfolio_ids:
+                try:
+                    pac_rules = repo.list_pac_rules(pid, user_id)
+                    active_rules = [r for r in pac_rules if r.active]
+                    if active_rules:
+                        pending_execs = repo.list_pending_pac_executions(pid, user_id)
+                        total_pending += len(pending_execs)
+                        for r in active_rules:
+                            all_pac_rules.append({
+                                "symbol": r.symbol,
+                                "asset_name": r.asset_name,
+                                "portfolio": name_map.get(pid, f"#{pid}"),
+                                "mode": r.mode,
+                                "amount": r.amount,
+                                "quantity": r.quantity,
+                                "frequency": r.frequency,
+                                "day_of_month": r.day_of_month,
+                                "day_of_week": r.day_of_week,
+                                "start_date": str(r.start_date),
+                                "end_date": str(r.end_date) if r.end_date else None,
+                            })
+                except Exception:
+                    continue
+            if all_pac_rules:
+                snapshot["pac_plans"] = {
+                    "active_rules": all_pac_rules,
+                    "pending_executions_count": total_pending,
+                }
+        except Exception:
+            pass
 
     return snapshot
 

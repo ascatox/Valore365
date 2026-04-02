@@ -8,7 +8,12 @@ import time
 from pathlib import Path
 from typing import Generator
 
-from ..copilot_tools import execute_tool, format_tools_for_provider
+from ..copilot_tools import (
+    build_tool_availability_block,
+    execute_tool,
+    format_tools_for_provider,
+    get_allowed_tool_names_for_page_context,
+)
 from ..services.performance_service import PerformanceService
 from ..repository import PortfolioRepository
 from .config import CopilotConfig
@@ -145,6 +150,42 @@ def _build_page_context_block(page_context: str | None) -> str:
     return f"\n\n--- CONTESTO PAGINA ---\n{hint}\n--- FINE CONTESTO PAGINA ---"
 
 
+def _build_snapshot_guidance_block(snapshot: dict) -> str:
+    available_data: list[str] = []
+    avoid_tools: list[str] = ["get_portfolio_summary", "get_cash_balance"]
+
+    portfolio_section = snapshot.get("portfolio") or snapshot.get("aggregate_portfolio") or {}
+    if isinstance(portfolio_section, dict):
+        if portfolio_section.get("weighted_ter_pct") is not None:
+            available_data.append("TER ponderato")
+
+    if "positions" in snapshot:
+        available_data.append("posizioni e pesi principali")
+        avoid_tools.append("get_positions")
+    if "target_drift" in snapshot:
+        available_data.append("drift dal target")
+        avoid_tools.append("get_target_drift")
+    if "performance" in snapshot:
+        available_data.append("performance sintetica")
+        avoid_tools.append("get_performance")
+    if "fire" in snapshot:
+        available_data.append("impostazioni FIRE")
+    if "pac_plans" in snapshot:
+        available_data.append("PAC attivi")
+
+    if not available_data:
+        return ""
+
+    data_list = ", ".join(available_data)
+    avoid_list = ", ".join(avoid_tools)
+    return (
+        "--- DATI GIA' PRESENTI NELLO SNAPSHOT ---\n"
+        f"Hai gia': {data_list}.\n"
+        f"Usa prima questi dati e non chiamare: {avoid_list}.\n"
+        "--- FINE DATI GIA' PRESENTI ---"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Agentic streaming (Fase 2) -- tool calling loop
 # ---------------------------------------------------------------------------
@@ -163,12 +204,15 @@ def stream_copilot_response_agentic(
     page_context: str | None = None,
 ) -> Generator[str, None, None]:
     """Stream LLM response with tool-calling loop. Max MAX_TOOL_ROUNDS rounds."""
+    allowed_tool_names = get_allowed_tool_names_for_page_context(page_context)
     system_prompt = SYSTEM_PROMPT_AGENTIC.format(
         context=json.dumps(snapshot, ensure_ascii=False, indent=2),
         page_context_block=_build_page_context_block(page_context),
+        snapshot_guidance_block=_build_snapshot_guidance_block(snapshot),
+        tool_availability_block=build_tool_availability_block(page_context),
     )
     provider = config.provider
-    tools = format_tools_for_provider(provider)
+    tools = format_tools_for_provider(provider, allowed_tool_names=allowed_tool_names)
     start_time = time.monotonic()
 
     # Build initial message list in provider format

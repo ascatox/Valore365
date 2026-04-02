@@ -67,11 +67,11 @@ def register_copilot_routes(
         if config.provider in ("openai", "anthropic", "gemini", "openrouter"):
             if is_aggregate:
                 snapshot = build_aggregate_snapshot_light(
-                    repo, payload.portfolio_ids, _auth.user_id,
+                    repo, payload.portfolio_ids, _auth.user_id, payload.page_context,
                 )
             else:
                 snapshot = build_portfolio_snapshot_light(
-                    repo, payload.portfolio_id, _auth.user_id,
+                    repo, payload.portfolio_id, _auth.user_id, payload.page_context,
                 )
             generator = stream_copilot_response_agentic(
                 config, snapshot, payload.messages,

@@ -310,13 +310,79 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
 ]
 
+_PAGE_TOOL_ALLOWLIST: dict[str, set[str]] = {
+    "dashboard": {
+        "get_day_movers",
+        "get_portfolio_health",
+        "calculate_rebalance_orders",
+        "calculate_what_if",
+        "search_asset_info",
+    },
+    "portfolio": {
+        "get_portfolio_health",
+        "calculate_rebalance_orders",
+        "calculate_what_if",
+        "calculate_pac_contribution",
+        "search_asset_info",
+    },
+    "doctor": {
+        "get_portfolio_health",
+        "get_cost_breakdown",
+        "get_stress_test",
+        "get_xray_summary",
+        "search_asset_info",
+    },
+    "fire": {
+        "get_portfolio_health",
+        "get_dividend_summary",
+        "get_income_projection",
+        "get_monte_carlo",
+        "search_asset_info",
+    },
+    "xray": {
+        "get_xray_summary",
+        "get_portfolio_health",
+        "search_asset_info",
+    },
+    "transactions": {
+        "get_recent_transactions",
+        "get_dividend_summary",
+        "search_asset_info",
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # Provider format conversion
 # ---------------------------------------------------------------------------
 
-def format_tools_for_provider(provider: str) -> list[dict]:
+def get_allowed_tool_names_for_page_context(page_context: str | None) -> set[str] | None:
+    if not page_context:
+        return None
+    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context)
+    return set(allowed) if allowed else None
+
+
+def build_tool_availability_block(page_context: str | None) -> str:
+    allowed = get_allowed_tool_names_for_page_context(page_context)
+    if not allowed:
+        return ""
+    ordered_names = [tool["name"] for tool in TOOL_DEFINITIONS if tool["name"] in allowed]
+    lines = [
+        "--- TOOL DISPONIBILI IN QUESTA PAGINA ---",
+        *(f"- {name}" for name in ordered_names),
+        "Se una richiesta richiede analisi fuori da questa pagina, spiega che servono dati di un'altra sezione.",
+        "--- FINE TOOL DISPONIBILI ---",
+    ]
+    return "\n".join(lines)
+
+
+def format_tools_for_provider(provider: str, allowed_tool_names: set[str] | None = None) -> list[dict]:
     """Convert TOOL_DEFINITIONS to provider-specific format."""
+    filtered_tools = [
+        tool for tool in TOOL_DEFINITIONS
+        if allowed_tool_names is None or tool["name"] in allowed_tool_names
+    ]
     if provider == "anthropic":
         return [
             {
@@ -324,7 +390,7 @@ def format_tools_for_provider(provider: str) -> list[dict]:
                 "description": t["description"],
                 "input_schema": t["parameters"],
             }
-            for t in TOOL_DEFINITIONS
+            for t in filtered_tools
         ]
     # OpenAI, Gemini, OpenRouter, local all use OpenAI format
     return [
@@ -336,7 +402,7 @@ def format_tools_for_provider(provider: str) -> list[dict]:
                 "parameters": t["parameters"],
             },
         }
-        for t in TOOL_DEFINITIONS
+        for t in filtered_tools
     ]
 
 
