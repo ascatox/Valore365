@@ -1104,6 +1104,72 @@ export interface AssetPricePoint {
   close: number;
 }
 
+// Advanced Performance Analytics
+
+export interface MonthlyReturnCell {
+  year: number;
+  month: number;
+  return_pct: number;
+}
+
+export interface YearlyReturnItem {
+  year: number;
+  return_pct: number;
+}
+
+export interface MonthlyReturnsResponse {
+  portfolio_id: number;
+  cells: MonthlyReturnCell[];
+  yearly_returns: YearlyReturnItem[];
+  start_date: string;
+  end_date: string;
+}
+
+export interface DrawdownPoint {
+  date: string;
+  drawdown_pct: number;
+}
+
+export interface DrawdownResponse {
+  portfolio_id: number;
+  points: DrawdownPoint[];
+  max_drawdown_pct: number;
+  max_drawdown_start: string | null;
+  max_drawdown_end: string | null;
+  current_drawdown_pct: number;
+  peak_date: string | null;
+  peak_value: number | null;
+}
+
+export interface RollingWindowPoint {
+  date: string;
+  cagr_pct: number | null;
+  volatility_pct: number | null;
+  sharpe_ratio: number | null;
+}
+
+export interface RollingWindowsResponse {
+  portfolio_id: number;
+  window_months: number;
+  risk_free_rate_pct: number;
+  points: RollingWindowPoint[];
+}
+
+export interface RankedPeriod {
+  year: number;
+  month: number | null;
+  return_pct: number;
+  label: string;
+}
+
+export interface HallOfFameResponse {
+  portfolio_id: number;
+  best_months: RankedPeriod[];
+  worst_months: RankedPeriod[];
+  best_years: RankedPeriod[];
+  worst_years: RankedPeriod[];
+}
+
 // Copilot
 
 export interface CopilotStatus {

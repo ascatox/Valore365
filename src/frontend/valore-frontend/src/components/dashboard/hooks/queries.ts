@@ -7,10 +7,12 @@ import {
   getDecumulationPlan,
   getBenchmarks,
   getGainTimeseries,
+  getHallOfFame,
   getMarketNews,
   getMarketQuotes,
   getMonteCarloProjection,
   getMWRTimeseries,
+  getMonthlyReturns,
   getPerformanceSummary,
   getPortfolioAllocation,
   getPortfolioDataCoverage,
@@ -25,6 +27,8 @@ import {
   getPortfolioTargetIntradayPerformance,
   getPortfolioTargetPerformance,
   getPortfolioTimeseries,
+  getDrawdown,
+  getRollingWindows,
   getStressTest,
   getTWRTimeseries,
   getUserSettings,
@@ -302,6 +306,43 @@ export function useMWRTimeseries(portfolioId: number | null, startDate?: string)
   return useQuery({
     queryKey: ['mwr-timeseries', portfolioId, startDate ?? 'all'],
     queryFn: () => getMWRTimeseries(portfolioId!, startDate),
+    enabled: portfolioId != null,
+  });
+}
+
+export function useMonthlyReturns(portfolioId: number | null, startDate?: string) {
+  return useQuery({
+    queryKey: ['monthly-returns', portfolioId, startDate ?? 'all'],
+    queryFn: () => getMonthlyReturns(portfolioId!, startDate),
+    enabled: portfolioId != null,
+  });
+}
+
+export function usePortfolioDrawdown(portfolioId: number | null, startDate?: string) {
+  return useQuery({
+    queryKey: ['portfolio-drawdown', portfolioId, startDate ?? 'all'],
+    queryFn: () => getDrawdown(portfolioId!, startDate),
+    enabled: portfolioId != null,
+  });
+}
+
+export function useRollingWindows(
+  portfolioId: number | null,
+  windowMonths: number,
+  riskFreeRate = 2,
+  startDate?: string,
+) {
+  return useQuery({
+    queryKey: ['rolling-windows', portfolioId, windowMonths, riskFreeRate, startDate ?? 'all'],
+    queryFn: () => getRollingWindows(portfolioId!, windowMonths, riskFreeRate, startDate),
+    enabled: portfolioId != null,
+  });
+}
+
+export function useHallOfFame(portfolioId: number | null, topN = 5, startDate?: string) {
+  return useQuery({
+    queryKey: ['hall-of-fame', portfolioId, topN, startDate ?? 'all'],
+    queryFn: () => getHallOfFame(portfolioId!, topN, startDate),
     enabled: portfolioId != null,
   });
 }

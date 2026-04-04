@@ -806,3 +806,69 @@ class PacExecutionConfirm(BaseModel):
     fees: float = Field(default=0, ge=0)
     taxes: float = Field(default=0, ge=0)
     notes: str | None = None
+
+
+# --- Advanced Performance Analytics ---
+
+class MonthlyReturnCell(BaseModel):
+    year: int
+    month: int = Field(ge=1, le=12)
+    return_pct: float
+
+
+class YearlyReturnItem(BaseModel):
+    year: int
+    return_pct: float
+
+
+class MonthlyReturnsResponse(BaseModel):
+    portfolio_id: int
+    cells: list[MonthlyReturnCell]
+    yearly_returns: list[YearlyReturnItem]
+    start_date: str
+    end_date: str
+
+
+class DrawdownPoint(BaseModel):
+    date: str
+    drawdown_pct: float
+
+
+class DrawdownResponse(BaseModel):
+    portfolio_id: int
+    points: list[DrawdownPoint]
+    max_drawdown_pct: float
+    max_drawdown_start: str | None = None
+    max_drawdown_end: str | None = None
+    current_drawdown_pct: float
+    peak_date: str | None = None
+    peak_value: float | None = None
+
+
+class RollingWindowPoint(BaseModel):
+    date: str
+    cagr_pct: float | None = None
+    volatility_pct: float | None = None
+    sharpe_ratio: float | None = None
+
+
+class RollingWindowsResponse(BaseModel):
+    portfolio_id: int
+    window_months: int
+    risk_free_rate_pct: float
+    points: list[RollingWindowPoint]
+
+
+class RankedPeriod(BaseModel):
+    year: int
+    month: int | None = None
+    return_pct: float
+    label: str
+
+
+class HallOfFameResponse(BaseModel):
+    portfolio_id: int
+    best_months: list[RankedPeriod]
+    worst_months: list[RankedPeriod]
+    best_years: list[RankedPeriod]
+    worst_years: list[RankedPeriod]

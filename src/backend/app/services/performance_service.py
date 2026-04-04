@@ -1,10 +1,27 @@
 from __future__ import annotations
 
 import logging
+import statistics
 from datetime import date, timedelta
-from math import isfinite
+from math import isfinite, sqrt
 
-from ..models import GainTimeseriesPoint, MWRResult, MWRTimeseriesPoint, PerformanceSummary, TWRResult, TWRTimeseriesPoint
+from ..models import (
+    DrawdownPoint,
+    DrawdownResponse,
+    GainTimeseriesPoint,
+    HallOfFameResponse,
+    MonthlyReturnCell,
+    MonthlyReturnsResponse,
+    MWRResult,
+    MWRTimeseriesPoint,
+    PerformanceSummary,
+    RankedPeriod,
+    RollingWindowPoint,
+    RollingWindowsResponse,
+    TWRResult,
+    TWRTimeseriesPoint,
+    YearlyReturnItem,
+)
 from ..repository import PortfolioRepository
 
 try:
@@ -448,6 +465,280 @@ class PerformanceService:
             points.append(MWRTimeseriesPoint(date=end.isoformat(), cumulative_mwr_pct=mwr_pct))
 
         return points
+
+    # --- Advanced analytics ---
+
+    _MONTH_NAMES = ['Gen', 'Feb', 'Mar', 'Apr', 'Mag', 'Giu',
+                    'Lug', 'Ago', 'Set', 'Ott', 'Nov', 'Dic']
+
+    def _build_monthly_returns(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> tuple[list[dict], list[dict]]:
+        """Single-pass computation of daily TWR series and monthly returns.
+
+        Returns:
+            (daily_series, monthly_returns) where:
+            - daily_series: [{'date': date, 'cumulative_twr': float, 'portfolio_value': float}, ...]
+            - monthly_returns: [{'year': int, 'month': int, 'return_pct': float}, ...]
+        """
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+
+        cf_by_day: dict[date, float] = {}
+        for cf in cashflows:
+            day = date.fromisoformat(cf.date)
+            if use_trade_flows and cf.side in ("buy", "sell"):
+                cf_by_day.setdefault(day, 0.0)
+            else:
+                cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
+
+        daily_series: list[dict] = []
+        cumulative = 1.0
+        prev_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+        daily_series.append({'date': start, 'cumulative_twr': cumulative, 'portfolio_value': prev_value})
+
+        # Track month boundaries for monthly returns
+        month_start_cum = cumulative
+        current_month = (start.year, start.month)
+        monthly_returns: list[dict] = []
+
+        cursor = start + timedelta(days=1)
+        while cursor <= end:
+            curr_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+            cf_amount = float(cf_by_day.get(cursor, 0.0))
+
+            if prev_value > 0:
+                daily_return = (curr_value - prev_value - cf_amount) / prev_value
+            else:
+                daily_return = 0.0
+            cumulative *= 1.0 + daily_return
+
+            daily_series.append({'date': cursor, 'cumulative_twr': cumulative, 'portfolio_value': curr_value})
+
+            # Check month boundary
+            cursor_month = (cursor.year, cursor.month)
+            if cursor_month != current_month:
+                # Close previous month
+                if month_start_cum > 0:
+                    month_return = (daily_series[-2]['cumulative_twr'] / month_start_cum - 1.0) * 100.0
+                else:
+                    month_return = 0.0
+                monthly_returns.append({
+                    'year': current_month[0],
+                    'month': current_month[1],
+                    'return_pct': round(month_return, 4),
+                })
+                month_start_cum = daily_series[-2]['cumulative_twr']
+                current_month = cursor_month
+
+            prev_value = curr_value
+            cursor += timedelta(days=1)
+
+        # Close final (partial) month
+        if month_start_cum > 0 and daily_series:
+            month_return = (daily_series[-1]['cumulative_twr'] / month_start_cum - 1.0) * 100.0
+        else:
+            month_return = 0.0
+        monthly_returns.append({
+            'year': current_month[0],
+            'month': current_month[1],
+            'return_pct': round(month_return, 4),
+        })
+
+        return daily_series, monthly_returns
+
+    def get_monthly_returns(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> MonthlyReturnsResponse:
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end)
+
+        # Compute yearly returns by chaining monthly
+        yearly_acc: dict[int, float] = {}
+        for m in monthly:
+            yearly_acc.setdefault(m['year'], 1.0)
+            yearly_acc[m['year']] *= 1.0 + m['return_pct'] / 100.0
+        yearly_returns = [
+            YearlyReturnItem(year=y, return_pct=round((v - 1.0) * 100.0, 4))
+            for y, v in sorted(yearly_acc.items())
+        ]
+
+        return MonthlyReturnsResponse(
+            portfolio_id=portfolio_id,
+            cells=[MonthlyReturnCell(**m) for m in monthly],
+            yearly_returns=yearly_returns,
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+        )
+
+    def get_drawdown(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> DrawdownResponse:
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        daily, _ = self._build_monthly_returns(portfolio_id, user_id, start, end)
+
+        peak = 0.0
+        peak_date: date | None = None
+        peak_value: float | None = None
+        max_dd = 0.0
+        max_dd_start: date | None = None
+        max_dd_end: date | None = None
+        current_dd_start: date | None = None
+        points: list[DrawdownPoint] = []
+
+        for d in daily:
+            cum = d['cumulative_twr']
+            if cum >= peak:
+                peak = cum
+                peak_date = d['date']
+                peak_value = d['portfolio_value']
+                current_dd_start = d['date']
+
+            dd = ((cum - peak) / peak) * 100.0 if peak > 0 else 0.0
+
+            if dd < max_dd:
+                max_dd = dd
+                max_dd_start = current_dd_start
+                max_dd_end = d['date']
+
+            points.append(DrawdownPoint(
+                date=d['date'].isoformat(),
+                drawdown_pct=round(dd, 4),
+            ))
+
+        current_dd = points[-1].drawdown_pct if points else 0.0
+
+        return DrawdownResponse(
+            portfolio_id=portfolio_id,
+            points=points,
+            max_drawdown_pct=round(max_dd, 4),
+            max_drawdown_start=max_dd_start.isoformat() if max_dd_start else None,
+            max_drawdown_end=max_dd_end.isoformat() if max_dd_end else None,
+            current_drawdown_pct=current_dd,
+            peak_date=peak_date.isoformat() if peak_date else None,
+            peak_value=round(peak_value, 2) if peak_value is not None else None,
+        )
+
+    def get_rolling_windows(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        window_months: int = 12,
+        risk_free_rate: float = 2.0,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> RollingWindowsResponse:
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end)
+
+        points: list[RollingWindowPoint] = []
+
+        for i in range(len(monthly)):
+            if i < window_months - 1:
+                continue
+            window = monthly[i - window_months + 1: i + 1]
+
+            # CAGR: chain monthly returns, annualize
+            product = 1.0
+            returns: list[float] = []
+            for m in window:
+                r = m['return_pct'] / 100.0
+                product *= 1.0 + r
+                returns.append(r)
+
+            cagr = (product ** (12.0 / window_months) - 1.0) * 100.0 if product > 0 else None
+
+            # Annualized volatility: stdev(monthly) * sqrt(12)
+            vol: float | None = None
+            if len(returns) > 1:
+                try:
+                    vol = statistics.stdev(returns) * sqrt(12) * 100.0
+                except statistics.StatisticsError:
+                    vol = None
+
+            # Sharpe ratio
+            sharpe: float | None = None
+            if cagr is not None and vol is not None and vol > 0:
+                sharpe = (cagr - risk_free_rate) / vol
+
+            m_entry = monthly[i]
+            label = f"{m_entry['year']}-{m_entry['month']:02d}"
+            points.append(RollingWindowPoint(
+                date=label,
+                cagr_pct=round(cagr, 4) if cagr is not None else None,
+                volatility_pct=round(vol, 4) if vol is not None else None,
+                sharpe_ratio=round(sharpe, 4) if sharpe is not None else None,
+            ))
+
+        return RollingWindowsResponse(
+            portfolio_id=portfolio_id,
+            window_months=window_months,
+            risk_free_rate_pct=risk_free_rate,
+            points=points,
+        )
+
+    def get_hall_of_fame(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        top_n: int = 5,
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> HallOfFameResponse:
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end)
+
+        # Monthly ranking
+        month_entries = [
+            RankedPeriod(
+                year=m['year'],
+                month=m['month'],
+                return_pct=m['return_pct'],
+                label=f"{self._MONTH_NAMES[m['month'] - 1]} {m['year']}",
+            )
+            for m in monthly
+        ]
+        sorted_months = sorted(month_entries, key=lambda x: x.return_pct, reverse=True)
+        best_months = sorted_months[:top_n]
+        worst_months = list(reversed(sorted_months[-top_n:]))
+
+        # Yearly ranking
+        yearly_acc: dict[int, float] = {}
+        for m in monthly:
+            yearly_acc.setdefault(m['year'], 1.0)
+            yearly_acc[m['year']] *= 1.0 + m['return_pct'] / 100.0
+        year_entries = [
+            RankedPeriod(
+                year=y,
+                month=None,
+                return_pct=round((v - 1.0) * 100.0, 4),
+                label=str(y),
+            )
+            for y, v in yearly_acc.items()
+        ]
+        sorted_years = sorted(year_entries, key=lambda x: x.return_pct, reverse=True)
+        best_years = sorted_years[:top_n]
+        worst_years = list(reversed(sorted_years[-top_n:]))
+
+        return HallOfFameResponse(
+            portfolio_id=portfolio_id,
+            best_months=best_months,
+            worst_months=worst_months,
+            best_years=best_years,
+            worst_years=worst_years,
+        )
 
     def _resolve_date_range(
         self,
