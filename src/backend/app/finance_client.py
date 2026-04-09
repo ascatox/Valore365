@@ -510,6 +510,16 @@ _EXCHCODE_TO_YAHOO: dict[str, str] = {
     'UF':  '',      # OTC Bulletin Board
 }
 
+_YAHOO_SUFFIX_PRIORITY: dict[str, int] = {
+    '.AS': 0,
+    '.MI': 1,
+    '.DE': 2,
+    '.PA': 3,
+    '.SW': 4,
+    '.L': 5,
+    '': 6,
+}
+
 
 def _resolve_isin(isin: str) -> list[ProviderSymbol]:
     """Chiama OpenFIGI per risolvere un codice ISIN in simboli Yahoo Finance."""
@@ -550,6 +560,40 @@ def _resolve_isin(isin: str) -> list[ProviderSymbol]:
         return results
     except Exception:
         return []
+
+
+def resolve_provider_symbol_candidates(symbol: str, isin: str | None) -> list[str]:
+    """Return Yahoo symbols for an ISIN ordered by how likely they match the requested symbol."""
+    preferred_symbol = symbol.strip().upper()
+    normalized_isin = (isin or "").strip().upper()
+    if not preferred_symbol or not _ISIN_RE.match(normalized_isin):
+        return []
+
+    def _suffix_rank(candidate_symbol: str) -> int:
+        if "." not in candidate_symbol:
+            return _YAHOO_SUFFIX_PRIORITY[""]
+        return _YAHOO_SUFFIX_PRIORITY.get(candidate_symbol[candidate_symbol.index("."):], len(_YAHOO_SUFFIX_PRIORITY) + 1)
+
+    ranked: list[tuple[tuple[int, int, int], str]] = []
+    for item in _resolve_isin(normalized_isin):
+        candidate = (item.symbol or "").strip().upper()
+        if not candidate:
+            continue
+        candidate_base = candidate.split(".", 1)[0]
+        exact_match = 0 if candidate == preferred_symbol else 1
+        base_match = 0 if candidate_base == preferred_symbol else 1
+        ranked.append(((base_match, exact_match, _suffix_rank(candidate)), candidate))
+
+    ranked.sort(key=lambda item: item[0])
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for _, candidate in ranked:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        ordered.append(candidate)
+    return ordered
 
 
 class YahooFinanceClient:

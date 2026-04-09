@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError, ProviderError
-from ..finance_client import make_finance_client, QUOTE_TYPE_MAP
+from ..finance_client import make_finance_client, QUOTE_TYPE_MAP, resolve_provider_symbol_candidates
 from ..models import (
     AssetCoverageItem,
     AssetCreate,
@@ -85,6 +85,40 @@ def register_assets_routes(
             return asset.symbol.strip().upper()
         except ValueError:
             return None
+
+    def _pick_provider_symbol(
+        *,
+        symbol: str,
+        provider_symbol: str | None = None,
+        isin: str | None = None,
+    ) -> str:
+        normalized_symbol = symbol.strip().upper()
+        explicit_provider_symbol = (provider_symbol or "").strip().upper()
+        if explicit_provider_symbol and explicit_provider_symbol != normalized_symbol and "." in explicit_provider_symbol:
+            return explicit_provider_symbol
+
+        for candidate in resolve_provider_symbol_candidates(normalized_symbol, isin):
+            candidate_base = candidate.split(".", 1)[0]
+            if candidate_base == normalized_symbol:
+                return candidate
+
+        return explicit_provider_symbol or normalized_symbol
+
+    def _repair_provider_symbol_from_isin(asset_id: int, symbol: str, provider: str, isin: str | None):
+        for candidate in resolve_provider_symbol_candidates(symbol, isin):
+            try:
+                quote = finance_client.get_quote(candidate)
+            except Exception:
+                continue
+            repo.upsert_asset_provider_symbol(
+                AssetProviderSymbolCreate(
+                    asset_id=asset_id,
+                    provider=provider,
+                    provider_symbol=candidate,
+                )
+            )
+            return candidate, quote
+        return None, None
 
     BENCHMARK_SYMBOLS = [
         {"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust"},
@@ -294,12 +328,19 @@ def register_assets_routes(
         if resolved_asset is None:
             raise AppError(code="bad_request", message="Impossibile risolvere asset", status_code=400)
 
+        provider_name = (payload.provider or settings.finance_provider).lower()
+        resolved_provider_symbol = _pick_provider_symbol(
+            symbol=symbol,
+            provider_symbol=payload.provider_symbol,
+            isin=payload.isin,
+        )
+
         try:
-            repo.create_asset_provider_symbol(
+            repo.upsert_asset_provider_symbol(
                 AssetProviderSymbolCreate(
                     asset_id=resolved_asset.id,
-                    provider=(payload.provider or settings.finance_provider).lower(),
-                    provider_symbol=(payload.provider_symbol or symbol).upper(),
+                    provider=provider_name,
+                    provider_symbol=resolved_provider_symbol,
                 )
             )
         except ValueError as exc:
@@ -505,12 +546,31 @@ def register_assets_routes(
     def get_asset_latest_quote(asset_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetLatestQuoteResponse:
         try:
             pricing_asset = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
-            quote = finance_client.get_quote(pricing_asset.provider_symbol)
+            used_provider_symbol = pricing_asset.provider_symbol
+            try:
+                quote = finance_client.get_quote(used_provider_symbol)
+            except ProviderError as exc:
+                asset = repo.get_asset(asset_id)
+                repaired_symbol, repaired_quote = _repair_provider_symbol_from_isin(
+                    asset_id=asset_id,
+                    symbol=pricing_asset.symbol,
+                    provider=settings.finance_provider,
+                    isin=asset.isin,
+                )
+                if repaired_quote is None or repaired_symbol is None:
+                    raise AppError(
+                        code=exc.reason,
+                        message=exc.message,
+                        status_code=502,
+                        details={"provider": exc.provider, "operation": exc.operation, "symbol": exc.symbol},
+                    ) from exc
+                used_provider_symbol = repaired_symbol
+                quote = repaired_quote
             return AssetLatestQuoteResponse(
                 asset_id=pricing_asset.asset_id,
                 symbol=pricing_asset.symbol,
                 provider=settings.finance_provider,
-                provider_symbol=pricing_asset.provider_symbol,
+                provider_symbol=used_provider_symbol,
                 price=quote.price,
                 ts=quote.ts,
                 quote_source=quote.source,

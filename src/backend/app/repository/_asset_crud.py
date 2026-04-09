@@ -152,6 +152,36 @@ class AssetCrudMixin:
             provider_symbol=provider_symbol,
         )
 
+    def upsert_asset_provider_symbol(self, payload: AssetProviderSymbolCreate) -> AssetProviderSymbolRead:
+        provider = payload.provider.strip().lower()
+        provider_symbol = payload.provider_symbol.strip().upper()
+        with self.engine.begin() as conn:
+            if not self._asset_exists(conn, payload.asset_id):
+                raise ValueError("Asset non trovato")
+            try:
+                conn.execute(
+                    text(
+                        """
+                        insert into asset_provider_symbols (asset_id, provider, provider_symbol)
+                        values (:asset_id, :provider, :provider_symbol)
+                        on conflict (asset_id, provider)
+                        do update set provider_symbol = excluded.provider_symbol
+                        """
+                    ),
+                    {
+                        "asset_id": payload.asset_id,
+                        "provider": provider,
+                        "provider_symbol": provider_symbol,
+                    },
+                )
+            except Exception as exc:
+                raise ValueError("Mapping provider non aggiornabile o vincolo violato") from exc
+        return AssetProviderSymbolRead(
+            asset_id=payload.asset_id,
+            provider=provider,
+            provider_symbol=provider_symbol,
+        )
+
     # ------------------------------------------------------------------
     # Asset metadata (yFinance info)
     # ------------------------------------------------------------------
