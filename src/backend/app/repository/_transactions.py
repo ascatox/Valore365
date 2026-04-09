@@ -2,7 +2,7 @@ from bisect import bisect_right
 from collections import defaultdict
 from datetime import date, datetime
 
-from sqlalchemy import text
+from sqlalchemy import Date, bindparam, text
 
 from ..models import (
     CashFlowEntry,
@@ -195,6 +195,9 @@ class TransactionsMixin:
                       and (:end_date is null or t.trade_at::date <= :end_date)
                     order by t.trade_at asc, t.id asc
                     """
+                ).bindparams(
+                    bindparam("start_date", type_=Date()),
+                    bindparam("end_date", type_=Date()),
                 ),
                 {"portfolio_id": portfolio_id, "start_date": start_date, "end_date": end_date},
             ).mappings().all()
