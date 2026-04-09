@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Card, Grid, Paper, SegmentedControl, Text } from '@mantine/core';
 import { AnalysisKpiGrid } from '../analysis/AnalysisKpiGrid';
-import { PerformanceMetrics } from '../analysis/PerformanceMetrics';
 import { PerformanceChart } from '../summary/PerformanceChart';
 import { AssetMiniChartsGrid } from '../analysis/AssetMiniChartsGrid';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
@@ -219,8 +218,6 @@ export function AnalisiTab({ portfolioId, chartWindow, setChartWindow }: Analisi
 
   return (
     <>
-      <PerformanceMetrics portfolioId={portfolioId} />
-
       <AnalysisKpiGrid
         indexCardStats={indexCardStats}
         totalAssignedWeight={totalAssignedWeight}
