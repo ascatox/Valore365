@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Alert, Badge, Card, Grid, Group, Loader, Paper, SegmentedControl, Select, Text } from '@mantine/core';
+import { Alert, Badge, Card, Group, Loader, Paper, SegmentedControl, Select, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
-import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { BestWorstCards } from '../summary/BestWorstCards';
 import { DashboardMobileKpiCarousel } from '../../mobile/DashboardMobileKpiCarousel';
 import { DASHBOARD_WINDOWS } from '../constants';
@@ -14,15 +13,13 @@ import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatt
 import {
   usePortfolioSummary,
   usePortfolioPositions,
-  usePortfolioAllocation,
   usePortfolioTimeseries,
   usePortfolioIntradayTimeseries,
   usePortfolioDataCoverage,
-  useGainTimeseries,
   useBenchmarks,
   useBenchmarkPrices,
 } from '../hooks/queries';
-import type { PerformerItem, AllocationDoughnutItem } from '../types';
+import type { PerformerItem } from '../types';
 
 interface PanoramicaTabProps {
   portfolioId: number | null;
@@ -44,7 +41,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
   // --- Queries ---
   const { data: portfolioSummary } = usePortfolioSummary(portfolioId);
   const { data: portfolioPositions = [] } = usePortfolioPositions(portfolioId);
-  const { data: portfolioAllocationData = [] } = usePortfolioAllocation(portfolioId);
   const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(portfolioId);
   const { data: dataCoverage } = usePortfolioDataCoverage(portfolioId);
   const { data: benchmarkList = [] } = useBenchmarks();
@@ -55,16 +51,13 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     [chartWindow],
   );
 
-  const gainStartDate = useMemo(() => {
+  const benchmarkStartDate = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() - chartWindowDays);
     return d.toISOString().slice(0, 10);
   }, [chartWindowDays]);
 
-  const benchmarkStartDate = gainStartDate;
-
   const { data: portfolioIntradayRaw = [], isLoading: _intradayLoading } = usePortfolioIntradayTimeseries(portfolioId, isIntradayWindow);
-  const { data: gainPoints = [], isLoading: gainChartLoading } = useGainTimeseries(portfolioId, gainStartDate);
   const { data: benchmarkPrices = [], isLoading: benchmarkLoading } = useBenchmarkPrices(selectedBenchmarkId, portfolioId, benchmarkStartDate);
 
   // --- Computed values ---
@@ -178,11 +171,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     },
   ], [portfolioSummary, mvpCurrency, isMobile]);
 
-  const allocationDoughnutData = useMemo<AllocationDoughnutItem[]>(
-    () => portfolioAllocationData.map((item) => ({ name: item.symbol, value: item.weight_pct, asset_id: item.asset_id })),
-    [portfolioAllocationData],
-  );
-
   const { best, worst } = useMemo(() => {
     const sorted = [...portfolioPositions]
       .filter((p) => Number.isFinite(p.day_change_pct))
@@ -203,28 +191,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     }));
     return { best: bestItems, worst: worstItems };
   }, [portfolioPositions]);
-
-  const gainChartData = useMemo(
-    () =>
-      gainPoints.map((p) => ({
-        rawDate: p.date,
-        date: new Date(p.date).toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit' }),
-        portfolioValue: p.portfolio_value,
-        netInvested: p.net_invested,
-      })),
-    [gainPoints],
-  );
-
-  const gainChartStats = useMemo(() => {
-    if (!gainChartData.length) return undefined;
-    const last = gainChartData[gainChartData.length - 1];
-    const gain = last.portfolioValue - last.netInvested;
-    const pct = last.netInvested > 0 ? (gain / last.netInvested) * 100 : 0;
-    return [
-      { label: 'Valore', value: formatMoney(last.portfolioValue, mvpCurrency), color: 'blue' },
-      { label: 'P/L', value: `${formatMoney(gain, mvpCurrency, true)} (${formatPct(pct)})`, color: getVariationColor(gain) },
-    ];
-  }, [gainChartData, mvpCurrency]);
 
   const benchmarkSelectData = useMemo(
     () => [
@@ -265,8 +231,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     const benchLabel = benchmarkList.find((b) => b.asset_id === selectedBenchmarkId)?.symbol ?? 'Benchmark';
     return { pPct, bPct, benchLabel };
   }, [hasBenchmark, comparisonChartData, benchmarkList, selectedBenchmarkId]);
-
-  const totalAllocationPct = portfolioAllocationData.reduce((sum, item) => sum + item.weight_pct, 0);
 
   const insufficientAssets = useMemo(
     () => (dataCoverage?.assets ?? []).filter((a) => a.coverage_pct < (dataCoverage?.threshold_pct ?? 80)),
@@ -465,111 +429,9 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
         )}
       </div>
 
-      <Card withBorder radius="md" p="md" shadow="sm" mt="md">
-        <Group justify="space-between" mb="xs" align="center" wrap="wrap" gap="xs">
-          <Group gap="xs">
-            <Text fw={600} size="sm">
-              {`Valore vs Investito (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
-            </Text>
-            {gainChartStats?.map((s) => (
-              <Badge
-                key={s.label}
-                variant="light"
-                color={s.color ?? 'blue'}
-                size={isMobile ? 'lg' : 'md'}
-                styles={{
-                  root: {
-                    fontSize: isMobile ? 14 : 13,
-                    fontWeight: 600,
-                    paddingInline: isMobile ? 12 : 10,
-                    height: isMobile ? 32 : 28,
-                  },
-                }}
-              >
-                {s.label} {s.value}
-              </Badge>
-            ))}
-          </Group>
-        </Group>
-        <Text size="xs" c="dimmed" mb="sm">Valore di mercato del portafoglio confrontato con il netto investito</Text>
-        <div style={{ height: isMobile ? 300 : 220 }}>
-          {gainChartLoading ? (
-            <Group h="100%" justify="center">
-              <Loader size="sm" />
-              <Text c="dimmed" size="sm">Caricamento...</Text>
-            </Group>
-          ) : gainChartData.length === 0 ? (
-            <Group h="100%" justify="center">
-              <Text c="dimmed" size="sm">Nessun dato disponibile</Text>
-            </Group>
-          ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={gainChartData}>
-                <defs>
-                  <linearGradient id="gainValueGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#16a34a" stopOpacity={0.18} />
-                    <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
-                <YAxis hide domain={['auto', 'auto']} />
-                <Tooltip
-                  content={({ active, payload, label }: any) => {
-                    if (!active || !payload?.length) return null;
-                    const pv = Number(payload.find((p: any) => p.dataKey === 'portfolioValue')?.value ?? 0);
-                    const ni = Number(payload.find((p: any) => p.dataKey === 'netInvested')?.value ?? 0);
-                    const gain = pv - ni;
-                    return (
-                      <Paper withBorder p="xs" radius="sm" shadow="xs">
-                        <Text size="xs" c="dimmed">{`Data ${label}`}</Text>
-                        <Text size="sm" fw={600} c="#16a34a">{`Valore: ${formatMoney(pv, mvpCurrency)}`}</Text>
-                        <Text size="sm" fw={600} c="#868e96">{`Investito: ${formatMoney(ni, mvpCurrency)}`}</Text>
-                        <Text size="sm" fw={600} c={getVariationColor(gain)}>{`P/L: ${formatMoney(gain, mvpCurrency, true)}`}</Text>
-                      </Paper>
-                    );
-                  }}
-                />
-                <Legend
-                  verticalAlign="top"
-                  height={28}
-                  formatter={(value: string) => (value === 'portfolioValue' ? 'Valore Portafoglio' : 'Netto Investito')}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="portfolioValue"
-                  stroke="#16a34a"
-                  strokeWidth={2.5}
-                  fillOpacity={1}
-                  fill="url(#gainValueGradient)"
-                />
-                <Area
-                  type="monotone"
-                  dataKey="netInvested"
-                  stroke="#868e96"
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  fillOpacity={0}
-                  fill="transparent"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </Card>
-
-      <Grid gutter="md" mt="md">
-        <Grid.Col span={{ base: 12, md: 7 }}>
-          <BestWorstCards best={best} worst={worst} periodLabel="oggi" />
-        </Grid.Col>
-        <Grid.Col span={{ base: 12, md: 5 }}>
-          <AllocationDoughnut
-            title="Allocazione Portafoglio"
-            data={allocationDoughnutData}
-            centerLabel={totalAllocationPct > 0 ? `${formatNum(totalAllocationPct, 0)}%` : '0%'}
-          />
-        </Grid.Col>
-      </Grid>
+      <div style={{ marginTop: 16 }}>
+        <BestWorstCards best={best} worst={worst} periodLabel="oggi" />
+      </div>
     </>
   );
 }

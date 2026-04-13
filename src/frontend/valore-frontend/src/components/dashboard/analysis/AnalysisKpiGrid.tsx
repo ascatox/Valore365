@@ -43,14 +43,14 @@ export function AnalysisKpiGrid({
       iconColor: 'teal' as const,
     },
     {
-      label: best?.as_of ? `Migliore (al ${formatShortDate(best.as_of)})` : 'Titolo Migliore',
+      label: best?.as_of ? `Miglior Target (al ${formatShortDate(best.as_of)})` : 'Miglior Target',
       value: best ? `${best.symbol} ${formatPct(best.return_pct)}` : 'N/D',
       color: 'green',
       icon: IconArrowUpRight,
       iconColor: 'green' as const,
     },
     {
-      label: worst?.as_of ? `Peggiore (al ${formatShortDate(worst.as_of)})` : 'Titolo Peggiore',
+      label: worst?.as_of ? `Peggior Target (al ${formatShortDate(worst.as_of)})` : 'Peggior Target',
       value: worst ? `${worst.symbol} ${formatPct(worst.return_pct)}` : 'N/D',
       color: 'red',
       icon: IconChartPie,
