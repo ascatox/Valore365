@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Alert, Badge, Card, Group, Loader, Paper, SegmentedControl, Select, Text } from '@mantine/core';
-import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Alert, Group, Paper, SegmentedControl, Select, Text } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
+import { BenchmarkComparisonChart } from '../summary/BenchmarkComparisonChart';
 import { BestWorstCards } from '../summary/BestWorstCards';
 import { DashboardMobileKpiCarousel } from '../../mobile/DashboardMobileKpiCarousel';
 import { DASHBOARD_WINDOWS } from '../constants';
@@ -29,11 +28,6 @@ interface PanoramicaTabProps {
 
 export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: PanoramicaTabProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
-  const isDark = colorScheme === 'dark';
-  const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
-  const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 
   const [selectedBenchmarkId, setSelectedBenchmarkId] = useState<number | null>(null);
   const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
@@ -88,20 +82,11 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     [portfolioIntradayRaw],
   );
 
-  const mvpTimeseriesStats = useMemo(() => {
-    if (!mvpTimeseriesData.length) return null;
-    const first = Number(mvpTimeseriesData[0]?.value ?? 0);
-    const last = Number(mvpTimeseriesData[mvpTimeseriesData.length - 1]?.value ?? 0);
-    if (!Number.isFinite(last)) return null;
-    if (!Number.isFinite(first) || first <= 0) return { last, pct: 0 };
-    return { last, pct: ((last / first) - 1) * 100 };
-  }, [mvpTimeseriesData]);
-
   const portfolioChartData = isIntradayWindow && portfolioIntradayData.length > 0
     ? portfolioIntradayData
     : mvpTimeseriesData;
 
-  const portfolioChartStats = useMemo(() => {
+  const chartStats = useMemo(() => {
     const series = portfolioChartData;
     if (!series.length) return undefined;
     const last = Number(series[series.length - 1]?.value ?? 0);
@@ -120,13 +105,6 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
     ];
   }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
-
-  const chartStats = mvpTimeseriesStats
-    ? [
-        { label: '', value: formatMoney(mvpTimeseriesStats.last, mvpCurrency), color: 'blue' },
-        { label: 'Var', value: formatPct(mvpTimeseriesStats.pct), color: getVariationColor(mvpTimeseriesStats.pct) },
-      ]
-    : undefined;
 
   const kpiItems = useMemo(() => [
     {
@@ -277,107 +255,17 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
 
       <div style={{ marginTop: 16 }}>
         {hasBenchmark ? (
-          <Card withBorder radius="md" p="md" shadow="sm">
-            <Group justify="space-between" mb="xs" align={isMobile ? 'flex-start' : 'center'} wrap="wrap" gap="xs">
-              <Group gap="xs">
-                <Text fw={600} size="sm">
-                  {`Andamento Portafoglio vs ${comparisonStats?.benchLabel} (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
-                </Text>
-                {comparisonStats && (
-                  <>
-                    <Badge variant="light" color={getVariationColor(comparisonStats.pPct)} size={isMobile ? 'lg' : 'md'}
-                      styles={{ root: { fontSize: isMobile ? 14 : 13, fontWeight: 600, paddingInline: isMobile ? 12 : 10, height: isMobile ? 32 : 28 } }}>
-                      Portafoglio {formatPct(comparisonStats.pPct)}
-                    </Badge>
-                    <Badge variant="light" color={getVariationColor(comparisonStats.bPct)} size={isMobile ? 'lg' : 'md'}
-                      styles={{ root: { fontSize: isMobile ? 14 : 13, fontWeight: 600, paddingInline: isMobile ? 12 : 10, height: isMobile ? 32 : 28 } }}>
-                      {comparisonStats.benchLabel} {formatPct(comparisonStats.bPct)}
-                    </Badge>
-                  </>
-                )}
-              </Group>
-              <Group gap="xs" style={isMobile ? { width: '100%' } : undefined}>
-                <Select
-                  size={isMobile ? 'sm' : 'xs'}
-                  w={isMobile ? '100%' : 140}
-                  data={benchmarkSelectData}
-                  value={selectedBenchmarkId != null ? String(selectedBenchmarkId) : ''}
-                  onChange={(v) => setSelectedBenchmarkId(v ? Number(v) : null)}
-                  allowDeselect={false}
-                />
-                <SegmentedControl
-                  size={isMobile ? 'sm' : 'xs'}
-                  value={chartWindow}
-                  onChange={setChartWindow}
-                  data={DASHBOARD_WINDOWS.map((w) => ({ label: w.label, value: w.value }))}
-                  fullWidth={isMobile}
-                />
-              </Group>
-            </Group>
-            <Text size="xs" c="dimmed" mb="sm">Entrambe le serie normalizzate a base 100</Text>
-            <div style={{ height: isMobile ? 320 : 260 }}>
-              {benchmarkLoading ? (
-                <Group h="100%" justify="center">
-                  <Loader size="sm" />
-                  <Text c="dimmed" size="sm">Caricamento benchmark...</Text>
-                </Group>
-              ) : comparisonChartData.length === 0 ? (
-                <Group h="100%" justify="center">
-                  <Text c="dimmed" size="sm">Nessun dato di prezzo disponibile per il benchmark. Prova ad aggiornare i prezzi.</Text>
-                </Group>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={comparisonChartData}>
-                    <defs>
-                      <linearGradient id="compPortfolioGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#16a34a" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
-                    <YAxis hide domain={['auto', 'auto']} />
-                    <Tooltip
-                      content={({ active, payload, label }: any) => {
-                        if (!active || !payload?.length) return null;
-                        const pv = Number(payload.find((p: any) => p.dataKey === 'portfolio')?.value ?? 0);
-                        const bv = Number(payload.find((p: any) => p.dataKey === 'benchmark')?.value ?? 0);
-                        return (
-                          <Paper withBorder p="xs" radius="sm" shadow="xs">
-                            <Text size="xs" c="dimmed">{`Data ${label}`}</Text>
-                            <Text size="sm" fw={600} c="#16a34a">{`Portafoglio: ${formatPct(pv - 100)}`}</Text>
-                            <Text size="sm" fw={600} c="#2563eb">{`${comparisonStats?.benchLabel}: ${formatPct(bv - 100)}`}</Text>
-                          </Paper>
-                        );
-                      }}
-                    />
-                    <Legend
-                      verticalAlign="top"
-                      height={28}
-                      formatter={(value: string) => (value === 'portfolio' ? 'Portafoglio' : (comparisonStats?.benchLabel ?? 'Benchmark'))}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="portfolio"
-                      stroke="#16a34a"
-                      strokeWidth={2.5}
-                      fillOpacity={1}
-                      fill="url(#compPortfolioGrad)"
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="benchmark"
-                      stroke="#2563eb"
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                      fillOpacity={0}
-                      fill="transparent"
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </Card>
+          <BenchmarkComparisonChart
+            data={comparisonChartData}
+            loading={benchmarkLoading}
+            chartWindow={chartWindow}
+            onChartWindowChange={setChartWindow}
+            chartWindowDays={chartWindowDays}
+            benchmarkSelectData={benchmarkSelectData}
+            selectedBenchmarkId={selectedBenchmarkId}
+            onBenchmarkChange={setSelectedBenchmarkId}
+            comparisonStats={comparisonStats}
+          />
         ) : (
           <PerformanceChart
             title={`Andamento Portafoglio (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
@@ -385,7 +273,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
             xKey={isIntradayWindow && portfolioIntradayData.length > 0 ? 'time' : 'date'}
             gradientId="mvpTimeseriesGradient"
             color="#16a34a"
-            stats={portfolioChartStats ?? chartStats}
+            stats={chartStats}
             loading={false}
             emptyMessage="Nessun dato disponibile"
             subtitle="Calcolato da transazioni + storico prezzi"

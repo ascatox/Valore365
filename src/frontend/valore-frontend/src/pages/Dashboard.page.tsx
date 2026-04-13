@@ -9,12 +9,12 @@ import {
   Text,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
-import { useQueryClient } from '@tanstack/react-query';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardMobileHeader } from '../components/mobile/DashboardMobileHeader';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
+import { useDashboardRefresh } from '../components/dashboard/hooks/useDashboardRefresh';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
 import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
@@ -24,44 +24,14 @@ import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constants';
 
-import { refreshPortfolioPrices, backfillPortfolioDailyPrices, getCopilotStatus } from '../services/api';
+import { getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 
 export function DashboardPage() {
   const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const;
-  const DASHBOARD_QUERY_PREFIXES = new Set([
-    'portfolio-summary',
-    'portfolio-positions',
-    'portfolio-allocation',
-    'portfolio-timeseries',
-    'portfolio-data-coverage',
-    'portfolio-health',
-    'portfolio-xray',
-    'target-allocation',
-    'target-performance',
-    'target-asset-performance',
-    'intraday-target-performance',
-    'asset-intraday-target-performance',
-    'portfolio-intraday-timeseries',
-    'intraday-detail',
-    'gain-timeseries',
-    'performance-summary',
-    'twr-timeseries',
-    'mwr-timeseries',
-    'monthly-returns',
-    'portfolio-drawdown',
-    'rolling-windows',
-    'hall-of-fame',
-    'benchmark-prices',
-    'benchmarks',
-    'market-quotes',
-    'market-news',
-    'portfolios',
-  ]);
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
 
@@ -83,11 +53,6 @@ export function DashboardPage() {
     return stored && DASHBOARD_TABS.includes(stored as (typeof DASHBOARD_TABS)[number]) ? stored : 'panoramica';
   });
 
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
-  const [refreshVersion, setRefreshVersion] = useState(0);
-
   const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
   const [copilotAvailable, setCopilotAvailable] = useState(false);
 
@@ -99,6 +64,7 @@ export function DashboardPage() {
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
+  const { refreshing, refreshMessage, refreshError, refreshVersion, handleRefresh } = useDashboardRefresh(portfolioId);
 
   useEffect(() => {
     if (!portfolios.length) return;
@@ -122,69 +88,12 @@ export function DashboardPage() {
     window.localStorage.setItem(STORAGE_KEYS.chartWindow, chartWindow);
   }, [chartWindow]);
 
-  useEffect(() => {
-    const onRefresh = async () => {
-      if (!portfolioId || !Number.isFinite(portfolioId)) {
-        setRefreshMessage('Seleziona un portfolio prima di aggiornare');
-        return;
-      }
-
-      setRefreshError(null);
-      setRefreshMessage(null);
-      setRefreshing(true);
-
-      try {
-        const refreshResult = await refreshPortfolioPrices(portfolioId, 'all');
-        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'all');
-
-        await queryClient.resetQueries({
-          predicate: (query) => {
-            const [prefix, queryPortfolioId] = query.queryKey as [string | undefined, unknown];
-            if (!prefix || !DASHBOARD_QUERY_PREFIXES.has(prefix)) return false;
-            if (queryPortfolioId == null) return true;
-            return queryPortfolioId === portfolioId;
-          },
-        });
-
-        await queryClient.refetchQueries({
-          predicate: (query) => {
-            const [prefix, queryPortfolioId] = query.queryKey as [string | undefined, unknown];
-            if (!prefix || !DASHBOARD_QUERY_PREFIXES.has(prefix)) return false;
-            if (queryPortfolioId == null) return true;
-            return queryPortfolioId === portfolioId;
-          },
-          type: 'active',
-        });
-
-        setRefreshVersion((current) => current + 1);
-        setRefreshMessage(
-          `Aggiornati prezzi: ${refreshResult.refreshed_assets}/${refreshResult.requested_assets}, storico: ${backfillResult.assets_refreshed}/${backfillResult.assets_requested}`,
-        );
-      } catch (err) {
-        setRefreshError(err instanceof Error ? err.message : 'Errore durante aggiornamento prezzi');
-      } finally {
-        setRefreshing(false);
-      }
-    };
-
-    window.addEventListener('valore365:refresh-dashboard', onRefresh);
-    return () => {
-      window.removeEventListener('valore365:refresh-dashboard', onRefresh);
-    };
-  }, [portfolioId, queryClient]);
-
   const handleTabChange = (tab: string | null) => {
     setActiveTab(tab);
     if (typeof window !== 'undefined' && tab) {
       window.localStorage.setItem(STORAGE_KEYS.activeTab, tab);
     }
   };
-
-  useEffect(() => {
-    if (!refreshMessage) return;
-    const timer = window.setTimeout(() => setRefreshMessage(null), 5000);
-    return () => window.clearTimeout(timer);
-  }, [refreshMessage]);
 
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
   const mobileTabItems = [
@@ -194,10 +103,6 @@ export function DashboardPage() {
     { value: 'mercati', label: 'Mercati', icon: IconWorld },
     { value: 'performance', label: 'Perf.', icon: IconPercentage },
   ];
-
-  const handleRefresh = () => {
-    window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
-  };
 
   return (
     <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
