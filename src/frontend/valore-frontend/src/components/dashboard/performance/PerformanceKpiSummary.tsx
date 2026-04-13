@@ -1,4 +1,4 @@
-import { Alert, Card, Group, Loader, SegmentedControl, SimpleGrid, Stack, Text, Tooltip } from '@mantine/core';
+import { Alert, Card, Group, Loader, SegmentedControl, SimpleGrid, Text, Tooltip } from '@mantine/core';
 import { formatMoney, formatPct } from '../formatters';
 import { kpiColor, PERIOD_OPTIONS } from './utils';
 import type { PeriodKey } from './utils';

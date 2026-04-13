@@ -17,7 +17,7 @@ Da `src/backend`:
 python -m venv .venv
 source .venv/bin/activate   # Linux/macOS
 # oppure .venv\Scripts\Activate.ps1 su Windows PowerShell
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -29,7 +29,7 @@ Health:
 - `GET /api/health`
 
 ## Configurazione (`src/backend/.env`)
-Il backend legge un file `.env` in `src/backend/` (non esiste un `.env.example` nel repository al momento).
+Il backend legge un file `.env` in `src/backend/`. Puoi partire da `src/backend/.env.example`.
 
 Variabili principali:
 - `APP_ENV` (`dev`/`prod`, default `dev`)

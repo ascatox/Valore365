@@ -91,6 +91,16 @@ finance_client = make_finance_client(settings)
 justetf_client = JustEtfClient(settings=settings)
 
 
+class RuntimeDependencyProxy:
+    """Resolve app-level singletons lazily so tests can monkeypatch them after startup."""
+
+    def __init__(self, getter):
+        self._getter = getter
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._getter(), name)
+
+
 # ---------------------------------------------------------------------------
 # Feature flag helper
 # ---------------------------------------------------------------------------
@@ -215,41 +225,62 @@ def get_admin_usage_summary(_auth: AuthContext = Depends(require_admin)) -> Admi
 
 # Register all route modules
 register_instant_portfolio_analyzer_routes(router, repo, csv_import_service=csv_import_service)
-register_portfolio_health_routes(router, repo, finance_client, justetf_client=justetf_client)
-register_portfolio_routes(router, repo, settings=settings)
+register_portfolio_health_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    RuntimeDependencyProxy(lambda: finance_client),
+    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+)
+register_portfolio_routes(router, RuntimeDependencyProxy(lambda: repo), settings=settings)
 register_assets_routes(
-    router, repo,
+    router, RuntimeDependencyProxy(lambda: repo),
     settings=settings,
-    finance_client=finance_client,
-    justetf_client=justetf_client,
-    historical_service=historical_service,
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
+    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+    historical_service=RuntimeDependencyProxy(lambda: historical_service),
     ensure_target_allocation_enabled=ensure_target_allocation_enabled,
 )
-register_transactions_routes(router, repo, historical_service=historical_service)
+register_transactions_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    historical_service=RuntimeDependencyProxy(lambda: historical_service),
+)
 register_pricing_routes(
-    router, repo,
+    router, RuntimeDependencyProxy(lambda: repo),
     settings=settings,
-    pricing_service=pricing_service,
-    historical_service=historical_service,
-    finance_client=finance_client,
+    pricing_service=RuntimeDependencyProxy(lambda: pricing_service),
+    historical_service=RuntimeDependencyProxy(lambda: historical_service),
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
     ensure_target_allocation_enabled=ensure_target_allocation_enabled,
 )
 register_analytics_routes(
-    router, repo,
-    performance_service=performance_service,
-    finance_client=finance_client,
+    router, RuntimeDependencyProxy(lambda: repo),
+    performance_service=RuntimeDependencyProxy(lambda: performance_service),
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
 )
 register_rebalancing_routes(
-    router, repo,
+    router, RuntimeDependencyProxy(lambda: repo),
     settings=settings,
-    finance_client=finance_client,
-    historical_service=historical_service,
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
+    historical_service=RuntimeDependencyProxy(lambda: historical_service),
     ensure_target_allocation_enabled=ensure_target_allocation_enabled,
 )
-register_markets_routes(router, repo, finance_client=finance_client)
-register_cash_routes(router, repo)
-register_csv_routes(router, repo, settings=settings, csv_import_service=csv_import_service)
-register_pac_routes(router, repo, engine=engine)
-register_copilot_routes(router, repo, settings=settings, performance_service=performance_service, finance_client=finance_client, justetf_client=justetf_client)
+register_markets_routes(router, RuntimeDependencyProxy(lambda: repo), finance_client=RuntimeDependencyProxy(lambda: finance_client))
+register_cash_routes(router, RuntimeDependencyProxy(lambda: repo))
+register_csv_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    settings=settings,
+    csv_import_service=RuntimeDependencyProxy(lambda: csv_import_service),
+)
+register_pac_routes(router, RuntimeDependencyProxy(lambda: repo), engine=engine)
+register_copilot_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    settings=settings,
+    performance_service=RuntimeDependencyProxy(lambda: performance_service),
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
+    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+)
 
 app.include_router(router, prefix="/api")

@@ -177,13 +177,13 @@ cd Valore365
 Avviare i servizi
 
 
-docker compose up
+docker compose --profile dev up --build
 
 
 Aprire nel browser
 
 
-http://localhost:3000
+http://localhost:8080
 
 
 ---

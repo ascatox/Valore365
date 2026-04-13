@@ -6,19 +6,15 @@ import {
   Burger,
   Group,
   ActionIcon,
-  Button,
   NavLink,
   Container,
   Transition,
   Tooltip,
   useMantineColorScheme,
-  Title,
 } from '@mantine/core';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
 import {
-  IconSun,
-  IconMoon,
   IconRefresh,
   IconPlayerPlay,
   IconPlayerStop,
@@ -90,7 +86,7 @@ function ProtectedApp() {
   const mainRef = useRef<HTMLElement | null>(null);
   const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
-  const { colorScheme, toggleColorScheme } = useMantineColorScheme();
+  const { colorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
   const isLandscape = useMediaQuery('(max-width: 48em) and (orientation: landscape)');
   const headerHeight = isLandscape ? 44 : 60;

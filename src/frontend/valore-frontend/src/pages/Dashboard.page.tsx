@@ -64,7 +64,7 @@ export function DashboardPage() {
   const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
-  const { refreshing, refreshMessage, refreshError, refreshVersion, handleRefresh } = useDashboardRefresh(portfolioId);
+  const { refreshing, refreshMessage, refreshError, refreshVersion } = useDashboardRefresh(portfolioId);
 
   useEffect(() => {
     if (!portfolios.length) return;

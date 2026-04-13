@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Badge, Card, Group, Progress, Stack, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Badge, Card, Group, Progress, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../../services/api';

@@ -140,7 +140,7 @@ export function SettingsPage() {
     setCopilotSaving(true);
     setCopilotMessage(null);
     updateUserSettings({ copilot_provider: '', copilot_model: '', copilot_api_key: '' } as any)
-      .then((saved) => {
+      .then(() => {
         setCopilotProvider('');
         setCopilotModel('');
         setCopilotApiKey('');

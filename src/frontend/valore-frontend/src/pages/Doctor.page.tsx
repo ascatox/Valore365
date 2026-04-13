@@ -27,8 +27,6 @@ import {
   IconChartBubble,
   IconCheck,
   IconCopy,
-  IconDownload,
-  IconHeartRateMonitor,
   IconLink,
   IconRobot,
   IconShare,

@@ -165,6 +165,7 @@ export function usePortfolioPage() {
 
   // --- Rebalance (delegated) ---
   const rebalance = useRebalance(selectedPortfolioId, isMobile, loadTransactions, setFormSuccess);
+  const { previewOpened, setPreviewOpened } = rebalance;
 
   // --- Effects ---
 
@@ -186,10 +187,10 @@ export function usePortfolioPage() {
   }, []);
 
   useEffect(() => {
-    if (isMobile && rebalance.previewOpened) {
-      rebalance.setPreviewOpened(false);
+    if (isMobile && previewOpened) {
+      setPreviewOpened(false);
     }
-  }, [isMobile, rebalance.previewOpened]);
+  }, [isMobile, previewOpened, setPreviewOpened]);
 
   useEffect(() => {
     if (!selectedPortfolioId) {

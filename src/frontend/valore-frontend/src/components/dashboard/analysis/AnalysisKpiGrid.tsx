@@ -16,7 +16,6 @@ interface AnalysisKpiGridProps {
 }
 
 export function AnalysisKpiGrid({
-  indexCardStats,
   totalAssignedWeight,
   portfolioSummary,
   currency,

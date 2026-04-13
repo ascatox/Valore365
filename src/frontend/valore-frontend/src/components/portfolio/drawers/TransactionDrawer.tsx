@@ -64,7 +64,7 @@ export function TransactionDrawer({
   const [tradeAt, setTradeAt] = useState(() => currentDateTimeLocalValue());
   const [quantity, setQuantity] = useState<number | string>('');
   const [price, setPrice] = useState<number | string>('');
-  const [priceLoading, setPriceLoading] = useState(false);
+  const [priceLoading] = useState(false);
   const [priceHint, setPriceHint] = useState<string | null>(null);
   const [fees, setFees] = useState<number | string>(() => getDefaultBrokerFee());
   const [taxes, setTaxes] = useState<number | string>(0);

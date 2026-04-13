@@ -20,7 +20,6 @@ interface TransactionMobileCardProps {
 }
 
 export function TransactionMobileCard({
-  id,
   symbol,
   assetName,
   side,

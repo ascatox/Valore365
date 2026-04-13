@@ -322,11 +322,15 @@ export function CopilotChat({
       let accumulated = '';
       let buffer = '';
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      let streamDone = false;
+      while (!streamDone) {
+        const chunk = await reader.read();
+        if (chunk.done) {
+          streamDone = true;
+          break;
+        }
 
-        buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(chunk.value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 

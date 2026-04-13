@@ -51,7 +51,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     return d.toISOString().slice(0, 10);
   }, [chartWindowDays]);
 
-  const { data: portfolioIntradayRaw = [], isLoading: _intradayLoading } = usePortfolioIntradayTimeseries(portfolioId, isIntradayWindow);
+  const { data: portfolioIntradayRaw = [] } = usePortfolioIntradayTimeseries(portfolioId, isIntradayWindow);
   const { data: benchmarkPrices = [], isLoading: benchmarkLoading } = useBenchmarkPrices(selectedBenchmarkId, portfolioId, benchmarkStartDate);
 
   // --- Computed values ---

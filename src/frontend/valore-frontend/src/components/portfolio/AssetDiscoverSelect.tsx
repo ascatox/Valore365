@@ -144,15 +144,6 @@ export function AssetDiscoverSelect({
     }
   };
 
-  const reset = () => {
-    setQuery('');
-    setItems([]);
-    setSelectionKey(null);
-    setResolvedLabel(null);
-    setEnsuring(false);
-    setLoading(false);
-  };
-
   return (
     <>
       <Select
