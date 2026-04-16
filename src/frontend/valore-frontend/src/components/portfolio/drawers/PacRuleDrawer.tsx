@@ -265,7 +265,7 @@ export function PacRuleDrawer({
           label="Esecuzione automatica"
           checked={autoExecute}
           onChange={(e) => setAutoExecute(e.currentTarget.checked)}
-          description="Se abilitato, le esecuzioni verranno create automaticamente"
+          description="Se abilitato, alla scadenza verra creata automaticamente la transazione usando l'ultimo prezzo disponibile e verra ridotta la liquidita"
         />
 
         {error && <Text c="red" size="sm">{error}</Text>}

@@ -289,6 +289,29 @@ class PacMixin:
         if result is None:
             raise ValueError("Esecuzione PAC non trovata o gia processata")
 
+    def fail_pac_execution(self, execution_id: int, error_message: str, user_id: str) -> None:
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    update pac_executions
+                    set status = 'failed',
+                        error_message = :error_message,
+                        executed_at = now()
+                    where id = :execution_id and status = 'pending'
+                      and pac_rule_id in (select id from pac_rules where owner_user_id = :user_id)
+                    returning id
+                    """
+                ),
+                {
+                    "execution_id": execution_id,
+                    "error_message": error_message[:500],
+                    "user_id": user_id,
+                },
+            ).fetchone()
+        if result is None:
+            raise ValueError("Esecuzione PAC non trovata o gia processata")
+
     def generate_pending_executions(self, rule_id: int) -> int:
         """Generate pending executions for a PAC rule up to today. Returns count of new executions."""
         with self.engine.begin() as conn:

@@ -42,6 +42,29 @@ def _build_cash_breakdown(
     ]
 
 
+def _cash_delta_trade_currency(
+    *,
+    side: str,
+    quantity: float,
+    price: float,
+    fees: float = 0.0,
+    taxes: float = 0.0,
+) -> float:
+    gross_amount = float(quantity) * float(price)
+    costs = float(fees) + float(taxes)
+    normalized_side = side.lower().strip()
+
+    if normalized_side in {"deposit", "interest", "dividend"}:
+        return gross_amount
+    if normalized_side == "buy":
+        return -(gross_amount + costs)
+    if normalized_side == "sell":
+        return gross_amount - costs
+    if normalized_side in {"withdrawal", "fee"}:
+        return -gross_amount
+    return 0.0
+
+
 def _compute_cash_balance_base(
     *,
     base_currency: str,
@@ -71,20 +94,21 @@ def _compute_cash_balance_base(
     cash_balance = float(opening_cash_balance)
     for row in rows:
         side = str(row["side"])
-        # Only explicit cash movements affect liquidity
-        if side not in {"deposit", "withdrawal", "dividend", "fee", "interest"}:
+        if side not in {"buy", "sell", "deposit", "withdrawal", "dividend", "fee", "interest"}:
             continue
         trade_day = row["trade_date"]
         trade_ccy = str(row["trade_currency"])
-        quantity = float(row["quantity"])
-        price = float(row["price"])
+        delta_trade = _cash_delta_trade_currency(
+            side=side,
+            quantity=float(row["quantity"]),
+            price=float(row["price"]),
+            fees=float(row.get("fees", 0.0)),
+            taxes=float(row.get("taxes", 0.0)),
+        )
+        if delta_trade == 0:
+            continue
         fx_rate = fx_rate_on_or_before(trade_ccy, trade_day)
-        amount_base = quantity * price * fx_rate
-
-        if side in {"deposit", "interest", "dividend"}:
-            cash_balance += amount_base
-        elif side in {"withdrawal", "fee"}:
-            cash_balance -= amount_base
+        cash_balance += delta_trade * fx_rate
 
     return round(cash_balance, 2)
 
@@ -233,30 +257,42 @@ class UtilitiesMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-            # Compute cash only from explicit cash movements (no buy/sell)
-            rows = conn.execute(
+            tx_rows = conn.execute(
                 text(
                     """
                     select trade_currency,
-                           coalesce(sum(case
-                             when side in ('deposit', 'interest', 'dividend') then quantity * price
-                             when side in ('withdrawal', 'fee') then -quantity * price
-                             else 0
-                           end), 0)::float8 as balance
+                           side,
+                           quantity::float8 as quantity,
+                           price::float8 as price,
+                           fees::float8 as fees,
+                           taxes::float8 as taxes
                     from transactions
                     where portfolio_id = :portfolio_id
-                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
-                    group by trade_currency
-                    order by trade_currency
+                      and side in ('buy', 'sell', 'deposit', 'withdrawal', 'dividend', 'fee', 'interest')
+                    order by trade_at asc, id asc
                     """
                 ),
                 {"portfolio_id": portfolio_id},
             ).mappings().all()
 
+            balances_by_currency: dict[str, float] = {}
+            for row in tx_rows:
+                currency = str(row["trade_currency"])
+                balances_by_currency[currency] = balances_by_currency.get(currency, 0.0) + _cash_delta_trade_currency(
+                    side=str(row["side"]),
+                    quantity=float(row["quantity"]),
+                    price=float(row["price"]),
+                    fees=float(row["fees"]),
+                    taxes=float(row["taxes"]),
+                )
+
             breakdown = _build_cash_breakdown(
                 base_currency=portfolio.base_currency,
                 opening_cash_balance=portfolio.cash_balance,
-                rows=[dict(r) for r in rows],
+                rows=[
+                    {"trade_currency": currency, "balance": balance}
+                    for currency, balance in sorted(balances_by_currency.items())
+                ],
             )
 
             # Convert each currency to base currency using latest FX rates
@@ -299,7 +335,7 @@ class UtilitiesMixin:
                     from transactions t
                     left join assets a on a.id = t.asset_id
                     where t.portfolio_id = :portfolio_id
-                      and t.side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
+                      and t.side in ('buy', 'sell', 'deposit', 'withdrawal', 'dividend', 'fee', 'interest')
                     order by t.trade_at desc, t.id desc
                     limit 20
                     """
@@ -351,7 +387,7 @@ class UtilitiesMixin:
                            trade_currency
                     from transactions
                     where portfolio_id = :portfolio_id
-                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
+                      and side in ('buy', 'sell', 'deposit', 'withdrawal', 'dividend', 'fee', 'interest')
                     order by trade_at asc, id asc
                     """
                 ),
