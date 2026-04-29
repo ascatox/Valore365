@@ -11,7 +11,6 @@ from ..models import (
     TransactionRead,
     TransactionUpdate,
 )
-from ._utilities import _cash_delta_trade_currency
 
 
 class TransactionsMixin:
@@ -402,38 +401,33 @@ class TransactionsMixin:
             return series[idx][1]
 
         holdings: dict[int, float] = defaultdict(float)
-        cash_balance = float(portfolio.cash_balance)
+        cash_balance = 0.0
 
         for row in tx_rows:
             side = str(row["side"])
             qty = float(row["quantity"])
+            price = float(row["price"])
+            fees = float(row["fees"])
+            taxes = float(row["taxes"])
             trade_day = row["trade_date"]
             trade_ccy = str(row["trade_currency"])
             fx = fx_rate_on_or_before(trade_ccy, trade_day)
-            delta_base = _cash_delta_trade_currency(
-                side=side,
-                quantity=qty,
-                price=float(row["price"]),
-                fees=float(row["fees"]),
-                taxes=float(row["taxes"]),
-            ) * fx
+            amount_base = qty * price * fx
 
             if side == "buy":
                 aid = row["asset_id"]
                 if aid is None:
                     continue
                 holdings[int(aid)] += qty
-                cash_balance += delta_base
             elif side == "sell":
                 aid = row["asset_id"]
                 if aid is None:
                     continue
                 holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
-                cash_balance += delta_base
             elif side in {"deposit", "dividend", "interest"}:
-                cash_balance += delta_base
+                cash_balance += amount_base
             elif side in {"withdrawal", "fee"}:
-                cash_balance += delta_base
+                cash_balance -= amount_base
 
         price_series: dict[int, list[tuple[date, float]]] = defaultdict(list)
         for row in price_rows:

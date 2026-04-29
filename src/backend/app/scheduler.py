@@ -129,11 +129,9 @@ class PriceRefreshScheduler:
         try:
             result = self.pac_service.process_due_rules()
             logger.info(
-                'PAC processing completed rules=%s executions=%s auto_executed=%s failed=%s',
+                'PAC processing completed rules=%s executions=%s',
                 result.get("rules_processed", 0),
                 result.get("executions_generated", 0),
-                result.get("auto_executed", 0),
-                result.get("failed", 0),
             )
         except Exception as exc:  # nosec B110
             logger.exception('PAC processing failed: %s', exc)
