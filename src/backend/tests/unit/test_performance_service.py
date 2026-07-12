@@ -52,6 +52,151 @@ def test_mwr_simple_one_year_growth():
     assert abs(result.mwr_pct - 10.0) < 0.05
 
 
+def test_mwr_short_period_is_a_period_return():
+    # 100 -> 105 in ~6 months: mwr_pct must be the 5% period return
+    # (comparable with twr_pct), not the annualized IRR (~10.3%).
+    start = date(2025, 1, 1)
+    end = date(2025, 7, 2)
+    service = PerformanceService(_FakeRepo(created=start, values={start: 100.0, end: 105.0}))
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert abs(result.mwr_pct - 5.0) < 0.05
+    assert result.mwr_annualized_pct is None
+
+
+def test_mwr_one_year_period_exposes_annualized_rate():
+    start = date(2025, 1, 1)
+    end = date(2026, 1, 1)
+    service = PerformanceService(_FakeRepo(created=start, values={start: 100.0, end: 110.0}))
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert result.mwr_annualized_pct is not None
+    assert abs(result.mwr_annualized_pct - result.mwr_pct) < 0.01
+
+
+def test_mwr_deposit_on_start_day_not_double_counted():
+    # The deposit dated 'start' is already inside start_value: it must not
+    # be added again as a t=0 flow.
+    start = date(2025, 1, 1)
+    end = date(2026, 1, 1)
+    repo = _FakeRepo(
+        created=start,
+        values={start: 1000.0, end: 1100.0},
+        cashflows=[CashFlowEntry(date=start.isoformat(), side='deposit', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert abs(result.mwr_pct - 10.0) < 0.05
+
+
+def test_mwr_trade_fallback_buy_on_start_day():
+    # Single buy of 1000 on the start day, worth 1200 one year later.
+    # Portfolio value already reflects the bought assets, no cash adjustment.
+    start = date(2025, 1, 1)
+    end = date(2026, 1, 1)
+    repo = _FakeRepo(
+        created=start,
+        values={start: 1000.0, end: 1200.0},
+        cashflows=[CashFlowEntry(date=start.isoformat(), side='buy', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert abs(result.mwr_pct - 20.0) < 0.05
+
+
+def test_mwr_trade_fallback_mid_period_buy():
+    # Buy 1000 after 182 days, worth 1200 at the end of the year:
+    # 1200/1000 = (1+r)^(183/365) -> r = 1.2^(365/183) - 1 ~ 43.86%
+    start = date(2025, 1, 1)
+    buy_day = date(2025, 7, 2)
+    end = date(2026, 1, 1)
+    repo = _FakeRepo(
+        created=start,
+        values={start: 0.0, end: 1200.0},
+        cashflows=[CashFlowEntry(date=buy_day.isoformat(), side='buy', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert abs(result.mwr_pct - 43.86) < 0.1
+
+
+def test_mwr_dividend_stays_internal():
+    # A dividend kept inside the portfolio is income, not an investor
+    # contribution: MWR must equal the plain growth of the value.
+    start = date(2025, 1, 1)
+    mid = date(2025, 7, 2)
+    end = date(2026, 1, 1)
+    repo = _FakeRepo(
+        created=start,
+        values={start: 1000.0, end: 1100.0},
+        cashflows=[CashFlowEntry(date=mid.isoformat(), side='dividend', amount=50.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert abs(result.mwr_pct - 10.0) < 0.05
+
+
+def test_mwr_timeseries_last_point_matches_calculate_mwr():
+    start = date(2026, 1, 1)
+    end = date(2026, 1, 11)
+    values: dict[date, float] = {}
+    for offset in range(11):
+        day = date(2026, 1, 1 + offset)
+        values[day] = 1000.0 + 2.0 * offset + (500.0 if offset >= 5 else 0.0)
+    repo = _FakeRepo(
+        created=start,
+        values=values,
+        cashflows=[
+            CashFlowEntry(date=start.isoformat(), side='deposit', amount=1000.0),
+            CashFlowEntry(date=date(2026, 1, 6).isoformat(), side='deposit', amount=500.0),
+        ],
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_mwr(1, 'u', start, end)
+    points = service.get_mwr_timeseries(1, 'u', start, end)
+
+    assert result.converged is True
+    assert points[-1].date == end.isoformat()
+    assert points[-1].cumulative_mwr_pct is not None
+    assert abs(points[-1].cumulative_mwr_pct - result.mwr_pct) < 1e-6
+
+
+def test_twr_trade_fallback_counts_buys_as_external_flows():
+    # Portfolio value includes bought assets without deducting cash, so in
+    # the buy/sell fallback the buy cost must be treated as a deposit.
+    start = date(2026, 1, 1)
+    mid = date(2026, 1, 2)
+    end = date(2026, 1, 3)
+    repo = _FakeRepo(
+        created=start,
+        values={start: 1000.0, mid: 2010.0, end: 2010.0},
+        cashflows=[CashFlowEntry(date=mid.isoformat(), side='buy', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_twr(1, 'u', start, end)
+
+    # Day 2 return = (2010 - 1000 - 1000) / 1000 = 1%
+    assert abs(result.twr_pct - 1.0) < 0.01
+
+
 def test_twr_timeseries_accounts_for_external_cashflow():
     start = date(2026, 1, 1)
     mid = date(2026, 1, 2)

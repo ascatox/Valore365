@@ -89,7 +89,7 @@ export function PerformanceKpiSummary({ summary, loading, error, currency, perio
         </Card>
 
         <Card withBorder radius="md" p="sm">
-          <Tooltip label="Money-Weighted Return — rendimento ponderato per i flussi di cassa dell'investitore" multiline w={280} withArrow>
+          <Tooltip label="Money-Weighted Return — rendimento del periodo ponderato per i flussi di cassa dell'investitore, confrontabile con il TWR" multiline w={280} withArrow>
             <Text size="sm" c="dimmed" style={{ cursor: 'help' }}>MWR</Text>
           </Tooltip>
           {summary?.mwr?.mwr_pct != null ? (

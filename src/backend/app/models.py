@@ -322,7 +322,8 @@ class TWRResult(BaseModel):
 
 
 class MWRResult(BaseModel):
-    mwr_pct: float | None
+    mwr_pct: float | None  # rendimento di periodo, come twr_pct
+    mwr_annualized_pct: float | None = None  # valorizzato solo se period_days >= 365
     period_days: int
     start_date: str
     end_date: str
