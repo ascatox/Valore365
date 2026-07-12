@@ -356,6 +356,7 @@ export interface TWRResult {
 
 export interface MWRResult {
   mwr_pct: number | null;
+  mwr_annualized_pct: number | null;
   period_days: number;
   start_date: string;
   end_date: string;

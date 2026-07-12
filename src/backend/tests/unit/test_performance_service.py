@@ -52,6 +52,32 @@ def test_mwr_simple_one_year_growth():
     assert abs(result.mwr_pct - 10.0) < 0.05
 
 
+def test_mwr_short_period_is_a_period_return():
+    # 100 -> 105 in ~6 months: mwr_pct must be the 5% period return
+    # (comparable with twr_pct), not the annualized IRR (~10.3%).
+    start = date(2025, 1, 1)
+    end = date(2025, 7, 2)
+    service = PerformanceService(_FakeRepo(created=start, values={start: 100.0, end: 105.0}))
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert abs(result.mwr_pct - 5.0) < 0.05
+    assert result.mwr_annualized_pct is None
+
+
+def test_mwr_one_year_period_exposes_annualized_rate():
+    start = date(2025, 1, 1)
+    end = date(2026, 1, 1)
+    service = PerformanceService(_FakeRepo(created=start, values={start: 100.0, end: 110.0}))
+
+    result = service.calculate_mwr(1, 'u', start, end)
+
+    assert result.converged is True
+    assert result.mwr_annualized_pct is not None
+    assert abs(result.mwr_annualized_pct - result.mwr_pct) < 0.01
+
+
 def test_mwr_deposit_on_start_day_not_double_counted():
     # The deposit dated 'start' is already inside start_value: it must not
     # be added again as a t=0 flow.

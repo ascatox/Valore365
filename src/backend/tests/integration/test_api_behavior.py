@@ -164,6 +164,7 @@ class _FakePerformanceService:
             },
             'mwr': {
                 'mwr_pct': 10.01,
+                'mwr_annualized_pct': 10.01,
                 'period_days': 365,
                 'start_date': '2025-01-01',
                 'end_date': '2026-01-01',

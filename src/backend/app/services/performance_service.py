@@ -214,8 +214,15 @@ class PerformanceService:
                 converged=False,
             )
 
+        # Same convention as TWR: mwr_pct is the period return, the
+        # annualized rate is exposed separately only for periods >= 1 year.
+        mwr_ann: float | None = None
+        if period_days >= 365:
+            mwr_ann = round(rate * 100.0, 4)
+
         return MWRResult(
-            mwr_pct=round(rate * 100.0, 4),
+            mwr_pct=self._annual_rate_to_cumulative_pct(rate, period_days),
+            mwr_annualized_pct=mwr_ann,
             period_days=period_days,
             start_date=start.isoformat(),
             end_date=end.isoformat(),
@@ -401,7 +408,8 @@ class PerformanceService:
                 if has_pos and has_neg:
                     rate = self._solve_irr(flows)
                     if rate is not None and isfinite(rate):
-                        mwr_pct = round(rate * 100.0, 4)
+                        # Cumulative period return, comparable with the TWR series
+                        mwr_pct = self._annual_rate_to_cumulative_pct(rate, cursor_days)
 
             points.append(MWRTimeseriesPoint(date=cursor.isoformat(), cumulative_mwr_pct=mwr_pct))
             cursor += timedelta(days=step)
@@ -425,7 +433,7 @@ class PerformanceService:
                 if has_pos and has_neg:
                     rate = self._solve_irr(flows)
                     if rate is not None and isfinite(rate):
-                        mwr_pct = round(rate * 100.0, 4)
+                        mwr_pct = self._annual_rate_to_cumulative_pct(rate, cursor_days)
 
             points.append(MWRTimeseriesPoint(date=end.isoformat(), cumulative_mwr_pct=mwr_pct))
 
@@ -754,6 +762,12 @@ class PerformanceService:
             'all': 'Da sempre',
         }
         return labels.get(period, period)
+
+    @staticmethod
+    def _annual_rate_to_cumulative_pct(rate: float, elapsed_days: float) -> float:
+        """Convert an annualized IRR into the cumulative return (%) over the
+        elapsed period, using the same ACT/365 day count as the solver."""
+        return round(((1.0 + rate) ** (float(elapsed_days) / 365.0) - 1.0) * 100.0, 4)
 
     def _solve_irr(self, flows: list[tuple[float, float]]) -> float | None:
         def npv(rate: float) -> float:
