@@ -23,10 +23,12 @@ import {
   IconCheck,
   IconChevronDown,
   IconCopy,
+  IconDownload,
   IconEdit,
   IconExternalLink,
   IconPlus,
   IconSearch,
+  IconSparkles,
   IconTarget,
   IconTrash,
   IconWallet,
@@ -47,6 +49,8 @@ interface PortfolioSwitcherProps {
   onEditPortfolio?: (() => void) | null;
   onClonePortfolio?: (() => void) | null;
   onDeletePortfolio?: (() => void) | null;
+  onCopyForAi?: (() => void) | null;
+  onDownloadMarkdown?: (() => void) | null;
 }
 
 const formatMoney = (value: number, currency: string) => new Intl.NumberFormat('it-IT', {
@@ -79,6 +83,8 @@ export function PortfolioSwitcher({
   onEditPortfolio = null,
   onClonePortfolio = null,
   onDeletePortfolio = null,
+  onCopyForAi = null,
+  onDownloadMarkdown = null,
 }: PortfolioSwitcherProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
@@ -128,6 +134,8 @@ export function PortfolioSwitcher({
     { label: 'Apri portfolio', icon: IconExternalLink, onClick: onOpenPortfolio },
     { label: 'Modifica', icon: IconEdit, onClick: onEditPortfolio },
     { label: 'Clona', icon: IconCopy, onClick: onClonePortfolio },
+    { label: 'Copia per AI', icon: IconSparkles, onClick: onCopyForAi, color: 'teal' },
+    { label: 'Scarica .md', icon: IconDownload, onClick: onDownloadMarkdown, color: 'teal' },
     { label: 'Elimina', icon: IconTrash, onClick: onDeletePortfolio, color: 'red' },
   ].filter((action) => action.onClick);
 

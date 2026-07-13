@@ -24,6 +24,7 @@ import { MobileActionSheet } from '../components/mobile/MobileActionSheet.tsx';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
 import { PortfolioAiExportMenu } from '../components/portfolio/PortfolioAiExportMenu.tsx';
+import { usePortfolioAiExport } from '../components/portfolio/hooks/usePortfolioAiExport';
 
 import { TransactionsSection } from '../components/portfolio/sections/TransactionsSection.tsx';
 
@@ -50,6 +51,7 @@ export function PortfolioPage() {
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
+  const aiExport = usePortfolioAiExport(portfolioId);
 
   // --- Transaction table rows ---
   const transactionRows = s.sortedTransactions.map((tx) => {
@@ -197,6 +199,8 @@ export function PortfolioPage() {
               onEditPortfolio={s.selectedPortfolioId ? s.openEditPortfolioModal : null}
               onClonePortfolio={s.selectedPortfolioId ? s.openClonePortfolioModal : null}
               onDeletePortfolio={s.selectedPortfolioId ? () => s.setPortfolioDeleteOpened(true) : null}
+              onCopyForAi={portfolioId != null ? aiExport.copyForAi : null}
+              onDownloadMarkdown={portfolioId != null ? aiExport.downloadMarkdown : null}
             />
             <PortfolioAiExportMenu portfolioId={portfolioId} />
           </Group>
@@ -256,6 +260,8 @@ export function PortfolioPage() {
       {s.error && <Alert color="red" mb="md">{s.error}</Alert>}
       {s.transactionsError && <Alert color="red" mb="md">{s.transactionsError}</Alert>}
       {s.formSuccess && <Alert color="teal" mb="md">{s.formSuccess}</Alert>}
+      {aiExport.copied && <Alert color="teal" mb="md">Snapshot del portafoglio copiato negli appunti, pronto da incollare in un'altra AI.</Alert>}
+      {aiExport.error && <Alert color="red" mb="md">{aiExport.error}</Alert>}
 
       {s.portfolios.length === 0 && (
         <PortfolioEmptyState
