@@ -23,6 +23,7 @@ import { PacSection } from '../components/portfolio/sections/PacSection.tsx';
 import { MobileActionSheet } from '../components/mobile/MobileActionSheet.tsx';
 import { MobileBottomNav } from '../components/mobile/MobileBottomNav.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
+import { PortfolioAiExportMenu } from '../components/portfolio/PortfolioAiExportMenu.tsx';
 
 import { TransactionsSection } from '../components/portfolio/sections/TransactionsSection.tsx';
 
@@ -184,18 +185,21 @@ export function PortfolioPage() {
         title="Portfolio"
         description="Operazioni, allocazione e struttura del portafoglio in una vista operativa unica."
         actions={(
-          <PortfolioSwitcher
-            portfolios={s.portfolios}
-            value={s.selectedPortfolioId}
-            selectedPortfolioCashBalance={summary?.cash_balance ?? null}
-            onChange={(nextValue) => s.setSelectedPortfolioId(nextValue)}
-            loading={s.loadingPortfolios}
-            style={s.isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
-            onCreatePortfolio={s.openCreatePortfolioModal}
-            onEditPortfolio={s.selectedPortfolioId ? s.openEditPortfolioModal : null}
-            onClonePortfolio={s.selectedPortfolioId ? s.openClonePortfolioModal : null}
-            onDeletePortfolio={s.selectedPortfolioId ? () => s.setPortfolioDeleteOpened(true) : null}
-          />
+          <Group align="flex-start" gap="xs" style={s.isMobile ? { width: '100%' } : undefined}>
+            <PortfolioSwitcher
+              portfolios={s.portfolios}
+              value={s.selectedPortfolioId}
+              selectedPortfolioCashBalance={summary?.cash_balance ?? null}
+              onChange={(nextValue) => s.setSelectedPortfolioId(nextValue)}
+              loading={s.loadingPortfolios}
+              style={s.isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
+              onCreatePortfolio={s.openCreatePortfolioModal}
+              onEditPortfolio={s.selectedPortfolioId ? s.openEditPortfolioModal : null}
+              onClonePortfolio={s.selectedPortfolioId ? s.openClonePortfolioModal : null}
+              onDeletePortfolio={s.selectedPortfolioId ? () => s.setPortfolioDeleteOpened(true) : null}
+            />
+            <PortfolioAiExportMenu portfolioId={portfolioId} />
+          </Group>
         )}
       />
 

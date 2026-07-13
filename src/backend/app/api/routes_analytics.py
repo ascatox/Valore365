@@ -1,10 +1,12 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import PlainTextResponse
 
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
+from ..services.portfolio_markdown_export import build_portfolio_markdown
 from ..models import (
     AllocationItem,
     DrawdownResponse,
@@ -208,6 +210,26 @@ def register_analytics_routes(
             return repo.get_allocation(portfolio_id, _auth.user_id)
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+    @router.get(
+        "/portfolios/{portfolio_id}/export/markdown",
+        response_class=PlainTextResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    def export_portfolio_markdown(
+        portfolio_id: int,
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> PlainTextResponse:
+        try:
+            markdown = build_portfolio_markdown(repo, performance_service, portfolio_id, _auth.user_id)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+        filename = f"valore365-portfolio-{portfolio_id}-{date.today().isoformat()}.md"
+        return PlainTextResponse(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     # --- Advanced Performance Analytics ---
 

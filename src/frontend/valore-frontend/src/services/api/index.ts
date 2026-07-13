@@ -7,5 +7,6 @@ export * from './assets';
 export * from './transactions';
 export * from './market';
 export * from './import';
+export * from './export';
 export * from './pac';
 export * from './settings';
