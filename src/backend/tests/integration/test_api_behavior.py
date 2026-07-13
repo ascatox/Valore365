@@ -364,6 +364,36 @@ def test_performance_summary_route(monkeypatch):
     assert payload['mwr']['converged'] is True
 
 
+def test_portfolio_markdown_export_route(monkeypatch):
+    import app.api.routes_analytics as routes_analytics
+
+    monkeypatch.setattr(
+        routes_analytics, 'build_portfolio_markdown',
+        lambda repo, svc, portfolio_id, user_id: '# Fake Portfolio\n\n## Riepilogo\n',
+    )
+    client = TestClient(api_main.app)
+    response = client.get('/api/portfolios/1/export/markdown')
+
+    assert response.status_code == 200
+    assert response.headers['content-type'].startswith('text/markdown')
+    assert 'attachment; filename="valore365-portfolio-1-' in response.headers['content-disposition']
+    assert response.text.startswith('# Fake Portfolio')
+
+
+def test_portfolio_markdown_export_route_not_found(monkeypatch):
+    import app.api.routes_analytics as routes_analytics
+
+    def _raise(repo, svc, portfolio_id, user_id):
+        raise ValueError('Portfolio non trovato')
+
+    monkeypatch.setattr(routes_analytics, 'build_portfolio_markdown', _raise)
+    client = TestClient(api_main.app)
+    response = client.get('/api/portfolios/99/export/markdown')
+
+    assert response.status_code == 404
+    assert response.json()['error']['code'] == 'not_found'
+
+
 def test_portfolio_health_route(monkeypatch):
     def _fake_analyze(repo, portfolio_id: int, user_id: str):
         assert user_id == 'dev-user'
