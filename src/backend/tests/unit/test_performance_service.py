@@ -5,13 +5,25 @@ from app.services.performance_service import PerformanceService
 
 
 class _FakeRepo:
-    def __init__(self, created: date, values: dict[date, float], cashflows: list[CashFlowEntry] | None = None) -> None:
+    def __init__(
+        self,
+        created: date,
+        values: dict[date, float],
+        cashflows: list[CashFlowEntry] | None = None,
+        inception: date | None = None,
+    ) -> None:
         self.created = created
         self.values = values
         self.cashflows = cashflows or []
+        # First transaction date; falls back to the record creation date,
+        # like the repository does for portfolios with no transactions.
+        self.inception = inception
 
     def get_portfolio_created_date(self, portfolio_id: int, user_id: str) -> date:
         return self.created
+
+    def get_portfolio_inception_date(self, portfolio_id: int, user_id: str) -> date:
+        return self.inception or self.created
 
     def get_external_cashflows(self, portfolio_id: int, user_id: str, start_date: date | None = None, end_date: date | None = None, include_trades: bool = False):
         out: list[CashFlowEntry] = []
@@ -26,6 +38,74 @@ class _FakeRepo:
 
     def get_portfolio_value_at_date(self, portfolio_id: int, user_id: str, target_date: date) -> float:
         return float(self.values.get(target_date, 0.0))
+
+
+def test_performance_starts_at_first_transaction_not_record_creation():
+    # Imported multi-year history: the portfolio record was created long
+    # after the first trade. Windows must start at the first trade, or the
+    # whole history before the import day would be silently dropped.
+    inception = date(2023, 10, 25)
+    created = date(2026, 1, 1)
+    end = date(2026, 9, 2)
+    repo = _FakeRepo(
+        created=created,
+        inception=inception,
+        values={inception: 1000.0, created: 1900.0, end: 2000.0},
+    )
+    service = PerformanceService(repo)
+
+    twr = service.calculate_twr(1, 'u', None, end)
+    mwr = service.calculate_mwr(1, 'u', None, end)
+
+    assert twr.start_date == inception.isoformat()
+    assert mwr.start_date == inception.isoformat()
+    # 1000 -> 2000 over the full history, not 1900 -> 2000 since creation
+    assert abs(twr.twr_pct - 100.0) < 0.01
+    assert abs(mwr.mwr_pct - 100.0) < 0.01
+
+
+def test_explicit_start_date_is_clamped_to_inception_not_creation():
+    inception = date(2023, 10, 25)
+    created = date(2026, 1, 1)
+    end = date(2026, 9, 2)
+    repo = _FakeRepo(
+        created=created,
+        inception=inception,
+        values={inception: 1000.0, created: 1900.0, end: 2000.0},
+    )
+    service = PerformanceService(repo)
+
+    result = service.calculate_twr(1, 'u', date(2020, 1, 1), end)
+
+    assert result.start_date == inception.isoformat()
+
+
+def test_period_all_starts_at_inception():
+    inception = date(2023, 10, 25)
+    today = date.today()
+    repo = _FakeRepo(
+        created=date(2026, 1, 1),
+        inception=inception,
+        values={inception: 1000.0, today: 2000.0},
+    )
+    service = PerformanceService(repo)
+
+    summary = service.get_performance_summary(1, 'u', 'all')
+
+    assert summary.start_date == inception.isoformat()
+    assert abs(summary.twr.twr_pct - 100.0) < 0.01
+
+
+def test_inception_falls_back_to_creation_without_transactions():
+    created = date(2026, 1, 1)
+    end = date(2026, 9, 2)
+    repo = _FakeRepo(created=created, values={created: 1000.0, end: 1100.0})
+    service = PerformanceService(repo)
+
+    result = service.calculate_twr(1, 'u', None, end)
+
+    assert result.start_date == created.isoformat()
+    assert abs(result.twr_pct - 10.0) < 0.01
 
 
 def test_twr_and_mwr_zero_on_empty_portfolio():

@@ -164,6 +164,33 @@ class TransactionsMixin:
             raise ValueError("Portfolio non trovato")
         return row["created_date"]
 
+    def get_portfolio_inception_date(self, portfolio_id: int, user_id: str) -> date:
+        """Date the portfolio actually started: its first transaction.
+
+        Falls back to the record creation date when there are no transactions
+        yet. Performance windows must not be truncated at created_at, or an
+        imported multi-year history would be measured from the import day.
+        """
+        with self.engine.begin() as conn:
+            row = conn.execute(
+                text(
+                    """
+                    select p.created_at::date as created_date,
+                           (
+                               select min(t.trade_at::date)
+                               from transactions t
+                               where t.portfolio_id = p.id
+                           ) as first_trade_date
+                    from portfolios p
+                    where p.id = :portfolio_id and p.owner_user_id = :user_id
+                    """
+                ),
+                {"portfolio_id": portfolio_id, "user_id": user_id},
+            ).mappings().fetchone()
+        if row is None or row["created_date"] is None:
+            raise ValueError("Portfolio non trovato")
+        return row["first_trade_date"] or row["created_date"]
+
     def get_transactions_in_range(
         self,
         portfolio_id: int,
