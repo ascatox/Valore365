@@ -717,7 +717,7 @@ class PerformanceService:
         start_date: date | None,
         end_date: date | None,
     ) -> tuple[date, date]:
-        portfolio_start = self.repo.get_portfolio_created_date(portfolio_id, user_id)
+        portfolio_start = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
         end = end_date or date.today()
         start = start_date or portfolio_start
 
@@ -732,7 +732,7 @@ class PerformanceService:
     def _resolve_period_range(self, portfolio_id: int, user_id: str, period: str) -> tuple[date, date]:
         period_key = (period or '').lower().strip()
         end = date.today()
-        portfolio_start = self.repo.get_portfolio_created_date(portfolio_id, user_id)
+        portfolio_start = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
 
         if period_key == 'ytd':
             start = date(end.year, 1, 1)
