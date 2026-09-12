@@ -830,6 +830,27 @@ class MonthlyReturnsResponse(BaseModel):
     end_date: str
 
 
+class YearlyPerformanceRow(BaseModel):
+    year: int
+    twr_pct: float | None           # None = non calcolabile (nessuna quotazione)
+    mwr_pct: float | None           # rendimento di periodo, come twr_pct
+    mwr_annualized_pct: float | None = None
+    converged: bool                 # stesso nome e significato di MWRResult.converged
+    is_partial: bool                # anno di inizio o anno in corso
+    has_prices: bool                # False = buco nello storico prezzi
+    start_date: str
+    end_date: str
+    period_days: int
+
+
+class YearlyPerformanceResponse(BaseModel):
+    portfolio_id: int
+    rows: list[YearlyPerformanceRow]          # crescente, come yearly_returns
+    start_date: str
+    end_date: str
+    cashflow_basis: Literal['investor', 'trades']
+
+
 class DrawdownPoint(BaseModel):
     date: str
     drawdown_pct: float

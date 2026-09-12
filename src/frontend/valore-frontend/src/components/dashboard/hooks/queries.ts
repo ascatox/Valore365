@@ -14,6 +14,7 @@ import {
   getMWRTimeseries,
   getMonthlyReturns,
   getPerformanceSummary,
+  getYearlyReturns,
   getPortfolioAllocation,
   getPortfolioDataCoverage,
   getPortfolioHealth,
@@ -314,6 +315,14 @@ export function useMonthlyReturns(portfolioId: number | null, startDate?: string
   return useQuery({
     queryKey: ['monthly-returns', portfolioId, startDate ?? 'all'],
     queryFn: () => getMonthlyReturns(portfolioId!, startDate),
+    enabled: portfolioId != null,
+  });
+}
+
+export function useYearlyReturns(portfolioId: number | null) {
+  return useQuery({
+    queryKey: ['yearly-returns', portfolioId],
+    queryFn: () => getYearlyReturns(portfolioId!),
     enabled: portfolioId != null,
   });
 }

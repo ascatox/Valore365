@@ -148,6 +148,40 @@ class _FailPricingService:
 
 
 class _FakePerformanceService:
+    def get_yearly_returns(self, portfolio_id: int, user_id: str):
+        return {
+            'portfolio_id': portfolio_id,
+            'rows': [
+                {
+                    'year': 2024,
+                    'twr_pct': 12.34,
+                    'mwr_pct': 10.01,
+                    'mwr_annualized_pct': 10.01,
+                    'converged': True,
+                    'is_partial': False,
+                    'has_prices': True,
+                    'start_date': '2023-12-31',
+                    'end_date': '2024-12-31',
+                    'period_days': 366,
+                },
+                {
+                    'year': 2025,
+                    'twr_pct': None,
+                    'mwr_pct': None,
+                    'mwr_annualized_pct': None,
+                    'converged': False,
+                    'is_partial': True,
+                    'has_prices': True,
+                    'start_date': '2024-12-31',
+                    'end_date': '2025-09-12',
+                    'period_days': 255,
+                },
+            ],
+            'start_date': '2023-12-31',
+            'end_date': '2025-09-12',
+            'cashflow_basis': 'investor',
+        }
+
     def get_performance_summary(self, portfolio_id: int, user_id: str, period: str):
         return {
             'period': period,
@@ -362,6 +396,37 @@ def test_performance_summary_route(monkeypatch):
     assert payload['period'] == '1y'
     assert payload['twr']['twr_pct'] == 12.34
     assert payload['mwr']['converged'] is True
+
+
+def test_performance_yearly_route(monkeypatch):
+    monkeypatch.setattr(api_main, 'performance_service', _FakePerformanceService())
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/portfolios/1/performance/yearly')
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['rows'][0]['year'] == 2024
+    assert payload['rows'][-1]['is_partial'] is True
+    # An N/D (null) mwr_pct must survive JSON serialization as null, not be
+    # dropped or coerced into 0.0.
+    assert payload['rows'][-1]['mwr_pct'] is None
+
+
+class _NotFoundPerformanceService:
+    def get_yearly_returns(self, portfolio_id: int, user_id: str):
+        raise ValueError('Portfolio non trovato')
+
+
+def test_performance_yearly_route_404_envelope(monkeypatch):
+    monkeypatch.setattr(api_main, 'performance_service', _NotFoundPerformanceService())
+    client = TestClient(api_main.app)
+
+    response = client.get('/api/portfolios/999/performance/yearly')
+
+    assert response.status_code == 404
+    payload = response.json()
+    assert payload['error']['code'] == 'not_found'
 
 
 def test_portfolio_markdown_export_route(monkeypatch):

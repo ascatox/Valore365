@@ -10,12 +10,14 @@ import {
   usePortfolioSummary,
   useRollingWindows,
   useTWRTimeseries,
+  useYearlyReturns,
 } from '../hooks/queries';
 import { formatPct, getVariationColor } from '../formatters';
 import { PerformanceChart } from '../summary/PerformanceChart';
 import { PerformanceKpiSummary } from '../performance/PerformanceKpiSummary';
 import { GainTwrChart } from '../performance/GainTwrChart';
 import { MonthlyReturnsHeatmap } from '../performance/MonthlyReturnsHeatmap';
+import { YearlyReturnsTable } from '../performance/YearlyReturnsTable';
 import { DrawdownSection } from '../performance/DrawdownSection';
 import { RollingWindowsSection } from '../performance/RollingWindowsSection';
 import { HallOfFameSection } from '../performance/HallOfFameSection';
@@ -37,6 +39,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
   const { data: gainPoints = [], isLoading: gainLoading } = useGainTimeseries(portfolioId, startDate);
   const { data: mwrPoints = [], isLoading: mwrLoading } = useMWRTimeseries(portfolioId, startDate);
   const { data: monthlyReturns, isLoading: monthlyLoading } = useMonthlyReturns(portfolioId, startDate);
+  const { data: yearly, isLoading: yearlyLoading } = useYearlyReturns(portfolioId);
   const { data: drawdown, isLoading: drawdownLoading } = usePortfolioDrawdown(portfolioId, startDate);
   const { data: rolling, isLoading: rollingLoading } = useRollingWindows(portfolioId, Number(rollingWindow), 2, startDate);
   const { data: hallOfFame, isLoading: hallLoading } = useHallOfFame(portfolioId, 5, startDate);
@@ -74,7 +77,11 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
 
   const monthlyMatrix = useMemo(() => {
     const cells = monthlyReturns?.cells ?? [];
-    const yearlyMap = new Map((monthlyReturns?.yearly_returns ?? []).map((item) => [item.year, item.return_pct]));
+    // The yearly column comes from the whole-history yearly endpoint, not
+    // monthlyReturns.yearly_returns: that one is scoped to the selected
+    // period's window (e.g. from Sep 12th under "1y"), while this table's
+    // "Anno" column must show the return of the full calendar year.
+    const yearlyMap = new Map((yearly?.rows ?? []).map((row) => [row.year, row.twr_pct]));
     const rowsMap = new Map<number, Record<number, number>>();
     for (const cell of cells) {
       const yearRow = rowsMap.get(cell.year) ?? {};
@@ -84,7 +91,7 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return Array.from(rowsMap.entries())
       .sort((a, b) => b[0] - a[0])
       .map(([year, months]) => ({ year, months, yearReturn: yearlyMap.get(year) ?? null }));
-  }, [monthlyReturns]);
+  }, [monthlyReturns, yearly]);
 
   const drawdownChartData = useMemo(
     () => (drawdown?.points ?? []).map((point) => ({
@@ -164,6 +171,8 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
           );
         }}
       />
+
+      <YearlyReturnsTable data={yearly} loading={yearlyLoading} />
 
       <MonthlyReturnsHeatmap
         matrix={monthlyMatrix}
