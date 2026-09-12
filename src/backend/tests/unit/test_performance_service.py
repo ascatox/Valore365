@@ -467,3 +467,64 @@ def test_twr_calculation_batches_its_cashflow_day_valuations():
 
     assert twr.start_date == start.isoformat()
     assert repo.batch_calls == 1
+
+
+class _CallCountingRepo(_FakeRepo):
+    """Counts the repository reads a single request makes."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.inception_calls = 0
+        self.cashflow_calls = 0
+
+    def get_portfolio_inception_date(self, portfolio_id: int, user_id: str) -> date:
+        self.inception_calls += 1
+        return super().get_portfolio_inception_date(portfolio_id, user_id)
+
+    def get_external_cashflows(self, portfolio_id: int, user_id: str, start_date=None, end_date=None, include_trades=False):
+        self.cashflow_calls += 1
+        return super().get_external_cashflows(portfolio_id, user_id, start_date, end_date, include_trades)
+
+
+def test_summary_resolves_inception_and_cashflows_once():
+    # get_performance_summary used to resolve inception three times and fetch
+    # the same cashflows three times, each one its own connection.
+    start = date(2025, 1, 1)
+    today = date.today()
+    repo = _CallCountingRepo(
+        created=start,
+        values={start: 1000.0, today: 1200.0},
+        cashflows=[CashFlowEntry(date=start.isoformat(), side='deposit', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    summary = service.get_performance_summary(1, 'u', 'all')
+
+    assert summary.current_value == 1200.0
+    assert repo.inception_calls == 1
+    # One fetch; the deposit is found straight away, so no trade fallback.
+    assert repo.cashflow_calls == 1
+    assert repo.batch_calls == 1
+
+
+def test_drawdown_resolves_inception_once_despite_nested_range_resolution():
+    # get_drawdown resolves the range and _build_monthly_returns resolves it
+    # again; both must share the one lookup.
+    start, end = date(2025, 1, 1), date(2025, 3, 1)
+    repo = _CallCountingRepo(created=start, values={d: 100.0 for d in _date_range(start, end)})
+    service = PerformanceService(repo)
+
+    service.get_drawdown(1, 'u', start_date=start, end_date=end)
+
+    assert repo.inception_calls == 1
+    assert repo.cashflow_calls <= 2
+    assert repo.batch_calls == 1
+
+
+def _date_range(start: date, end: date) -> list[date]:
+    days = []
+    cursor = start
+    while cursor <= end:
+        days.append(cursor)
+        cursor += timedelta(days=1)
+    return days

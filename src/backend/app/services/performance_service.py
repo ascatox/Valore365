@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import statistics
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from math import isfinite, sqrt
 
@@ -43,9 +44,56 @@ _PERIOD_TO_DAYS: dict[str, int] = {
 }
 
 
+@dataclass
+class _LookupCache:
+    """Memo for repository reads that repeat inside one calculation.
+
+    A performance summary resolves the same inception date up to three times
+    and fetches the same cashflows three times, each one its own connection.
+    Scope is a single request for a single portfolio: never share one of these
+    across requests, or a portfolio would be reported from stale prices.
+    """
+
+    inception: date | None = None
+    cashflows: dict[tuple[date, date, bool], list] = field(default_factory=dict)
+    values: dict[date, float] = field(default_factory=dict)
+
+
 class PerformanceService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
+
+    def _inception_date(self, portfolio_id: int, user_id: str, cache: _LookupCache) -> date:
+        if cache.inception is None:
+            cache.inception = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
+        return cache.inception
+
+    def _cashflows(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        start: date,
+        end: date,
+        include_trades: bool,
+        cache: _LookupCache,
+    ) -> list:
+        key = (start, end, include_trades)
+        if key not in cache.cashflows:
+            cache.cashflows[key] = self.repo.get_external_cashflows(
+                portfolio_id, user_id, start_date=start, end_date=end, include_trades=include_trades,
+            )
+        return cache.cashflows[key]
+
+    def _values(
+        self, portfolio_id: int, user_id: str, dates, cache: _LookupCache
+    ) -> dict[date, float]:
+        wanted = set(dates)
+        missing = wanted - cache.values.keys()
+        if missing:
+            cache.values.update(
+                self.repo.get_portfolio_values_in_range(portfolio_id, user_id, missing)
+            )
+        return {d: cache.values[d] for d in wanted}
 
     @staticmethod
     def _days_between(start: date, end: date, step: int = 1) -> list[date]:
@@ -62,6 +110,8 @@ class PerformanceService:
         user_id: str,
         start_date: date,
         end_date: date,
+        *,
+        cache: _LookupCache | None = None,
     ) -> tuple[list, bool]:
         """Return (investor_cashflows, used_trade_fallback).
 
@@ -72,16 +122,13 @@ class PerformanceService:
         to buy/sell as implicit investor cashflows (buy = deposit of the cost,
         sell = withdrawal of the proceeds).
         """
-        cashflows = self.repo.get_external_cashflows(
-            portfolio_id, user_id, start_date=start_date, end_date=end_date,
-        )
+        cache = cache if cache is not None else _LookupCache()
+        cashflows = self._cashflows(portfolio_id, user_id, start_date, end_date, False, cache)
         investor_flows = [cf for cf in cashflows if cf.side in ("deposit", "withdrawal")]
         if investor_flows:
             return investor_flows, False
 
-        trade_cashflows = self.repo.get_external_cashflows(
-            portfolio_id, user_id, start_date=start_date, end_date=end_date, include_trades=True,
-        )
+        trade_cashflows = self._cashflows(portfolio_id, user_id, start_date, end_date, True, cache)
         buy_sell_flows = [cf for cf in trade_cashflows if cf.side in ("buy", "sell")]
         if buy_sell_flows:
             return buy_sell_flows, True
@@ -94,11 +141,14 @@ class PerformanceService:
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
+        *,
+        cache: _LookupCache | None = None,
     ) -> TWRResult:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        cache = cache if cache is not None else _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         period_days = max((end - start).days, 1)
 
-        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
         # Portfolio value tracks bought assets without deducting their cost from
         # cash, so in the buy/sell fallback trades enter value from outside and
         # count as external cashflows exactly like deposits/withdrawals.
@@ -110,10 +160,11 @@ class PerformanceService:
         # One valuation query for every day this calculation can touch: the start,
         # the end, and every cashflow day in between (which covers both the
         # subperiod loop below and the start day it may move to).
-        values = self.repo.get_portfolio_values_in_range(
+        values = self._values(
             portfolio_id,
             user_id,
             {start, end} | {d for d in cashflow_by_day if start <= d <= end},
+            cache,
         )
 
         start_value = values[start]
@@ -168,12 +219,15 @@ class PerformanceService:
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
+        *,
+        cache: _LookupCache | None = None,
     ) -> MWRResult:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        cache = cache if cache is not None else _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         period_days = max((end - start).days, 1)
 
-        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
-        values = self.repo.get_portfolio_values_in_range(portfolio_id, user_id, {start, end})
+        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
+        values = self._values(portfolio_id, user_id, {start, end}, cache)
         start_value = values[start]
         end_value = values[end]
 
@@ -254,11 +308,17 @@ class PerformanceService:
         user_id: str,
         period: str = '1y',
     ) -> PerformanceSummary:
-        start, end = self._resolve_period_range(portfolio_id, user_id, period)
+        # One cache for the whole summary: TWR, MWR and the totals below all
+        # want the same inception date, the same cashflows and the same
+        # end-of-period value, which used to be a dozen separate connections.
+        cache = _LookupCache()
+        start, end = self._resolve_period_range(portfolio_id, user_id, period, cache=cache)
 
-        twr = self.calculate_twr(portfolio_id, user_id, start, end)
-        mwr = self.calculate_mwr(portfolio_id, user_id, start, end)
-        cashflows, use_trade_flows = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+        twr = self.calculate_twr(portfolio_id, user_id, start, end, cache=cache)
+        mwr = self.calculate_mwr(portfolio_id, user_id, start, end, cache=cache)
+        cashflows, use_trade_flows = self._get_cashflows_with_fallback(
+            portfolio_id, user_id, start, end, cache=cache
+        )
 
         if use_trade_flows:
             # Treat buy cost as "deposits" and sell proceeds as "withdrawals"
@@ -268,7 +328,7 @@ class PerformanceService:
             total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'deposit')
             total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'withdrawal')
         net_invested = total_deposits - total_withdrawals
-        current_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
+        current_value = self._values(portfolio_id, user_id, {end}, cache)[end]
 
         period_days = max((end - start).days, 1)
         return PerformanceSummary(
@@ -293,17 +353,16 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[TWRTimeseriesPoint]:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
+        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
 
         cf_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
             cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
-        values = self.repo.get_portfolio_values_in_range(
-            portfolio_id, user_id, self._days_between(start, end)
-        )
+        values = self._values(portfolio_id, user_id, self._days_between(start, end), cache)
 
         points: list[TWRTimeseriesPoint] = []
         cumulative = 1.0
@@ -343,18 +402,17 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[GainTimeseriesPoint]:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         # Fallback already returns deposit/withdrawal or buy/sell only
-        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
 
         cf_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
             cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
-        values = self.repo.get_portfolio_values_in_range(
-            portfolio_id, user_id, self._days_between(start, end)
-        )
+        values = self._values(portfolio_id, user_id, self._days_between(start, end), cache)
 
         points: list[GainTimeseriesPoint] = []
         cumulative_invested = 0.0
@@ -382,7 +440,8 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[MWRTimeseriesPoint]:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         period_days = (end - start).days
 
         # Weekly sampling for periods > 365 days to limit IRR solves
@@ -392,10 +451,10 @@ class PerformanceService:
             step = 1
 
         # Pre-fetch all cashflows once (with buy/sell fallback)
-        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
         # Same dates the cursor walk below visits, plus the tail point at 'end'.
-        values = self.repo.get_portfolio_values_in_range(
-            portfolio_id, user_id, set(self._days_between(start, end, step)) | {end}
+        values = self._values(
+            portfolio_id, user_id, set(self._days_between(start, end, step)) | {end}, cache
         )
         start_value = values[start]
 
@@ -475,6 +534,8 @@ class PerformanceService:
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
+        *,
+        cache: _LookupCache | None = None,
     ) -> tuple[list[dict], list[dict]]:
         """Single-pass computation of daily TWR series and monthly returns.
 
@@ -483,17 +544,16 @@ class PerformanceService:
             - daily_series: [{'date': date, 'cumulative_twr': float, 'portfolio_value': float}, ...]
             - monthly_returns: [{'year': int, 'month': int, 'return_pct': float}, ...]
         """
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
+        cache = cache if cache is not None else _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
+        cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
 
         cf_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
             cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
-        values = self.repo.get_portfolio_values_in_range(
-            portfolio_id, user_id, self._days_between(start, end)
-        )
+        values = self._values(portfolio_id, user_id, self._days_between(start, end), cache)
 
         daily_series: list[dict] = []
         cumulative = 1.0
@@ -557,8 +617,9 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> MonthlyReturnsResponse:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
+        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
         # Compute yearly returns by chaining monthly
         yearly_acc: dict[int, float] = {}
@@ -585,8 +646,9 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> DrawdownResponse:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        daily, _ = self._build_monthly_returns(portfolio_id, user_id, start, end)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
+        daily, _ = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
         peak = 0.0
         peak_date: date | None = None
@@ -639,8 +701,9 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> RollingWindowsResponse:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
+        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
         points: list[RollingWindowPoint] = []
 
@@ -696,8 +759,9 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> HallOfFameResponse:
-        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date)
-        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end)
+        cache = _LookupCache()
+        start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
+        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
         # Monthly ranking
         month_entries = [
@@ -745,8 +809,11 @@ class PerformanceService:
         user_id: str,
         start_date: date | None,
         end_date: date | None,
+        *,
+        cache: _LookupCache | None = None,
     ) -> tuple[date, date]:
-        portfolio_start = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
+        cache = cache if cache is not None else _LookupCache()
+        portfolio_start = self._inception_date(portfolio_id, user_id, cache)
         end = end_date or date.today()
         start = start_date or portfolio_start
 
@@ -758,10 +825,13 @@ class PerformanceService:
 
         return start, end
 
-    def _resolve_period_range(self, portfolio_id: int, user_id: str, period: str) -> tuple[date, date]:
+    def _resolve_period_range(
+        self, portfolio_id: int, user_id: str, period: str, *, cache: _LookupCache | None = None,
+    ) -> tuple[date, date]:
+        cache = cache if cache is not None else _LookupCache()
         period_key = (period or '').lower().strip()
         end = date.today()
-        portfolio_start = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
+        portfolio_start = self._inception_date(portfolio_id, user_id, cache)
 
         if period_key == 'ytd':
             start = date(end.year, 1, 1)
