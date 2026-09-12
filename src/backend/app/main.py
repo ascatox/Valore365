@@ -5,6 +5,8 @@ import math
 from contextlib import asynccontextmanager
 from typing import Any
 
+import anyio.to_thread
+
 from fastapi import Depends, FastAPI, Request, APIRouter
 from sqlalchemy import text
 from fastapi.exceptions import RequestValidationError
@@ -144,6 +146,9 @@ def _apply_pending_migrations():
 async def lifespan(_: FastAPI):
     if settings.app_env != "dev" and not settings.clerk_auth_enabled:
         raise RuntimeError("Refusing to start with Clerk auth disabled outside dev")
+    # Keep the sync-handler threadpool no wider than the connection pool, so a burst
+    # queues for a thread instead of piling up on db_pool_timeout and failing.
+    anyio.to_thread.current_default_thread_limiter().total_tokens = settings.request_threadpool_size
     _apply_pending_migrations()
     scheduler.start()
     try:

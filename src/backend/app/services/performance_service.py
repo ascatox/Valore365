@@ -47,6 +47,15 @@ class PerformanceService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
 
+    @staticmethod
+    def _days_between(start: date, end: date, step: int = 1) -> list[date]:
+        days: list[date] = []
+        cursor = start
+        while cursor <= end:
+            days.append(cursor)
+            cursor += timedelta(days=step)
+        return days
+
     def _get_cashflows_with_fallback(
         self,
         portfolio_id: int,
@@ -98,7 +107,16 @@ class PerformanceService:
             day = date.fromisoformat(cf.date)
             cashflow_by_day[day] = cashflow_by_day.get(day, 0.0) + float(cf.amount)
 
-        start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+        # One valuation query for every day this calculation can touch: the start,
+        # the end, and every cashflow day in between (which covers both the
+        # subperiod loop below and the start day it may move to).
+        values = self.repo.get_portfolio_values_in_range(
+            portfolio_id,
+            user_id,
+            {start, end} | {d for d in cashflow_by_day if start <= d <= end},
+        )
+
+        start_value = values[start]
 
         if start_value <= 0:
             first_positive_cf_day = next(
@@ -108,7 +126,7 @@ class PerformanceService:
             if first_positive_cf_day is not None:
                 start = first_positive_cf_day
                 period_days = max((end - start).days, 1)
-                start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+                start_value = values[start]
 
         if start_value <= 0:
             return TWRResult(
@@ -124,7 +142,7 @@ class PerformanceService:
         subperiod_start_value = start_value
 
         for day in event_days + [end]:
-            end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, day)
+            end_value = values[day]
             cf_amount = cashflow_by_day.get(day, 0.0) if day in event_days else 0.0
             if subperiod_start_value > 0:
                 r_i = (end_value - subperiod_start_value - cf_amount) / subperiod_start_value
@@ -155,8 +173,9 @@ class PerformanceService:
         period_days = max((end - start).days, 1)
 
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
-        start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
-        end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
+        values = self.repo.get_portfolio_values_in_range(portfolio_id, user_id, {start, end})
+        start_value = values[start]
+        end_value = values[end]
 
         if start_value == 0 and not cashflows and end_value == 0:
             return MWRResult(
@@ -282,11 +301,9 @@ class PerformanceService:
             day = date.fromisoformat(cf.date)
             cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
-        values: dict[date, float] = {}
-        cursor = start
-        while cursor <= end:
-            values[cursor] = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
-            cursor += timedelta(days=1)
+        values = self.repo.get_portfolio_values_in_range(
+            portfolio_id, user_id, self._days_between(start, end)
+        )
 
         points: list[TWRTimeseriesPoint] = []
         cumulative = 1.0
@@ -335,12 +352,16 @@ class PerformanceService:
             day = date.fromisoformat(cf.date)
             cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
+        values = self.repo.get_portfolio_values_in_range(
+            portfolio_id, user_id, self._days_between(start, end)
+        )
+
         points: list[GainTimeseriesPoint] = []
         cumulative_invested = 0.0
         cursor = start
         while cursor <= end:
             cumulative_invested += cf_by_day.get(cursor, 0.0)
-            pv = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+            pv = values[cursor]
             gain = pv - cumulative_invested
             points.append(
                 GainTimeseriesPoint(
@@ -372,7 +393,11 @@ class PerformanceService:
 
         # Pre-fetch all cashflows once (with buy/sell fallback)
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end)
-        start_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+        # Same dates the cursor walk below visits, plus the tail point at 'end'.
+        values = self.repo.get_portfolio_values_in_range(
+            portfolio_id, user_id, set(self._days_between(start, end, step)) | {end}
+        )
+        start_value = values[start]
 
         # Pre-compute cashflow list with day offsets; flows dated on/before
         # start are already inside start_value.
@@ -390,7 +415,7 @@ class PerformanceService:
         cursor = start + timedelta(days=step)
         while cursor <= end:
             cursor_days = float((cursor - start).days)
-            cursor_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+            cursor_value = values[cursor]
 
             # Build flows for start..cursor
             flows: list[tuple[float, float]] = []
@@ -417,7 +442,7 @@ class PerformanceService:
         # Ensure the last point is exactly 'end' if we didn't land on it
         if points[-1].date != end.isoformat():
             cursor_days = float((end - start).days)
-            end_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, end)
+            end_value = values[end]
             flows = []
             if start_value != 0:
                 flows.append((0.0, -float(start_value)))
@@ -466,9 +491,13 @@ class PerformanceService:
             day = date.fromisoformat(cf.date)
             cf_by_day[day] = cf_by_day.get(day, 0.0) + float(cf.amount)
 
+        values = self.repo.get_portfolio_values_in_range(
+            portfolio_id, user_id, self._days_between(start, end)
+        )
+
         daily_series: list[dict] = []
         cumulative = 1.0
-        prev_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, start)
+        prev_value = values[start]
         daily_series.append({'date': start, 'cumulative_twr': cumulative, 'portfolio_value': prev_value})
 
         # Track month boundaries for monthly returns
@@ -478,7 +507,7 @@ class PerformanceService:
 
         cursor = start + timedelta(days=1)
         while cursor <= end:
-            curr_value = self.repo.get_portfolio_value_at_date(portfolio_id, user_id, cursor)
+            curr_value = values[cursor]
             cf_amount = float(cf_by_day.get(cursor, 0.0))
 
             if prev_value > 0:

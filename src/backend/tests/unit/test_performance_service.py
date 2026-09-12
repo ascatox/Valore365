@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 from app.models import CashFlowEntry
 from app.services.performance_service import PerformanceService
@@ -18,6 +18,7 @@ class _FakeRepo:
         # First transaction date; falls back to the record creation date,
         # like the repository does for portfolios with no transactions.
         self.inception = inception
+        self.batch_calls = 0
 
     def get_portfolio_created_date(self, portfolio_id: int, user_id: str) -> date:
         return self.created
@@ -38,6 +39,10 @@ class _FakeRepo:
 
     def get_portfolio_value_at_date(self, portfolio_id: int, user_id: str, target_date: date) -> float:
         return float(self.values.get(target_date, 0.0))
+
+    def get_portfolio_values_in_range(self, portfolio_id: int, user_id: str, target_dates) -> dict[date, float]:
+        self.batch_calls += 1
+        return {d: float(self.values.get(d, 0.0)) for d in target_dates}
 
 
 def test_performance_starts_at_first_transaction_not_record_creation():
@@ -379,3 +384,86 @@ def test_rolling_windows_exposes_cagr_volatility_and_sharpe():
     assert point.cagr_pct is not None and point.cagr_pct > 0
     assert point.volatility_pct is not None and point.volatility_pct > 0
     assert point.sharpe_ratio is not None and point.sharpe_ratio > 0
+
+
+class _CountingRepo(_FakeRepo):
+    """Fails loudly if anything falls back to one valuation query per day."""
+
+    def get_portfolio_value_at_date(self, portfolio_id: int, user_id: str, target_date: date) -> float:
+        raise AssertionError(
+            "per-date valuation is an N+1: one connection checkout per day drained "
+            "the pool in production. Use get_portfolio_values_in_range instead."
+        )
+
+
+def _counting_repo(start: date, end: date) -> _CountingRepo:
+    values = {}
+    cursor = start
+    day = 0
+    while cursor <= end:
+        values[cursor] = 1000.0 + day
+        cursor += timedelta(days=1)
+        day += 1
+    return _CountingRepo(created=start, values=values)
+
+
+def test_twr_timeseries_makes_one_batch_call_for_a_long_range():
+    start, end = date(2025, 1, 1), date(2026, 2, 4)
+    repo = _counting_repo(start, end)
+    service = PerformanceService(repo)
+
+    points = service.get_twr_timeseries(1, 'u', start_date=start, end_date=end)
+
+    assert len(points) == 400
+    assert repo.batch_calls == 1
+
+
+def test_gain_timeseries_makes_one_batch_call_for_a_long_range():
+    start, end = date(2025, 1, 1), date(2026, 2, 4)
+    repo = _counting_repo(start, end)
+    service = PerformanceService(repo)
+
+    points = service.get_gain_timeseries(1, 'u', start_date=start, end_date=end)
+
+    assert len(points) == 400
+    assert repo.batch_calls == 1
+
+
+def test_drawdown_makes_one_batch_call_for_a_long_range():
+    # get_drawdown, get_monthly_returns, get_rolling_windows and get_hall_of_fame
+    # all run through _build_monthly_returns, so this covers the daily loop for all four.
+    start, end = date(2025, 1, 1), date(2026, 2, 4)
+    repo = _counting_repo(start, end)
+    service = PerformanceService(repo)
+
+    drawdown = service.get_drawdown(1, 'u', start_date=start, end_date=end)
+
+    assert len(drawdown.points) == 400
+    assert repo.batch_calls == 1
+
+
+def test_mwr_timeseries_makes_one_batch_call_for_a_long_range():
+    start, end = date(2025, 1, 1), date(2026, 2, 4)
+    repo = _counting_repo(start, end)
+    service = PerformanceService(repo)
+
+    points = service.get_mwr_timeseries(1, 'u', start_date=start, end_date=end)
+
+    assert len(points) > 1
+    assert repo.batch_calls == 1
+
+
+def test_twr_calculation_batches_its_cashflow_day_valuations():
+    start, end = date(2025, 1, 1), date(2026, 2, 4)
+    repo = _counting_repo(start, end)
+    repo.cashflows = [
+        CashFlowEntry(date=date(2025, 3, 1).isoformat(), side='deposit', amount=500.0),
+        CashFlowEntry(date=date(2025, 7, 1).isoformat(), side='deposit', amount=250.0),
+        CashFlowEntry(date=date(2025, 11, 1).isoformat(), side='withdrawal', amount=-100.0),
+    ]
+    service = PerformanceService(repo)
+
+    twr = service.calculate_twr(1, 'u', start, end)
+
+    assert twr.start_date == start.isoformat()
+    assert repo.batch_calls == 1

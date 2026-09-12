@@ -10,6 +10,20 @@ class Settings(BaseSettings):
     app_env: str = 'dev'
     database_url: str = 'postgresql+psycopg://postgres:postgres@localhost:5432/valore365'
 
+    # Connection pool. The app runs as a single uvicorn process (see render.yaml),
+    # so pool_size + max_overflow is the whole application's connection budget and
+    # must stay within the limit of the Postgres pooler in front of it.
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 30
+    # Recycle before the pooler reaps idle server-side connections, so a stale
+    # connection is replaced on a schedule rather than discovered by pool_pre_ping.
+    db_pool_recycle: int = 1800
+    # Caps the threads that can contend for a connection. Route handlers are sync
+    # 'def', so they run in Starlette's threadpool (40 by default): without a cap,
+    # threads beyond the pool size just queue on db_pool_timeout and then fail.
+    request_threadpool_size: int = 24
+
     @property
     def database_url_resolved(self) -> str:
         """Normalize DATABASE_URL to always use the psycopg3 driver."""

@@ -1,5 +1,6 @@
 from bisect import bisect_right
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import date, datetime
 
 from sqlalchemy import Date, bindparam, text
@@ -331,6 +332,27 @@ class TransactionsMixin:
         return out
 
     def get_portfolio_value_at_date(self, portfolio_id: int, user_id: str, target_date: date) -> float:
+        return self.get_portfolio_values_in_range(portfolio_id, user_id, [target_date])[target_date]
+
+    def get_portfolio_values_in_range(
+        self, portfolio_id: int, user_id: str, target_dates: Iterable[date]
+    ) -> dict[date, float]:
+        """Value the portfolio on many dates using a single connection.
+
+        Valuing one day at a time meant one pool checkout and four queries per
+        day, so a full-history timeseries drained the connection pool. The
+        transaction/price/FX history needed for the last requested day is a
+        superset of every earlier day's, so it is fetched once here and folded
+        forward: holdings and cash accumulate across an ascending walk, and each
+        day picks its prices with the same bisect used for a single date.
+        """
+        wanted = sorted({d for d in target_dates})
+        if not wanted:
+            return {}
+        max_date = wanted[-1]
+        # Snapshot once: a series must not straddle midnight halfway through.
+        today = date.today()
+
         with self.engine.begin() as conn:
             portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
@@ -354,13 +376,12 @@ class TransactionsMixin:
                     order by trade_at asc, id asc
                     """
                 ),
-                {"portfolio_id": portfolio_id, "target_date": target_date},
+                {"portfolio_id": portfolio_id, "target_date": max_date},
             ).mappings().all()
 
             if not tx_rows:
-                if target_date >= date.today():
-                    return round(float(portfolio.cash_balance), 2)
-                return 0.0
+                empty_value = round(float(portfolio.cash_balance), 2)
+                return {d: (empty_value if d >= today else 0.0) for d in wanted}
 
             asset_ids = sorted({int(r["asset_id"]) for r in tx_rows if r["asset_id"] is not None})
             asset_meta = self._get_asset_meta(conn, asset_ids) if asset_ids else {}
@@ -377,7 +398,7 @@ class TransactionsMixin:
                         order by asset_id asc, price_date asc
                         """
                     ),
-                    {"asset_ids": asset_ids, "target_date": target_date},
+                    {"asset_ids": asset_ids, "target_date": max_date},
                 ).mappings().all()
 
             fx_needed = sorted(
@@ -405,7 +426,7 @@ class TransactionsMixin:
                         order by from_ccy asc, price_date asc
                         """
                     ),
-                    {"from_ccy": fx_needed, "to_ccy": base_ccy, "target_date": target_date},
+                    {"from_ccy": fx_needed, "to_ccy": base_ccy, "target_date": max_date},
                 ).mappings().all()
 
         fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
@@ -427,35 +448,6 @@ class TransactionsMixin:
                 return 1.0
             return series[idx][1]
 
-        holdings: dict[int, float] = defaultdict(float)
-        cash_balance = 0.0
-
-        for row in tx_rows:
-            side = str(row["side"])
-            qty = float(row["quantity"])
-            price = float(row["price"])
-            fees = float(row["fees"])
-            taxes = float(row["taxes"])
-            trade_day = row["trade_date"]
-            trade_ccy = str(row["trade_currency"])
-            fx = fx_rate_on_or_before(trade_ccy, trade_day)
-            amount_base = qty * price * fx
-
-            if side == "buy":
-                aid = row["asset_id"]
-                if aid is None:
-                    continue
-                holdings[int(aid)] += qty
-            elif side == "sell":
-                aid = row["asset_id"]
-                if aid is None:
-                    continue
-                holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
-            elif side in {"deposit", "dividend", "interest"}:
-                cash_balance += amount_base
-            elif side in {"withdrawal", "fee"}:
-                cash_balance -= amount_base
-
         price_series: dict[int, list[tuple[date, float]]] = defaultdict(list)
         for row in price_rows:
             aid = int(row["asset_id"])
@@ -464,25 +456,68 @@ class TransactionsMixin:
                 price_series[aid].append((row["price_date"], px))
         price_dates = {aid: [d for d, _ in series] for aid, series in price_series.items()}
 
-        total_assets_value = 0.0
-        for aid, qty in holdings.items():
-            if qty <= 0:
-                continue
-            series = price_series.get(aid)
-            dates = price_dates.get(aid)
-            if not series or not dates:
-                continue
-            idx = bisect_right(dates, target_date) - 1
-            if idx < 0:
-                continue
-            px_day, px = series[idx]
-            meta = asset_meta.get(aid)
-            if meta is None:
-                continue
-            fx = fx_rate_on_or_before(meta.quote_currency, px_day)
-            total_assets_value += qty * px * fx
+        holdings: dict[int, float] = defaultdict(float)
+        cash_balance = 0.0
+        applied = 0
+        values: dict[date, float] = {}
 
-        return round(cash_balance + total_assets_value, 2)
+        for target_date in wanted:
+            # Fold in every transaction up to this day; rows are ordered by
+            # (trade_at, id), so the running state matches a fresh fold over the
+            # same prefix, sell clamping included.
+            while applied < len(tx_rows) and tx_rows[applied]["trade_date"] <= target_date:
+                row = tx_rows[applied]
+                applied += 1
+                side = str(row["side"])
+                qty = float(row["quantity"])
+                price = float(row["price"])
+                trade_day = row["trade_date"]
+                trade_ccy = str(row["trade_currency"])
+                fx = fx_rate_on_or_before(trade_ccy, trade_day)
+                amount_base = qty * price * fx
+
+                if side == "buy":
+                    aid = row["asset_id"]
+                    if aid is None:
+                        continue
+                    holdings[int(aid)] += qty
+                elif side == "sell":
+                    aid = row["asset_id"]
+                    if aid is None:
+                        continue
+                    holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
+                elif side in {"deposit", "dividend", "interest"}:
+                    cash_balance += amount_base
+                elif side in {"withdrawal", "fee"}:
+                    cash_balance -= amount_base
+
+            if applied == 0:
+                # No transaction on or before this day: same answer the
+                # single-date query gives when it finds no rows at all.
+                values[target_date] = round(float(portfolio.cash_balance), 2) if target_date >= today else 0.0
+                continue
+
+            total_assets_value = 0.0
+            for aid, qty in holdings.items():
+                if qty <= 0:
+                    continue
+                series = price_series.get(aid)
+                dates = price_dates.get(aid)
+                if not series or not dates:
+                    continue
+                idx = bisect_right(dates, target_date) - 1
+                if idx < 0:
+                    continue
+                px_day, px = series[idx]
+                meta = asset_meta.get(aid)
+                if meta is None:
+                    continue
+                fx = fx_rate_on_or_before(meta.quote_currency, px_day)
+                total_assets_value += qty * px * fx
+
+            values[target_date] = round(cash_balance + total_assets_value, 2)
+
+        return values
 
     def update_transaction(self, transaction_id: int, payload: TransactionUpdate, user_id: str) -> TransactionRead:
         updates = payload.model_dump(exclude_unset=True)
