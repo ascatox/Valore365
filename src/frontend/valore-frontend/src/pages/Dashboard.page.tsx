@@ -22,16 +22,22 @@ import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
 import { PerformanceMetrics } from '../components/dashboard/analysis/PerformanceMetrics';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { formatDateTime } from '../components/dashboard/formatters';
-import { DASHBOARD_WINDOWS, STORAGE_KEYS } from '../components/dashboard/constants';
+import { DASHBOARD_WINDOWS, SHOW_ANALISI_TAB, STORAGE_KEYS } from '../components/dashboard/constants';
 
 import { getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 
-export function DashboardPage() {
-  const DASHBOARD_TABS = ['panoramica', 'posizioni', 'analisi', 'mercati', 'performance'] as const;
+const DASHBOARD_TABS: string[] = [
+  'panoramica',
+  'posizioni',
+  ...(SHOW_ANALISI_TAB ? ['analisi'] : []),
+  'mercati',
+  'performance',
+];
 
+export function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
 
@@ -50,7 +56,7 @@ export function DashboardPage() {
   const [activeTab, setActiveTab] = useState<string | null>(() => {
     if (typeof window === 'undefined') return 'panoramica';
     const stored = window.localStorage.getItem(STORAGE_KEYS.activeTab);
-    return stored && DASHBOARD_TABS.includes(stored as (typeof DASHBOARD_TABS)[number]) ? stored : 'panoramica';
+    return stored && DASHBOARD_TABS.includes(stored) ? stored : 'panoramica';
   });
 
   const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
@@ -99,7 +105,7 @@ export function DashboardPage() {
   const mobileTabItems = [
     { value: 'panoramica', label: 'Home', icon: IconChartPie },
     { value: 'posizioni', label: 'Posizioni', icon: IconList },
-    { value: 'analisi', label: 'Analisi', icon: IconChartBar },
+    ...(SHOW_ANALISI_TAB ? [{ value: 'analisi', label: 'Analisi', icon: IconChartBar }] : []),
     { value: 'mercati', label: 'Mercati', icon: IconWorld },
     { value: 'performance', label: 'Perf.', icon: IconPercentage },
   ];
@@ -202,9 +208,11 @@ export function DashboardPage() {
             <Tabs.Tab value="posizioni" leftSection={<IconList size={16} />}>
               <Text span>Posizioni</Text>
             </Tabs.Tab>
-            <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
-              <Text span>Analisi</Text>
-            </Tabs.Tab>
+            {SHOW_ANALISI_TAB && (
+              <Tabs.Tab value="analisi" leftSection={<IconChartBar size={16} />}>
+                <Text span>Analisi</Text>
+              </Tabs.Tab>
+            )}
             <Tabs.Tab value="mercati" leftSection={<IconWorld size={16} />}>
               <Text span>Mercati</Text>
             </Tabs.Tab>
@@ -223,9 +231,11 @@ export function DashboardPage() {
             <PosizioniTab portfolioId={portfolioId} />
           </Tabs.Panel>
 
-          <Tabs.Panel value="analisi">
-            <AnalisiTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
-          </Tabs.Panel>
+          {SHOW_ANALISI_TAB && (
+            <Tabs.Panel value="analisi">
+              <AnalisiTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
+            </Tabs.Panel>
+          )}
 
           <Tabs.Panel value="mercati">
             <MercatiTab />

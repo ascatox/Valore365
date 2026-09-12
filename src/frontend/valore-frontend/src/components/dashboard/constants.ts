@@ -1,3 +1,8 @@
+// Il tab "Analisi" della Dashboard è nascosto: il codice di AnalisiTab e della
+// sua catena di hook/endpoint resta nel repo, basta rimettere questo flag a
+// true per riattivare tab desktop, voce mobile e panel.
+export const SHOW_ANALISI_TAB: boolean = false;
+
 export const ALLOCATION_COLORS = [
   '#228be6', '#15aabf', '#12b886', '#82c91e', '#fab005', '#fd7e14', '#e64980',
   '#7950f2', '#4c6ef5', '#20c997',
