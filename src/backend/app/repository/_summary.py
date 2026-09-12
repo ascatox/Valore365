@@ -293,6 +293,12 @@ class SummaryMixin:
                 for r in fx_rows:
                     fx_rate_map[str(r["from_ccy"])] = float(r["rate"])
 
+        # Read the cash balance before the network fan-out below. Asking for a
+        # connection after ~60s of blocking yfinance calls meant competing for
+        # the pool at the worst possible moment, and that checkout is what used
+        # to burn the full pool timeout and fail the request.
+        cash = self.get_current_cash_balance_value(portfolio_id, user_id)
+
         # Fetch intraday bars in parallel
         _log = logging.getLogger(__name__)
         bars_by_asset: dict[int, list] = {}
@@ -322,31 +328,29 @@ class SummaryMixin:
                 all_timestamps.add(bar.ts)
         sorted_ts = sorted(all_timestamps)
 
-        # For each timestamp, compute portfolio market value
-        # Build price lookup: asset_id -> {ts: close}
-        price_lookup: dict[int, dict[datetime, float]] = defaultdict(dict)
+        # For each timestamp, compute portfolio market value.
+        # Sort each asset's bars once: looking up "this timestamp's price, or the
+        # latest before it" used to re-sort the whole series inside the innermost
+        # loop, on every miss.
+        asset_ts: dict[int, list[datetime]] = {}
+        asset_close: dict[int, list[float]] = {}
         for aid, bars in bars_by_asset.items():
-            for bar in bars:
-                price_lookup[aid][bar.ts] = bar.close
+            ordered = sorted(bars, key=lambda bar: bar.ts)
+            asset_ts[aid] = [bar.ts for bar in ordered]
+            asset_close[aid] = [bar.close for bar in ordered]
 
-        cash = self.get_current_cash_balance_value(portfolio_id, user_id)
         points: list[IntradayTimeseriesPoint] = []
 
         for ts in sorted_ts:
             mv = cash
             for aid, qty in holdings.items():
-                prices = price_lookup.get(aid)
-                if not prices:
+                timestamps = asset_ts.get(aid)
+                if not timestamps:
                     continue
-                # Use this timestamp's price, or the latest available before it
-                close = prices.get(ts)
-                if close is None:
-                    # Find closest earlier timestamp for this asset
-                    earlier = [t for t in sorted(prices.keys()) if t <= ts]
-                    if earlier:
-                        close = prices[earlier[-1]]
-                    else:
-                        continue
+                idx = bisect_right(timestamps, ts) - 1
+                if idx < 0:
+                    continue
+                close = asset_close[aid][idx]
                 meta = asset_meta.get(aid)
                 fx = 1.0
                 if meta and meta.quote_currency != base_ccy:

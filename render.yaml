@@ -11,6 +11,16 @@ services:
         value: prod
       - key: DATABASE_URL
         sync: false
+      - key: DB_POOL_SIZE
+        value: "10"
+      - key: DB_MAX_OVERFLOW
+        value: "20"
+      - key: DB_POOL_TIMEOUT
+        value: "30"
+      - key: DB_POOL_RECYCLE
+        value: "1800"
+      - key: REQUEST_THREADPOOL_SIZE
+        value: "24"
       - key: FINANCE_PROVIDER
         value: yfinance
       - key: FINANCE_API_BASE_URL
