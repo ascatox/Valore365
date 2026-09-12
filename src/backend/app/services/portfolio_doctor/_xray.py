@@ -1,4 +1,6 @@
 import logging
+import threading
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -12,6 +14,67 @@ from ...schemas.portfolio_doctor import (
 from ._holdings import AnalyzedHolding, _load_holdings
 
 logger = logging.getLogger(__name__)
+
+# A fund's constituents change quarterly at best, so an hour is conservative.
+_TOP_HOLDINGS_TTL_SECONDS = 3600.0
+_TOP_HOLDINGS_MAX_ENTRIES = 2048
+
+
+class _TopHoldingsCache:
+    """Expiring per-symbol cache of ETF constituents, negatives included.
+
+    Yahoo was asked about every non-cash holding on every /xray request, and
+    the answer for anything that is not a fund is an empty list — re-fetched
+    forever. Entries are shared process-wide because they are market data, not
+    per-user data, and a per-symbol lock keeps a burst to one fetch each.
+    """
+
+    def __init__(self, ttl_seconds: float, max_entries: int) -> None:
+        self.ttl = ttl_seconds
+        self.max_entries = max_entries
+        self._entries: dict[str, tuple[float, list]] = {}
+        self._locks: dict[str, threading.Lock] = {}
+        self._guard = threading.Lock()
+
+    def _lock_for(self, symbol: str) -> threading.Lock:
+        with self._guard:
+            return self._locks.setdefault(symbol, threading.Lock())
+
+    def get_or_fetch(self, symbol: str, fetch) -> list:
+        now = time.monotonic()
+        with self._guard:
+            entry = self._entries.get(symbol)
+            if entry is not None and now - entry[0] < self.ttl:
+                return entry[1]
+
+        with self._lock_for(symbol):
+            # Another thread may have filled this slot while we queued.
+            now = time.monotonic()
+            with self._guard:
+                entry = self._entries.get(symbol)
+                if entry is not None and now - entry[0] < self.ttl:
+                    return entry[1]
+
+            result = fetch()
+
+            with self._guard:
+                for stale in [s for s, (at, _) in self._entries.items() if now - at >= self.ttl]:
+                    self._entries.pop(stale, None)
+                    self._locks.pop(stale, None)
+                while len(self._entries) >= self.max_entries:
+                    oldest = next(iter(self._entries))
+                    self._entries.pop(oldest, None)
+                    self._locks.pop(oldest, None)
+                self._entries[symbol] = (time.monotonic(), result)
+            return result
+
+    def clear(self) -> None:
+        with self._guard:
+            self._entries.clear()
+            self._locks.clear()
+
+
+_top_holdings_cache = _TopHoldingsCache(_TOP_HOLDINGS_TTL_SECONDS, _TOP_HOLDINGS_MAX_ENTRIES)
 
 
 def _resolve_isin_for_holding(repo: PortfolioRepository, holding: AnalyzedHolding) -> str | None:
@@ -78,14 +141,17 @@ def compute_portfolio_xray(
             except Exception as exc:
                 logger.debug("Auto-enrich failed for %s (ISIN %s): %s", h.symbol, isin, exc)
 
-    # Resolve provider symbols
+    # Resolve provider symbols in one query rather than one connection per asset.
     provider_symbols: dict[int, str] = {}
+    try:
+        resolved = repo.get_asset_pricing_symbols(
+            [h.asset_id for h in candidates], provider="yfinance"
+        )
+    except Exception:
+        resolved = {}
     for h in candidates:
-        try:
-            pricing = repo.get_asset_pricing_symbol(h.asset_id, provider="yfinance")
-            provider_symbols[h.asset_id] = pricing.provider_symbol
-        except Exception:
-            provider_symbols[h.asset_id] = h.symbol
+        pricing = resolved.get(h.asset_id)
+        provider_symbols[h.asset_id] = pricing.provider_symbol if pricing else h.symbol
 
     # Fetch holdings for each candidate using ThreadPoolExecutor
     # Skip candidates that already have justETF enrichment holdings
@@ -93,8 +159,14 @@ def compute_portfolio_xray(
     yfinance_failures: dict[int, str] = {}
     needs_yfinance = [h for h in candidates if h.asset_id not in enrichment_map or not enrichment_map[h.asset_id].get("top_holdings")]
 
+    # Every non-cash holding is treated as a fund candidate, so without a cache
+    # a portfolio of ordinary shares re-asks Yahoo about every one of them on
+    # every request and gets the same empty answer each time. The cache keeps
+    # those empty answers too, which is the whole point.
     def fetch_one(asset_id: int, symbol: str):
-        return asset_id, finance_client.get_etf_top_holdings(symbol)
+        return asset_id, _top_holdings_cache.get_or_fetch(
+            symbol, lambda: finance_client.get_etf_top_holdings(symbol)
+        )
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {
