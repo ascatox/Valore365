@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     # threads beyond the pool size just queue on db_pool_timeout and then fail.
     request_threadpool_size: int = 24
 
+    # The performance screen is backed by eight endpoints that all resolve the
+    # same window, so their lookups are shared per (user, portfolio) for this
+    # long. Prices refresh on price_scheduler_interval_seconds, so keep this
+    # well under it. Set to 0 to recompute on every request.
+    performance_cache_ttl_seconds: float = 30.0
+
     @property
     def database_url_resolved(self) -> str:
         """Normalize DATABASE_URL to always use the psycopg3 driver."""
