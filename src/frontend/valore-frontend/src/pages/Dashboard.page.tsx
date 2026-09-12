@@ -175,6 +175,13 @@ export function DashboardPage() {
         value={activeTab}
         onChange={handleTabChange}
         variant="default"
+        // Mantine keeps inactive panels mounted by default, so every tab's
+        // queries fired on first paint: one dashboard load asked the API for
+        // all five tabs at once, xray and the eight performance endpoints
+        // included, whichever tab the user was actually looking at. Only the
+        // visible tab should fetch; react-query's 60s staleTime serves the
+        // others from cache when they are opened.
+        keepMounted={false}
       >
         {!isMobile && (
           <Tabs.List
