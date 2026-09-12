@@ -23,6 +23,8 @@ from ..models import (
     RollingWindowsResponse,
     TWRResult,
     TWRTimeseriesPoint,
+    YearlyPerformanceResponse,
+    YearlyPerformanceRow,
     YearlyReturnItem,
 )
 from ..config import get_settings
@@ -51,7 +53,7 @@ _PERIOD_TO_DAYS: dict[str, int] = {
 class _LookupCache:
     """Memo for repository reads that repeat across one portfolio's analytics.
 
-    Eight endpoints back the performance screen and each resolves the same
+    Several endpoints back the performance screen and each resolves the same
     window, so without sharing they each re-read the inception date, the same
     cashflows, and the same daily valuation series — the last of which re-reads
     the entire price and FX history every time.
@@ -678,6 +680,42 @@ class PerformanceService:
 
         return daily_series, monthly_returns
 
+    @staticmethod
+    def _yearly_twr_from_daily(daily_series: list[dict]) -> dict[int, float]:
+        """Anno -> TWR di periodo (%), dal rapporto dei cumulati a fine anno.
+
+        Stessa logica dei bucket mensili di _build_monthly_returns applicata ai
+        confini d'anno: il prodotto dei rendimenti annui telescopizza esattamente
+        nel TWR totale della finestra, senza l'arrotondamento intermedio dei
+        mensili. Unica definizione usata da heatmap, hall of fame e tabella annuale.
+        """
+        if not daily_series:
+            return {}
+
+        yearly_returns: dict[int, float] = {}
+        year_start_cum = daily_series[0]['cumulative_twr']
+        current_year = daily_series[0]['date'].year
+
+        for i in range(1, len(daily_series)):
+            cursor_year = daily_series[i]['date'].year
+            if cursor_year != current_year:
+                if year_start_cum > 0:
+                    year_return = (daily_series[i - 1]['cumulative_twr'] / year_start_cum - 1.0) * 100.0
+                else:
+                    year_return = 0.0
+                yearly_returns[current_year] = round(year_return, 4)
+                year_start_cum = daily_series[i - 1]['cumulative_twr']
+                current_year = cursor_year
+
+        # Close final (partial) year
+        if year_start_cum > 0:
+            year_return = (daily_series[-1]['cumulative_twr'] / year_start_cum - 1.0) * 100.0
+        else:
+            year_return = 0.0
+        yearly_returns[current_year] = round(year_return, 4)
+
+        return yearly_returns
+
     def get_monthly_returns(
         self,
         portfolio_id: int,
@@ -687,16 +725,11 @@ class PerformanceService:
     ) -> MonthlyReturnsResponse:
         cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
-        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
+        daily, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
-        # Compute yearly returns by chaining monthly
-        yearly_acc: dict[int, float] = {}
-        for m in monthly:
-            yearly_acc.setdefault(m['year'], 1.0)
-            yearly_acc[m['year']] *= 1.0 + m['return_pct'] / 100.0
+        twr_by_year = self._yearly_twr_from_daily(daily)
         yearly_returns = [
-            YearlyReturnItem(year=y, return_pct=round((v - 1.0) * 100.0, 4))
-            for y, v in sorted(yearly_acc.items())
+            YearlyReturnItem(year=y, return_pct=v) for y, v in sorted(twr_by_year.items())
         ]
 
         return MonthlyReturnsResponse(
@@ -705,6 +738,142 @@ class PerformanceService:
             yearly_returns=yearly_returns,
             start_date=start.isoformat(),
             end_date=end.isoformat(),
+        )
+
+    def get_yearly_returns(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        *,
+        cache: _LookupCache | None = None,
+    ) -> YearlyPerformanceResponse:
+        """TWR e MWR per anno civile su tutta la storia del portafoglio.
+
+        Indipendente dal selettore di periodo: nessun start_date/end_date. Ogni
+        anno Y va dalla chiusura dell'anno precedente (o dall'inception per il
+        primo anno) a min(31 dicembre Y, oggi) — vedi Step 1.1 del piano: con
+        l'ancoraggio al 1 gennaio le righe non ricomporrebbero il TWR totale, i
+        flussi del 1 gennaio sparirebbero dentro il valore iniziale e gli anni
+        bisestili avrebbero un day-count diverso da quelli normali.
+
+        Una sola passata giornaliera (_build_monthly_returns) alimenta tutti gli
+        anni in memoria: nessuna valutazione né query di cashflow per anno. La
+        convenzione dei cashflow (investor vs trade fallback) è decisa una sola
+        volta su tutta la storia, cosi' non puo' cambiare da un anno all'altro.
+        """
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
+        inception = self._inception_date(portfolio_id, user_id, cache)
+        today = date.today()
+
+        if inception > today:
+            # Una prima transazione datata nel futuro: la UI lo permette, e
+            # _resolve_date_range solleverebbe ValueError('Intervallo date non
+            # valido') per l'intera tabella. Nessun anno da mostrare, non un 400.
+            return YearlyPerformanceResponse(
+                portfolio_id=portfolio_id,
+                rows=[],
+                start_date=today.isoformat(),
+                end_date=today.isoformat(),
+                cashflow_basis='investor',
+            )
+
+        flows, used_trade_fallback = self._get_cashflows_with_fallback(
+            portfolio_id, user_id, inception, today, cache=cache
+        )
+        cashflow_basis = 'trades' if used_trade_fallback else 'investor'
+
+        daily, _ = self._build_monthly_returns(portfolio_id, user_id, inception, today, cache=cache)
+        twr_by_year = self._yearly_twr_from_daily(daily)
+        value_by_day = {d['date']: d['portfolio_value'] for d in daily}
+
+        flows_sorted = sorted(flows, key=lambda cf: cf.date)
+        flow_idx = 0
+        net_invested_at_year_start = 0.0
+
+        rows: list[YearlyPerformanceRow] = []
+
+        for year in range(inception.year, today.year + 1):
+            y_start = inception if year == inception.year else date(year - 1, 12, 31)
+            y_end = min(date(year, 12, 31), today)
+            period_days = max((y_end - y_start).days, 1)
+            is_partial = (year == inception.year and inception > date(year, 1, 1)) or y_end < date(year, 12, 31)
+
+            # Net invested cumulato fino all'inizio dell'anno (incluso), dai
+            # flussi già in memoria — nessuna query aggiuntiva.
+            while flow_idx < len(flows_sorted) and date.fromisoformat(flows_sorted[flow_idx].date) <= y_start:
+                net_invested_at_year_start += float(flows_sorted[flow_idx].amount)
+                flow_idx += 1
+
+            year_values = [value_by_day[d] for d in value_by_day if y_start <= d <= y_end]
+            unpriced = (
+                (net_invested_at_year_start > 0 and value_by_day.get(y_start, 0.0) <= 0)
+                or all(v <= 0 for v in year_values)
+            )
+
+            if unpriced:
+                rows.append(YearlyPerformanceRow(
+                    year=year,
+                    twr_pct=None,
+                    mwr_pct=None,
+                    mwr_annualized_pct=None,
+                    converged=False,
+                    is_partial=is_partial,
+                    has_prices=False,
+                    start_date=y_start.isoformat(),
+                    end_date=y_end.isoformat(),
+                    period_days=period_days,
+                ))
+                continue
+
+            twr_pct = twr_by_year.get(year)
+
+            # MWR in linea, stessa costruzione di calculate_mwr ma sulla
+            # finestra dell'anno; il taglio superiore (d <= y_end) e'
+            # indispensabile perché calculate_mwr non ne ha uno (filtra solo
+            # day <= start), quindi passargli i flussi non tagliati
+            # includerebbe anche flussi futuri.
+            f: list[tuple[float, float]] = []
+            if value_by_day[y_start] != 0:
+                f.append((0.0, -float(value_by_day[y_start])))
+            for cf in flows:
+                d = date.fromisoformat(cf.date)
+                if y_start < d <= y_end:
+                    f.append((float((d - y_start).days), -float(cf.amount)))
+            f.append((float((y_end - y_start).days), float(value_by_day[y_end])))
+
+            has_pos = any(cf > 0 for _, cf in f)
+            has_neg = any(cf < 0 for _, cf in f)
+
+            mwr_pct: float | None = None
+            mwr_annualized_pct: float | None = None
+            converged = False
+            if has_pos and has_neg:
+                rate = self._solve_irr(f)
+                if rate is not None and isfinite(rate):
+                    converged = True
+                    mwr_pct = self._annual_rate_to_cumulative_pct(rate, period_days)
+                    if period_days >= 365:
+                        mwr_annualized_pct = round(rate * 100.0, 4)
+
+            rows.append(YearlyPerformanceRow(
+                year=year,
+                twr_pct=twr_pct,
+                mwr_pct=mwr_pct,
+                mwr_annualized_pct=mwr_annualized_pct,
+                converged=converged,
+                is_partial=is_partial,
+                has_prices=True,
+                start_date=y_start.isoformat(),
+                end_date=y_end.isoformat(),
+                period_days=period_days,
+            ))
+
+        return YearlyPerformanceResponse(
+            portfolio_id=portfolio_id,
+            rows=rows,
+            start_date=inception.isoformat(),
+            end_date=today.isoformat(),
+            cashflow_basis=cashflow_basis,
         )
 
     def get_drawdown(
@@ -829,7 +998,7 @@ class PerformanceService:
     ) -> HallOfFameResponse:
         cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
-        _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
+        daily, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
         # Monthly ranking
         month_entries = [
@@ -846,18 +1015,15 @@ class PerformanceService:
         worst_months = list(reversed(sorted_months[-top_n:]))
 
         # Yearly ranking
-        yearly_acc: dict[int, float] = {}
-        for m in monthly:
-            yearly_acc.setdefault(m['year'], 1.0)
-            yearly_acc[m['year']] *= 1.0 + m['return_pct'] / 100.0
+        twr_by_year = self._yearly_twr_from_daily(daily)
         year_entries = [
             RankedPeriod(
                 year=y,
                 month=None,
-                return_pct=round((v - 1.0) * 100.0, 4),
+                return_pct=v,
                 label=str(y),
             )
-            for y, v in yearly_acc.items()
+            for y, v in twr_by_year.items()
         ]
         sorted_years = sorted(year_entries, key=lambda x: x.return_pct, reverse=True)
         best_years = sorted_years[:top_n]

@@ -70,7 +70,7 @@ def test_simultaneous_requests_for_one_portfolio_compute_once():
     assert repo.inception_calls == 1
 
 
-def test_the_eight_performance_endpoints_share_one_valuation():
+def test_the_performance_endpoints_share_one_valuation():
     repo = _SlowRepo(delay=0.0)
     service = _service(repo)
 
@@ -82,11 +82,31 @@ def test_the_eight_performance_endpoints_share_one_valuation():
     service.get_monthly_returns(1, "u", start_date=START, end_date=END)
     service.get_rolling_windows(1, "u", start_date=START, end_date=END)
     service.get_hall_of_fame(1, "u", start_date=START, end_date=END)
+    service.get_yearly_returns(1, "u")
 
     # The summary resolves its own period, so it asks for a couple of dates the
-    # shared window does not already hold; everything after that is a hit.
-    assert repo.value_calls <= 2
+    # shared window (START..END) does not already hold; that is one miss.
+    # get_yearly_returns spans inception (START) through the real today, which
+    # reaches past END, so it is a *third* miss — the whole-history window is
+    # wider than the shared START..END window every other call here uses, so
+    # it cannot be a hit on the same cache entries. Bound relaxed from <= 2 to
+    # <= 3 only after observing this third call actually happen.
+    assert repo.value_calls <= 3
     assert repo.inception_calls == 1
+
+
+def test_yearly_returns_is_served_from_the_shared_cache():
+    # get_drawdown(inception..today) already walks the full daily range that
+    # get_yearly_returns needs; once it has run, the yearly table must be a
+    # pure cache hit, not a second valuation pass over the same history.
+    repo = _SlowRepo(delay=0.0)
+    service = _service(repo)
+
+    service.get_drawdown(1, "u", start_date=START, end_date=date.today())
+    before = repo.value_calls
+    service.get_yearly_returns(1, "u")
+
+    assert repo.value_calls == before
 
 
 def test_one_users_data_is_never_served_to_another():

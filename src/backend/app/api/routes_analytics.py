@@ -24,6 +24,7 @@ from ..models import (
     TimeSeriesPoint,
     TWRResult,
     TWRTimeseriesPoint,
+    YearlyPerformanceResponse,
 )
 from ..repository import PortfolioRepository
 
@@ -246,6 +247,23 @@ def register_analytics_routes(
     ) -> MonthlyReturnsResponse:
         try:
             return performance_service.get_monthly_returns(portfolio_id, _auth.user_id, start_date, end_date)
+        except ValueError as exc:
+            message = str(exc)
+            status_code = 404 if "non trovato" in message.lower() else 400
+            code = "not_found" if status_code == 404 else "bad_request"
+            raise AppError(code=code, message=message, status_code=status_code) from exc
+
+    @router.get(
+        "/portfolios/{portfolio_id}/performance/yearly",
+        response_model=YearlyPerformanceResponse,
+        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+    )
+    def get_performance_yearly(
+        portfolio_id: int,
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> YearlyPerformanceResponse:
+        try:
+            return performance_service.get_yearly_returns(portfolio_id, _auth.user_id)
         except ValueError as exc:
             message = str(exc)
             status_code = 404 if "non trovato" in message.lower() else 400

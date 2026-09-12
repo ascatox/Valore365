@@ -8,6 +8,7 @@ import type {
   TWRTimeseriesPoint,
   GainTimeseriesPoint,
   MWRTimeseriesPoint,
+  YearlyPerformanceResponse,
 } from './types';
 
 export const getPerformanceSummary = async (
@@ -74,6 +75,9 @@ export const getMonthlyReturns = async (
     `/portfolios/${portfolioId}/performance/monthly-returns${query ? `?${query}` : ''}`,
   );
 };
+
+export const getYearlyReturns = async (portfolioId: number): Promise<YearlyPerformanceResponse> =>
+  apiFetch<YearlyPerformanceResponse>(`/portfolios/${portfolioId}/performance/yearly`);
 
 export const getDrawdown = async (
   portfolioId: number,

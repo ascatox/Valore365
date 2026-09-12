@@ -1126,6 +1126,27 @@ export interface MonthlyReturnsResponse {
   end_date: string;
 }
 
+export interface YearlyPerformanceRow {
+  year: number;
+  twr_pct: number | null;
+  mwr_pct: number | null;
+  mwr_annualized_pct: number | null;
+  converged: boolean;
+  is_partial: boolean;
+  has_prices: boolean;
+  start_date: string;
+  end_date: string;
+  period_days: number;
+}
+
+export interface YearlyPerformanceResponse {
+  portfolio_id: number;
+  rows: YearlyPerformanceRow[];
+  start_date: string;
+  end_date: string;
+  cashflow_basis: 'investor' | 'trades';
+}
+
 export interface DrawdownPoint {
   date: string;
   drawdown_pct: number;

@@ -528,3 +528,278 @@ def _date_range(start: date, end: date) -> list[date]:
         days.append(cursor)
         cursor += timedelta(days=1)
     return days
+
+
+# --- get_yearly_returns ---
+
+
+def _values_for_range(start: date, end: date, start_value: float, daily_growth_pct: float) -> dict[date, float]:
+    """Deterministic daily series growing by a fixed daily percentage."""
+    values: dict[date, float] = {}
+    value = start_value
+    cursor = start
+    while cursor <= end:
+        values[cursor] = value
+        value *= 1.0 + daily_growth_pct / 100.0
+        cursor += timedelta(days=1)
+    return values
+
+
+def test_yearly_returns_has_one_row_per_calendar_year_including_the_partial_current_year():
+    inception = date(2022, 6, 15)
+    today = date.today()
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=_values_for_range(inception, today, 1000.0, 0.01),
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    years = [row.year for row in result.rows]
+    assert years == list(range(inception.year, today.year + 1))
+    # First and last row must be flagged partial (inception mid-year, and YTD).
+    assert result.rows[0].is_partial is True
+    assert result.rows[-1].is_partial is True
+
+
+def test_yearly_rows_chain_to_the_full_history_twr():
+    inception = date(2021, 3, 10)
+    today = date.today()
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=_values_for_range(inception, today, 1000.0, 0.02),
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+    total = service.calculate_twr(1, 'u', inception, today)
+
+    product = 1.0
+    for row in result.rows:
+        assert row.twr_pct is not None
+        product *= 1.0 + row.twr_pct / 100.0
+
+    # Each row.twr_pct is independently rounded to 4 decimals before being
+    # returned; chained across ~5 years those roundings compound to a few
+    # 1e-6, still invisible at the 2-decimal display precision the table
+    # actually uses. 1e-4 (0.01 percentage points) keeps the check meaningful
+    # without being fragile to how many calendar years the real "today" spans.
+    assert abs(product - (1.0 + total.twr_pct / 100.0)) < 1e-4
+
+
+def test_yearly_row_anchors_on_the_previous_year_end_value():
+    # A deposit on Jan 1st must be a flow of the new year, not capital already
+    # baked into the year's opening value. Values must cover through the real
+    # date.today(), since the service (not the test) decides the upper bound.
+    inception = date(2024, 6, 1)
+    jan1_2025 = date(2025, 1, 1)
+    today = date.today()
+    values = _values_for_range(inception, today, 1000.0, 0.0)
+    # Deposit doubles the portfolio value from Jan 1st onward, flat afterwards.
+    for d in values:
+        if d >= jan1_2025:
+            values[d] = 2000.0
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=values,
+        cashflows=[CashFlowEntry(date=jan1_2025.isoformat(), side='deposit', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    row_2025 = next(r for r in result.rows if r.year == 2025)
+    # The deposit does not create a TWR jump: value goes 1000 -> 2000 exactly
+    # because of the deposit, so TWR for 2025 (a full year, flat afterwards)
+    # must be ~0%, not ~100% (which is what the wrong Jan-1 anchoring would
+    # show, by folding the deposit into the opening value instead of treating
+    # it as a flow).
+    assert row_2025.twr_pct is not None
+    assert abs(row_2025.twr_pct - 0.0) < 0.01
+
+
+def test_first_yearly_row_starts_at_inception_and_is_flagged_partial():
+    inception = date(2023, 4, 12)
+    today = date.today()
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=_values_for_range(inception, today, 500.0, 0.01),
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    first_row = result.rows[0]
+    assert first_row.year == inception.year
+    assert first_row.start_date == inception.isoformat()
+    assert first_row.is_partial is True
+
+
+def test_yearly_returns_makes_one_batch_call_for_a_long_range():
+    inception, today_stub = date(2015, 1, 1), date.today()
+    repo = _CountingRepo(
+        created=inception,
+        inception=inception,
+        values=_values_for_range(inception, today_stub, 1000.0, 0.001),
+    )
+    service = PerformanceService(repo)
+
+    service.get_yearly_returns(1, 'u')
+
+    assert repo.batch_calls == 1
+
+
+def test_yearly_returns_resolves_inception_and_cashflows_once():
+    inception = date(2020, 1, 1)
+    today = date.today()
+    repo = _CallCountingRepo(
+        created=inception,
+        inception=inception,
+        values=_values_for_range(inception, today, 1000.0, 0.001),
+        cashflows=[CashFlowEntry(date=inception.isoformat(), side='deposit', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    service.get_yearly_returns(1, 'u')
+
+    assert repo.inception_calls == 1
+    assert repo.cashflow_calls <= 2
+
+
+def test_yearly_returns_uses_one_cashflow_convention_for_every_year():
+    inception = date(2024, 1, 1)
+    today = date(2025, 6, 1)
+    values = _values_for_range(inception, today, 1000.0, 0.01)
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=values,
+        # Deposits only exist in 2024; without a shared convention, 2025 could
+        # silently fall back to buy/sell flows on its own.
+        cashflows=[CashFlowEntry(date=date(2024, 3, 1).isoformat(), side='deposit', amount=200.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    assert result.cashflow_basis == 'investor'
+
+
+def test_yearly_mwr_is_nd_without_a_cashflow_sign_change():
+    # Prices ARE available (has_prices stays True: the year isn't all-zero,
+    # so this is not the price-coverage gate), but the year opens and closes
+    # at zero with no cashflow in between: there is no negative flow to pair
+    # with a positive one, so MWR cannot find a sign change and must not
+    # converge on some spurious rate.
+    inception = date(2024, 1, 1)
+    mid_year = date(2024, 6, 1)
+    values = {inception: 0.0, mid_year: 500.0, date(2024, 12, 31): 0.0}
+    repo = _FakeRepo(created=inception, inception=inception, values=values)
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    row = next(r for r in result.rows if r.year == 2024)
+    assert row.has_prices is True
+    assert row.converged is False
+    assert row.mwr_pct is None
+
+
+def test_yearly_mwr_is_nd_when_the_period_return_is_outside_the_solver_band():
+    # Inception ~41 days before year end with +40% growth: the period return
+    # is outside the solver's representable band for such a short window, so
+    # MWR must come back N/D rather than a wrong number (see the plan's Step
+    # 1.3 "Limite noto del solver" table).
+    inception = date(2024, 11, 20)
+    year_end = date(2024, 12, 31)
+    period_days = (year_end - inception).days
+    daily_growth_pct = ((1.40 ** (1.0 / period_days)) - 1.0) * 100.0
+    values = _values_for_range(inception, year_end, 1000.0, daily_growth_pct)
+    repo = _FakeRepo(created=inception, inception=inception, values=values)
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    row = next(r for r in result.rows if r.year == 2024)
+    assert row.converged is False
+    assert row.mwr_pct is None
+
+
+def test_yearly_row_is_nd_when_the_year_has_no_price_coverage():
+    # Purchases exist but the whole year is unpriced (value 0.0 every day):
+    # the row must be N/D, not a misleading +0.00%.
+    inception = date(2019, 1, 1)
+    today = date(2019, 12, 31)
+    values = {d: 0.0 for d in _date_range(inception, today)}
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=values,
+        cashflows=[CashFlowEntry(date=inception.isoformat(), side='deposit', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    row = result.rows[0]
+    assert row.has_prices is False
+    assert row.twr_pct is None
+    assert row.twr_pct != 0.0
+
+
+def test_yearly_returns_is_empty_for_a_future_dated_inception():
+    future_inception = date.today() + timedelta(days=30)
+    repo = _FakeRepo(created=future_inception, inception=future_inception, values={})
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    assert result.rows == []
+
+
+def test_leap_year_and_normal_year_rows_use_the_same_day_count_convention():
+    # Inception NOT on Jan 1st: the inception year itself is partial (day
+    # count intentionally short, no prior Dec-31 to anchor on) and excluded
+    # from full_rows below, so every full row is anchored Dec31 -> Dec31 and
+    # must be exactly 365 or 366 days.
+    inception = date(2018, 6, 15)
+    today = date(2024, 6, 1)  # priced data need not reach real date.today();
+    # period_days is pure date arithmetic, so full rows for 2020 (leap) and
+    # 2021 (normal) are asserted regardless of price coverage beyond this.
+    repo = _FakeRepo(
+        created=inception,
+        inception=inception,
+        values=_values_for_range(inception, today, 1000.0, 0.001),
+    )
+    service = PerformanceService(repo)
+
+    result = service.get_yearly_returns(1, 'u')
+
+    full_rows = [row for row in result.rows if not row.is_partial]
+    assert full_rows, "expected at least one full calendar-year row"
+    for row in full_rows:
+        assert row.period_days in (365, 366)
+
+
+def test_monthly_returns_and_yearly_returns_agree_on_a_years_twr():
+    start = date(2024, 1, 1)
+    end = date(2024, 12, 31)
+    repo = _FakeRepo(
+        created=start,
+        inception=start,
+        values=_values_for_range(start, end, 1000.0, 0.03),
+    )
+    service = PerformanceService(repo)
+
+    monthly = service.get_monthly_returns(1, 'u', start, end)
+    yearly = service.get_yearly_returns(1, 'u')
+
+    assert len(monthly.yearly_returns) == 1
+    yearly_row = next(r for r in yearly.rows if r.year == 2024)
+    assert yearly_row.twr_pct is not None
+    assert round(monthly.yearly_returns[0].return_pct, 4) == round(yearly_row.twr_pct, 4)

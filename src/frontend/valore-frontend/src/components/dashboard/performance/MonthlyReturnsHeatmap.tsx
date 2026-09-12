@@ -54,7 +54,7 @@ export function MonthlyReturnsHeatmap({ matrix, loading, startDate, endDate }: M
               {MONTH_LABELS.map((month) => (
                 <Table.Th key={month} ta="center">{month}</Table.Th>
               ))}
-              <Table.Th ta="center">YTD</Table.Th>
+              <Table.Th ta="center">Anno</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>

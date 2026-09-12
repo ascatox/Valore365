@@ -22,6 +22,7 @@ const DASHBOARD_QUERY_PREFIXES = new Set([
   'twr-timeseries',
   'mwr-timeseries',
   'monthly-returns',
+  'yearly-returns',
   'portfolio-drawdown',
   'rolling-windows',
   'hall-of-fame',
