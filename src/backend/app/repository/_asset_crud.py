@@ -124,6 +124,42 @@ class AssetCrudMixin:
             provider_symbol=str(row["provider_symbol"]),
         )
 
+    def get_asset_pricing_symbols(
+        self, asset_ids: list[int], provider: str = "yfinance"
+    ) -> dict[int, PricingAsset]:
+        """Resolve provider symbols for many assets in one query.
+
+        Callers used to loop over get_asset_pricing_symbol, taking a connection
+        per asset just to read one row. Assets with no row are simply absent
+        from the result, so the caller can fall back as it sees fit.
+        """
+        if not asset_ids:
+            return {}
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    select a.id as asset_id,
+                           a.symbol,
+                           coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                    from assets a
+                    left join asset_provider_symbols aps
+                      on aps.asset_id = a.id
+                     and aps.provider = :provider
+                    where a.id = any(:asset_ids)
+                    """
+                ),
+                {"asset_ids": sorted(set(asset_ids)), "provider": provider.strip().lower()},
+            ).mappings().all()
+        return {
+            int(row["asset_id"]): PricingAsset(
+                asset_id=int(row["asset_id"]),
+                symbol=str(row["symbol"]),
+                provider_symbol=str(row["provider_symbol"]),
+            )
+            for row in rows
+        }
+
     def create_asset_provider_symbol(self, payload: AssetProviderSymbolCreate) -> AssetProviderSymbolRead:
         provider = payload.provider.strip().lower()
         provider_symbol = payload.provider_symbol.strip().upper()

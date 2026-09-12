@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import logging
 import statistics
+import threading
+import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from math import isfinite, sqrt
@@ -23,6 +25,7 @@ from ..models import (
     TWRTimeseriesPoint,
     YearlyReturnItem,
 )
+from ..config import get_settings
 from ..repository import PortfolioRepository
 
 try:
@@ -46,27 +49,87 @@ _PERIOD_TO_DAYS: dict[str, int] = {
 
 @dataclass
 class _LookupCache:
-    """Memo for repository reads that repeat inside one calculation.
+    """Memo for repository reads that repeat across one portfolio's analytics.
 
-    A performance summary resolves the same inception date up to three times
-    and fetches the same cashflows three times, each one its own connection.
-    Scope is a single request for a single portfolio: never share one of these
-    across requests, or a portfolio would be reported from stale prices.
+    Eight endpoints back the performance screen and each resolves the same
+    window, so without sharing they each re-read the inception date, the same
+    cashflows, and the same daily valuation series — the last of which re-reads
+    the entire price and FX history every time.
+
+    Entries are per (user, portfolio) and expire, so a portfolio is never
+    reported from prices older than the TTL. `lock` is held while filling the
+    cache so a burst of simultaneous requests computes once instead of all at
+    once; it is reentrant because the fill helpers call each other.
     """
 
     inception: date | None = None
     cashflows: dict[tuple[date, date, bool], list] = field(default_factory=dict)
     values: dict[date, float] = field(default_factory=dict)
+    lock: threading.RLock = field(default_factory=threading.RLock)
+    created_at: float = field(default_factory=time.monotonic)
+
+    def expired(self, ttl: float, now: float) -> bool:
+        return now - self.created_at >= ttl
+
+
+class _LookupCacheStore:
+    """Bounded, expiring store of per-(user, portfolio) lookup caches."""
+
+    def __init__(self, ttl_seconds: float, max_entries: int) -> None:
+        self.ttl = ttl_seconds
+        self.max_entries = max_entries
+        self._entries: dict[tuple[str, int], _LookupCache] = {}
+        self._lock = threading.Lock()
+
+    def get(self, user_id: str, portfolio_id: int) -> _LookupCache:
+        key = (user_id, portfolio_id)
+        now = time.monotonic()
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is not None and not entry.expired(self.ttl, now):
+                return entry
+
+            # Drop whatever has aged out before growing, so a burst of distinct
+            # portfolios cannot push the store past its bound.
+            for stale_key in [k for k, v in self._entries.items() if v.expired(self.ttl, now)]:
+                del self._entries[stale_key]
+            while len(self._entries) >= self.max_entries:
+                self._entries.pop(next(iter(self._entries)))
+
+            entry = _LookupCache()
+            self._entries[key] = entry
+            return entry
+
+    def clear(self) -> None:
+        with self._lock:
+            self._entries.clear()
 
 
 class PerformanceService:
-    def __init__(self, repo: PortfolioRepository) -> None:
+    def __init__(
+        self,
+        repo: PortfolioRepository,
+        *,
+        cache_ttl_seconds: float | None = None,
+        cache_max_entries: int = 512,
+    ) -> None:
         self.repo = repo
+        settings = get_settings()
+        ttl = (
+            cache_ttl_seconds
+            if cache_ttl_seconds is not None
+            else float(settings.performance_cache_ttl_seconds)
+        )
+        self._cache_store = _LookupCacheStore(ttl_seconds=ttl, max_entries=cache_max_entries)
+
+    def _cache_for(self, portfolio_id: int, user_id: str) -> _LookupCache:
+        return self._cache_store.get(user_id, portfolio_id)
 
     def _inception_date(self, portfolio_id: int, user_id: str, cache: _LookupCache) -> date:
-        if cache.inception is None:
-            cache.inception = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
-        return cache.inception
+        with cache.lock:
+            if cache.inception is None:
+                cache.inception = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
+            return cache.inception
 
     def _cashflows(
         self,
@@ -78,22 +141,27 @@ class PerformanceService:
         cache: _LookupCache,
     ) -> list:
         key = (start, end, include_trades)
-        if key not in cache.cashflows:
-            cache.cashflows[key] = self.repo.get_external_cashflows(
-                portfolio_id, user_id, start_date=start, end_date=end, include_trades=include_trades,
-            )
-        return cache.cashflows[key]
+        with cache.lock:
+            if key not in cache.cashflows:
+                cache.cashflows[key] = self.repo.get_external_cashflows(
+                    portfolio_id, user_id, start_date=start, end_date=end, include_trades=include_trades,
+                )
+            return cache.cashflows[key]
 
     def _values(
         self, portfolio_id: int, user_id: str, dates, cache: _LookupCache
     ) -> dict[date, float]:
         wanted = set(dates)
-        missing = wanted - cache.values.keys()
-        if missing:
-            cache.values.update(
-                self.repo.get_portfolio_values_in_range(portfolio_id, user_id, missing)
-            )
-        return {d: cache.values[d] for d in wanted}
+        # The lock spans the repository call, so simultaneous requests for the
+        # same portfolio wait for the first to fill rather than each running the
+        # full valuation themselves.
+        with cache.lock:
+            missing = wanted - cache.values.keys()
+            if missing:
+                cache.values.update(
+                    self.repo.get_portfolio_values_in_range(portfolio_id, user_id, missing)
+                )
+            return {d: cache.values[d] for d in wanted}
 
     @staticmethod
     def _days_between(start: date, end: date, step: int = 1) -> list[date]:
@@ -122,7 +190,7 @@ class PerformanceService:
         to buy/sell as implicit investor cashflows (buy = deposit of the cost,
         sell = withdrawal of the proceeds).
         """
-        cache = cache if cache is not None else _LookupCache()
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         cashflows = self._cashflows(portfolio_id, user_id, start_date, end_date, False, cache)
         investor_flows = [cf for cf in cashflows if cf.side in ("deposit", "withdrawal")]
         if investor_flows:
@@ -144,7 +212,7 @@ class PerformanceService:
         *,
         cache: _LookupCache | None = None,
     ) -> TWRResult:
-        cache = cache if cache is not None else _LookupCache()
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         period_days = max((end - start).days, 1)
 
@@ -222,7 +290,7 @@ class PerformanceService:
         *,
         cache: _LookupCache | None = None,
     ) -> MWRResult:
-        cache = cache if cache is not None else _LookupCache()
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         period_days = max((end - start).days, 1)
 
@@ -311,7 +379,7 @@ class PerformanceService:
         # One cache for the whole summary: TWR, MWR and the totals below all
         # want the same inception date, the same cashflows and the same
         # end-of-period value, which used to be a dozen separate connections.
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_period_range(portfolio_id, user_id, period, cache=cache)
 
         twr = self.calculate_twr(portfolio_id, user_id, start, end, cache=cache)
@@ -353,7 +421,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[TWRTimeseriesPoint]:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
 
@@ -402,7 +470,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[GainTimeseriesPoint]:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         # Fallback already returns deposit/withdrawal or buy/sell only
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
@@ -440,7 +508,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[MWRTimeseriesPoint]:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         period_days = (end - start).days
 
@@ -544,7 +612,7 @@ class PerformanceService:
             - daily_series: [{'date': date, 'cumulative_twr': float, 'portfolio_value': float}, ...]
             - monthly_returns: [{'year': int, 'month': int, 'return_pct': float}, ...]
         """
-        cache = cache if cache is not None else _LookupCache()
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
 
@@ -617,7 +685,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> MonthlyReturnsResponse:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
@@ -646,7 +714,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> DrawdownResponse:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         daily, _ = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
@@ -701,7 +769,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> RollingWindowsResponse:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
@@ -759,7 +827,7 @@ class PerformanceService:
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> HallOfFameResponse:
-        cache = _LookupCache()
+        cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
         _, monthly = self._build_monthly_returns(portfolio_id, user_id, start, end, cache=cache)
 
@@ -812,7 +880,7 @@ class PerformanceService:
         *,
         cache: _LookupCache | None = None,
     ) -> tuple[date, date]:
-        cache = cache if cache is not None else _LookupCache()
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         portfolio_start = self._inception_date(portfolio_id, user_id, cache)
         end = end_date or date.today()
         start = start_date or portfolio_start
@@ -828,7 +896,7 @@ class PerformanceService:
     def _resolve_period_range(
         self, portfolio_id: int, user_id: str, period: str, *, cache: _LookupCache | None = None,
     ) -> tuple[date, date]:
-        cache = cache if cache is not None else _LookupCache()
+        cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         period_key = (period or '').lower().strip()
         end = date.today()
         portfolio_start = self._inception_date(portfolio_id, user_id, cache)

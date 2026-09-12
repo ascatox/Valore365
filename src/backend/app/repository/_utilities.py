@@ -338,63 +338,93 @@ class UtilitiesMixin:
             portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
+            return self._cash_balance_values(conn, [portfolio])[portfolio.id]
 
-            tx_rows = conn.execute(
-                text(
-                    """
-                    select side,
-                           trade_at::date as trade_date,
-                           quantity::float8 as quantity,
-                           price::float8 as price,
-                           fees::float8 as fees,
-                           taxes::float8 as taxes,
-                           trade_currency
-                    from transactions
-                    where portfolio_id = :portfolio_id
-                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
-                    order by trade_at asc, id asc
-                    """
-                ),
-                {"portfolio_id": portfolio_id},
-            ).mappings().all()
+    def _cash_balance_values(self, conn, portfolios: list[PortfolioData]) -> dict[int, float]:
+        """Cash balance for several portfolios from one connection.
 
-            if not tx_rows:
-                return round(float(portfolio.cash_balance), 2)
+        Computing them one at a time cost a checkout and three queries each, so
+        listing N portfolios opened 1+N connections. The cash movements and FX
+        rates for the whole set come back in two queries here, and each
+        portfolio is folded from its own slice.
+        """
+        if not portfolios:
+            return {}
 
-            fx_needed = sorted(
-                {
-                    str(row["trade_currency"])
-                    for row in tx_rows
-                    if row["trade_currency"] is not None and str(row["trade_currency"]) != portfolio.base_currency
-                }
+        base_by_portfolio = {p.id: p.base_currency for p in portfolios}
+
+        tx_rows = conn.execute(
+            text(
+                """
+                select portfolio_id,
+                       side,
+                       trade_at::date as trade_date,
+                       quantity::float8 as quantity,
+                       price::float8 as price,
+                       fees::float8 as fees,
+                       taxes::float8 as taxes,
+                       trade_currency
+                from transactions
+                where portfolio_id = any(:portfolio_ids)
+                  and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
+                order by trade_at asc, id asc
+                """
+            ),
+            {"portfolio_ids": sorted(base_by_portfolio)},
+        ).mappings().all()
+
+        # The global ordering by (trade_at, id) survives the split, so each
+        # portfolio's rows stay in the order the single-portfolio query gave.
+        rows_by_portfolio: dict[int, list[dict]] = defaultdict(list)
+        for row in tx_rows:
+            rows_by_portfolio[int(row["portfolio_id"])].append(dict(row))
+
+        fx_needed = sorted(
+            {
+                str(row["trade_currency"])
+                for row in tx_rows
+                if row["trade_currency"] is not None
+                and str(row["trade_currency"]) != base_by_portfolio.get(int(row["portfolio_id"]))
+            }
+        )
+        # Portfolios can have different base currencies, so fetch every needed
+        # pair at once and hand each portfolio only the rates into its own base.
+        fx_by_base: dict[str, list[dict]] = defaultdict(list)
+        if fx_needed:
+            max_trade_day = max(
+                (row["trade_date"] for row in tx_rows if row["trade_date"] is not None),
+                default=None,
             )
-            fx_rows = []
-            if fx_needed:
-                max_trade_day = max(row["trade_date"] for row in tx_rows if row["trade_date"] is not None)
+            if max_trade_day is not None:
                 fx_rows = conn.execute(
                     text(
                         """
-                        select from_ccy, price_date, rate::float8 as rate
+                        select from_ccy, to_ccy, price_date, rate::float8 as rate
                         from fx_rates_1d
                         where from_ccy = any(:from_ccy)
-                          and to_ccy = :to_ccy
+                          and to_ccy = any(:to_ccy)
                           and price_date <= :max_trade_day
                         order by from_ccy asc, price_date asc
                         """
                     ),
                     {
                         "from_ccy": fx_needed,
-                        "to_ccy": portfolio.base_currency,
+                        "to_ccy": sorted(set(base_by_portfolio.values())),
                         "max_trade_day": max_trade_day,
                     },
                 ).mappings().all()
+                for row in fx_rows:
+                    fx_by_base[str(row["to_ccy"])].append(dict(row))
 
-        return _compute_cash_balance_base(
-            base_currency=portfolio.base_currency,
-            opening_cash_balance=portfolio.cash_balance,
-            rows=[dict(row) for row in tx_rows],
-            fx_rows=[dict(row) for row in fx_rows],
-        )
+        return {
+            p.id: _compute_cash_balance_base(
+                base_currency=p.base_currency,
+                opening_cash_balance=p.cash_balance,
+                rows=rows_by_portfolio.get(p.id, []),
+                fx_rows=fx_by_base.get(p.base_currency, []),
+            )
+            for p in portfolios
+        }
 
     def get_cash_flow_timeline(self, portfolio_id: int, user_id: str) -> CashFlowTimelineResponse:
         with self.engine.begin() as conn:

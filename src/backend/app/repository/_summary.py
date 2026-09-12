@@ -15,6 +15,12 @@ from ..models import (
 from ._base import PositionDelta, _finite
 
 
+# How old the latest price may be and still carry a meaningful day change.
+# A long weekend plus a holiday can legitimately leave a price several days
+# old; beyond that the asset has stopped being priced.
+_DAY_CHANGE_MAX_STALE_DAYS = 7
+
+
 class SummaryMixin:
     def get_summary(self, portfolio_id: int, user_id: str) -> PortfolioSummary:
         with self.engine.begin() as conn:
@@ -193,9 +199,28 @@ class SummaryMixin:
                 if not math.isfinite(current_price_base) or not math.isfinite(previous_price_base):
                     _log.warning("day_change: asset %s has NaN/Inf price (curr=%.4f prev=%.4f), skipping", asset_id, current_price_base, previous_price_base)
                     continue
-                _log.info("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (quote=%.4f prev_close=%.4f fx=%.4f/%.4f) dates=%s→%s",
-                          asset_id, quantity, current_price_base, previous_price_base, current_quote, prev_close, current_fx, prev_fx, prev_day, current_day)
-                day_change += quantity * (current_price_base - previous_price_base)
+                # One line per position on the success path: useful when
+                # checking the arithmetic, noise at INFO on every request.
+                _log.debug("day_change: asset %s qty=%.4f curr=%.4f prev=%.4f (quote=%.4f prev_close=%.4f fx=%.4f/%.4f) dates=%s→%s",
+                           asset_id, quantity, current_price_base, previous_price_base, current_quote, prev_close, current_fx, prev_fx, prev_day, current_day)
+                # Staleness is about how old the CURRENT price is, not the gap
+                # between the two closes: when a tick carries previous_close the
+                # pair is genuinely consecutive even though prev_day points at
+                # an older daily bar (it is only used to pick the FX rate).
+                price_age = (date.today() - current_day).days if current_day is not None else 0
+                if price_age > _DAY_CHANGE_MAX_STALE_DAYS:
+                    # The asset stopped being priced weeks ago, so whatever
+                    # moved between its last two closes is not today's change.
+                    # Contribute nothing to the change, but keep the position in
+                    # previous_market_value: it is still part of the portfolio,
+                    # and dropping it would shrink the denominator and inflate
+                    # day_change_pct.
+                    _log.warning(
+                        "day_change: asset %s last priced %s days ago (%s), treated as no change",
+                        asset_id, price_age, current_day,
+                    )
+                else:
+                    day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
 
             if previous_market_value > 0:

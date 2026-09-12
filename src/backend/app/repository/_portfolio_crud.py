@@ -7,6 +7,7 @@ from ..models import (
     PortfolioRead,
     PortfolioUpdate,
 )
+from ._base import PortfolioData
 
 
 class PortfolioCrudMixin:
@@ -24,10 +25,19 @@ class PortfolioCrudMixin:
                 {"user_id": user_id},
             ).mappings().all()
 
-        current_cash_by_portfolio = {
-            int(row["id"]): self.get_current_cash_balance_value(int(row["id"]), user_id)
-            for row in rows
-        }
+            # One batched fold on the connection already open, rather than a
+            # fresh connection and three queries per portfolio.
+            current_cash_by_portfolio = self._cash_balance_values(
+                conn,
+                [
+                    PortfolioData(
+                        id=int(row["id"]),
+                        base_currency=str(row["base_currency"]),
+                        cash_balance=float(row["cash_balance"]),
+                    )
+                    for row in rows
+                ],
+            )
 
         return [
             PortfolioRead(
