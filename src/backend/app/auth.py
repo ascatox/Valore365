@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,6 +18,13 @@ logger = logging.getLogger(__name__)
 
 _JWKS_CACHE: dict[str, Any] = {"keys": [], "expires_at": 0.0}
 _JWKS_CACHE_TTL = 3600.0  # 1 hour
+
+# last_seen_at does not need per-request precision, and syncing on every request
+# meant one write transaction per API call — a dashboard load alone produced a
+# handful of identical updates.
+_APP_USER_SYNC_TTL = 60.0
+_app_user_synced_at: dict[str, float] = {}
+_app_user_sync_lock = threading.Lock()
 
 
 @dataclass
@@ -68,7 +76,19 @@ def _extract_last_sign_in_at(claims: dict[str, Any]) -> datetime | None:
     return None
 
 
+def _should_sync_app_user(user_id: str) -> bool:
+    """True at most once per TTL per user, so a burst of requests writes once."""
+    now = time.monotonic()
+    with _app_user_sync_lock:
+        if now - _app_user_synced_at.get(user_id, 0.0) < _APP_USER_SYNC_TTL:
+            return False
+        _app_user_synced_at[user_id] = now
+        return True
+
+
 def _sync_app_user(user_id: str, email: str | None, last_sign_in_at: datetime | None) -> None:
+    if not _should_sync_app_user(user_id):
+        return
     try:
         with engine.begin() as conn:
             conn.execute(
@@ -90,6 +110,10 @@ def _sync_app_user(user_id: str, email: str | None, last_sign_in_at: datetime | 
                 },
             )
     except Exception:
+        # Drop the marker so the next request retries instead of staying
+        # suppressed for the rest of the TTL.
+        with _app_user_sync_lock:
+            _app_user_synced_at.pop(user_id, None)
         logger.exception("Failed to sync app user for %s", user_id)
 
 
