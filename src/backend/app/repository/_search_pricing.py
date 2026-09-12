@@ -207,24 +207,63 @@ class SearchPricingMixin:
         volume: float | None,
         previous_close: float | None = None,
     ) -> None:
+        self.save_price_ticks([
+            {
+                "asset_id": asset_id,
+                "provider": provider,
+                "ts": ts,
+                "last": last,
+                "bid": bid,
+                "ask": ask,
+                "volume": volume,
+                "previous_close": previous_close,
+            }
+        ])
+
+    def save_price_ticks(self, ticks: list[dict]) -> None:
+        """Write many price ticks in one transaction.
+
+        The refresh loop used to save each asset's tick as its own transaction,
+        so a run over 33 assets took a connection 33 times, interleaved with
+        blocking provider calls. That let a slow refresh hold the pool open for
+        as long as the network took.
+        """
+        if not ticks:
+            return
+        # ts is the provider's market timestamp, not now(), so a quote that has
+        # not moved since the last run repeats the (asset_id, provider, ts) key
+        # — routine outside market hours. Upsert like the sibling price_bars_1d
+        # and fx_rates_1d writers, so one repeated quote cannot discard the
+        # whole batch.
+        params = [
+            {
+                "asset_id": tick["asset_id"],
+                "provider": str(tick["provider"]).strip().lower(),
+                "ts": tick["ts"],
+                "last": tick["last"],
+                "bid": tick.get("bid"),
+                "ask": tick.get("ask"),
+                "volume": tick.get("volume"),
+                "previous_close": tick.get("previous_close"),
+            }
+            for tick in ticks
+        ]
         with self.engine.begin() as conn:
             conn.execute(
                 text(
                     """
                     insert into price_ticks (asset_id, provider, ts, last, bid, ask, volume, previous_close)
                     values (:asset_id, :provider, :ts, :last, :bid, :ask, :volume, :previous_close)
+                    on conflict (asset_id, provider, ts)
+                    do update set
+                      last = excluded.last,
+                      bid = excluded.bid,
+                      ask = excluded.ask,
+                      volume = excluded.volume,
+                      previous_close = excluded.previous_close
                     """
                 ),
-                {
-                    "asset_id": asset_id,
-                    "provider": provider.strip().lower(),
-                    "ts": ts,
-                    "last": last,
-                    "bid": bid,
-                    "ask": ask,
-                    "volume": volume,
-                    "previous_close": previous_close,
-                },
+                params,
             )
 
     def batch_upsert_price_bars_1d(

@@ -54,6 +54,10 @@ class PriceIngestionService:
 
         items: list[PriceRefreshItem] = []
         errors: list[str] = []
+        # Ticks are collected here and written once after the provider calls
+        # finish, so the refresh holds a connection for a single short
+        # transaction rather than once per asset across the whole network run.
+        pending_ticks: list[dict] = []
         delay_seconds = max(0.0, float(self.settings.finance_symbol_request_delay_seconds))
 
         for index, asset in enumerate(pricing_assets):
@@ -68,16 +72,16 @@ class PriceIngestionService:
                 if not vr.valid:
                     errors.append(f"{asset.provider_symbol}: rejected - {vr.rejected_reason}")
                     continue
-                self.repository.save_price_tick(
-                    asset_id=asset.asset_id,
-                    provider=provider,
-                    ts=quote.ts,
-                    last=quote.price,
-                    bid=quote.bid,
-                    ask=quote.ask,
-                    volume=quote.volume,
-                    previous_close=getattr(quote, 'previous_close', None),
-                )
+                pending_ticks.append({
+                    "asset_id": asset.asset_id,
+                    "provider": provider,
+                    "ts": quote.ts,
+                    "last": quote.price,
+                    "bid": quote.bid,
+                    "ask": quote.ask,
+                    "volume": quote.volume,
+                    "previous_close": getattr(quote, 'previous_close', None),
+                })
                 items.append(
                     PriceRefreshItem(
                         asset_id=asset.asset_id,
@@ -99,6 +103,8 @@ class PriceIngestionService:
 
             if delay_seconds > 0 and index < len(pricing_assets) - 1:
                 time.sleep(delay_seconds)
+
+        self.repository.save_price_ticks(pending_ticks)
 
         logger.info(
             'End price refresh provider=%s requested=%s refreshed=%s failed=%s',
