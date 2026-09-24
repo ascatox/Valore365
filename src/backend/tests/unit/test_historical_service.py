@@ -42,6 +42,7 @@ class _FakeSettings:
     price_validation_ohlc_range_tolerance_pct = 2.0
     price_validation_fx_min_rate = 0.0001
     price_validation_fx_max_rate = 10000.0
+    price_backfill_max_workers = 4
 
 
 class _FakeClient:
