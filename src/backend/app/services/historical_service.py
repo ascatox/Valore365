@@ -30,6 +30,8 @@ class HistoricalIngestionService:
         )
         rows: list[dict] = []
         previous_close: float | None = reference_close
+        adjusted = 0
+        range_tolerance_pct = self.settings.price_validation_ohlc_range_tolerance_pct
         for bar in sorted_bars:
             vr = validate_price_bar(
                 asset_id=asset_id,
@@ -43,18 +45,27 @@ class HistoricalIngestionService:
                 previous_close=previous_close,
                 max_daily_change_pct=self.settings.price_validation_max_daily_change_pct,
                 max_ohlc_spread_pct=self.settings.price_validation_max_ohlc_spread_pct,
+                range_tolerance_pct=range_tolerance_pct,
             )
             if not vr.valid:
                 continue
+            if vr.adjustments:
+                adjusted += 1
             rows.append({
                 "price_date": bar.day,
                 "open": bar.open,
-                "high": bar.high,
-                "low": bar.low,
+                # Widen the range so stored bars are always OHLC-consistent.
+                "high": max(bar.high, bar.open, bar.close),
+                "low": min(bar.low, bar.open, bar.close),
                 "close": bar.close,
                 "volume": bar.volume,
             })
             previous_close = bar.close
+        if adjusted:
+            logger.info(
+                "price_bars_range_adjusted asset_id=%s symbol=%s bars=%s/%s tolerance_pct=%s",
+                asset_id, symbol, adjusted, len(sorted_bars), range_tolerance_pct,
+            )
         return rows
 
     def _validate_fx_rows(self, rates, from_ccy: str, to_ccy: str, start_date, end_date) -> list[dict]:

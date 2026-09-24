@@ -89,6 +89,7 @@ class Settings(BaseSettings):
     price_validation_min_price: float = 0.0001
     price_validation_max_daily_change_pct: float = 50.0
     price_validation_max_ohlc_spread_pct: float = 100.0
+    price_validation_ohlc_range_tolerance_pct: float = 2.0
     price_validation_stale_days: int = 5
     price_validation_fx_min_rate: float = 0.0001
     price_validation_fx_max_rate: float = 10000.0

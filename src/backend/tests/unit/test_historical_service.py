@@ -39,6 +39,7 @@ class _FakeSettings:
     finance_provider = 'yfinance'
     price_validation_max_daily_change_pct = 50.0
     price_validation_max_ohlc_spread_pct = 100.0
+    price_validation_ohlc_range_tolerance_pct = 2.0
     price_validation_fx_min_rate = 0.0001
     price_validation_fx_max_rate = 10000.0
 
