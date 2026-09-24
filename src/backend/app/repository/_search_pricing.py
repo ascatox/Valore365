@@ -136,6 +136,9 @@ class SearchPricingMixin:
                 if user_id and self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                     raise ValueError("Portfolio non trovato")
                 if scope == "all":
+                    # Everything this portfolio holds or targets. Used to return
+                    # every active asset in the database, so each refresh priced
+                    # all users' assets, not just this portfolio's.
                     rows = conn.execute(
                         text(
                             f"""
@@ -146,10 +149,17 @@ class SearchPricingMixin:
                             left join asset_provider_symbols aps
                               on aps.asset_id = a.id and aps.provider = :provider
                             where a.active = true
+                              and a.id in (
+                                  select t.asset_id from transactions t
+                                  where t.portfolio_id = :portfolio_id and t.asset_id is not null
+                                  union
+                                  select pta.asset_id from portfolio_target_allocations pta
+                                  where pta.portfolio_id = :portfolio_id
+                              )
                             order by a.symbol asc
                             """
                         ),
-                        {"provider": provider_value},
+                        {"provider": provider_value, "portfolio_id": portfolio_id},
                     ).mappings().all()
                 elif scope == "transactions":
                     rows = conn.execute(

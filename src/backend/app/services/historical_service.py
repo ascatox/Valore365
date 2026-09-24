@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 from ..config import Settings
-from ..finance_client import make_finance_client
+from ..finance_client import is_unpriceable_on_yahoo, make_finance_client
 from ..models import DailyBackfillItem, DailyBackfillResponse, FxBackfillItem
 from ..price_validation import validate_fx_rate, validate_price_bar
 from ..repository import PortfolioRepository
@@ -225,6 +225,16 @@ class HistoricalIngestionService:
 
         quote_ccy_by_asset = self.repository.get_quote_currencies_for_assets([a.asset_id for a in pricing_assets])
 
+        requested_count = len(pricing_assets)
+        skipped = [a for a in pricing_assets if is_unpriceable_on_yahoo(provider, a.provider_symbol)]
+        if skipped:
+            pricing_assets = [a for a in pricing_assets if a not in skipped]
+            errors.extend(f"{a.provider_symbol}: nessun simbolo {provider} (solo ISIN)" for a in skipped)
+            logger.warning(
+                'Daily backfill skipped assets without provider symbol provider=%s symbols=%s',
+                provider, ','.join(a.provider_symbol for a in skipped),
+            )
+
         needed_fx = sorted({
             ccy for ccy in quote_ccy_by_asset.values() if ccy and ccy.upper() != base_currency.upper()
         })
@@ -273,7 +283,7 @@ class HistoricalIngestionService:
             portfolio_id=portfolio_id,
             start_date=start_date,
             end_date=end_date,
-            assets_requested=len(pricing_assets),
+            assets_requested=requested_count,
             assets_refreshed=len(asset_items),
             fx_pairs_refreshed=len(fx_items),
             asset_items=asset_items,
