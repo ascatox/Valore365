@@ -65,14 +65,15 @@ def register_copilot_routes(
         # Use agentic flow for providers that support tool calling
         is_aggregate = payload.portfolio_ids and len(payload.portfolio_ids) > 1
         if config.provider in ("openai", "anthropic", "gemini", "openrouter"):
-            if is_aggregate:
-                snapshot = build_aggregate_snapshot_light(
-                    repo, payload.portfolio_ids, _auth.user_id, payload.page_context,
-                )
-            else:
-                snapshot = build_portfolio_snapshot_light(
-                    repo, payload.portfolio_id, _auth.user_id, payload.page_context,
-                )
+            with repo.memoize_positions():
+                if is_aggregate:
+                    snapshot = build_aggregate_snapshot_light(
+                        repo, payload.portfolio_ids, _auth.user_id, payload.page_context,
+                    )
+                else:
+                    snapshot = build_portfolio_snapshot_light(
+                        repo, payload.portfolio_id, _auth.user_id, payload.page_context,
+                    )
             generator = stream_copilot_response_agentic(
                 config, snapshot, payload.messages,
                 repo, performance_service, payload.portfolio_id, _auth.user_id,
@@ -82,9 +83,10 @@ def register_copilot_routes(
             )
         else:
             # Fallback for local providers without tool calling
-            snapshot = build_portfolio_snapshot(
-                repo, performance_service, payload.portfolio_id, _auth.user_id,
-            )
+            with repo.memoize_positions():
+                snapshot = build_portfolio_snapshot(
+                    repo, performance_service, payload.portfolio_id, _auth.user_id,
+                )
             generator = stream_copilot_response(config, snapshot, payload.messages)
 
         return StreamingResponse(

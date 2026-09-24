@@ -39,8 +39,10 @@ class _FakeSettings:
     finance_provider = 'yfinance'
     price_validation_max_daily_change_pct = 50.0
     price_validation_max_ohlc_spread_pct = 100.0
+    price_validation_ohlc_range_tolerance_pct = 2.0
     price_validation_fx_min_rate = 0.0001
     price_validation_fx_max_rate = 10000.0
+    price_backfill_max_workers = 4
 
 
 class _FakeClient:
@@ -159,3 +161,35 @@ def test_backfill_daily_rejects_invalid_fx_rate(monkeypatch):
     assert len(repo.bars_rows) == 1
     # Invalid FX rate should be filtered
     assert len(repo.fx_rows) == 0
+
+
+def test_backfill_daily_skips_bare_isin_without_provider_call(monkeypatch):
+    import app.services.historical_service as mod
+
+    requested: list[str] = []
+
+    class _RecordingClient(_FakeClient):
+        def get_daily_bars(self, symbol, **kwargs):
+            requested.append(symbol)
+            return super().get_daily_bars(symbol, **kwargs)
+
+    class _IsinRepo(_FakeRepo):
+        def get_assets_for_price_refresh(self, **kwargs):
+            return [_FakeAsset(1, 'AAPL', 'AAPL'), _FakeAsset(2, 'IT0005549388', 'IT0005549388')]
+
+    monkeypatch.setattr(mod, 'make_finance_client', lambda _: _RecordingClient())
+    result = HistoricalIngestionService(_FakeSettings(), _IsinRepo()).backfill_daily(portfolio_id=1, days=365)
+
+    assert requested == ['AAPL']
+    assert result.assets_requested == 2
+    assert result.assets_refreshed == 1
+    assert any('IT0005549388' in e for e in result.errors)
+
+
+def test_is_unpriceable_on_yahoo():
+    from app.finance_client import is_unpriceable_on_yahoo
+
+    assert is_unpriceable_on_yahoo('yfinance', 'IT0005549388')
+    assert not is_unpriceable_on_yahoo('twelvedata', 'IT0005549388')
+    for symbol in ('VWCG.AS', '0GGH.L', 'AAPL', 'BTC-USD'):
+        assert not is_unpriceable_on_yahoo('yfinance', symbol)

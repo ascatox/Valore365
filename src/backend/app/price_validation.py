@@ -12,6 +12,9 @@ class ValidationResult:
     valid: bool = True
     warnings: list[str] = field(default_factory=list)
     rejected_reason: str | None = None
+    # Small open/close vs high/low inconsistencies (within tolerance) that the
+    # caller can silently fix by widening the range: not worth a warning.
+    adjustments: list[str] = field(default_factory=list)
 
 
 def validate_price_bar(
@@ -27,6 +30,7 @@ def validate_price_bar(
     previous_close: float | None = None,
     max_daily_change_pct: float = 50.0,
     max_ohlc_spread_pct: float = 100.0,
+    range_tolerance_pct: float = 2.0,
 ) -> ValidationResult:
     result = ValidationResult()
 
@@ -73,15 +77,25 @@ def validate_price_bar(
                 asset_id, symbol, price_date, msg,
             )
 
-    # Warn: open or close outside high-low range
+    # Open or close outside high-low range. Common with Yahoo data for European
+    # listings, where the closing-auction price is not reflected in the
+    # intraday high/low: only warn when the gap exceeds the tolerance.
     for label, val in [("open", open), ("close", close)]:
         if val > high or val < low:
-            msg = f"{label}={val} outside [low={low}, high={high}]"
-            result.warnings.append(msg)
-            logger.warning(
-                "price_bar_warning asset_id=%s symbol=%s date=%s warning=%s",
-                asset_id, symbol, price_date, msg,
-            )
+            gap_pct = (val - high if val > high else low - val) / val * 100
+            msg = f"{label}={val} outside [low={low}, high={high}] by {gap_pct:.2f}%"
+            if gap_pct > range_tolerance_pct:
+                result.warnings.append(msg)
+                logger.warning(
+                    "price_bar_warning asset_id=%s symbol=%s date=%s warning=%s",
+                    asset_id, symbol, price_date, msg,
+                )
+            else:
+                result.adjustments.append(msg)
+                logger.debug(
+                    "price_bar_adjusted asset_id=%s symbol=%s date=%s detail=%s",
+                    asset_id, symbol, price_date, msg,
+                )
 
     return result
 
@@ -129,6 +143,11 @@ def validate_fx_rate(
     return result
 
 
+# asset_id -> last stale price_date already logged, so that positions being
+# recomputed on every request don't repeat the same warning.
+_stale_logged: dict[int, date | None] = {}
+
+
 def check_staleness(
     *,
     asset_id: int,
@@ -137,14 +156,20 @@ def check_staleness(
     today: date,
     stale_days: int = 5,
 ) -> bool:
+    if price_date is not None:
+        delta = (today - price_date).days
+        if delta <= stale_days:
+            _stale_logged.pop(asset_id, None)
+            return False
+
+    first_seen = asset_id not in _stale_logged or _stale_logged[asset_id] != price_date
+    _stale_logged[asset_id] = price_date
+    log = logger.warning if first_seen else logger.debug
     if price_date is None:
-        logger.warning("price_stale asset_id=%s symbol=%s reason=no_price_date", asset_id, symbol)
-        return True
-    delta = (today - price_date).days
-    if delta > stale_days:
-        logger.warning(
+        log("price_stale asset_id=%s symbol=%s reason=no_price_date", asset_id, symbol)
+    else:
+        log(
             "price_stale asset_id=%s symbol=%s price_date=%s days_old=%s stale_days=%s",
             asset_id, symbol, price_date, delta, stale_days,
         )
-        return True
-    return False
+    return True

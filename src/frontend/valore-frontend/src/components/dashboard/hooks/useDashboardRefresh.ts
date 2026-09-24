@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../../../services/api';
 
+// Queries whose data depends on prices. Static lists (portfolios, benchmark
+// catalogue) are left out: a price refresh doesn't change them.
 const DASHBOARD_QUERY_PREFIXES = new Set([
   'portfolio-summary',
   'portfolio-positions',
@@ -27,10 +29,8 @@ const DASHBOARD_QUERY_PREFIXES = new Set([
   'rolling-windows',
   'hall-of-fame',
   'benchmark-prices',
-  'benchmarks',
   'market-quotes',
   'market-news',
-  'portfolios',
 ]);
 
 export function useDashboardRefresh(portfolioId: number | null) {
@@ -61,8 +61,9 @@ export function useDashboardRefresh(portfolioId: number | null) {
         return queryPortfolioId === portfolioId;
       };
 
-      await queryClient.resetQueries({ predicate: matchesPortfolio });
-      await queryClient.refetchQueries({ predicate: matchesPortfolio, type: 'active' });
+      // invalidateQueries refetches active queries once and marks the others
+      // stale. resetQueries + refetchQueries fetched every active query twice.
+      await queryClient.invalidateQueries({ predicate: matchesPortfolio, refetchType: 'active' });
 
       setRefreshVersion((current) => current + 1);
       setRefreshMessage(

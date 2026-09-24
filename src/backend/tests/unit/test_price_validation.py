@@ -67,6 +67,19 @@ class TestValidatePriceBar:
         assert vr.valid
         assert any("open=110.0 outside" in w for w in vr.warnings)
 
+    def test_small_close_outside_range_is_adjustment_not_warning(self):
+        # Closing-auction price slightly above intraday high (Yahoo, EU listings)
+        vr = validate_price_bar(**self._bar(close=105.5, high=105.0, low=95.0))
+        assert vr.valid
+        assert vr.warnings == []
+        assert any("close=105.5 outside" in a for a in vr.adjustments)
+
+    def test_close_outside_range_beyond_tolerance_warns(self):
+        vr = validate_price_bar(**self._bar(close=94.0, high=105.0, low=96.0), range_tolerance_pct=1.0)
+        assert vr.valid
+        assert any("close=94.0 outside" in w for w in vr.warnings)
+        assert vr.adjustments == []
+
 
 class TestValidateQuotePrice:
     def test_valid_price(self):
@@ -114,6 +127,15 @@ class TestValidateFxRate:
 
 
 class TestCheckStaleness:
+    def test_stale_warning_logged_once_per_price_date(self, caplog):
+        kwargs = dict(asset_id=9001, symbol="OLD", today=date(2026, 3, 3), stale_days=5)
+        with caplog.at_level("WARNING", logger="app.price_validation"):
+            assert check_staleness(price_date=date(2026, 2, 1), **kwargs)
+            assert check_staleness(price_date=date(2026, 2, 1), **kwargs)
+            assert len(caplog.records) == 1
+            assert check_staleness(price_date=date(2026, 2, 2), **kwargs)
+            assert len(caplog.records) == 2
+
     def test_not_stale(self):
         assert not check_staleness(asset_id=1, symbol="AAPL", price_date=date(2026, 3, 2), today=date(2026, 3, 3), stale_days=5)
 

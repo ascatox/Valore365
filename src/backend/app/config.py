@@ -89,9 +89,12 @@ class Settings(BaseSettings):
     price_validation_min_price: float = 0.0001
     price_validation_max_daily_change_pct: float = 50.0
     price_validation_max_ohlc_spread_pct: float = 100.0
+    price_validation_ohlc_range_tolerance_pct: float = 2.0
     price_validation_stale_days: int = 5
     price_validation_fx_min_rate: float = 0.0001
     price_validation_fx_max_rate: float = 10000.0
+    # Concurrent provider requests during a daily backfill
+    price_backfill_max_workers: int = 4
 
     cors_allowed_origins: str = "http://localhost:5173"
     cors_allowed_origin_regex: str = ""

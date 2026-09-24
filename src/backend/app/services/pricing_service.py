@@ -4,7 +4,7 @@ import time
 import httpx
 
 from ..config import Settings
-from ..finance_client import make_finance_client
+from ..finance_client import is_unpriceable_on_yahoo, make_finance_client
 from ..models import PriceRefreshItem, PriceRefreshResponse
 from ..price_validation import validate_quote_price
 from ..repository import PortfolioRepository
@@ -44,6 +44,17 @@ class PriceIngestionService:
                 user_id=user_id,
             )
 
+        requested_count = len(pricing_assets)
+        errors: list[str] = []
+        skipped = [a for a in pricing_assets if is_unpriceable_on_yahoo(provider, a.provider_symbol)]
+        if skipped:
+            pricing_assets = [a for a in pricing_assets if a not in skipped]
+            errors.extend(f"{a.provider_symbol}: nessun simbolo {provider} (solo ISIN)" for a in skipped)
+            logger.warning(
+                'Price refresh skipped assets without provider symbol provider=%s symbols=%s',
+                provider, ','.join(a.provider_symbol for a in skipped),
+            )
+
         logger.info(
             'Start price refresh provider=%s portfolio_id=%s asset_scope=%s assets=%s',
             provider,
@@ -53,7 +64,6 @@ class PriceIngestionService:
         )
 
         items: list[PriceRefreshItem] = []
-        errors: list[str] = []
         # Ticks are collected here and written once after the provider calls
         # finish, so the refresh holds a connection for a single short
         # transaction rather than once per asset across the whole network run.
@@ -109,14 +119,14 @@ class PriceIngestionService:
         logger.info(
             'End price refresh provider=%s requested=%s refreshed=%s failed=%s',
             provider,
-            len(pricing_assets),
+            requested_count,
             len(items),
             len(errors),
         )
 
         return PriceRefreshResponse(
             provider=provider,
-            requested_assets=len(pricing_assets),
+            requested_assets=requested_count,
             refreshed_assets=len(items),
             failed_assets=len(errors),
             items=items,

@@ -1,6 +1,8 @@
 import math
 from bisect import bisect_right
 from collections import defaultdict
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import date, datetime
 
 from sqlalchemy import text
@@ -10,8 +12,35 @@ from ..models import Position
 from ._base import _finite
 
 
+# Per-scope memo for get_positions, active only inside memoize_positions().
+_positions_memo: ContextVar[dict | None] = ContextVar("_positions_memo", default=None)
+
+
 class PositionsMixin:
+    @contextmanager
+    def memoize_positions(self):
+        """Compute each portfolio's positions at most once inside this block.
+
+        get_summary and get_allocation both call get_positions, so code that
+        needs summary + positions + allocation (e.g. the copilot snapshot)
+        would otherwise rebuild them from all transactions three times.
+        """
+        token = _positions_memo.set({})
+        try:
+            yield
+        finally:
+            _positions_memo.reset(token)
+
     def get_positions(self, portfolio_id: int, user_id: str, stale_days: int = 5) -> list[Position]:
+        memo = _positions_memo.get()
+        if memo is None:
+            return self._compute_positions(portfolio_id, user_id, stale_days)
+        key = (portfolio_id, user_id, stale_days)
+        if key not in memo:
+            memo[key] = self._compute_positions(portfolio_id, user_id, stale_days)
+        return [p.model_copy() for p in memo[key]]
+
+    def _compute_positions(self, portfolio_id: int, user_id: str, stale_days: int) -> list[Position]:
         with self.engine.begin() as conn:
             portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:

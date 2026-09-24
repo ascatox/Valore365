@@ -475,6 +475,15 @@ def _compute_retry_delay(exc: Exception, *, attempt: int, backoff_seconds: float
 
 
 _ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{10}$')
+
+
+def is_unpriceable_on_yahoo(provider: str, symbol: str) -> bool:
+    """True for bare ISINs (e.g. Italian BTPs) that yfinance cannot price.
+
+    yfinance only fails on them ("Invalid ISIN number"), so callers skip the
+    request instead of making one that is guaranteed to error out.
+    """
+    return provider == 'yfinance' and bool(_ISIN_RE.match(symbol.strip().upper())) and symbol.strip()[-1].isdigit()
 _OPENFIGI_URL = 'https://api.openfigi.com/v3/mapping'
 
 # Mappa exchCode OpenFIGI (codici Bloomberg 2 lettere) → suffisso Yahoo Finance
