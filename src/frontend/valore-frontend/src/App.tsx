@@ -229,10 +229,15 @@ function ProtectedApp() {
 
   return (
       <AppShell
-        header={{ height: headerHeight }}
+        header={{ height: `calc(${headerHeight}px + var(--safe-area-top))` }}
         navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: !opened } }}
         padding={isLandscape ? 'xs' : 'md'}
         styles={{
+          header: {
+            paddingTop: 'var(--safe-area-top)',
+            paddingLeft: 'var(--safe-area-left)',
+            paddingRight: 'var(--safe-area-right)',
+          },
           main: isMobile
             ? { paddingInline: 'var(--mantine-spacing-xs)' }
             : undefined,
