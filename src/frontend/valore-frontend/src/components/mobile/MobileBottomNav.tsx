@@ -1,11 +1,16 @@
 import { Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import type { CSSProperties } from 'react';
+import { useRef, type CSSProperties, type PointerEvent } from 'react';
 
 interface MobileBottomNavItem {
   value: string;
   label: string;
   icon: React.ComponentType<{ size?: string | number; className?: string; style?: CSSProperties }>;
 }
+
+// A tap that moves less than this is a tap, not a drag.
+const TAP_SLOP_PX = 10;
+// Clicks following a pointer-activated tap within this window are duplicates.
+const CLICK_DEDUPE_MS = 500;
 
 interface MobileBottomNavProps {
   items: MobileBottomNavItem[];
@@ -18,6 +23,35 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
+  const pressRef = useRef<{ value: string; x: number; y: number } | null>(null);
+  const lastPointerTapRef = useRef(0);
+
+  // iOS drops the synthetic click when a tap lands while the page is still
+  // momentum-scrolling, so a tab needed two taps. Activate on pointerup and
+  // keep onClick for keyboard/assistive activation, de-duplicated.
+  const handlePointerDown = (event: PointerEvent, itemValue: string) => {
+    pressRef.current = { value: itemValue, x: event.clientX, y: event.clientY };
+  };
+
+  const handlePointerUp = (event: PointerEvent, itemValue: string) => {
+    const press = pressRef.current;
+    pressRef.current = null;
+    if (
+      !press
+      || press.value !== itemValue
+      || Math.abs(event.clientX - press.x) > TAP_SLOP_PX
+      || Math.abs(event.clientY - press.y) > TAP_SLOP_PX
+    ) {
+      return;
+    }
+    lastPointerTapRef.current = Date.now();
+    onChange(itemValue);
+  };
+
+  const handleClick = (itemValue: string) => {
+    if (Date.now() - lastPointerTapRef.current < CLICK_DEDUPE_MS) return;
+    onChange(itemValue);
+  };
 
   if (items.length === 0) return null;
 
@@ -34,6 +68,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
         right: 'calc(12px + var(--safe-area-right))',
         bottom: `calc(${bottomOffset}px + var(--safe-area-bottom-floating))`,
         zIndex: 45,
+        touchAction: 'none',
         padding: 6,
         borderRadius: 20,
         background: isDark ? 'rgba(30,41,59,0.94)' : 'rgba(255,255,255,0.94)',
@@ -48,7 +83,10 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
         return (
           <UnstyledButton
             key={item.value}
-            onClick={() => onChange(item.value)}
+            onPointerDown={(event) => handlePointerDown(event, item.value)}
+            onPointerUp={(event) => handlePointerUp(event, item.value)}
+            onPointerCancel={() => { pressRef.current = null; }}
+            onClick={() => handleClick(item.value)}
             style={{
               flex: '1 1 0',
               minWidth: 44,
