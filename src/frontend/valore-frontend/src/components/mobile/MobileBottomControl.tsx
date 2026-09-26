@@ -109,7 +109,7 @@ export function MobileBottomControl({
           position: 'fixed',
           left: 'calc(12px + var(--safe-area-left))',
           right: 'calc(12px + var(--safe-area-right))',
-          bottom: `calc(${bottomOffset}px + var(--safe-area-bottom))`,
+          bottom: `calc(${bottomOffset}px + var(--safe-area-bottom-floating))`,
           zIndex: 44,
           padding: 8,
           borderRadius: 24,

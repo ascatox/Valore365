@@ -32,7 +32,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
         position: 'fixed',
         left: 'calc(12px + var(--safe-area-left))',
         right: 'calc(12px + var(--safe-area-right))',
-        bottom: `calc(${bottomOffset}px + var(--safe-area-bottom))`,
+        bottom: `calc(${bottomOffset}px + var(--safe-area-bottom-floating))`,
         zIndex: 45,
         padding: 6,
         borderRadius: 20,
