@@ -111,7 +111,7 @@ export function DashboardPage() {
   ];
 
   return (
-    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
+    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom-floating))' : undefined}>
       {isMobile ? (
         <>
           <PageHeader
@@ -265,7 +265,7 @@ export function DashboardPage() {
           aria-label="Apri Portfolio Copilot"
           style={{
             position: 'fixed',
-            bottom: isMobile ? 'calc(80px + var(--safe-area-bottom))' : 24,
+            bottom: isMobile ? 'calc(92px + var(--safe-area-bottom-floating))' : 24,
             right: 24,
             zIndex: 100,
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
