@@ -457,7 +457,15 @@ export function CopilotChat({
         </Group>
       }
       styles={{
-        body: { display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)', padding: 0, overflowX: 'hidden' },
+        body: {
+          display: 'flex',
+          flexDirection: 'column',
+          // On mobile the header grows with the safe-area inset, so let the body
+          // take the remaining space instead of assuming a 60px header.
+          ...(isMobile ? { flex: 1, minHeight: 0 } : { height: 'calc(100% - 60px)' }),
+          padding: 0,
+          overflowX: 'hidden',
+        },
         content: {
           display: 'flex',
           flexDirection: 'column',
@@ -469,7 +477,7 @@ export function CopilotChat({
           zIndex: 10,
           position: 'sticky' as const,
           top: 0,
-          paddingTop: isMobile ? 'calc(var(--mantine-spacing-xs) + var(--safe-area-top) / 2)' : undefined,
+          paddingTop: isMobile ? 'calc(var(--mantine-spacing-xs) + var(--safe-area-top))' : undefined,
         },
         close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
       }}
@@ -482,6 +490,8 @@ export function CopilotChat({
         px={isMobile ? 'xs' : 'md'}
         pt="sm"
         viewportRef={viewportRef}
+        scrollbars="y"
+        className="copilot-scroll"
       >
         {messages.length === 0 && !showHistory ? (
           <Stack gap="md" py="xl" align="center">

@@ -79,6 +79,14 @@ select:focus-visible {
   padding-bottom: max(var(--safe-area-bottom), 0px);
 }
 
+/* Mantine renders the ScrollArea content as `display: table`, which on iOS
+   Safari grows to the widest chat bubble instead of wrapping it. */
+.copilot-scroll .mantine-ScrollArea-viewport > div {
+  display: block !important;
+  min-width: 0 !important;
+  width: 100%;
+}
+
 /* Copilot Markdown styles */
 .copilot-markdown p { margin: 0 0 0.5em; }
 .copilot-markdown p:last-child { margin-bottom: 0; }
