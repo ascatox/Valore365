@@ -75,6 +75,16 @@ select:focus-visible {
   outline-offset: 2px;
 }
 
+/* iOS Safari zooms the page in when focusing a field whose font is smaller
+   than 16px, shifting the layout sideways (e.g. the Copilot input). */
+@media (hover: none) and (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
 .safe-bottom {
   padding-bottom: max(var(--safe-area-bottom), 0px);
 }

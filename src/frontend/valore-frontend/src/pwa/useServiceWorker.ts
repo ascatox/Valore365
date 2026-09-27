@@ -15,12 +15,17 @@ export function useServiceWorker() {
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swUrl, registration) {
-      // Check for updates every 60 minutes
-      if (registration) {
-        setInterval(() => {
-          registration.update()
-        }, 60 * 60 * 1000)
+      if (!registration) return
+      // Check for a new version whenever the app comes back to the foreground.
+      // An installed iOS app is usually resumed rather than relaunched, so
+      // neither a page load nor a background timer would trigger the check.
+      const checkForUpdate = () => {
+        if (document.visibilityState !== 'visible' || !navigator.onLine) return
+        registration.update().catch(() => {})
       }
+      // No periodic timer: with autoUpdate a new version reloads the page, which
+      // is fine on resume but would discard in-progress input mid-session.
+      document.addEventListener('visibilitychange', checkForUpdate)
     },
     onRegisterError(error) {
       console.error('SW registration error:', error)
