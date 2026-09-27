@@ -362,7 +362,13 @@ export function CopilotChat({
       }
     } catch (err: unknown) {
       if (err instanceof Error && err.name !== 'AbortError') {
-        setError(err.message);
+        // fetch() network failures surface as a bare TypeError ("Load failed" on
+        // Safari, "Failed to fetch" on Chrome): show something actionable instead.
+        setError(
+          err instanceof TypeError
+            ? 'Connessione interrotta prima della risposta. Controlla la rete e riprova.'
+            : err.message,
+        );
       }
     } finally {
       setStreaming(false);
