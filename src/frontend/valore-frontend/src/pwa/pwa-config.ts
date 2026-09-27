@@ -1,7 +1,10 @@
 import type { VitePWAOptions } from 'vite-plugin-pwa'
 
 export const pwaConfig: Partial<VitePWAOptions> = {
-  registerType: 'prompt',
+  // New versions install and take over on their own (the page reloads once the
+  // new service worker is in control), so the iOS home-screen app never gets
+  // stuck on a stale build waiting for the user to accept an update.
+  registerType: 'autoUpdate',
   includeAssets: ['icons/*.png', 'logos/*.svg'],
   manifest: {
     name: 'Valore365',
