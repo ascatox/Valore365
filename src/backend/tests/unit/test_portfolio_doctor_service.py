@@ -1,7 +1,14 @@
 from datetime import date
 
 from app.schemas.portfolio_doctor import PortfolioHealthMetrics
-from app.services.portfolio_doctor._holdings import _compute_portfolio_return_params
+from app.services.portfolio_doctor._holdings import (
+    LONG_TERM_EXPECTED_RETURN,
+    _asset_class,
+    _compute_portfolio_return_params,
+    _historical_return_stats,
+    _long_term_return_assumptions,
+)
+from app.services.portfolio_doctor._monte_carlo import _simulate_paths
 from app.services.portfolio_doctor.education_templates import enrich_alerts_with_education
 from app.services.portfolio_doctor._stress import (
     _compute_historical_scenario,
@@ -244,11 +251,48 @@ def test_portfolio_return_params_use_portfolio_series_not_weighted_asset_sigmas(
     class _Repo:
         engine = _Engine()
 
-    mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(_Repo(), holdings)
+    mu_hist, sigma_hist, df_t = _historical_return_stats(_Repo(), holdings)
 
-    assert abs(mu_annual) < 1e-6
-    assert sigma_annual < 0.001
+    assert abs(mu_hist) < 1e-6
+    assert sigma_hist < 0.001
     assert 3.0 <= df_t <= 30.0
+
+    # The projection parameters never extrapolate the realized year: the
+    # expected return comes from long-term assumptions and the realized
+    # (near-zero) volatility is floored at the long-term one.
+    mu_annual, sigma_annual, _ = _compute_portfolio_return_params(_Repo(), holdings)
+    assert mu_annual == LONG_TERM_EXPECTED_RETURN["equity"]
+    assert abs(sigma_annual - 0.16) < 1e-9
+
+
+def test_asset_class_detects_bonds_and_gold_by_name():
+    assert _asset_class(_holding(1, "VWCE", "Vanguard FTSE All-World", "etf", 50)) == "equity"
+    assert _asset_class(_holding(2, "AGGH", "iShares Core Global Aggregate Bond", "etf", 25)) == "bond"
+    assert _asset_class(_holding(3, "SGLD", "Invesco Physical Gold ETC", "etc", 6)) == "commodity"
+    assert _asset_class(_holding(4, "CASH", "Liquidità", "cash", 3)) == "cash"
+
+
+def test_long_term_assumptions_for_balanced_portfolio_are_prudent():
+    holdings = [
+        _holding(1, "VWCE", "Vanguard FTSE All-World", "etf", 66),
+        _holding(2, "AGGH", "iShares Core Global Aggregate Bond", "etf", 25),
+        _holding(3, "SGLD", "Invesco Physical Gold ETC", "etc", 6),
+        _holding(4, "CASH", "Liquidità", "cash", 3),
+    ]
+
+    mu, sigma = _long_term_return_assumptions(holdings)
+
+    # 0.66*6.5% + 0.25*3% + 0.06*3.5% + 0.03*2% = 5.31%
+    assert abs(mu - 0.0531) < 1e-9
+    assert 0.10 < sigma < 0.12
+
+
+def test_monte_carlo_median_grows_at_the_expected_compound_rate():
+    projections = _simulate_paths(0.0531, 0.11, 30.0)
+
+    median_year_9 = projections[9].p50
+    expected = 100 * (1.0531 ** 9)
+    assert abs(median_year_9 - expected) / expected < 0.03
 
 
 def test_scoring_and_alerts_penalize_concentration_risk_and_costs():

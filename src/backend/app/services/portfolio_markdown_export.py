@@ -177,7 +177,7 @@ def render_snapshot_markdown(
         lines.append("## Proiezione Monte Carlo")
         lines.append("")
         lines.append(
-            f"Rendimento medio annualizzato: {_num(monte_carlo.get('annualized_mean_return_pct'), suffix='%')}, "
+            f"Rendimento atteso di lungo periodo (ipotesi per classe di attivo): {_num(monte_carlo.get('annualized_mean_return_pct'), suffix='%')}, "
             f"volatilità annualizzata: {_num(monte_carlo.get('annualized_volatility_pct'), suffix='%')}."
         )
         projections = monte_carlo.get("projections") or []

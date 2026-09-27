@@ -636,6 +636,7 @@ def _get_monte_carlo(
     return {
         "annualized_mean_return_pct": round(mc.annualized_mean_return_pct, 2),
         "annualized_volatility_pct": round(mc.annualized_volatility_pct, 2),
+        "return_assumption": "rendimento atteso di lungo periodo per classe di attivo (ipotesi prudenziale, non derivato dalla performance recente)",
         "projections": [
             {"year": p.year, "p25": p.p25, "p50": p.p50, "p75": p.p75}
             for p in mc.projections[:10]

@@ -896,7 +896,7 @@ export function FirePage() {
                     : fireGap === 0
                       ? 'Il portafoglio ha gia raggiunto o superato la soglia FIRE impostata.'
                       : estimatedYearsToFire != null
-                        ? `Con il contributo annuo attuale e il rendimento medio stimato, la soglia FIRE viene raggiunta in circa ${estimatedYearsToFire.toFixed(1)} anni.`
+                        ? `Con il contributo annuo attuale e il rendimento atteso di lungo periodo, la soglia FIRE viene raggiunta in circa ${estimatedYearsToFire.toFixed(1)} anni.`
                         : 'Con i dati attuali non è possibile stimare una traiettoria affidabile verso la soglia FIRE.')
                   : (annualWithdrawalValue <= 0
                       ? 'Inserisci una spesa netta annua per valutare la sostenibilità fiscale del decumulo.'
@@ -931,7 +931,7 @@ export function FirePage() {
                   <Table.Tr><Table.Td>Base currency</Table.Td><Table.Td>{currency}</Table.Td></Table.Tr>
                   <Table.Tr><Table.Td>Rendimento atteso</Table.Td><Table.Td>{formatPct(expectedReturnPct, 1)}</Table.Td></Table.Tr>
                   {fireMode === 'accumulation' && monteCarloMeanReturnPct != null && (
-                    <Table.Tr><Table.Td>Rendimento medio Monte Carlo</Table.Td><Table.Td>{formatPct(monteCarloMeanReturnPct, 1)}</Table.Td></Table.Tr>
+                    <Table.Tr><Table.Td>Rendimento atteso (ipotesi lungo periodo)</Table.Td><Table.Td>{formatPct(monteCarloMeanReturnPct, 1)}</Table.Td></Table.Tr>
                   )}
                   <Table.Tr><Table.Td>Volatilità attesa</Table.Td><Table.Td>{formatPct(activeVolatilityPct, 1)}</Table.Td></Table.Tr>
                   {fireMode === 'accumulation' ? (
