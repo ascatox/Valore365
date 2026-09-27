@@ -142,7 +142,7 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
           <div style={{ minWidth: 0 }}>
             <Title order={4}>Proiezione Monte Carlo</Title>
             <Text size="xs" c="dimmed" style={{ wordBreak: 'break-word' }}>
-              {data.num_simulations.toLocaleString()} sim. &middot; rend. medio {data.annualized_mean_return_pct.toFixed(1)}% &middot; vol. {data.annualized_volatility_pct.toFixed(1)}%
+              {data.num_simulations.toLocaleString()} sim. &middot; rend. atteso {data.annualized_mean_return_pct.toFixed(1)}% &middot; vol. {data.annualized_volatility_pct.toFixed(1)}%
               {hasValue && <> &middot; valore {formatCurrency(marketValue, currency)}</>}
             </Text>
           </div>
@@ -269,7 +269,11 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
         </SimpleGrid>
 
         <Text size="xs" c="dimmed" fs="italic">
-          Le proiezioni si basano sulla volatilità storica e non costituiscono previsioni di rendimento futuro.
+          Il rendimento atteso è un'ipotesi prudente di lungo periodo per classe di attivo
+          (azionario 6,5%, obbligazionario 3%, oro/materie prime 3,5%, liquidità 2% annui),
+          pesata sulla composizione del portafoglio: non dipende dalla performance recente.
+          La volatilità è quella dell'ultimo anno, con un minimo di lungo periodo.
+          Le proiezioni non costituiscono previsioni di rendimento futuro.
         </Text>
       </Stack>
     </Card>

@@ -496,6 +496,7 @@ def build_portfolio_snapshot(
         snapshot["doctor_monte_carlo"] = {
             "annualized_mean_return_pct": round(monte_carlo.annualized_mean_return_pct, 2),
             "annualized_volatility_pct": round(monte_carlo.annualized_volatility_pct, 2),
+            "return_assumption": "rendimento atteso di lungo periodo per classe di attivo (ipotesi prudenziale, non derivato dalla performance recente)",
             "horizons": monte_carlo.horizons,
             "projections": [
                 {

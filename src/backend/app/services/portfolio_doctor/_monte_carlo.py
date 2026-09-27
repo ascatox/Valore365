@@ -265,7 +265,8 @@ def _simulate_paths(
     sigma_annual: float,
     df_t: float = 30.0,
 ) -> list[MonteCarloYearProjection]:
-    drift = mu_annual - 0.5 * sigma_annual**2
+    # mu_annual is a compound rate, so the median path grows at exactly mu_annual.
+    drift = math.log1p(mu_annual)
     rng = random.Random(42)
 
     # Scale factor: the Student-t with df degrees of freedom has variance
@@ -312,7 +313,8 @@ def _simulate_decumulation_paths(
     sigma_annual: float,
     df_t: float = 30.0,
 ) -> list[dict[str, list[float]]]:
-    drift = mu_annual - 0.5 * sigma_annual**2
+    # mu_annual is a compound rate, so the median path grows at exactly mu_annual.
+    drift = math.log1p(mu_annual)
     inflation = max(0.0, inflation_rate_pct) / 100.0
     tax_rate = max(0.0, capital_gains_tax_rate_pct) / 100.0
     t_scale = math.sqrt((df_t - 2.0) / df_t) if df_t > 2.0 else 1.0

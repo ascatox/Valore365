@@ -112,17 +112,105 @@ def _rebalance_holdings_by_market_value(holdings: list[AnalyzedHolding]) -> list
     return rebalanced
 
 
+# Long-term capital market assumptions (nominal, EUR, annual).
+# Expected returns are compound (geometric) rates: the median simulated path
+# grows at this rate. A single year of prices cannot estimate an expected
+# return (with ~10% volatility the standard error is ~10 points), so the
+# projections never extrapolate recent performance.
+LONG_TERM_EXPECTED_RETURN = {
+    "equity": 0.065,
+    "bond": 0.030,
+    "commodity": 0.035,
+    "cash": 0.020,
+}
+LONG_TERM_VOLATILITY = {
+    "equity": 0.16,
+    "bond": 0.06,
+    "commodity": 0.15,
+    "cash": 0.0,
+}
+_LONG_TERM_CORRELATION = {
+    frozenset({"equity", "bond"}): 0.1,
+    frozenset({"equity", "commodity"}): 0.2,
+    frozenset({"bond", "commodity"}): 0.2,
+}
+_BOND_KEYWORDS = ("bond", "obbligaz", "fixed income", "treasury", "govt", "aggregate")
+_COMMODITY_KEYWORDS = ("gold", "oro", "silver", "commodit", "materie prime", "precious metal")
+
+
+def _asset_class(holding: AnalyzedHolding) -> str:
+    """Map a holding to a broad asset class for long-term assumptions."""
+    asset_type = holding.asset_type.lower()
+    if asset_type == "cash":
+        return "cash"
+    if asset_type == "bond":
+        return "bond"
+    name = holding.name.lower()
+    if any(keyword in name for keyword in _BOND_KEYWORDS):
+        return "bond"
+    if any(keyword in name for keyword in _COMMODITY_KEYWORDS):
+        return "commodity"
+    return "equity"
+
+
+def _long_term_return_assumptions(holdings: list[AnalyzedHolding]) -> tuple[float, float]:
+    """Return (expected compound return, volatility) implied by the portfolio's
+    asset-class mix under the long-term capital market assumptions."""
+    class_weights: dict[str, float] = defaultdict(float)
+    for holding in holdings:
+        class_weights[_asset_class(holding)] += max(0.0, holding.weight_pct)
+    total = sum(class_weights.values())
+    if total <= 0:
+        return 0.0, 0.0
+    weights = {cls: weight / total for cls, weight in class_weights.items()}
+
+    expected_return = sum(weight * LONG_TERM_EXPECTED_RETURN[cls] for cls, weight in weights.items())
+    variance = 0.0
+    for cls_a, weight_a in weights.items():
+        for cls_b, weight_b in weights.items():
+            correlation = 1.0 if cls_a == cls_b else _LONG_TERM_CORRELATION.get(frozenset({cls_a, cls_b}), 0.0)
+            variance += (
+                weight_a * weight_b
+                * LONG_TERM_VOLATILITY[cls_a] * LONG_TERM_VOLATILITY[cls_b]
+                * correlation
+            )
+    return expected_return, math.sqrt(variance)
+
+
 def _compute_portfolio_return_params(
     repo: PortfolioRepository,
     holdings: list[AnalyzedHolding],
 ) -> tuple[float, float, float]:
-    """Return (mu_annual, sigma_annual, df_t) where df_t is the estimated
-    degrees-of-freedom for a Student-t model of returns (used by Monte Carlo
-    to capture fat tails).  Falls back to a large df (normal-like) when
-    kurtosis estimation is not reliable."""
+    """Return (mu_annual, sigma_annual, df_t) for the Monte Carlo projections.
+
+    - mu_annual: expected compound annual return from the long-term capital
+      market assumptions, weighted by the portfolio's asset-class mix.
+    - sigma_annual: the realized volatility of the last year, but never below
+      the long-term volatility of the mix (a calm year would understate risk).
+    - df_t: Student-t degrees of freedom estimated from realized kurtosis.
+
+    Returns (0, 0, 30) when there is not enough price history.
+    """
+    historical = _historical_return_stats(repo, holdings)
+    if historical is None:
+        return 0.0, 0.0, 30.0
+    _mu_hist, sigma_hist, df_t = historical
+    mu_long_term, sigma_long_term = _long_term_return_assumptions(holdings)
+    return mu_long_term, max(sigma_hist, sigma_long_term), df_t
+
+
+def _historical_return_stats(
+    repo: PortfolioRepository,
+    holdings: list[AnalyzedHolding],
+) -> tuple[float, float, float] | None:
+    """Return (mu_annual, sigma_annual, df_t) realized over the last year of
+    prices, where df_t is the estimated degrees-of-freedom for a Student-t
+    model of returns (used by Monte Carlo to capture fat tails).  Falls back
+    to a large df (normal-like) when kurtosis estimation is not reliable.
+    Returns None when there is not enough price history."""
     asset_ids = [h.asset_id for h in holdings if h.asset_type != "cash"]
     if not asset_ids:
-        return 0.0, 0.0, 30.0
+        return None
 
     start_date = date.today() - timedelta(days=370)
     with repo.engine.begin() as conn:
@@ -152,7 +240,7 @@ def _compute_portfolio_return_params(
     for series_dates in dates_by_asset.values():
         all_dates.update(series_dates)
     if len(all_dates) < 20:
-        return 0.0, 0.0, 30.0
+        return None
 
     sorted_dates = sorted(all_dates)
     price_lookup: dict[int, dict[date, float]] = {}
@@ -165,7 +253,7 @@ def _compute_portfolio_return_params(
     weight_map = {h.asset_id: h.weight_pct / 100.0 for h in holdings}
     total_weight = sum(weight_map.values())
     if total_weight <= 0:
-        return 0.0, 0.0
+        return None
 
     portfolio_values: list[float] = []
     for current_date in sorted_dates:
@@ -192,7 +280,7 @@ def _compute_portfolio_return_params(
         if prev > 0 and curr > 0
     ]
     if len(log_returns) < 20:
-        return 0.0, 0.0, 30.0
+        return None
 
     mu_daily = statistics.mean(log_returns)
     sigma_daily = statistics.pstdev(log_returns)
