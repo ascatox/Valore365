@@ -5,8 +5,9 @@ from __future__ import annotations
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from pathlib import Path
-from typing import Generator
+from typing import Any, Callable, Generator
 
 from ..copilot_tools import (
     build_tool_availability_block,
@@ -39,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 MAX_TOOL_ROUNDS = 5
 AGENTIC_TIMEOUT_S = 120
+# Clients (notably iOS Safari) drop a request that receives no bytes for ~60s,
+# and a non-streaming LLM call with tools can take longer than that.
+HEARTBEAT_INTERVAL_S = 10
+_HEARTBEAT = ": keepalive\n\n"
 
 # ---------------------------------------------------------------------------
 # System prompts (loaded once at import time)
@@ -190,6 +195,27 @@ def _build_snapshot_guidance_block(snapshot: dict) -> str:
 # Agentic streaming (Fase 2) -- tool calling loop
 # ---------------------------------------------------------------------------
 
+def _run_with_heartbeat(
+    fn: Callable[..., Any], *args: Any, interval: float | None = None,
+) -> Generator[str, None, Any]:
+    """Run a blocking call in a worker thread, yielding SSE comments while it runs.
+
+    Use as ``result = yield from _run_with_heartbeat(fn, ...)``. Comment lines are
+    ignored by SSE clients but keep the connection from idling out.
+    """
+    interval = HEARTBEAT_INTERVAL_S if interval is None else interval
+    executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(fn, *args)
+        while True:
+            try:
+                return future.result(timeout=interval)
+            except FutureTimeoutError:
+                yield _HEARTBEAT
+    finally:
+        executor.shutdown(wait=False)
+
+
 def stream_copilot_response_agentic(
     config: CopilotConfig,
     snapshot: dict,
@@ -219,6 +245,8 @@ def stream_copilot_response_agentic(
     conv_messages = [{"role": m.role, "content": m.content} for m in messages]
 
     try:
+        # Send a first byte right away so the client knows the request is alive.
+        yield _sse("thinking", "Sto analizzando la richiesta...")
         for round_num in range(MAX_TOOL_ROUNDS):
             # Timeout check
             elapsed = time.monotonic() - start_time
@@ -227,8 +255,8 @@ def stream_copilot_response_agentic(
                 return
 
             # Call LLM with tools (non-streaming to inspect tool calls)
-            tool_calls, text_content = _call_llm_with_tools(
-                config, system_prompt, conv_messages, tools,
+            tool_calls, text_content = yield from _run_with_heartbeat(
+                _call_llm_with_tools, config, system_prompt, conv_messages, tools,
             )
 
             if tool_calls:
