@@ -325,7 +325,13 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <BestWorstCards best={best} worst={worst} periodLabel={periodLabel} />
+        <BestWorstCards
+          best={best}
+          worst={worst}
+          periodLabel={periodLabel}
+          chartWindow={chartWindow}
+          onWindowChange={setChartWindow}
+        />
       </div>
     </>
   );
