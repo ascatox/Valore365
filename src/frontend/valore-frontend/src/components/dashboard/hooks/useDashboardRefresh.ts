@@ -7,6 +7,7 @@ import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../../../s
 const DASHBOARD_QUERY_PREFIXES = new Set([
   'portfolio-summary',
   'portfolio-positions',
+  'portfolio-performers',
   'portfolio-allocation',
   'portfolio-timeseries',
   'portfolio-data-coverage',

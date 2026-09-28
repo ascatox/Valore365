@@ -9,11 +9,11 @@ export const ALLOCATION_COLORS = [
 ];
 
 export const DASHBOARD_WINDOWS = [
-  { label: '1g', value: '1', days: 1 },
-  { label: '1s', value: '7', days: 7 },
-  { label: '30g', value: '30', days: 30 },
-  { label: '90g', value: '90', days: 90 },
-  { label: '1a', value: '365', days: 365 },
+  { label: '1g', value: '1', days: 1, periodLabel: 'oggi' },
+  { label: '1s', value: '7', days: 7, periodLabel: 'ultima settimana' },
+  { label: '30g', value: '30', days: 30, periodLabel: 'ultimi 30 giorni' },
+  { label: '90g', value: '90', days: 90, periodLabel: 'ultimi 90 giorni' },
+  { label: '1a', value: '365', days: 365, periodLabel: 'ultimo anno' },
 ] as const;
 
 export const STORAGE_KEYS = {

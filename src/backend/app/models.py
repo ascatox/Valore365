@@ -290,6 +290,14 @@ class Position(BaseModel):
     price_date: date | None = None
 
 
+class PeriodPerformer(BaseModel):
+    asset_id: int
+    symbol: str
+    name: str
+    return_pct: float
+    start_date: date | None = None
+
+
 class PortfolioSummary(BaseModel):
     portfolio_id: int
     base_currency: str

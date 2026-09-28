@@ -12,6 +12,7 @@ import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatt
 import {
   usePortfolioSummary,
   usePortfolioPositions,
+  usePortfolioPerformers,
   usePortfolioTimeseries,
   usePortfolioIntradayTimeseries,
   usePortfolioDataCoverage,
@@ -50,6 +51,11 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     d.setDate(d.getDate() - chartWindowDays);
     return d.toISOString().slice(0, 10);
   }, [chartWindowDays]);
+
+  const periodLabel = DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.periodLabel ?? `ultimi ${chartWindowDays} giorni`;
+  // 1g uses the positions' day change (same source as the "Oggi" KPI); longer
+  // windows ask the backend for each asset's return over the chart window.
+  const { data: periodPerformers = [] } = usePortfolioPerformers(portfolioId, chartWindowDays, !isIntradayWindow);
 
   const { data: portfolioIntradayRaw = [] } = usePortfolioIntradayTimeseries(portfolioId, isIntradayWindow);
   const { data: benchmarkPrices = [], isLoading: benchmarkLoading } = useBenchmarkPrices(selectedBenchmarkId, portfolioId, benchmarkStartDate);
@@ -150,25 +156,26 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
   ], [portfolioSummary, mvpCurrency, isMobile]);
 
   const { best, worst } = useMemo(() => {
-    const sorted = [...portfolioPositions]
-      .filter((p) => Number.isFinite(p.day_change_pct))
-      .sort((a, b) => b.day_change_pct - a.day_change_pct);
-    const bestItems: PerformerItem[] = sorted.slice(0, 3).map((p) => ({
-      symbol: p.symbol,
-      name: p.name,
-      return_pct: p.day_change_pct,
-      as_of: p.first_trade_at ?? null,
-      asset_id: p.asset_id,
-    }));
-    const worstItems: PerformerItem[] = sorted.slice(-3).reverse().map((p) => ({
-      symbol: p.symbol,
-      name: p.name,
-      return_pct: p.day_change_pct,
-      as_of: p.first_trade_at ?? null,
-      asset_id: p.asset_id,
-    }));
-    return { best: bestItems, worst: worstItems };
-  }, [portfolioPositions]);
+    const items: PerformerItem[] = isIntradayWindow
+      ? portfolioPositions.map((p) => ({
+          symbol: p.symbol,
+          name: p.name,
+          return_pct: p.day_change_pct,
+          as_of: null,
+          asset_id: p.asset_id,
+        }))
+      : periodPerformers.map((p) => ({
+          symbol: p.symbol,
+          name: p.name,
+          return_pct: p.return_pct,
+          as_of: null,
+          asset_id: p.asset_id,
+        }));
+    const sorted = items
+      .filter((p) => Number.isFinite(p.return_pct))
+      .sort((a, b) => b.return_pct - a.return_pct);
+    return { best: sorted.slice(0, 3), worst: sorted.slice(-3).reverse() };
+  }, [isIntradayWindow, portfolioPositions, periodPerformers]);
 
   const benchmarkSelectData = useMemo(
     () => [
@@ -318,7 +325,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       </div>
 
       <div style={{ marginTop: 16 }}>
-        <BestWorstCards best={best} worst={worst} periodLabel="oggi" />
+        <BestWorstCards best={best} worst={worst} periodLabel={periodLabel} />
       </div>
     </>
   );
