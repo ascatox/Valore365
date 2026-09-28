@@ -396,6 +396,14 @@ export interface MWRTimeseriesPoint {
   cumulative_mwr_pct: number | null;
 }
 
+export interface PeriodPerformer {
+  asset_id: number;
+  symbol: string;
+  name: string;
+  return_pct: number;
+  start_date: string | null;
+}
+
 export interface Position {
   asset_id: number;
   symbol: string;

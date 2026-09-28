@@ -3,12 +3,12 @@ from bisect import bisect_right
 from collections import defaultdict
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import text
 
 from ..price_validation import check_staleness
-from ..models import Position
+from ..models import PeriodPerformer, Position
 from ._base import _finite
 
 
@@ -39,6 +39,105 @@ class PositionsMixin:
         if key not in memo:
             memo[key] = self._compute_positions(portfolio_id, user_id, stale_days)
         return [p.model_copy() for p in memo[key]]
+
+    def get_period_performers(
+        self, portfolio_id: int, user_id: str, days: int, today: date | None = None,
+    ) -> list[PeriodPerformer]:
+        """Price return of each open position over the last ``days`` days.
+
+        Uses the same window as the dashboard chart so "Migliori/Peggiori"
+        match the portfolio variation shown above them. For ``days == 1`` the
+        positions' day_change_pct is reused so values match the "Oggi" KPI.
+        Returns are in quote currency, like day_change_pct.
+        """
+        positions = [p for p in self.get_positions(portfolio_id, user_id) if p.quantity > 0]
+        if not positions:
+            return []
+        if days <= 1:
+            return [
+                PeriodPerformer(
+                    asset_id=p.asset_id, symbol=p.symbol, name=p.name,
+                    return_pct=p.day_change_pct, start_date=None,
+                )
+                for p in positions
+            ]
+
+        start_date = (today or date.today()) - timedelta(days=days)
+        prices = self._get_period_prices([p.asset_id for p in positions], start_date)
+        result: list[PeriodPerformer] = []
+        for p in positions:
+            start_info, end_price = prices.get(p.asset_id, (None, None))
+            if start_info is None or end_price is None:
+                continue
+            start_day, start_close = start_info
+            if not (start_close > 0 and math.isfinite(start_close) and math.isfinite(end_price)):
+                continue
+            result.append(
+                PeriodPerformer(
+                    asset_id=p.asset_id,
+                    symbol=p.symbol,
+                    name=p.name,
+                    return_pct=round(((end_price / start_close) - 1) * 100.0, 2),
+                    start_date=start_day,
+                )
+            )
+        return result
+
+    def _get_period_prices(
+        self, asset_ids: list[int], start_date: date,
+    ) -> dict[int, tuple[tuple[date, float] | None, float | None]]:
+        """Per asset: (start bar on/before start_date, current quote price).
+
+        The start bar falls back to the first bar after start_date when the
+        history does not reach that far back. The current price prefers the
+        latest tick (as in get_positions) over the latest daily close.
+        """
+        with self.engine.begin() as conn:
+            start_rows = conn.execute(
+                text(
+                    """
+                    select asset_id, price_date, close from (
+                        select distinct on (asset_id) asset_id, price_date, close::float8 as close
+                        from price_bars_1d
+                        where asset_id = any(:asset_ids) and price_date <= :start_date
+                        order by asset_id, price_date desc
+                    ) before_start
+                    union all
+                    select asset_id, price_date, close from (
+                        select distinct on (asset_id) asset_id, price_date, close::float8 as close
+                        from price_bars_1d
+                        where asset_id = any(:asset_ids) and price_date > :start_date
+                        order by asset_id, price_date asc
+                    ) after_start
+                    """
+                ),
+                {"asset_ids": asset_ids, "start_date": start_date},
+            ).mappings().all()
+            latest_daily = self._get_latest_daily_prices(conn, asset_ids)
+            tick_rows = conn.execute(
+                text(
+                    """
+                    select distinct on (asset_id) asset_id, last::float8 as last
+                    from price_ticks
+                    where asset_id = any(:asset_ids)
+                    order by asset_id, ts desc
+                    """
+                ),
+                {"asset_ids": asset_ids},
+            ).mappings().all()
+
+        start_by_asset: dict[int, tuple[date, float]] = {}
+        for r in start_rows:
+            aid = int(r["asset_id"])
+            current = start_by_asset.get(aid)
+            # Prefer the bar on/before start_date; the first later bar is only a fallback.
+            if current is None or (r["price_date"] <= start_date and current[0] > start_date):
+                start_by_asset[aid] = (r["price_date"], float(r["close"]))
+        end_by_asset: dict[int, float] = {aid: close for aid, (_, close) in latest_daily.items()}
+        for r in tick_rows:
+            if r["last"] is not None and math.isfinite(float(r["last"])):
+                end_by_asset[int(r["asset_id"])] = float(r["last"])
+        return {aid: (start_by_asset.get(aid), end_by_asset.get(aid)) for aid in asset_ids}
 
     def _compute_positions(self, portfolio_id: int, user_id: str, stale_days: int) -> list[Position]:
         with self.engine.begin() as conn:

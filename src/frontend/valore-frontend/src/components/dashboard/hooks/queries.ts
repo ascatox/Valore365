@@ -20,6 +20,7 @@ import {
   getPortfolioHealth,
   getPortfolioIntradayTimeseries,
   getPortfolioXray,
+  getPortfolioPerformers,
   getPortfolioPositions,
   getPortfolioSummary,
   getPortfolioTargetAllocation,
@@ -140,6 +141,14 @@ export function usePortfolioPositions(portfolioId: number | null) {
     queryKey: ['portfolio-positions', portfolioId],
     queryFn: () => getPortfolioPositions(portfolioId!),
     enabled: portfolioId != null,
+  });
+}
+
+export function usePortfolioPerformers(portfolioId: number | null, days: number, enabled = true) {
+  return useQuery({
+    queryKey: ['portfolio-performers', portfolioId, days],
+    queryFn: () => getPortfolioPerformers(portfolioId!, days),
+    enabled: portfolioId != null && enabled,
   });
 }
 

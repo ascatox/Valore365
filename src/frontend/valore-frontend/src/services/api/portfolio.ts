@@ -7,6 +7,7 @@ import type {
   PortfolioCloneResponse,
   PortfolioSummary,
   Position,
+  PeriodPerformer,
   AllocationItem,
   TimeSeriesPoint,
   IntradayTimeseriesPoint,
@@ -64,6 +65,10 @@ export const getPortfolioSummary = async (portfolioId: number): Promise<Portfoli
 
 export const getPortfolioPositions = async (portfolioId: number): Promise<Position[]> => {
   return apiFetch<Position[]>(`/portfolios/${portfolioId}/positions`);
+};
+
+export const getPortfolioPerformers = async (portfolioId: number, days: number): Promise<PeriodPerformer[]> => {
+  return apiFetch<PeriodPerformer[]>(`/portfolios/${portfolioId}/performers?days=${days}`);
 };
 
 export const getPortfolioAllocation = async (portfolioId: number): Promise<AllocationItem[]> => {

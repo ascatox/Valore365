@@ -18,6 +18,7 @@ from ..models import (
     MWRResult,
     MWRTimeseriesPoint,
     PerformanceSummary,
+    PeriodPerformer,
     PortfolioSummary,
     Position,
     RollingWindowsResponse,
@@ -42,6 +43,21 @@ def register_analytics_routes(
     def get_positions(portfolio_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> list[Position]:
         try:
             return repo.get_positions(portfolio_id, _auth.user_id)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+    @router.get(
+        "/portfolios/{portfolio_id}/performers",
+        response_model=list[PeriodPerformer],
+        responses={404: {"model": ErrorResponse}},
+    )
+    def get_performers(
+        portfolio_id: int,
+        days: int = Query(default=1, ge=1, le=3650),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> list[PeriodPerformer]:
+        try:
+            return repo.get_period_performers(portfolio_id, _auth.user_id, days)
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 

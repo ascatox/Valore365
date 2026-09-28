@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { Badge, Card, Grid, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
+import { Badge, Card, Grid, Group, SegmentedControl, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconArrowUpRight, IconArrowDownRight, IconInfoCircle } from '@tabler/icons-react';
 import { formatPct, formatShortDate, getVariationColor } from '../formatters';
 import type { PerformerItem } from '../types';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
+import { DASHBOARD_WINDOWS } from '../constants';
 
 interface BestWorstCardsProps {
   best: PerformerItem[];
   worst: PerformerItem[];
   periodLabel?: string;
+  chartWindow?: string;
+  onWindowChange?: (w: string) => void;
 }
 
 function PerformerList({
@@ -70,7 +73,7 @@ function PerformerList({
   );
 }
 
-export function BestWorstCards({ best, worst, periodLabel }: BestWorstCardsProps) {
+export function BestWorstCards({ best, worst, periodLabel, chartWindow, onWindowChange }: BestWorstCardsProps) {
   const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
   const isMobile = useMediaQuery('(max-width: 48em)');
 
@@ -87,6 +90,16 @@ export function BestWorstCards({ best, worst, periodLabel }: BestWorstCardsProps
           opened={!!infoModal}
           onClose={() => setInfoModal(null)}
         />
+      )}
+      {chartWindow && onWindowChange && (
+        <Group justify="flex-end" mb="sm">
+          <SegmentedControl
+            size="xs"
+            value={chartWindow}
+            onChange={onWindowChange}
+            data={DASHBOARD_WINDOWS.map((w) => ({ label: w.label, value: w.value }))}
+          />
+        </Group>
       )}
       <Grid gutter="md">
         <Grid.Col span={{ base: 12, sm: 6 }}>
