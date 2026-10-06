@@ -193,3 +193,146 @@ def test_is_unpriceable_on_yahoo():
     assert not is_unpriceable_on_yahoo('twelvedata', 'IT0005549388')
     for symbol in ('VWCG.AS', '0GGH.L', 'AAPL', 'BTC-USD'):
         assert not is_unpriceable_on_yahoo('yfinance', symbol)
+
+
+# --- Fallback ISIN quando lo storico del simbolo e' insufficiente (es. 0GGH.L) ---
+
+from datetime import timedelta
+
+from app.errors import ProviderError
+
+
+class _Bar:
+    def __init__(self, day, close):
+        self.day = day
+        self.open = close
+        self.high = close
+        self.low = close
+        self.close = close
+        self.volume = 100.0
+
+
+def _history(days: int, close: float):
+    today = date.today()
+    return [_Bar(today - timedelta(days=i), close) for i in range(days) if (today - timedelta(days=i)).weekday() < 5]
+
+
+class _IsinRepo(_FakeRepo):
+    def __init__(self, isin='IE00BDBRDM35') -> None:
+        super().__init__()
+        self.isin = isin
+        self.upserted = []
+
+    def get_assets_for_price_refresh(self, provider: str, portfolio_id: int | None = None, asset_scope: str = 'target', user_id: str | None = None):
+        return [_FakeAsset(1, '0GGH', '0GGH.L')]
+
+    def get_quote_currencies_for_assets(self, asset_ids: list[int]):
+        return {1: 'EUR'}
+
+    def get_asset(self, asset_id: int):
+        class A:
+            pass
+        a = A()
+        a.isin = self.isin
+        return a
+
+    def upsert_asset_provider_symbol(self, payload):
+        self.upserted.append(payload.provider_symbol)
+
+
+class _SymbolClient(_FakeClient):
+    def __init__(self, bars_by_symbol):
+        super().__init__()
+        self.bars_by_symbol = bars_by_symbol
+        self.requested = []
+
+    def get_daily_bars(self, symbol: str, outputsize: int = 365, *, start_date=None, end_date=None, **kwargs):
+        self.requested.append(symbol)
+        value = self.bars_by_symbol.get(symbol, [])
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+
+def _patch(monkeypatch, client, candidates):
+    import app.services.historical_service as mod
+
+    monkeypatch.setattr(mod, 'make_finance_client', lambda _: client)
+    monkeypatch.setattr(mod, 'resolve_provider_symbol_candidates', lambda symbol, isin: candidates)
+
+
+def test_backfill_switches_to_isin_candidate_when_history_is_insufficient(monkeypatch):
+    client = _SymbolClient({
+        '0GGH.L': _history(1, 4.80),
+        'AGGH.AS': _history(30, 4.81),       # storico corto: scartato a favore di uno completo
+        'AGGH.MI': _history(365, 4.81),
+    })
+    _patch(monkeypatch, client, ['0GGH.L', 'AGGH.AS', 'AGGH.MI', 'EUNA.DE'])
+
+    repo = _IsinRepo()
+    result = HistoricalIngestionService(_FakeSettings(), repo).backfill_daily(portfolio_id=1, days=365)
+
+    assert result.asset_items[0].provider_symbol == 'AGGH.MI'
+    assert result.asset_items[0].bars_saved > 200
+    assert repo.upserted == ['AGGH.MI']
+    assert 'EUNA.DE' not in client.requested
+
+
+def test_backfill_ignores_candidates_with_different_price_level(monkeypatch):
+    client = _SymbolClient({
+        '0GGH.L': _history(1, 4.80),
+        'AGGH.SW': _history(365, 5.40),      # altra valuta / linea: prezzo troppo distante
+    })
+    _patch(monkeypatch, client, ['0GGH.L', 'AGGH.SW'])
+
+    repo = _IsinRepo()
+    result = HistoricalIngestionService(_FakeSettings(), repo).backfill_daily(portfolio_id=1, days=365)
+
+    assert result.asset_items[0].provider_symbol == '0GGH.L'
+    assert result.asset_items[0].bars_saved == 1
+    assert repo.upserted == []
+
+
+def test_backfill_uses_isin_candidate_when_provider_has_no_data(monkeypatch):
+    client = _SymbolClient({
+        '0GGH.L': ProviderError(provider='yfinance', operation='daily_bars', symbol='0GGH.L', reason='no_data', message='no data'),
+        'AGGH.MI': _history(365, 4.81),
+    })
+    _patch(monkeypatch, client, ['0GGH.L', 'AGGH.MI'])
+
+    repo = _IsinRepo()
+    repo.get_latest_close_price = lambda asset_id: 4.80
+    result = HistoricalIngestionService(_FakeSettings(), repo).backfill_daily(portfolio_id=1, days=365)
+
+    assert result.errors == []
+    assert result.asset_items[0].provider_symbol == 'AGGH.MI'
+    assert repo.upserted == ['AGGH.MI']
+
+
+def test_backfill_without_isin_keeps_original_symbol(monkeypatch):
+    client = _SymbolClient({'0GGH.L': _history(1, 4.80)})
+    _patch(monkeypatch, client, [])
+
+    repo = _IsinRepo(isin=None)
+    result = HistoricalIngestionService(_FakeSettings(), repo).backfill_daily(portfolio_id=1, days=365)
+
+    assert result.asset_items[0].provider_symbol == '0GGH.L'
+    assert client.requested == ['0GGH.L']
+
+
+def test_backfill_uses_live_quote_as_reference_when_no_history(monkeypatch):
+    class Quote:
+        price = 4.80
+
+    client = _SymbolClient({
+        '0GGH.L': ProviderError(provider='yfinance', operation='daily_bars', symbol='0GGH.L', reason='no_data', message='no data'),
+        'AGGH.MI': _history(365, 4.81),
+    })
+    client.get_quote = lambda symbol: Quote()
+    _patch(monkeypatch, client, ['0GGH.L', 'AGGH.MI'])
+
+    repo = _IsinRepo()
+    result = HistoricalIngestionService(_FakeSettings(), repo).backfill_daily(portfolio_id=1, days=365)
+
+    assert result.errors == []
+    assert result.asset_items[0].provider_symbol == 'AGGH.MI'
