@@ -3,12 +3,38 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 
 from ..config import Settings
-from ..finance_client import is_unpriceable_on_yahoo, make_finance_client
-from ..models import DailyBackfillItem, DailyBackfillResponse, FxBackfillItem
+from ..errors import ProviderError
+from ..finance_client import is_unpriceable_on_yahoo, make_finance_client, resolve_provider_symbol_candidates
+from ..models import AssetProviderSymbolCreate, DailyBackfillItem, DailyBackfillResponse, FxBackfillItem
 from ..price_validation import validate_fx_rate, validate_price_bar
 from ..repository import PortfolioRepository
 
 logger = logging.getLogger(__name__)
+
+# Sotto questa quota di giorni lavorativi coperti lo storico e' considerato insufficiente
+# (es. 0GGH.L: Yahoo restituisce solo la barra odierna) e si cercano altre quotazioni via ISIN.
+MIN_HISTORY_COVERAGE = 0.5
+# Scarto massimo tra l'ultima chiusura nota e quella della quotazione alternativa:
+# evita di passare a una linea in altra valuta o a uno strumento diverso.
+FALLBACK_MAX_PRICE_GAP_PCT = 5.0
+
+
+def _weekdays_between(start_date: date, end_date: date) -> int:
+    days = (end_date - start_date).days + 1
+    if days <= 0:
+        return 0
+    full_weeks, remainder = divmod(days, 7)
+    count = full_weeks * 5
+    for offset in range(remainder):
+        if (start_date + timedelta(days=full_weeks * 7 + offset)).weekday() < 5:
+            count += 1
+    return count
+
+
+def _last_close(bars) -> float | None:
+    if not bars:
+        return None
+    return max(bars, key=lambda b: b.day).close
 
 
 class HistoricalIngestionService:
@@ -69,6 +95,131 @@ class HistoricalIngestionService:
             )
         return rows
 
+    def _has_enough_history(self, bars, start_date: date, end_date: date) -> bool:
+        expected = _weekdays_between(start_date, end_date)
+        if expected <= 1:
+            return bool(bars)
+        return len(bars) >= expected * MIN_HISTORY_COVERAGE
+
+    def _fetch_daily_bars(
+        self,
+        client,
+        *,
+        asset_id: int,
+        provider: str,
+        provider_symbol: str,
+        outputsize: int,
+        start_date: date,
+        end_date: date,
+    ) -> tuple[str, list]:
+        """Scarica le barre giornaliere; se lo storico e' insufficiente prova le altre quotazioni dello stesso ISIN.
+
+        Restituisce il simbolo effettivamente usato e le barre. Se viene trovata una quotazione
+        migliore, il mapping ``asset_provider_symbols`` viene aggiornato.
+        """
+        provider_error: ProviderError | None = None
+        try:
+            bars = client.get_daily_bars(
+                provider_symbol,
+                outputsize=outputsize,
+                start_date=start_date.isoformat(),
+                end_date=end_date.isoformat(),
+            )
+        except ProviderError as exc:
+            bars = []
+            provider_error = exc
+
+        if self._has_enough_history(bars, start_date, end_date):
+            return provider_symbol, bars
+
+        fallback = self._find_isin_fallback_bars(
+            client,
+            asset_id=asset_id,
+            provider_symbol=provider_symbol,
+            current_bars=bars,
+            outputsize=outputsize,
+            start_date=start_date,
+            end_date=end_date,
+        )
+        if fallback is None:
+            if provider_error is not None:
+                raise provider_error
+            return provider_symbol, bars
+
+        fallback_symbol, fallback_bars = fallback
+        logger.warning(
+            'Insufficient history for asset_id=%s symbol=%s (%s bars): switching to %s (%s bars)',
+            asset_id, provider_symbol, len(bars), fallback_symbol, len(fallback_bars),
+        )
+        try:
+            self.repository.upsert_asset_provider_symbol(
+                AssetProviderSymbolCreate(asset_id=asset_id, provider=provider, provider_symbol=fallback_symbol)
+            )
+        except ValueError as exc:
+            logger.warning(
+                'Unable to persist fallback provider symbol asset_id=%s symbol=%s error=%s',
+                asset_id, fallback_symbol, exc,
+            )
+        return fallback_symbol, fallback_bars
+
+    def _find_isin_fallback_bars(
+        self,
+        client,
+        *,
+        asset_id: int,
+        provider_symbol: str,
+        current_bars: list,
+        outputsize: int,
+        start_date: date,
+        end_date: date,
+    ) -> tuple[str, list] | None:
+        try:
+            isin = self.repository.get_asset(asset_id).isin
+        except Exception:
+            return None
+        if not isin:
+            return None
+
+        reference_close = _last_close(current_bars) or self.repository.get_latest_close_price(asset_id)
+        if not reference_close:
+            # Nessuna barra ne' storico in DB: usa la quotazione live del simbolo corrente.
+            try:
+                reference_close = client.get_quote(provider_symbol).price
+            except Exception:
+                reference_close = None
+        if not reference_close or reference_close <= 0:
+            return None
+
+        current_symbol = provider_symbol.strip().upper()
+        base_symbol = current_symbol.split('.', 1)[0]
+        best: tuple[str, list] | None = None
+        for candidate in resolve_provider_symbol_candidates(base_symbol, isin):
+            if candidate == current_symbol:
+                continue
+            try:
+                candidate_bars = client.get_daily_bars(
+                    candidate,
+                    outputsize=outputsize,
+                    start_date=start_date.isoformat(),
+                    end_date=end_date.isoformat(),
+                )
+            except Exception:
+                continue
+            if len(candidate_bars) <= len(current_bars):
+                continue
+            candidate_close = _last_close(candidate_bars)
+            if not candidate_close:
+                continue
+            gap_pct = abs(candidate_close - reference_close) / reference_close * 100
+            if gap_pct > FALLBACK_MAX_PRICE_GAP_PCT:
+                continue
+            # I candidati sono gia' ordinati per priorita': il primo con storico sufficiente vince.
+            if self._has_enough_history(candidate_bars, start_date, end_date):
+                return candidate, candidate_bars
+            if best is None or len(candidate_bars) > len(best[1]):
+                best = (candidate, candidate_bars)
+        return best
+
     def _validate_fx_rows(self, rates, from_ccy: str, to_ccy: str, start_date, end_date) -> list[dict]:
         rows: list[dict] = []
         for fx in sorted((f for f in rates if start_date <= f.day <= end_date), key=lambda f: f.day):
@@ -99,16 +250,19 @@ class HistoricalIngestionService:
             reference_close = self.repository.get_latest_close_price(asset_id)
 
             # Price bars
-            bars = client.get_daily_bars(
-                pricing_asset.provider_symbol,
+            used_symbol, bars = self._fetch_daily_bars(
+                client,
+                asset_id=asset_id,
+                provider=provider,
+                provider_symbol=pricing_asset.provider_symbol,
                 outputsize=outputsize,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
+                start_date=start_date,
+                end_date=end_date,
             )
             rows = self._validate_bars(
                 bars,
                 asset_id,
-                pricing_asset.provider_symbol,
+                used_symbol,
                 start_date,
                 end_date,
                 reference_close=reference_close,
@@ -120,7 +274,7 @@ class HistoricalIngestionService:
             )
             logger.info(
                 'Single-asset backfill asset=%s bars=%s',
-                pricing_asset.provider_symbol,
+                used_symbol,
                 len(rows),
             )
 
@@ -151,12 +305,12 @@ class HistoricalIngestionService:
 
     def _store_backfilled_asset(self, asset, future, provider, start_date, end_date, asset_items, errors) -> None:
         try:
-            bars = future.result()
+            used_symbol, bars = future.result()
             reference_close = self.repository.get_latest_close_price(asset.asset_id)
             rows = self._validate_bars(
                 bars,
                 asset.asset_id,
-                asset.provider_symbol,
+                used_symbol,
                 start_date,
                 end_date,
                 reference_close=reference_close,
@@ -170,7 +324,7 @@ class HistoricalIngestionService:
                 DailyBackfillItem(
                     asset_id=asset.asset_id,
                     symbol=asset.symbol,
-                    provider_symbol=asset.provider_symbol,
+                    provider_symbol=used_symbol,
                     bars_saved=len(rows),
                     bars_requested=len(bars),
                     bars_rejected=max(0, len(bars) - len(rows)),
@@ -242,11 +396,14 @@ class HistoricalIngestionService:
         # Provider calls are network-bound and independent: run them
         # concurrently, then validate and write sequentially as before.
         def fetch_bars(asset):
-            return client.get_daily_bars(
-                asset.provider_symbol,
+            return self._fetch_daily_bars(
+                client,
+                asset_id=asset.asset_id,
+                provider=provider,
+                provider_symbol=asset.provider_symbol,
                 outputsize=outputsize,
-                start_date=start_date.isoformat(),
-                end_date=end_date.isoformat(),
+                start_date=start_date,
+                end_date=end_date,
             )
 
         def fetch_fx(from_ccy):
