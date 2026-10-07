@@ -336,3 +336,49 @@ def test_backfill_uses_live_quote_as_reference_when_no_history(monkeypatch):
 
     assert result.errors == []
     assert result.asset_items[0].provider_symbol == 'AGGH.MI'
+
+
+def test_backfill_continues_when_fallback_symbol_cannot_be_persisted(monkeypatch):
+    client = _SymbolClient({
+        '0GGH.L': _history(1, 4.80),
+        'AGGH.MI': _history(365, 4.81),
+    })
+    _patch(monkeypatch, client, ['0GGH.L', 'AGGH.MI'])
+
+    repo = _IsinRepo()
+
+    def broken_upsert(payload):
+        raise RuntimeError('connection pool exhausted')
+
+    repo.upsert_asset_provider_symbol = broken_upsert
+    result = HistoricalIngestionService(_FakeSettings(), repo).backfill_daily(portfolio_id=1, days=365)
+
+    assert result.errors == []
+    assert result.asset_items[0].provider_symbol == 'AGGH.MI'
+    assert result.asset_items[0].bars_saved > 200
+
+
+def test_single_asset_backfill_reuses_known_close_for_fallback(monkeypatch):
+    client = _SymbolClient({
+        '0GGH.L': ProviderError(provider='yfinance', operation='daily_bars', symbol='0GGH.L', reason='no_data', message='no data'),
+        'AGGH.MI': _history(365, 4.81),
+    })
+    _patch(monkeypatch, client, ['0GGH.L', 'AGGH.MI'])
+
+    class Pricing:
+        provider_symbol = '0GGH.L'
+
+    repo = _IsinRepo()
+    calls = []
+
+    def latest_close(asset_id):
+        calls.append(asset_id)
+        return 4.80
+
+    repo.get_latest_close_price = latest_close
+    repo.get_asset_pricing_symbol = lambda asset_id, provider: Pricing()
+    HistoricalIngestionService(_FakeSettings(), repo).backfill_single_asset(asset_id=1, portfolio_id=1, days=365)
+
+    assert calls == [1]
+    assert repo.upserted == ['AGGH.MI']
+    assert len(repo.bars_rows) > 200

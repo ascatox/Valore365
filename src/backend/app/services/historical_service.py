@@ -111,6 +111,7 @@ class HistoricalIngestionService:
         outputsize: int,
         start_date: date,
         end_date: date,
+        known_close: float | None = None,
     ) -> tuple[str, list]:
         """Scarica le barre giornaliere; se lo storico e' insufficiente prova le altre quotazioni dello stesso ISIN.
 
@@ -140,6 +141,7 @@ class HistoricalIngestionService:
             outputsize=outputsize,
             start_date=start_date,
             end_date=end_date,
+            known_close=known_close,
         )
         if fallback is None:
             if provider_error is not None:
@@ -155,7 +157,8 @@ class HistoricalIngestionService:
             self.repository.upsert_asset_provider_symbol(
                 AssetProviderSymbolCreate(asset_id=asset_id, provider=provider, provider_symbol=fallback_symbol)
             )
-        except ValueError as exc:
+        except Exception as exc:
+            # Best effort: un errore DB qui non deve far fallire il backfill dell'asset ne' del batch.
             logger.warning(
                 'Unable to persist fallback provider symbol asset_id=%s symbol=%s error=%s',
                 asset_id, fallback_symbol, exc,
@@ -172,6 +175,7 @@ class HistoricalIngestionService:
         outputsize: int,
         start_date: date,
         end_date: date,
+        known_close: float | None = None,
     ) -> tuple[str, list] | None:
         try:
             isin = self.repository.get_asset(asset_id).isin
@@ -180,7 +184,9 @@ class HistoricalIngestionService:
         if not isin:
             return None
 
-        reference_close = _last_close(current_bars) or self.repository.get_latest_close_price(asset_id)
+        reference_close = _last_close(current_bars) or known_close
+        if not reference_close and known_close is None:
+            reference_close = self.repository.get_latest_close_price(asset_id)
         if not reference_close:
             # Nessuna barra ne' storico in DB: usa la quotazione live del simbolo corrente.
             try:
@@ -258,6 +264,7 @@ class HistoricalIngestionService:
                 outputsize=outputsize,
                 start_date=start_date,
                 end_date=end_date,
+                known_close=reference_close,
             )
             rows = self._validate_bars(
                 bars,
