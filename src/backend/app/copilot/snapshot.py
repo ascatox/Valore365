@@ -76,6 +76,26 @@ _LIGHT_SNAPSHOT_SCOPE_BY_PAGE: dict[str, dict[str, object]] = {
 }
 
 
+def _fire_planner_extras(user_settings) -> dict:
+    """Optional FIRE planner inputs, included only when the user set them."""
+    extras: dict = {}
+    capital_floor = getattr(user_settings, "fire_capital_floor", 0) or 0
+    contribution_growth = getattr(user_settings, "fire_contribution_growth_pct", 0) or 0
+    pension_annual = getattr(user_settings, "fire_pension_annual", 0) or 0
+    pension_start_age = getattr(user_settings, "fire_pension_start_age", None)
+    one_off_expenses = getattr(user_settings, "fire_one_off_expenses", None) or []
+    if capital_floor > 0:
+        extras["capital_floor_today_eur"] = capital_floor
+    if contribution_growth > 0:
+        extras["contribution_growth_pct"] = contribution_growth
+    if pension_annual > 0:
+        extras["pension_annual"] = pension_annual
+        if pension_start_age:
+            extras["pension_start_age"] = pension_start_age
+    if one_off_expenses:
+        extras["one_off_expenses"] = [item.model_dump() for item in one_off_expenses]
+    return extras
+
 def _resolve_light_snapshot_scope(page_context: str | None) -> dict[str, object]:
     scope = dict(_DEFAULT_LIGHT_SNAPSHOT_SCOPE)
     if page_context and page_context in _LIGHT_SNAPSHOT_SCOPE_BY_PAGE:
@@ -212,6 +232,7 @@ def build_portfolio_snapshot_light(
                     fire_data["current_age"] = user_settings.fire_current_age
                 if user_settings.fire_target_age:
                     fire_data["target_age"] = user_settings.fire_target_age
+                fire_data.update(_fire_planner_extras(user_settings))
                 snapshot["fire"] = fire_data
         except Exception:
             pass
@@ -350,6 +371,7 @@ def build_aggregate_snapshot_light(
                     fire_data["current_age"] = user_settings.fire_current_age
                 if user_settings.fire_target_age:
                     fire_data["target_age"] = user_settings.fire_target_age
+                fire_data.update(_fire_planner_extras(user_settings))
                 snapshot["fire"] = fire_data
         except Exception:
             pass

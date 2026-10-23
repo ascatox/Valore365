@@ -24,6 +24,16 @@ from ..services.portfolio_doctor import (
 )
 
 
+def _parse_one_off_expenses(ages: list[int], amounts: list[float]) -> list[tuple[int, float]]:
+    if len(ages) != len(amounts):
+        raise AppError(
+            code="invalid_request",
+            message="one_off_ages e one_off_amounts devono avere la stessa lunghezza",
+            status_code=400,
+        )
+    return [(age, amount) for age, amount in zip(ages, amounts) if amount > 0]
+
+
 def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository, finance_client: object = None, justetf_client: object = None) -> None:
     settings = get_settings()
 
@@ -84,6 +94,11 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         other_income_annual: float = Query(default=0.0, ge=0),
         capital_gains_tax_rate_pct: float = Query(default=26.0, ge=0, le=100),
         current_age: int | None = Query(default=None, ge=18, le=100),
+        capital_floor: float = Query(default=0.0, ge=0),
+        pension_annual: float = Query(default=0.0, ge=0),
+        pension_start_age: int | None = Query(default=None, ge=18, le=100),
+        one_off_ages: list[int] = Query(default_factory=list, max_length=50),
+        one_off_amounts: list[float] = Query(default_factory=list, max_length=50),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> AggregateDecumulationPlanResponse:
         try:
@@ -97,6 +112,10 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
                 capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
                 current_age=current_age,
                 user_id=_auth.user_id,
+                capital_floor=capital_floor,
+                pension_annual=pension_annual,
+                pension_start_age=pension_start_age,
+                one_off_expenses=_parse_one_off_expenses(one_off_ages, one_off_amounts),
             )
         except ValueError as exc:
             message = str(exc)
@@ -116,6 +135,11 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         other_income_annual: float = Query(default=0.0, ge=0),
         capital_gains_tax_rate_pct: float = Query(default=26.0, ge=0, le=100),
         current_age: int | None = Query(default=None, ge=18, le=100),
+        capital_floor: float = Query(default=0.0, ge=0),
+        pension_annual: float = Query(default=0.0, ge=0),
+        pension_start_age: int | None = Query(default=None, ge=18, le=100),
+        one_off_ages: list[int] = Query(default_factory=list, max_length=50),
+        one_off_amounts: list[float] = Query(default_factory=list, max_length=50),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> DecumulationPlanResponse:
         try:
@@ -129,6 +153,10 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
                 capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
                 current_age=current_age,
                 user_id=_auth.user_id,
+                capital_floor=capital_floor,
+                pension_annual=pension_annual,
+                pension_start_age=pension_start_age,
+                one_off_expenses=_parse_one_off_expenses(one_off_ages, one_off_amounts),
             )
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc

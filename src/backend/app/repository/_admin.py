@@ -1,10 +1,30 @@
+import json
+
 from sqlalchemy import text
 
 from ..models import (
     AdminUsageSummary,
+    FireOneOffExpense,
     UserSettingsRead,
     UserSettingsUpdate,
 )
+
+
+def _parse_one_off_expenses(raw: object) -> list[FireOneOffExpense]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            return []
+    if not isinstance(raw, list):
+        return []
+    expenses: list[FireOneOffExpense] = []
+    for item in raw:
+        try:
+            expenses.append(FireOneOffExpense.model_validate(item))
+        except ValueError:
+            continue
+    return expenses
 
 
 class AdminMixin:
@@ -106,7 +126,12 @@ class AdminMixin:
                            fire_safe_withdrawal_rate::float8 as fire_safe_withdrawal_rate,
                            fire_capital_gains_tax_rate::float8 as fire_capital_gains_tax_rate,
                            fire_current_age,
-                           fire_target_age
+                           fire_target_age,
+                           fire_capital_floor::float8 as fire_capital_floor,
+                           fire_contribution_growth_pct::float8 as fire_contribution_growth_pct,
+                           fire_pension_annual::float8 as fire_pension_annual,
+                           fire_pension_start_age,
+                           fire_one_off_expenses
                     from app_user_settings
                     where user_id = :user_id
                     """
@@ -128,6 +153,11 @@ class AdminMixin:
             fire_capital_gains_tax_rate=float(row["fire_capital_gains_tax_rate"] or 26.0),
             fire_current_age=int(row["fire_current_age"]) if row["fire_current_age"] is not None else None,
             fire_target_age=int(row["fire_target_age"]) if row["fire_target_age"] is not None else None,
+            fire_capital_floor=float(row["fire_capital_floor"] or 0.0),
+            fire_contribution_growth_pct=float(row["fire_contribution_growth_pct"] or 0.0),
+            fire_pension_annual=float(row["fire_pension_annual"] or 0.0),
+            fire_pension_start_age=int(row["fire_pension_start_age"]) if row["fire_pension_start_age"] is not None else None,
+            fire_one_off_expenses=_parse_one_off_expenses(row["fire_one_off_expenses"]),
         )
 
     def get_user_copilot_api_key_enc(self, user_id: str) -> str:
@@ -182,6 +212,26 @@ class AdminMixin:
         if "fire_target_age" in fields_set:
             set_parts.append("fire_target_age = :fire_target_age")
             params["fire_target_age"] = payload.fire_target_age
+        if "fire_capital_floor" in fields_set and payload.fire_capital_floor is not None:
+            set_parts.append("fire_capital_floor = :fire_capital_floor")
+            params["fire_capital_floor"] = payload.fire_capital_floor
+        if "fire_contribution_growth_pct" in fields_set and payload.fire_contribution_growth_pct is not None:
+            set_parts.append("fire_contribution_growth_pct = :fire_contribution_growth_pct")
+            params["fire_contribution_growth_pct"] = payload.fire_contribution_growth_pct
+        if "fire_pension_annual" in fields_set and payload.fire_pension_annual is not None:
+            set_parts.append("fire_pension_annual = :fire_pension_annual")
+            params["fire_pension_annual"] = payload.fire_pension_annual
+        if "fire_pension_start_age" in fields_set:
+            set_parts.append("fire_pension_start_age = :fire_pension_start_age")
+            params["fire_pension_start_age"] = payload.fire_pension_start_age
+        one_off_expenses_json = (
+            json.dumps([item.model_dump() for item in payload.fire_one_off_expenses])
+            if payload.fire_one_off_expenses is not None
+            else None
+        )
+        if "fire_one_off_expenses" in fields_set and one_off_expenses_json is not None:
+            set_parts.append("fire_one_off_expenses = cast(:fire_one_off_expenses as jsonb)")
+            params["fire_one_off_expenses"] = one_off_expenses_json
         if api_key_enc is not None:
             set_parts.append("copilot_api_key_enc = :copilot_api_key_enc")
             params["copilot_api_key_enc"] = api_key_enc
@@ -205,6 +255,11 @@ class AdminMixin:
                       fire_capital_gains_tax_rate,
                       fire_current_age,
                       fire_target_age,
+                      fire_capital_floor,
+                      fire_contribution_growth_pct,
+                      fire_pension_annual,
+                      fire_pension_start_age,
+                      fire_one_off_expenses,
                       updated_at
                     )
                     values (
@@ -220,6 +275,11 @@ class AdminMixin:
                       coalesce(:fcgtr, 26),
                       :fca,
                       :fta,
+                      coalesce(:fcf, 0),
+                      coalesce(:fcg, 0),
+                      coalesce(:fpa, 0),
+                      :fpsa,
+                      coalesce(cast(:fooe as jsonb), '[]'::jsonb),
                       now()
                     )
                     on conflict (user_id)
@@ -239,6 +299,11 @@ class AdminMixin:
                     "fcgtr": payload.fire_capital_gains_tax_rate,
                     "fca": payload.fire_current_age,
                     "fta": payload.fire_target_age,
+                    "fcf": payload.fire_capital_floor,
+                    "fcg": payload.fire_contribution_growth_pct,
+                    "fpa": payload.fire_pension_annual,
+                    "fpsa": payload.fire_pension_start_age,
+                    "fooe": one_off_expenses_json,
                 },
             )
         return self.get_user_settings(normalized_user_id)

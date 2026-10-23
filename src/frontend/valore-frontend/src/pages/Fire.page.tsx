@@ -19,13 +19,14 @@ import {
   Table,
   Tabs,
   Text,
+  TextInput,
   ThemeIcon,
   Title,
   Tooltip as MantineTooltip,
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconFlame, IconRobot, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
+import { IconFlame, IconPlus, IconRobot, IconTarget, IconTrash, IconTrendingUp, IconWallet } from '@tabler/icons-react';
 import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
@@ -46,7 +47,8 @@ import { PageLayout } from '../components/layout/PageLayout';
 import { MobileBottomControl } from '../components/mobile/MobileBottomControl';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
-import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
+import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type DecumulationYearProjection, type FireOneOffExpense, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
+import { computeFireTarget, estimateYearsToFire, solveRequiredContribution, type AccumulationInput } from '../components/fire/accumulation';
 
 const PRIVACY_MASK = '******';
 const DEFAULT_FIRE_EXPECTED_RETURN_PCT = 5;
@@ -72,51 +74,20 @@ function formatPct(value: number | null | undefined, digits = 1): string {
   return `${value.toFixed(digits)}%`;
 }
 
-function solveYearsToTarget(target: number, current: number, annualContribution: number, annualReturnPct: number): number | null {
-  if (!Number.isFinite(target) || !Number.isFinite(current) || target <= 0) return null;
-  if (current >= target) return 0;
-  if (!Number.isFinite(annualContribution) || annualContribution < 0) return null;
-
-  const r = annualReturnPct / 100;
-  if (r === 0) {
-    if (annualContribution <= 0) return null;
-    return Math.max(0, (target - current) / annualContribution);
-  }
-
-  const denominator = current * r + annualContribution;
-  const numerator = target * r + annualContribution;
-  if (denominator <= 0 || numerator <= denominator) {
-    return annualContribution > 0 ? Math.max(0, Math.log(numerator / denominator) / Math.log(1 + r)) : null;
-  }
-
-  const years = Math.log(numerator / denominator) / Math.log(1 + r);
-  return Number.isFinite(years) && years >= 0 ? years : null;
-}
-
-function solveRequiredContribution(target: number, current: number, years: number, annualReturnPct: number): number | null {
-  if (!Number.isFinite(target) || !Number.isFinite(current) || !Number.isFinite(years) || years <= 0) return null;
-  if (current >= target) return 0;
-
-  const r = annualReturnPct / 100;
-  if (r === 0) return Math.max(0, (target - current) / years);
-
-  const growth = (1 + r) ** years;
-  const annuityFactor = (growth - 1) / r;
-  if (annuityFactor <= 0) return null;
-  return Math.max(0, (target - current * growth) / annuityFactor);
-}
-
 function projectionToValue(indexValue: number, investedValue: number, cashBalance: number): number {
   return (indexValue / 100) * investedValue + cashBalance;
 }
 
 function getDecumulationOutcomeTooltip(
-  depletionProbabilityPct: number,
+  riskProbabilityPct: number,
   effectiveWithdrawalRatePct: number,
   guardrailPct: number,
+  floorEnabled = false,
 ): string {
-  if (depletionProbabilityPct >= 50) {
-    return `Rischio elevato: probabilità di esaurimento ${depletionProbabilityPct.toFixed(1)}%.`;
+  if (riskProbabilityPct >= 50) {
+    return floorEnabled
+      ? `Sotto soglia: probabilità ${riskProbabilityPct.toFixed(1)}% di essere già scesi sotto il capitale minimo.`
+      : `Rischio elevato: probabilità di esaurimento ${riskProbabilityPct.toFixed(1)}%.`;
   }
   if (effectiveWithdrawalRatePct >= guardrailPct) {
     return `Anno critico: WR mediano ${effectiveWithdrawalRatePct.toFixed(2)}%, sopra il guardrail ${guardrailPct.toFixed(2)}%.`;
@@ -177,6 +148,11 @@ export function FirePage() {
   const [inflationRate, setInflationRate] = useState<number | string>(2);
   const [otherIncomeAnnual, setOtherIncomeAnnual] = useState<number | string>(0);
   const [capitalGainsTaxRate, setCapitalGainsTaxRate] = useState<number | string>(26);
+  const [capitalFloor, setCapitalFloor] = useState<number | string>(0);
+  const [contributionGrowthPct, setContributionGrowthPct] = useState<number | string>(0);
+  const [pensionAnnual, setPensionAnnual] = useState<number | string>(0);
+  const [pensionStartAge, setPensionStartAge] = useState<number | string>('');
+  const [oneOffExpenses, setOneOffExpenses] = useState<FireOneOffExpense[]>([]);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copilotAvailable, setCopilotAvailable] = useState(false);
@@ -222,6 +198,11 @@ export function FirePage() {
     setCurrentAge(userSettings.fire_current_age ?? '');
     setTargetAge(userSettings.fire_target_age ?? '');
     setAnnualWithdrawal(userSettings.fire_annual_expenses ?? 0);
+    setCapitalFloor(userSettings.fire_capital_floor ?? 0);
+    setContributionGrowthPct(userSettings.fire_contribution_growth_pct ?? 0);
+    setPensionAnnual(userSettings.fire_pension_annual ?? 0);
+    setPensionStartAge(userSettings.fire_pension_start_age ?? '');
+    setOneOffExpenses(userSettings.fire_one_off_expenses ?? []);
   }, [userSettings]);
 
   useEffect(() => {
@@ -333,9 +314,16 @@ export function FirePage() {
   const inflationRateValue = typeof inflationRate === 'number' ? inflationRate : Number(inflationRate || 0);
   const otherIncomeAnnualValue = typeof otherIncomeAnnual === 'number' ? otherIncomeAnnual : Number(otherIncomeAnnual || 0);
   const capitalGainsTaxRateValue = typeof capitalGainsTaxRate === 'number' ? capitalGainsTaxRate : Number(capitalGainsTaxRate || 0);
+  const capitalFloorValue = Math.max(0, typeof capitalFloor === 'number' ? capitalFloor : Number(capitalFloor || 0));
+  const contributionGrowthPctValue = Math.max(0, typeof contributionGrowthPct === 'number' ? contributionGrowthPct : Number(contributionGrowthPct || 0));
+  const pensionAnnualValue = Math.max(0, typeof pensionAnnual === 'number' ? pensionAnnual : Number(pensionAnnual || 0));
+  const pensionStartAgeValue = typeof pensionStartAge === 'number' ? pensionStartAge : Number(pensionStartAge || 0);
+  const validOneOffExpenses = useMemo(
+    () => oneOffExpenses.filter((expense) => expense.age >= 18 && expense.amount > 0),
+    [oneOffExpenses],
+  );
   const decumulationEnabled = fireMode === 'decumulation' && annualWithdrawalValue > 0 && decumulationYearsValue > 0;
   const hasAgePlan = currentAgeValue > 0 && targetAgeValue > currentAgeValue;
-  const fireNumber = expensesValue > 0 && swrValue > 0 ? expensesValue / (swrValue / 100) : null;
 
   const aggregateSummary = useMemo(() => {
     if (fireScopeMode !== 'aggregate' || !selectedAggregatePortfolios.length) return null;
@@ -367,6 +355,28 @@ export function FirePage() {
   const investedValue = activeSummary?.market_value ?? 0;
   const cashBalance = activeSummary?.cash_balance ?? (fireScopeMode === 'aggregate' ? 0 : (selectedPortfolio?.cash_balance ?? 0));
   const totalNetWorth = investedValue + cashBalance;
+  const expectedReturnPct = configuredExpectedReturnPct > 0 ? configuredExpectedReturnPct : DEFAULT_FIRE_EXPECTED_RETURN_PCT;
+  const accumulationInput: AccumulationInput = {
+    annualExpenses: expensesValue,
+    safeWithdrawalRatePct: swrValue,
+    capitalFloor: capitalFloorValue,
+    pensionAnnual: pensionAnnualValue,
+    pensionStartAge: pensionStartAgeValue > 0 ? pensionStartAgeValue : null,
+    oneOffExpenses: validOneOffExpenses,
+    currentAge: currentAgeValue > 0 ? currentAgeValue : null,
+    startCapital: totalNetWorth,
+    annualContribution: contributionValue,
+    contributionGrowthPct: contributionGrowthPctValue,
+    annualReturnPct: expectedReturnPct,
+  };
+  const estimatedYearsToFire = estimateYearsToFire(accumulationInput);
+  const estimatedFireAge = estimatedYearsToFire != null && currentAgeValue > 0 ? currentAgeValue + estimatedYearsToFire : null;
+  const requiredContribution = hasAgePlan ? solveRequiredContribution(accumulationInput, targetAgeValue) : null;
+  const plannedFireAge = hasAgePlan
+    ? targetAgeValue
+    : (estimatedYearsToFire != null && currentAgeValue > 0 ? currentAgeValue + Math.ceil(estimatedYearsToFire) : null);
+  const fireTarget = computeFireTarget(accumulationInput, plannedFireAge);
+  const fireNumber = fireTarget?.total ?? null;
   const coveragePct = fireNumber && fireNumber > 0 ? (totalNetWorth / fireNumber) * 100 : null;
   const fireGap = fireNumber != null ? Math.max(0, fireNumber - totalNetWorth) : null;
 
@@ -422,16 +432,7 @@ export function FirePage() {
     });
   }, [aggregateMonteCarlo, aggregateSummaries, aggregateSummary, fireNumber]);
 
-  const expectedReturnPct = configuredExpectedReturnPct > 0 ? configuredExpectedReturnPct : DEFAULT_FIRE_EXPECTED_RETURN_PCT;
   const monteCarloMeanReturnPct = aggregateModeEnabled ? aggregateMonteCarloMeanReturnPct : (monteCarlo?.annualized_mean_return_pct ?? null);
-  const estimatedYearsToFire = fireNumber != null
-    ? solveYearsToTarget(fireNumber, totalNetWorth, contributionValue, expectedReturnPct)
-    : null;
-  const estimatedFireAge = estimatedYearsToFire != null && currentAgeValue > 0 ? currentAgeValue + estimatedYearsToFire : null;
-  const requiredContribution = hasAgePlan && fireNumber != null
-    ? solveRequiredContribution(fireNumber, totalNetWorth, targetAgeValue - currentAgeValue, expectedReturnPct)
-    : null;
-
   const singleHorizonScenarios = useMemo(() => {
     if (!monteCarlo || fireNumber == null) return [];
     const targetYears = monteCarlo.horizons ?? [5, 10, 20];
@@ -465,6 +466,12 @@ export function FirePage() {
     }));
   }, [monteCarlo]);
 
+  const decumulationScheduleParams = useMemo(() => ({
+    capitalFloor: capitalFloorValue,
+    pensionAnnual: pensionAnnualValue,
+    pensionStartAge: pensionStartAgeValue > 0 ? pensionStartAgeValue : null,
+    oneOffExpenses: validOneOffExpenses.map(({ age, amount }) => ({ age, amount })),
+  }), [capitalFloorValue, pensionAnnualValue, pensionStartAgeValue, validOneOffExpenses]);
   const { data: decumulationData, isLoading: decumulationLoading, error: decumulationError } = useDecumulationPlan(
     portfolioId,
     {
@@ -474,6 +481,7 @@ export function FirePage() {
       otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
       capitalGainsTaxRatePct: Math.max(0, capitalGainsTaxRateValue),
       currentAge: currentAgeValue > 0 ? currentAgeValue : null,
+      ...decumulationScheduleParams,
     },
     decumulationEnabled && !aggregateModeEnabled,
   );
@@ -494,6 +502,7 @@ export function FirePage() {
       otherIncomeAnnual: Math.max(0, otherIncomeAnnualValue),
       capitalGainsTaxRatePct: Math.max(0, capitalGainsTaxRateValue),
       currentAge: currentAgeValue > 0 ? currentAgeValue : null,
+      ...decumulationScheduleParams,
     },
     decumulationEnabled && aggregateModeEnabled,
   );
@@ -509,6 +518,8 @@ export function FirePage() {
   const decumulationSuccess = aggregateModeEnabled
     ? ((aggregateDecumulationData?.success_rate_pct ?? 0) >= 70)
     : ((decumulationData?.success_rate_pct ?? 0) >= 70);
+  const floorEnabled = capitalFloorValue > 0 && activeDecumulationData != null && activeDecumulationData.capital_floor > 0;
+  const yearRiskPct = (year: DecumulationYearProjection) => (floorEnabled ? year.floor_breach_probability_pct : year.depletion_probability_pct);
   const firstCriticalYear = decumulationPlan.find((year) => year.p50_effective_withdrawal_rate_pct >= swrValue) ?? null;
   const withdrawalCoveragePct = annualWithdrawalValue > 0
     ? Math.min(999, ((sustainableWithdrawal ?? 0) / annualWithdrawalValue) * 100)
@@ -534,6 +545,11 @@ export function FirePage() {
       fire_capital_gains_tax_rate: Math.max(0, capitalGainsTaxRateValue || 0),
       fire_current_age: currentAgeValue > 0 ? currentAgeValue : null,
       fire_target_age: targetAgeValue > 0 ? targetAgeValue : null,
+      fire_capital_floor: capitalFloorValue,
+      fire_contribution_growth_pct: Math.min(20, contributionGrowthPctValue),
+      fire_pension_annual: pensionAnnualValue,
+      fire_pension_start_age: pensionStartAgeValue > 0 ? pensionStartAgeValue : null,
+      fire_one_off_expenses: validOneOffExpenses,
     });
   };
 
@@ -745,6 +761,43 @@ export function FirePage() {
                   />
                   <NumberInput label="Età attuale" value={currentAge} onChange={setCurrentAge} min={18} max={100} allowDecimal={false} />
                   <NumberInput label="Età FIRE target" value={targetAge} onChange={setTargetAge} min={18} max={100} allowDecimal={false} />
+                  <NumberInput
+                    label="Crescita annua contributo (%)"
+                    description="Aumento del contributo ogni anno"
+                    value={contributionGrowthPct}
+                    onChange={setContributionGrowthPct}
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    decimalScale={1}
+                  />
+                  <NumberInput
+                    label="Capitale minimo da preservare"
+                    description="In euro di oggi: il capitale non deve mai scendere sotto questa soglia"
+                    value={capitalFloor}
+                    onChange={setCapitalFloor}
+                    min={0}
+                    thousandSeparator="."
+                    decimalSeparator=","
+                  />
+                  <NumberInput
+                    label="Pensione annua netta"
+                    description="In euro di oggi, indicizzata all'inflazione"
+                    value={pensionAnnual}
+                    onChange={setPensionAnnual}
+                    min={0}
+                    thousandSeparator="."
+                    decimalSeparator=","
+                  />
+                  <NumberInput
+                    label="Età inizio pensione"
+                    description={pensionAnnualValue > 0 && currentAgeValue <= 0 ? "Serve l'età attuale per collocare la pensione" : 'Vuoto = pensione già attiva'}
+                    value={pensionStartAge}
+                    onChange={setPensionStartAge}
+                    min={18}
+                    max={100}
+                    allowDecimal={false}
+                  />
                 </SimpleGrid>
               ) : (
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -789,8 +842,40 @@ export function FirePage() {
                     decimalScale={2}
                     fixedDecimalScale
                   />
+                  <NumberInput
+                    label="Capitale minimo da preservare"
+                    description="In euro di oggi: il capitale non deve mai scendere sotto questa soglia"
+                    value={capitalFloor}
+                    onChange={setCapitalFloor}
+                    min={0}
+                    thousandSeparator="."
+                    decimalSeparator=","
+                  />
+                  <NumberInput
+                    label="Pensione annua netta"
+                    description="In euro di oggi, indicizzata all'inflazione"
+                    value={pensionAnnual}
+                    onChange={setPensionAnnual}
+                    min={0}
+                    thousandSeparator="."
+                    decimalSeparator=","
+                  />
+                  <NumberInput
+                    label="Età inizio pensione"
+                    description={pensionAnnualValue > 0 && currentAgeValue <= 0 ? "Serve l'età attuale per collocare la pensione" : 'Vuoto = pensione già attiva'}
+                    value={pensionStartAge}
+                    onChange={setPensionStartAge}
+                    min={18}
+                    max={100}
+                    allowDecimal={false}
+                  />
                 </SimpleGrid>
               )}
+              <OneOffExpensesEditor
+                expenses={oneOffExpenses}
+                onChange={setOneOffExpenses}
+                currentAge={currentAgeValue > 0 ? currentAgeValue : null}
+              />
               <Group justify="space-between" align="center" wrap="wrap">
                 <Text size="sm" c="dimmed">
                   Rendimento atteso usato per le stime deterministiche: {formatPct(expectedReturnPct, 1)} annuo.
@@ -843,7 +928,11 @@ export function FirePage() {
                 color="blue"
                 label="Capitale target"
                 value={fireNumber != null ? formatMoney(fireNumber, currency) : 'N/D'}
-                note={expensesValue > 0 ? `${formatMoney(expensesValue, currency)} / anno netti con SWR ${formatPct(swrValue, 2)}` : 'Imposta la spesa annua netta'}
+                note={fireTarget
+                  ? (fireTarget.total > fireTarget.spendingCapital
+                    ? `${formatMoney(fireTarget.spendingCapital, currency)} per le spese + ${formatMoney(fireTarget.total - fireTarget.spendingCapital, currency)} tra soglia, ponte pensione e spese una tantum`
+                    : `${formatMoney(expensesValue, currency)} / anno netti con SWR ${formatPct(swrValue, 2)}`)
+                  : 'Imposta la spesa annua netta'}
               />
             </>
           ) : (
@@ -858,9 +947,15 @@ export function FirePage() {
               <StatCard
                 icon={IconFlame}
                 color="orange"
-                label="Durata stimata"
-                value={capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D'}
-                note={activeDecumulationData?.depletion_year_p50 ? "Esaurimento mediano entro l'orizzonte simulato" : 'Capitale mediano ancora positivo a fine orizzonte'}
+                label={floorEnabled ? 'Anni sopra la soglia' : 'Durata stimata'}
+                value={floorEnabled
+                  ? `${activeDecumulationData?.floor_breach_year_p50 ? activeDecumulationData.floor_breach_year_p50 - 1 : decumulationPlan.length} anni`
+                  : (capitalDurationYears > 0 ? `${capitalDurationYears} anni` : 'N/D')}
+                note={floorEnabled
+                  ? (activeDecumulationData?.floor_breach_year_p50
+                    ? `Il capitale mediano scende sotto ${formatMoney(capitalFloorValue, currency)} (oggi) nell'anno ${activeDecumulationData.floor_breach_year_p50}`
+                    : 'Capitale mediano sempre sopra la soglia')
+                  : (activeDecumulationData?.depletion_year_p50 ? "Esaurimento mediano entro l'orizzonte simulato" : 'Capitale mediano ancora positivo a fine orizzonte')}
               />
               <StatCard
                 icon={IconTrendingUp}
@@ -904,6 +999,8 @@ export function FirePage() {
                     ? (aggregateModeEnabled
                         ? 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo aggregata di decumulo.'
                         : 'Con i dati attuali non è possibile costruire una simulazione Monte Carlo di decumulo.')
+                      : floorEnabled
+                        ? `Con le ipotesi correnti la probabilità di restare sempre sopra il capitale minimo di ${formatMoney(capitalFloorValue, currency)} (euro di oggi) per tutto l'orizzonte è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
                       : decumulationSuccess
                         ? (aggregateModeEnabled
                           ? `Con le ipotesi correnti la probabilità di chiudere l'orizzonte con capitale residuo sul perimetro aggregato è circa ${activeDecumulationData?.success_rate_pct?.toFixed(1) ?? '0'}%.`
@@ -938,6 +1035,23 @@ export function FirePage() {
                     <>
                       <Table.Tr><Table.Td>Spesa annua netta</Table.Td><Table.Td>{expensesValue > 0 ? formatMoney(expensesValue, currency) : 'N/D'}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Contributo annuo</Table.Td><Table.Td>{formatMoney(contributionValue, currency)}</Table.Td></Table.Tr>
+                      {contributionGrowthPctValue > 0 && (
+                        <Table.Tr><Table.Td>Crescita annua contributo</Table.Td><Table.Td>{formatPct(contributionGrowthPctValue, 1)}</Table.Td></Table.Tr>
+                      )}
+                      {fireTarget && (
+                        <>
+                          <Table.Tr><Table.Td>Capitale per le spese (SWR)</Table.Td><Table.Td>{formatMoney(fireTarget.spendingCapital, currency)}</Table.Td></Table.Tr>
+                          {fireTarget.capitalFloor > 0 && (
+                            <Table.Tr><Table.Td>Capitale minimo da preservare</Table.Td><Table.Td>{formatMoney(fireTarget.capitalFloor, currency)}</Table.Td></Table.Tr>
+                          )}
+                          {fireTarget.pensionBridge > 0 && (
+                            <Table.Tr><Table.Td>Ponte fino alla pensione ({pensionStartAgeValue} anni)</Table.Td><Table.Td>{formatMoney(fireTarget.pensionBridge, currency)}</Table.Td></Table.Tr>
+                          )}
+                          {fireTarget.oneOffReserve > 0 && (
+                            <Table.Tr><Table.Td>Riserva spese una tantum dopo il FIRE</Table.Td><Table.Td>{formatMoney(fireTarget.oneOffReserve, currency)}</Table.Td></Table.Tr>
+                          )}
+                        </>
+                      )}
                     </>
                   ) : (
                     <>
@@ -949,6 +1063,16 @@ export function FirePage() {
                       <Table.Tr><Table.Td>Orizzonte</Table.Td><Table.Td>{decumulationYearsValue > 0 ? `${decumulationYearsValue} anni` : 'N/D'}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Spesa sostenibile netta</Table.Td><Table.Td>{formatMoney(sustainableWithdrawal, currency)}</Table.Td></Table.Tr>
                       <Table.Tr><Table.Td>Success rate</Table.Td><Table.Td>{formatPct(activeDecumulationData?.success_rate_pct, 1)}</Table.Td></Table.Tr>
+                      {floorEnabled && (
+                        <>
+                          <Table.Tr><Table.Td>Capitale minimo (euro di oggi)</Table.Td><Table.Td>{formatMoney(capitalFloorValue, currency)}</Table.Td></Table.Tr>
+                          <Table.Tr><Table.Td>Probabilità di scendere sotto la soglia</Table.Td><Table.Td>{formatPct(activeDecumulationData?.floor_breach_probability_pct, 1)}</Table.Td></Table.Tr>
+                          <Table.Tr><Table.Td>Anno mediano sotto la soglia</Table.Td><Table.Td>{activeDecumulationData?.floor_breach_year_p50 ? `Anno ${activeDecumulationData.floor_breach_year_p50}` : 'Mai entro l\'orizzonte'}</Table.Td></Table.Tr>
+                        </>
+                      )}
+                      {(activeDecumulationData?.pension_annual ?? 0) > 0 && (
+                        <Table.Tr><Table.Td>Pensione</Table.Td><Table.Td>{`${formatMoney(activeDecumulationData?.pension_annual, currency)} / anno dall'anno ${activeDecumulationData?.pension_start_year ?? 1}`}</Table.Td></Table.Tr>
+                      )}
                     </>
                   )}
                 </Table.Tbody>
@@ -1125,8 +1249,8 @@ export function FirePage() {
                               {year.age != null ? ` · età ${year.age}` : ''}
                             </Text>
                           </div>
-                          <Badge color={year.depletion_probability_pct >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
-                            {year.depletion_probability_pct >= 50 ? 'Rischio alto' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Anno critico' : 'Sostenibile')}
+                          <Badge color={yearRiskPct(year) >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
+                            {yearRiskPct(year) >= 50 ? (floorEnabled ? 'Sotto soglia' : 'Rischio alto') : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Anno critico' : 'Sostenibile')}
                           </Badge>
                         </Group>
                         <SimpleGrid cols={3} spacing="sm">
@@ -1150,6 +1274,7 @@ export function FirePage() {
                       <Table.Th>Netto totale</Table.Th>
                       <Table.Th>WR mediano</Table.Th>
                       <Table.Th>Capitale finale P50</Table.Th>
+                      {floorEnabled && <Table.Th>Soglia</Table.Th>}
                       <Table.Th>Esito</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
@@ -1164,19 +1289,21 @@ export function FirePage() {
                         <Table.Td>{formatMoney(year.net_spending_after_tax, currency)}</Table.Td>
                         <Table.Td>{formatPct(year.p50_effective_withdrawal_rate_pct, 2)}</Table.Td>
                         <Table.Td>{formatMoney(year.p50_ending_capital, currency)}</Table.Td>
+                        {floorEnabled && <Table.Td>{formatMoney(year.capital_floor, currency)}</Table.Td>}
                         <Table.Td>
                           <MantineTooltip
                             label={getDecumulationOutcomeTooltip(
-                              year.depletion_probability_pct,
+                              floorEnabled ? year.floor_breach_probability_pct : year.depletion_probability_pct,
                               year.p50_effective_withdrawal_rate_pct,
                               swrValue,
+                              floorEnabled,
                             )}
                             withArrow
                             multiline
                             maw={280}
                           >
-                            <Badge color={year.depletion_probability_pct >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
-                              {year.depletion_probability_pct >= 50 ? 'Fragile' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Critico' : 'OK')}
+                            <Badge color={yearRiskPct(year) >= 50 ? 'red' : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'yellow' : 'teal')} variant="light">
+                              {yearRiskPct(year) >= 50 ? (floorEnabled ? 'Sotto soglia' : 'Fragile') : (year.p50_effective_withdrawal_rate_pct >= swrValue ? 'Critico' : 'OK')}
                             </Badge>
                           </MantineTooltip>
                         </Table.Td>
@@ -1324,6 +1451,86 @@ function HeroMetric({ label, value }: { label: string; value: string }) {
       <Text size="xs" tt="uppercase" fw={800} c="rgba(255,255,255,0.7)">{label}</Text>
       <Text fw={700} c="white">{value}</Text>
     </Card>
+  );
+}
+
+function OneOffExpensesEditor({
+  expenses,
+  onChange,
+  currentAge,
+}: {
+  expenses: FireOneOffExpense[];
+  onChange: (expenses: FireOneOffExpense[]) => void;
+  currentAge: number | null;
+}) {
+  const updateExpense = (index: number, patch: Partial<FireOneOffExpense>) => {
+    onChange(expenses.map((expense, i) => (i === index ? { ...expense, ...patch } : expense)));
+  };
+
+  return (
+    <Stack gap="xs">
+      <Group justify="space-between" align="center">
+        <div>
+          <Text fw={600} size="sm">Spese una tantum</Text>
+          <Text size="xs" c="dimmed">
+            {currentAge != null
+              ? 'Uscite straordinarie in euro di oggi, all\'età indicata (auto, casa, studi).'
+              : "Inserisci l'età attuale per collocare le spese nel tempo."}
+          </Text>
+        </div>
+        <Button
+          variant="light"
+          color="red"
+          size="xs"
+          leftSection={<IconPlus size={14} />}
+          onClick={() => onChange([...expenses, { age: (currentAge ?? 50) + 1, amount: 0, label: '' }])}
+          disabled={expenses.length >= 50}
+        >
+          Aggiungi
+        </Button>
+      </Group>
+      {expenses.map((expense, index) => (
+        <Group key={index} gap="xs" align="flex-end" wrap="nowrap">
+          <NumberInput
+            label={index === 0 ? 'Età' : undefined}
+            aria-label="Età spesa una tantum"
+            value={expense.age}
+            onChange={(value) => updateExpense(index, { age: Number(value) || 0 })}
+            min={18}
+            max={120}
+            allowDecimal={false}
+            w={80}
+          />
+          <NumberInput
+            label={index === 0 ? 'Importo' : undefined}
+            aria-label="Importo spesa una tantum"
+            value={expense.amount}
+            onChange={(value) => updateExpense(index, { amount: Number(value) || 0 })}
+            min={0}
+            thousandSeparator="."
+            decimalSeparator=","
+            style={{ flex: 1 }}
+          />
+          <TextInput
+            label={index === 0 ? 'Descrizione' : undefined}
+            aria-label="Descrizione spesa una tantum"
+            value={expense.label}
+            onChange={(event) => updateExpense(index, { label: event.currentTarget.value.slice(0, 80) })}
+            placeholder="es. Auto"
+            style={{ flex: 1 }}
+          />
+          <ActionIcon
+            variant="subtle"
+            color="red"
+            size="lg"
+            aria-label="Rimuovi spesa una tantum"
+            onClick={() => onChange(expenses.filter((_, i) => i !== index))}
+          >
+            <IconTrash size={16} />
+          </ActionIcon>
+        </Group>
+      ))}
+    </Stack>
   );
 }
 

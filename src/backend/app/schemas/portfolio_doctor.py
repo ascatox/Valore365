@@ -92,6 +92,8 @@ class DecumulationYearProjection(BaseModel):
     p75_ending_capital: float = Field(ge=0)
     p50_effective_withdrawal_rate_pct: float = Field(ge=0)
     depletion_probability_pct: float = Field(ge=0, le=100)
+    capital_floor: float = Field(default=0, ge=0)
+    floor_breach_probability_pct: float = Field(default=0, ge=0, le=100)
 
 
 class DecumulationPlanResponse(BaseModel):
@@ -103,16 +105,21 @@ class DecumulationPlanResponse(BaseModel):
     capital_gains_tax_rate_pct: float = Field(ge=0, le=100)
     estimated_embedded_gain_ratio_pct: float = Field(ge=0, le=100)
     horizon_years: int = Field(ge=1)
+    capital_floor: float = Field(default=0, ge=0)
+    pension_annual: float = Field(default=0, ge=0)
+    pension_start_year: int | None = Field(default=None, ge=1)
     num_simulations: int = Field(ge=0)
     annualized_mean_return_pct: float
     annualized_volatility_pct: float
     sustainable_withdrawal: float = Field(ge=0)
     success_rate_pct: float = Field(ge=0, le=100)
     depletion_probability_pct: float = Field(ge=0, le=100)
+    floor_breach_probability_pct: float = Field(default=0, ge=0, le=100)
     p25_terminal_value: float = Field(ge=0)
     p50_terminal_value: float = Field(ge=0)
     p75_terminal_value: float = Field(ge=0)
     depletion_year_p50: int | None = Field(default=None, ge=1)
+    floor_breach_year_p50: int | None = Field(default=None, ge=1)
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
 
 
@@ -126,16 +133,21 @@ class AggregateDecumulationPlanResponse(BaseModel):
     capital_gains_tax_rate_pct: float = Field(ge=0, le=100)
     estimated_embedded_gain_ratio_pct: float = Field(ge=0, le=100)
     horizon_years: int = Field(ge=1)
+    capital_floor: float = Field(default=0, ge=0)
+    pension_annual: float = Field(default=0, ge=0)
+    pension_start_year: int | None = Field(default=None, ge=1)
     num_simulations: int = Field(ge=0)
     annualized_mean_return_pct: float
     annualized_volatility_pct: float
     sustainable_withdrawal: float = Field(ge=0)
     success_rate_pct: float = Field(ge=0, le=100)
     depletion_probability_pct: float = Field(ge=0, le=100)
+    floor_breach_probability_pct: float = Field(default=0, ge=0, le=100)
     p25_terminal_value: float = Field(ge=0)
     p50_terminal_value: float = Field(ge=0)
     p75_terminal_value: float = Field(ge=0)
     depletion_year_p50: int | None = Field(default=None, ge=1)
+    floor_breach_year_p50: int | None = Field(default=None, ge=1)
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
 
 

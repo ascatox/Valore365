@@ -24,6 +24,29 @@ export const getStressTest = async (portfolioId: number): Promise<StressTestResp
   return apiFetch<StressTestResponse>(`/portfolios/${portfolioId}/stress-test`);
 };
 
+export interface DecumulationScheduleParams {
+  capitalFloor?: number;
+  pensionAnnual?: number;
+  pensionStartAge?: number | null;
+  oneOffExpenses?: Array<{ age: number; amount: number }>;
+}
+
+function appendDecumulationScheduleParams(query: URLSearchParams, params: DecumulationScheduleParams) {
+  if (params.capitalFloor && params.capitalFloor > 0) {
+    query.set('capital_floor', String(params.capitalFloor));
+  }
+  if (params.pensionAnnual && params.pensionAnnual > 0) {
+    query.set('pension_annual', String(params.pensionAnnual));
+    if (params.pensionStartAge != null && Number.isFinite(params.pensionStartAge)) {
+      query.set('pension_start_age', String(params.pensionStartAge));
+    }
+  }
+  (params.oneOffExpenses ?? []).forEach((expense) => {
+    query.append('one_off_ages', String(expense.age));
+    query.append('one_off_amounts', String(expense.amount));
+  });
+}
+
 export const getDecumulationPlan = async (
   portfolioId: number,
   params: {
@@ -33,7 +56,7 @@ export const getDecumulationPlan = async (
     otherIncomeAnnual?: number;
     capitalGainsTaxRatePct?: number;
     currentAge?: number | null;
-  },
+  } & DecumulationScheduleParams,
 ): Promise<DecumulationPlanResponse> => {
   const query = new URLSearchParams({
     annual_withdrawal: String(params.annualWithdrawal),
@@ -45,6 +68,7 @@ export const getDecumulationPlan = async (
   if (params.currentAge != null && Number.isFinite(params.currentAge)) {
     query.set('current_age', String(params.currentAge));
   }
+  appendDecumulationScheduleParams(query, params);
   return apiFetch<DecumulationPlanResponse>(`/portfolios/${portfolioId}/decumulation?${query.toString()}`);
 };
 
@@ -57,7 +81,7 @@ export const getAggregateDecumulationPlan = async (
     otherIncomeAnnual?: number;
     capitalGainsTaxRatePct?: number;
     currentAge?: number | null;
-  },
+  } & DecumulationScheduleParams,
 ): Promise<AggregateDecumulationPlanResponse> => {
   const query = new URLSearchParams({
     annual_withdrawal: String(params.annualWithdrawal),
@@ -70,5 +94,6 @@ export const getAggregateDecumulationPlan = async (
   if (params.currentAge != null && Number.isFinite(params.currentAge)) {
     query.set('current_age', String(params.currentAge));
   }
+  appendDecumulationScheduleParams(query, params);
   return apiFetch<AggregateDecumulationPlanResponse>(`/portfolios/aggregate/decumulation?${query.toString()}`);
 };

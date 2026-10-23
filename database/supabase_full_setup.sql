@@ -136,6 +136,11 @@ create table app_user_settings (
   fire_capital_gains_tax_rate numeric(10,4) not null default 26 check (fire_capital_gains_tax_rate >= 0 and fire_capital_gains_tax_rate <= 100),
   fire_current_age int check (fire_current_age is null or (fire_current_age >= 18 and fire_current_age <= 100)),
   fire_target_age int check (fire_target_age is null or (fire_target_age >= 18 and fire_target_age <= 100)),
+  fire_capital_floor numeric(28,10) not null default 0 check (fire_capital_floor >= 0),
+  fire_contribution_growth_pct numeric(10,4) not null default 0 check (fire_contribution_growth_pct >= 0 and fire_contribution_growth_pct <= 20),
+  fire_pension_annual numeric(28,10) not null default 0 check (fire_pension_annual >= 0),
+  fire_pension_start_age int check (fire_pension_start_age is null or (fire_pension_start_age >= 18 and fire_pension_start_age <= 100)),
+  fire_one_off_expenses jsonb not null default '[]'::jsonb,
   updated_at timestamptz not null default now()
 );
 

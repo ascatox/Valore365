@@ -124,6 +124,27 @@ def test_fire_snapshot_includes_fire_but_not_target_or_pac(monkeypatch):
     assert snapshot["portfolio"].get("weighted_ter_pct") is None
 
 
+def test_fire_snapshot_includes_planner_extras(monkeypatch):
+    monkeypatch.setattr("app.services.performance_service.PerformanceService", _FakePerformanceService)
+    monkeypatch.setattr(snapshot_module, "_load_holdings", lambda repo, portfolio_id, user_id: ["holding"])
+    monkeypatch.setattr(snapshot_module, "compute_weighted_ter", lambda holdings, repo: 0.22)
+
+    class _RepoWithPlannerExtras(_FakeRepo):
+        def get_user_settings(self, user_id: str):
+            settings = super().get_user_settings(user_id)
+            settings.fire_capital_floor = 700000.0
+            settings.fire_pension_annual = 18000.0
+            settings.fire_pension_start_age = 67
+            return settings
+
+    snapshot = build_portfolio_snapshot_light(_RepoWithPlannerExtras(), 1, "user-1", page_context="fire")
+
+    assert snapshot["fire"]["capital_floor_today_eur"] == 700000.0
+    assert snapshot["fire"]["pension_annual"] == 18000.0
+    assert snapshot["fire"]["pension_start_age"] == 67
+    assert "contribution_growth_pct" not in snapshot["fire"]
+
+
 def test_page_context_filters_available_tools():
     dashboard_tools = format_tools_for_provider(
         "openai",

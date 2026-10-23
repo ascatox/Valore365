@@ -1,6 +1,7 @@
 import logging
 import math
 import random
+from dataclasses import dataclass, field
 
 from ...repository import PortfolioRepository
 from ...schemas.portfolio_doctor import (
@@ -53,6 +54,52 @@ def run_monte_carlo_projection(
     )
 
 
+@dataclass(frozen=True)
+class DecumulationSchedule:
+    """Optional cash-flow events of a decumulation plan, all in today's money.
+
+    Years are 1-based: year 1 is the year starting at ``current_age``.
+    """
+
+    capital_floor: float = 0.0
+    pension_annual: float = 0.0
+    pension_start_year: int | None = None
+    one_off_by_year: dict[int, float] = field(default_factory=dict)
+
+
+def _build_decumulation_schedule(
+    *,
+    years: int,
+    current_age: int | None,
+    capital_floor: float,
+    pension_annual: float,
+    pension_start_age: int | None,
+    one_off_expenses: list[tuple[int, float]] | None,
+) -> DecumulationSchedule:
+    pension = max(0.0, pension_annual)
+    pension_start_year: int | None = None
+    if pension > 0:
+        if pension_start_age is None:
+            pension_start_year = 1
+        elif current_age is not None:
+            candidate_year = max(1, pension_start_age - current_age + 1)
+            pension_start_year = candidate_year if candidate_year <= years else None
+
+    one_off_by_year: dict[int, float] = {}
+    if current_age is not None:
+        for age, amount in one_off_expenses or []:
+            year = age - current_age + 1
+            if 1 <= year <= years and amount > 0:
+                one_off_by_year[year] = one_off_by_year.get(year, 0.0) + amount
+
+    return DecumulationSchedule(
+        capital_floor=max(0.0, capital_floor),
+        pension_annual=pension if pension_start_year is not None else 0.0,
+        pension_start_year=pension_start_year,
+        one_off_by_year=one_off_by_year,
+    )
+
+
 def run_decumulation_plan(
     repo: PortfolioRepository,
     portfolio_id: int,
@@ -63,6 +110,10 @@ def run_decumulation_plan(
     capital_gains_tax_rate_pct: float = 26.0,
     current_age: int | None = None,
     user_id: str | None = None,
+    capital_floor: float = 0.0,
+    pension_annual: float = 0.0,
+    pension_start_age: int | None = None,
+    one_off_expenses: list[tuple[int, float]] | None = None,
 ) -> DecumulationPlanResponse:
     if not user_id:
         raise ValueError("Utente non valido")
@@ -70,33 +121,11 @@ def run_decumulation_plan(
     summary = repo.get_summary(portfolio_id, user_id)
     initial_capital = max(0.0, float(summary.market_value) + float(summary.cash_balance))
     initial_cost_basis = max(0.0, float(summary.cost_basis) + float(summary.cash_balance))
-    estimated_embedded_gain_ratio_pct = _estimate_embedded_gain_ratio(initial_capital, initial_cost_basis) * 100
     holdings = _load_holdings(repo, portfolio_id, user_id)
 
-    mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0, 30.0)
-    sustainable_withdrawal = _solve_sustainable_withdrawal(
-        initial_capital=initial_capital,
-        years=years,
-        annual_return_pct=mu_annual * 100,
-        inflation_rate_pct=inflation_rate_pct,
-        other_income_annual=other_income_annual,
-        capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
-        embedded_gain_ratio_pct=estimated_embedded_gain_ratio_pct,
-    )
-
-    if initial_capital <= 0:
-        return _empty_decumulation_response(
-            portfolio_id=portfolio_id,
-            annual_withdrawal=annual_withdrawal,
-            years=years,
-            inflation_rate_pct=inflation_rate_pct,
-            other_income_annual=other_income_annual,
-            capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
-            estimated_embedded_gain_ratio_pct=estimated_embedded_gain_ratio_pct,
-            current_age=current_age,
-        )
-
-    paths = _simulate_decumulation_paths(
+    fields = _compute_decumulation_fields(
+        repo=repo,
+        holdings=holdings,
         initial_capital=initial_capital,
         initial_cost_basis=initial_cost_basis,
         annual_withdrawal=annual_withdrawal,
@@ -104,41 +133,17 @@ def run_decumulation_plan(
         inflation_rate_pct=inflation_rate_pct,
         other_income_annual=other_income_annual,
         capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
-        mu_annual=mu_annual,
-        sigma_annual=sigma_annual,
-        df_t=df_t,
-    )
-    final_values = sorted(path["ending_capitals"][-1] for path in paths)
-    success_count = sum(1 for path in paths if path["ending_capitals"][-1] > 0)
-    projections = _build_decumulation_projections(
-        paths=paths,
-        years=years,
-        other_income_annual=other_income_annual,
         current_age=current_age,
+        schedule=_build_decumulation_schedule(
+            years=years,
+            current_age=current_age,
+            capital_floor=capital_floor,
+            pension_annual=pension_annual,
+            pension_start_age=pension_start_age,
+            one_off_expenses=one_off_expenses,
+        ),
     )
-    depletion_year_p50 = next((projection.year for projection in projections if projection.p50_ending_capital <= 0), None)
-
-    return DecumulationPlanResponse(
-        portfolio_id=portfolio_id,
-        initial_capital=round(initial_capital, 2),
-        annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
-        annual_other_income=round(max(0.0, other_income_annual), 2),
-        inflation_rate_pct=round(max(0.0, inflation_rate_pct), 2),
-        capital_gains_tax_rate_pct=round(max(0.0, capital_gains_tax_rate_pct), 2),
-        estimated_embedded_gain_ratio_pct=round(max(0.0, estimated_embedded_gain_ratio_pct), 2),
-        horizon_years=years,
-        num_simulations=NUM_SIMULATIONS,
-        annualized_mean_return_pct=round(mu_annual * 100, 2),
-        annualized_volatility_pct=round(sigma_annual * 100, 2),
-        sustainable_withdrawal=round(max(0.0, sustainable_withdrawal), 2),
-        success_rate_pct=round((success_count / NUM_SIMULATIONS) * 100, 1),
-        depletion_probability_pct=round(((NUM_SIMULATIONS - success_count) / NUM_SIMULATIONS) * 100, 1),
-        p25_terminal_value=round(_percentile(final_values, 25), 2),
-        p50_terminal_value=round(_percentile(final_values, 50), 2),
-        p75_terminal_value=round(_percentile(final_values, 75), 2),
-        depletion_year_p50=depletion_year_p50,
-        projections=projections,
-    )
+    return DecumulationPlanResponse(portfolio_id=portfolio_id, **fields)
 
 
 def run_aggregate_decumulation_plan(
@@ -151,6 +156,10 @@ def run_aggregate_decumulation_plan(
     capital_gains_tax_rate_pct: float = 26.0,
     current_age: int | None = None,
     user_id: str | None = None,
+    capital_floor: float = 0.0,
+    pension_annual: float = 0.0,
+    pension_start_age: int | None = None,
+    one_off_expenses: list[tuple[int, float]] | None = None,
 ) -> AggregateDecumulationPlanResponse:
     if not user_id:
         raise ValueError("Utente non valido")
@@ -162,7 +171,7 @@ def run_aggregate_decumulation_plan(
     portfolios = {portfolio.id: portfolio for portfolio in repo.list_portfolios(user_id)}
     missing_ids = [portfolio_id for portfolio_id in normalized_ids if portfolio_id not in portfolios]
     if missing_ids:
-        raise ValueError("Uno o pi\u00f9 portafogli non sono disponibili")
+        raise ValueError("Uno o più portafogli non sono disponibili")
 
     base_currencies = {portfolios[portfolio_id].base_currency for portfolio_id in normalized_ids}
     if len(base_currencies) != 1:
@@ -172,8 +181,47 @@ def run_aggregate_decumulation_plan(
     summaries = [repo.get_summary(portfolio_id, user_id) for portfolio_id in normalized_ids]
     initial_capital = sum(max(0.0, float(summary.market_value) + float(summary.cash_balance)) for summary in summaries)
     initial_cost_basis = sum(max(0.0, float(summary.cost_basis) + float(summary.cash_balance)) for summary in summaries)
-    estimated_embedded_gain_ratio_pct = _estimate_embedded_gain_ratio(initial_capital, initial_cost_basis) * 100
     holdings = _load_aggregate_holdings(repo, normalized_ids, user_id)
+
+    fields = _compute_decumulation_fields(
+        repo=repo,
+        holdings=holdings,
+        initial_capital=initial_capital,
+        initial_cost_basis=initial_cost_basis,
+        annual_withdrawal=annual_withdrawal,
+        years=years,
+        inflation_rate_pct=inflation_rate_pct,
+        other_income_annual=other_income_annual,
+        capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
+        current_age=current_age,
+        schedule=_build_decumulation_schedule(
+            years=years,
+            current_age=current_age,
+            capital_floor=capital_floor,
+            pension_annual=pension_annual,
+            pension_start_age=pension_start_age,
+            one_off_expenses=one_off_expenses,
+        ),
+    )
+    return AggregateDecumulationPlanResponse(portfolio_ids=normalized_ids, base_currency=base_currency, **fields)
+
+
+def _compute_decumulation_fields(
+    *,
+    repo: PortfolioRepository,
+    holdings: list,
+    initial_capital: float,
+    initial_cost_basis: float,
+    annual_withdrawal: float,
+    years: int,
+    inflation_rate_pct: float,
+    other_income_annual: float,
+    capital_gains_tax_rate_pct: float,
+    current_age: int | None,
+    schedule: DecumulationSchedule,
+) -> dict:
+    """Shared body of the single and aggregate decumulation responses."""
+    estimated_embedded_gain_ratio_pct = _estimate_embedded_gain_ratio(initial_capital, initial_cost_basis) * 100
     mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0, 30.0)
     sustainable_withdrawal = _solve_sustainable_withdrawal(
         initial_capital=initial_capital,
@@ -183,20 +231,32 @@ def run_aggregate_decumulation_plan(
         other_income_annual=other_income_annual,
         capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
         embedded_gain_ratio_pct=estimated_embedded_gain_ratio_pct,
+        schedule=schedule,
     )
+    common = {
+        "annual_withdrawal": round(max(0.0, annual_withdrawal), 2),
+        "annual_other_income": round(max(0.0, other_income_annual), 2),
+        "inflation_rate_pct": round(max(0.0, inflation_rate_pct), 2),
+        "capital_gains_tax_rate_pct": round(max(0.0, capital_gains_tax_rate_pct), 2),
+        "estimated_embedded_gain_ratio_pct": round(max(0.0, estimated_embedded_gain_ratio_pct), 2),
+        "horizon_years": years,
+        "capital_floor": round(schedule.capital_floor, 2),
+        "pension_annual": round(schedule.pension_annual, 2),
+        "pension_start_year": schedule.pension_start_year,
+    }
 
     if initial_capital <= 0:
-        return _empty_aggregate_decumulation_response(
-            portfolio_ids=normalized_ids,
-            base_currency=base_currency,
-            annual_withdrawal=annual_withdrawal,
-            years=years,
-            inflation_rate_pct=inflation_rate_pct,
-            other_income_annual=other_income_annual,
-            capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
-            estimated_embedded_gain_ratio_pct=estimated_embedded_gain_ratio_pct,
-            current_age=current_age,
-        )
+        return {
+            **common,
+            **_empty_decumulation_fields(
+                annual_withdrawal=annual_withdrawal,
+                years=years,
+                inflation_rate_pct=inflation_rate_pct,
+                other_income_annual=other_income_annual,
+                current_age=current_age,
+                schedule=schedule,
+            ),
+        }
 
     paths = _simulate_decumulation_paths(
         initial_capital=initial_capital,
@@ -209,9 +269,11 @@ def run_aggregate_decumulation_plan(
         mu_annual=mu_annual,
         sigma_annual=sigma_annual,
         df_t=df_t,
+        schedule=schedule,
     )
     final_values = sorted(path["ending_capitals"][-1] for path in paths)
-    success_count = sum(1 for path in paths if path["ending_capitals"][-1] > 0)
+    success_count = sum(1 for path in paths if not path["floor_breached_flags"][-1])
+    depleted_count = sum(1 for path in paths if path["ending_capitals"][-1] <= 0)
     projections = _build_decumulation_projections(
         paths=paths,
         years=years,
@@ -219,29 +281,29 @@ def run_aggregate_decumulation_plan(
         current_age=current_age,
     )
     depletion_year_p50 = next((projection.year for projection in projections if projection.p50_ending_capital <= 0), None)
-
-    return AggregateDecumulationPlanResponse(
-        portfolio_ids=normalized_ids,
-        base_currency=base_currency,
-        initial_capital=round(initial_capital, 2),
-        annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
-        annual_other_income=round(max(0.0, other_income_annual), 2),
-        inflation_rate_pct=round(max(0.0, inflation_rate_pct), 2),
-        capital_gains_tax_rate_pct=round(max(0.0, capital_gains_tax_rate_pct), 2),
-        estimated_embedded_gain_ratio_pct=round(max(0.0, estimated_embedded_gain_ratio_pct), 2),
-        horizon_years=years,
-        num_simulations=NUM_SIMULATIONS,
-        annualized_mean_return_pct=round(mu_annual * 100, 2),
-        annualized_volatility_pct=round(sigma_annual * 100, 2),
-        sustainable_withdrawal=round(max(0.0, sustainable_withdrawal), 2),
-        success_rate_pct=round((success_count / NUM_SIMULATIONS) * 100, 1),
-        depletion_probability_pct=round(((NUM_SIMULATIONS - success_count) / NUM_SIMULATIONS) * 100, 1),
-        p25_terminal_value=round(_percentile(final_values, 25), 2),
-        p50_terminal_value=round(_percentile(final_values, 50), 2),
-        p75_terminal_value=round(_percentile(final_values, 75), 2),
-        depletion_year_p50=depletion_year_p50,
-        projections=projections,
+    floor_breach_year_p50 = (
+        next((p.year for p in projections if p.p50_ending_capital < p.capital_floor), None)
+        if schedule.capital_floor > 0
+        else depletion_year_p50
     )
+
+    return {
+        **common,
+        "initial_capital": round(initial_capital, 2),
+        "num_simulations": NUM_SIMULATIONS,
+        "annualized_mean_return_pct": round(mu_annual * 100, 2),
+        "annualized_volatility_pct": round(sigma_annual * 100, 2),
+        "sustainable_withdrawal": round(max(0.0, sustainable_withdrawal), 2),
+        "success_rate_pct": round((success_count / NUM_SIMULATIONS) * 100, 1),
+        "depletion_probability_pct": round((depleted_count / NUM_SIMULATIONS) * 100, 1),
+        "floor_breach_probability_pct": round(((NUM_SIMULATIONS - success_count) / NUM_SIMULATIONS) * 100, 1),
+        "p25_terminal_value": round(_percentile(final_values, 25), 2),
+        "p50_terminal_value": round(_percentile(final_values, 50), 2),
+        "p75_terminal_value": round(_percentile(final_values, 75), 2),
+        "depletion_year_p50": depletion_year_p50,
+        "floor_breach_year_p50": floor_breach_year_p50,
+        "projections": projections,
+    }
 
 
 def _t_random(rng: random.Random, df: float) -> float:
@@ -300,6 +362,12 @@ def _simulate_paths(
     return projections
 
 
+def _schedule_income(schedule: DecumulationSchedule, year: int, inflation_factor: float) -> float:
+    if schedule.pension_start_year is None or year < schedule.pension_start_year:
+        return 0.0
+    return schedule.pension_annual * inflation_factor
+
+
 def _simulate_decumulation_paths(
     *,
     initial_capital: float,
@@ -312,12 +380,15 @@ def _simulate_decumulation_paths(
     mu_annual: float,
     sigma_annual: float,
     df_t: float = 30.0,
+    schedule: DecumulationSchedule | None = None,
 ) -> list[dict[str, list[float]]]:
+    schedule = schedule or DecumulationSchedule()
     # mu_annual is a compound rate, so the median path grows at exactly mu_annual.
     drift = math.log1p(mu_annual)
     inflation = max(0.0, inflation_rate_pct) / 100.0
     tax_rate = max(0.0, capital_gains_tax_rate_pct) / 100.0
     t_scale = math.sqrt((df_t - 2.0) / df_t) if df_t > 2.0 else 1.0
+    base_other_income = max(0.0, other_income_annual)
     rng = random.Random(42)
     paths: list[dict[str, list[float]]] = []
 
@@ -325,28 +396,38 @@ def _simulate_decumulation_paths(
         capital = initial_capital
         cost_basis = max(0.0, initial_cost_basis)
         spending_target = max(0.0, annual_withdrawal)
+        floor_breached = False
         ending_capitals: list[float] = []
         effective_rates: list[float] = []
         depleted_flags: list[float] = []
+        floor_breached_flags: list[float] = []
+        capital_floors: list[float] = []
         target_net_spendings: list[float] = []
         gross_withdrawals: list[float] = []
         estimated_taxes: list[float] = []
         net_withdrawals: list[float] = []
         net_spending_after_tax: list[float] = []
+        other_incomes: list[float] = []
 
-        for _year in range(years):
+        for year_index in range(years):
+            year = year_index + 1
+            inflation_factor = (1 + inflation) ** year_index
+            income = base_other_income + _schedule_income(schedule, year, inflation_factor)
+            one_off = schedule.one_off_by_year.get(year, 0.0) * inflation_factor
+            year_target = spending_target + one_off
+
             starting_capital = capital
             annual_return = math.exp(drift + sigma_annual * _t_random(rng, df_t) * t_scale) - 1 if sigma_annual > 0 else mu_annual
             capital = max(0.0, capital * (1 + annual_return))
             capital_before_sale = capital
 
-            net_needed_from_portfolio = max(0.0, spending_target - max(0.0, other_income_annual))
+            net_needed_from_portfolio = max(0.0, year_target - income)
             embedded_gain_ratio = _estimate_embedded_gain_ratio(capital_before_sale, cost_basis)
             gross_sale = _solve_gross_sale_for_net_need(net_needed_from_portfolio, embedded_gain_ratio, tax_rate)
             gross_sale = min(gross_sale, capital_before_sale)
             taxes = gross_sale * embedded_gain_ratio * tax_rate
             net_from_portfolio = max(0.0, gross_sale - taxes)
-            total_net_spending = net_from_portfolio + max(0.0, other_income_annual)
+            total_net_spending = net_from_portfolio + income
 
             effective_rates.append((gross_sale / starting_capital) * 100 if starting_capital > 0 else 0.0)
             basis_ratio = min(1.0, cost_basis / capital_before_sale) if capital_before_sale > 0 else 0.0
@@ -356,13 +437,23 @@ def _simulate_decumulation_paths(
             if capital <= 0:
                 cost_basis = 0.0
 
-            target_net_spendings.append(spending_target)
+            # The floor is expressed in today's money, so it grows with inflation.
+            capital_floor = schedule.capital_floor * (1 + inflation) ** year
+            if schedule.capital_floor > 0:
+                floor_breached = floor_breached or capital < capital_floor
+            else:
+                floor_breached = floor_breached or capital <= 0
+
+            target_net_spendings.append(year_target)
             gross_withdrawals.append(gross_sale)
             estimated_taxes.append(taxes)
             net_withdrawals.append(net_from_portfolio)
             net_spending_after_tax.append(total_net_spending)
+            other_incomes.append(income)
             ending_capitals.append(capital)
             depleted_flags.append(1.0 if capital <= 0 else 0.0)
+            floor_breached_flags.append(1.0 if floor_breached else 0.0)
+            capital_floors.append(capital_floor)
             spending_target *= (1 + inflation)
 
         paths.append(
@@ -370,11 +461,14 @@ def _simulate_decumulation_paths(
                 "ending_capitals": ending_capitals,
                 "effective_rates": effective_rates,
                 "depleted_flags": depleted_flags,
+                "floor_breached_flags": floor_breached_flags,
+                "capital_floors": capital_floors,
                 "target_net_spendings": target_net_spendings,
                 "gross_withdrawals": gross_withdrawals,
                 "estimated_taxes": estimated_taxes,
                 "net_withdrawals": net_withdrawals,
                 "net_spending_after_tax": net_spending_after_tax,
+                "other_incomes": other_incomes,
             }
         )
 
@@ -389,16 +483,21 @@ def _build_decumulation_projections(
     current_age: int | None,
 ) -> list[DecumulationYearProjection]:
     projections: list[DecumulationYearProjection] = []
+    num_paths = len(paths) or 1
 
     for year_index in range(years):
         capitals = sorted(path["ending_capitals"][year_index] for path in paths)
         rates = sorted(path["effective_rates"][year_index] for path in paths)
         depleted_count = sum(path["depleted_flags"][year_index] for path in paths)
+        breached_count = sum(path["floor_breached_flags"][year_index] for path in paths)
         target_net_values = sorted(path["target_net_spendings"][year_index] for path in paths)
         gross_values = sorted(path["gross_withdrawals"][year_index] for path in paths)
         tax_values = sorted(path["estimated_taxes"][year_index] for path in paths)
         net_values = sorted(path["net_withdrawals"][year_index] for path in paths)
         total_net_values = sorted(path["net_spending_after_tax"][year_index] for path in paths)
+        income_values = sorted(path["other_incomes"][year_index] for path in paths)
+        # Floors and incomes are deterministic: every path carries the same value.
+        capital_floor = paths[0]["capital_floors"][year_index] if paths else 0.0
 
         projections.append(
             DecumulationYearProjection(
@@ -408,13 +507,15 @@ def _build_decumulation_projections(
                 gross_withdrawal=round(_percentile(gross_values, 50), 2),
                 estimated_taxes=round(_percentile(tax_values, 50), 2),
                 net_withdrawal=round(_percentile(net_values, 50), 2),
-                other_income=round(max(0.0, other_income_annual), 2),
+                other_income=round(_percentile(income_values, 50) if income_values else max(0.0, other_income_annual), 2),
                 net_spending_after_tax=round(_percentile(total_net_values, 50), 2),
                 p25_ending_capital=round(_percentile(capitals, 25), 2),
                 p50_ending_capital=round(_percentile(capitals, 50), 2),
                 p75_ending_capital=round(_percentile(capitals, 75), 2),
                 p50_effective_withdrawal_rate_pct=round(_percentile(rates, 50), 2),
-                depletion_probability_pct=round((depleted_count / NUM_SIMULATIONS) * 100, 1),
+                depletion_probability_pct=round((depleted_count / num_paths) * 100, 1),
+                capital_floor=round(capital_floor, 2),
+                floor_breach_probability_pct=round((breached_count / num_paths) * 100, 1),
             )
         )
 
@@ -430,7 +531,15 @@ def _solve_sustainable_withdrawal(
     other_income_annual: float,
     capital_gains_tax_rate_pct: float,
     embedded_gain_ratio_pct: float,
+    schedule: DecumulationSchedule | None = None,
 ) -> float:
+    """Constant real net spending sustainable over ``years``.
+
+    The capital floor, one-off expenses and pension are valued in today's
+    money and discounted at the real rate: the floor and one-offs reduce the
+    spendable capital, the pension is spread evenly over the horizon.
+    """
+    schedule = schedule or DecumulationSchedule()
     if initial_capital <= 0 or years <= 0:
         return max(0.0, other_income_annual)
 
@@ -438,18 +547,29 @@ def _solve_sustainable_withdrawal(
     inflation = inflation_rate_pct / 100.0
     real_rate = ((1 + nominal) / (1 + inflation)) - 1
 
+    def discount(year: int) -> float:
+        return 1.0 if abs(real_rate) < 1e-9 else (1 + real_rate) ** (-year)
+
     if abs(real_rate) < 1e-9:
-        gross_portfolio_withdrawal = max(0.0, initial_capital / years)
+        annuity_factor = float(years)
     else:
-        denominator = 1 - (1 + real_rate) ** (-years)
-        if denominator <= 0:
-            return max(0.0, other_income_annual)
-        gross_portfolio_withdrawal = max(0.0, initial_capital * real_rate / denominator)
+        annuity_factor = (1 - (1 + real_rate) ** (-years)) / real_rate
+    if annuity_factor <= 0:
+        return max(0.0, other_income_annual)
+
+    floor_pv = schedule.capital_floor * discount(years)
+    one_off_pv = sum(amount * discount(year) for year, amount in schedule.one_off_by_year.items())
+    spendable_capital = max(0.0, initial_capital - floor_pv - one_off_pv)
+    gross_portfolio_withdrawal = spendable_capital / annuity_factor
+
+    pension_pv = 0.0
+    if schedule.pension_start_year is not None:
+        pension_pv = sum(schedule.pension_annual * discount(year) for year in range(schedule.pension_start_year, years + 1))
 
     tax_drag = (max(0.0, capital_gains_tax_rate_pct) / 100.0) * (max(0.0, embedded_gain_ratio_pct) / 100.0)
     keep_rate = max(0.0, 1.0 - tax_drag)
     sustainable_net_portfolio = gross_portfolio_withdrawal * keep_rate
-    return max(0.0, sustainable_net_portfolio + max(0.0, other_income_annual))
+    return max(0.0, sustainable_net_portfolio + pension_pv / annuity_factor + max(0.0, other_income_annual))
 
 
 def _estimate_embedded_gain_ratio(capital: float, cost_basis: float) -> float:
@@ -479,109 +599,54 @@ def _empty_monte_carlo_response(portfolio_id: int) -> MonteCarloProjectionRespon
     )
 
 
-def _empty_decumulation_response(
+def _empty_decumulation_fields(
     *,
-    portfolio_id: int,
     annual_withdrawal: float,
     years: int,
     inflation_rate_pct: float,
     other_income_annual: float,
-    capital_gains_tax_rate_pct: float,
-    estimated_embedded_gain_ratio_pct: float,
     current_age: int | None,
-) -> DecumulationPlanResponse:
+    schedule: DecumulationSchedule,
+) -> dict:
     inflation = max(0.0, inflation_rate_pct) / 100.0
-    projections = [
-        DecumulationYearProjection(
-            year=year,
-            age=(current_age + year) if current_age else None,
-            target_net_spending=round(max(0.0, annual_withdrawal) * ((1 + inflation) ** (year - 1)), 2),
-            gross_withdrawal=0.0,
-            estimated_taxes=0.0,
-            net_withdrawal=0.0,
-            other_income=round(max(0.0, other_income_annual), 2),
-            net_spending_after_tax=round(max(0.0, other_income_annual), 2),
-            p25_ending_capital=0.0,
-            p50_ending_capital=0.0,
-            p75_ending_capital=0.0,
-            p50_effective_withdrawal_rate_pct=0.0,
-            depletion_probability_pct=100.0,
+    base_other_income = max(0.0, other_income_annual)
+    projections = []
+    for year in range(1, years + 1):
+        inflation_factor = (1 + inflation) ** (year - 1)
+        income = base_other_income + _schedule_income(schedule, year, inflation_factor)
+        one_off = schedule.one_off_by_year.get(year, 0.0) * inflation_factor
+        projections.append(
+            DecumulationYearProjection(
+                year=year,
+                age=(current_age + year) if current_age else None,
+                target_net_spending=round(max(0.0, annual_withdrawal) * inflation_factor + one_off, 2),
+                gross_withdrawal=0.0,
+                estimated_taxes=0.0,
+                net_withdrawal=0.0,
+                other_income=round(income, 2),
+                net_spending_after_tax=round(income, 2),
+                p25_ending_capital=0.0,
+                p50_ending_capital=0.0,
+                p75_ending_capital=0.0,
+                p50_effective_withdrawal_rate_pct=0.0,
+                depletion_probability_pct=100.0,
+                capital_floor=round(schedule.capital_floor * (1 + inflation) ** year, 2),
+                floor_breach_probability_pct=100.0,
+            )
         )
-        for year in range(1, years + 1)
-    ]
-    return DecumulationPlanResponse(
-        portfolio_id=portfolio_id,
-        initial_capital=0.0,
-        annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
-        annual_other_income=round(max(0.0, other_income_annual), 2),
-        inflation_rate_pct=round(max(0.0, inflation_rate_pct), 2),
-        capital_gains_tax_rate_pct=round(max(0.0, capital_gains_tax_rate_pct), 2),
-        estimated_embedded_gain_ratio_pct=round(max(0.0, estimated_embedded_gain_ratio_pct), 2),
-        horizon_years=years,
-        num_simulations=0,
-        annualized_mean_return_pct=0.0,
-        annualized_volatility_pct=0.0,
-        sustainable_withdrawal=round(max(0.0, other_income_annual), 2),
-        success_rate_pct=0.0,
-        depletion_probability_pct=100.0,
-        p25_terminal_value=0.0,
-        p50_terminal_value=0.0,
-        p75_terminal_value=0.0,
-        depletion_year_p50=1 if years > 0 else None,
-        projections=projections,
-    )
-
-
-def _empty_aggregate_decumulation_response(
-    *,
-    portfolio_ids: list[int],
-    base_currency: str,
-    annual_withdrawal: float,
-    years: int,
-    inflation_rate_pct: float,
-    other_income_annual: float,
-    capital_gains_tax_rate_pct: float,
-    estimated_embedded_gain_ratio_pct: float,
-    current_age: int | None,
-) -> AggregateDecumulationPlanResponse:
-    inflation = max(0.0, inflation_rate_pct) / 100.0
-    projections = [
-        DecumulationYearProjection(
-            year=year,
-            age=(current_age + year) if current_age else None,
-            target_net_spending=round(max(0.0, annual_withdrawal) * ((1 + inflation) ** (year - 1)), 2),
-            gross_withdrawal=0.0,
-            estimated_taxes=0.0,
-            net_withdrawal=0.0,
-            other_income=round(max(0.0, other_income_annual), 2),
-            net_spending_after_tax=round(max(0.0, other_income_annual), 2),
-            p25_ending_capital=0.0,
-            p50_ending_capital=0.0,
-            p75_ending_capital=0.0,
-            p50_effective_withdrawal_rate_pct=0.0,
-            depletion_probability_pct=100.0,
-        )
-        for year in range(1, years + 1)
-    ]
-    return AggregateDecumulationPlanResponse(
-        portfolio_ids=portfolio_ids,
-        base_currency=base_currency,
-        initial_capital=0.0,
-        annual_withdrawal=round(max(0.0, annual_withdrawal), 2),
-        annual_other_income=round(max(0.0, other_income_annual), 2),
-        inflation_rate_pct=round(max(0.0, inflation_rate_pct), 2),
-        capital_gains_tax_rate_pct=round(max(0.0, capital_gains_tax_rate_pct), 2),
-        estimated_embedded_gain_ratio_pct=round(max(0.0, estimated_embedded_gain_ratio_pct), 2),
-        horizon_years=years,
-        num_simulations=0,
-        annualized_mean_return_pct=0.0,
-        annualized_volatility_pct=0.0,
-        sustainable_withdrawal=round(max(0.0, other_income_annual), 2),
-        success_rate_pct=0.0,
-        depletion_probability_pct=100.0,
-        p25_terminal_value=0.0,
-        p50_terminal_value=0.0,
-        p75_terminal_value=0.0,
-        depletion_year_p50=1 if years > 0 else None,
-        projections=projections,
-    )
+    return {
+        "initial_capital": 0.0,
+        "num_simulations": 0,
+        "annualized_mean_return_pct": 0.0,
+        "annualized_volatility_pct": 0.0,
+        "sustainable_withdrawal": round(base_other_income, 2),
+        "success_rate_pct": 0.0,
+        "depletion_probability_pct": 100.0,
+        "floor_breach_probability_pct": 100.0,
+        "p25_terminal_value": 0.0,
+        "p50_terminal_value": 0.0,
+        "p75_terminal_value": 0.0,
+        "depletion_year_p50": 1 if years > 0 else None,
+        "floor_breach_year_p50": 1 if years > 0 else None,
+        "projections": projections,
+    }

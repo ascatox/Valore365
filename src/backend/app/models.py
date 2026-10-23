@@ -17,6 +17,12 @@ class ErrorResponse(BaseModel):
     error: ApiError
 
 
+class FireOneOffExpense(BaseModel):
+    age: int = Field(ge=18, le=120)
+    amount: float = Field(gt=0)
+    label: str = Field(default="", max_length=80)
+
+
 class UserSettingsRead(BaseModel):
     user_id: str
     broker_default_fee: float = Field(default=0, ge=0)
@@ -30,6 +36,11 @@ class UserSettingsRead(BaseModel):
     fire_capital_gains_tax_rate: float = Field(default=26, ge=0, le=100)
     fire_current_age: int | None = Field(default=None, ge=18, le=100)
     fire_target_age: int | None = Field(default=None, ge=18, le=100)
+    fire_capital_floor: float = Field(default=0, ge=0)
+    fire_contribution_growth_pct: float = Field(default=0, ge=0, le=20)
+    fire_pension_annual: float = Field(default=0, ge=0)
+    fire_pension_start_age: int | None = Field(default=None, ge=18, le=100)
+    fire_one_off_expenses: list[FireOneOffExpense] = Field(default_factory=list, max_length=50)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -44,6 +55,11 @@ class UserSettingsUpdate(BaseModel):
     fire_capital_gains_tax_rate: float | None = Field(default=None, ge=0, le=100)
     fire_current_age: int | None = Field(default=None, ge=18, le=100)
     fire_target_age: int | None = Field(default=None, ge=18, le=100)
+    fire_capital_floor: float | None = Field(default=None, ge=0)
+    fire_contribution_growth_pct: float | None = Field(default=None, ge=0, le=20)
+    fire_pension_annual: float | None = Field(default=None, ge=0)
+    fire_pension_start_age: int | None = Field(default=None, ge=18, le=100)
+    fire_one_off_expenses: list[FireOneOffExpense] | None = Field(default=None, max_length=50)
 
 
 class AdminUsageSummary(BaseModel):

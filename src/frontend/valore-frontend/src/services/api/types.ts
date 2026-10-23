@@ -117,6 +117,12 @@ export interface InstantPortfolioImportResponse {
   raw_text: string;
 }
 
+export interface FireOneOffExpense {
+  age: number;
+  amount: number;
+  label: string;
+}
+
 export interface UserSettings {
   user_id: string;
   broker_default_fee: number;
@@ -130,6 +136,11 @@ export interface UserSettings {
   fire_capital_gains_tax_rate: number;
   fire_current_age: number | null;
   fire_target_age: number | null;
+  fire_capital_floor: number;
+  fire_contribution_growth_pct: number;
+  fire_pension_annual: number;
+  fire_pension_start_age: number | null;
+  fire_one_off_expenses: FireOneOffExpense[];
 }
 
 export interface UserSettingsUpdateInput {
@@ -144,6 +155,11 @@ export interface UserSettingsUpdateInput {
   fire_capital_gains_tax_rate?: number;
   fire_current_age?: number | null;
   fire_target_age?: number | null;
+  fire_capital_floor?: number;
+  fire_contribution_growth_pct?: number;
+  fire_pension_annual?: number;
+  fire_pension_start_age?: number | null;
+  fire_one_off_expenses?: FireOneOffExpense[];
 }
 
 export interface AdminUsageSummary {
@@ -262,6 +278,8 @@ export interface DecumulationYearProjection {
   p75_ending_capital: number;
   p50_effective_withdrawal_rate_pct: number;
   depletion_probability_pct: number;
+  capital_floor: number;
+  floor_breach_probability_pct: number;
 }
 
 export interface DecumulationPlanResponse {
@@ -273,16 +291,21 @@ export interface DecumulationPlanResponse {
   capital_gains_tax_rate_pct: number;
   estimated_embedded_gain_ratio_pct: number;
   horizon_years: number;
+  capital_floor: number;
+  pension_annual: number;
+  pension_start_year: number | null;
   num_simulations: number;
   annualized_mean_return_pct: number;
   annualized_volatility_pct: number;
   sustainable_withdrawal: number;
   success_rate_pct: number;
   depletion_probability_pct: number;
+  floor_breach_probability_pct: number;
   p25_terminal_value: number;
   p50_terminal_value: number;
   p75_terminal_value: number;
   depletion_year_p50: number | null;
+  floor_breach_year_p50: number | null;
   projections: DecumulationYearProjection[];
 }
 
@@ -296,16 +319,21 @@ export interface AggregateDecumulationPlanResponse {
   capital_gains_tax_rate_pct: number;
   estimated_embedded_gain_ratio_pct: number;
   horizon_years: number;
+  capital_floor: number;
+  pension_annual: number;
+  pension_start_year: number | null;
   num_simulations: number;
   annualized_mean_return_pct: number;
   annualized_volatility_pct: number;
   sustainable_withdrawal: number;
   success_rate_pct: number;
   depletion_probability_pct: number;
+  floor_breach_probability_pct: number;
   p25_terminal_value: number;
   p50_terminal_value: number;
   p75_terminal_value: number;
   depletion_year_p50: number | null;
+  floor_breach_year_p50: number | null;
   projections: DecumulationYearProjection[];
 }
 

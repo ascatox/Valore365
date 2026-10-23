@@ -15,6 +15,7 @@ import {
   getMonthlyReturns,
   getPerformanceSummary,
   getYearlyReturns,
+  type DecumulationScheduleParams,
   getPortfolioAllocation,
   getPortfolioDataCoverage,
   getPortfolioHealth,
@@ -107,7 +108,7 @@ export function useDecumulationPlan(
     otherIncomeAnnual: number;
     capitalGainsTaxRatePct: number;
     currentAge: number | null;
-  },
+  } & DecumulationScheduleParams,
   enabled = true,
 ) {
   return useQuery({
@@ -126,7 +127,7 @@ export function useAggregateDecumulationPlan(
     otherIncomeAnnual: number;
     capitalGainsTaxRatePct: number;
     currentAge: number | null;
-  },
+  } & DecumulationScheduleParams,
   enabled = true,
 ) {
   return useQuery({
