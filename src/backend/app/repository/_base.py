@@ -2,7 +2,7 @@ import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 import json
 from bisect import bisect_right
 
@@ -10,6 +10,11 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from ..sql import load_sql
+
+
+def _as_aware_utc(value: datetime) -> datetime:
+    """Treat naive datetimes as UTC so they compare with timestamptz values."""
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
 
 
 def _finite(v: float, fallback: float = 0.0) -> float:
@@ -115,10 +120,12 @@ class BaseRepositoryMixin:
         ]
         if candidate is not None:
             timeline.append(candidate)
+        if any(item.get("trade_at") is None for item in timeline):
+            raise ValueError("trade_at non puo essere nullo")
 
         timeline.sort(
             key=lambda item: (
-                item["trade_at"],
+                _as_aware_utc(item["trade_at"]),
                 int(item["id"]) if item.get("id") is not None else 10**18,
             )
         )
@@ -126,8 +133,6 @@ class BaseRepositoryMixin:
         running_qty = 0.0
         epsilon = 1e-9
         for item in timeline:
-            if item.get("trade_at") is None:
-                raise ValueError("trade_at non puo essere nullo")
             side = str(item["side"]).lower()
             qty = float(item["quantity"])
             running_qty = running_qty + qty if side == "buy" else running_qty - qty

@@ -234,3 +234,43 @@ def test_parse_public_portfolio_file_aggregates_fineco_rows_into_positions():
     assert response.positions[0].identifier == "IE00TEST0001"
     assert response.positions[0].value == 1300.0
     assert "IE00TEST0001 1300.00" in response.raw_text
+
+
+class _CommitRepo:
+    def __init__(self, preview_data):
+        self.preview_data = preview_data
+        self.transactions = []
+
+    def get_csv_import_batch(self, batch_id, user_id):
+        return {"status": "pending", "portfolio_id": 1, "preview_data": self.preview_data}
+
+    def create_transaction(self, payload, user_id):
+        self.transactions.append(payload)
+
+    def commit_csv_import_batch(self, batch_id, user_id):
+        pass
+
+
+def test_commit_batch_stores_timezone_aware_trade_at():
+    repo = _CommitRepo(
+        [
+            {
+                "row_number": 1,
+                "valid": True,
+                "trade_at": "2026-10-13T00:00:00",
+                "isin": "IE00BK5BQT80",
+                "side": "sell",
+                "quantity": 1.0,
+                "price": 153.89,
+                "trade_currency": "EUR",
+                "asset_id": 7,
+            }
+        ]
+    )
+    service = CsvImportService(repo)
+
+    result = service.commit_batch(1, "user")
+
+    assert result.errors == []
+    assert result.committed_transactions == 1
+    assert repo.transactions[0].trade_at.tzinfo is not None

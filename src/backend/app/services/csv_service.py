@@ -2,7 +2,7 @@ import csv
 import io
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import openpyxl
@@ -796,6 +796,8 @@ class CsvImportService:
 
                 trade_at_str = row_data.get("trade_at", "")
                 trade_at = datetime.fromisoformat(trade_at_str)
+                if trade_at.tzinfo is None:
+                    trade_at = trade_at.replace(tzinfo=timezone.utc)
                 trade_currency = row_data.get("trade_currency") or self.repo.get_portfolio_base_currency(portfolio_id)
 
                 self.repo.create_transaction(
