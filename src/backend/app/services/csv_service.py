@@ -62,24 +62,6 @@ BANK_EXPORT_COLUMNS = [
     "commissioni amministrato",                  # 14
 ]
 
-FINECO_HEADER_COLUMNS = [
-    "operazione",
-    "data valuta",
-    "descrizione",
-    "titolo",
-    "isin",
-    "segno",
-    "quantita",
-    "divisa",
-    "prezzo",
-    "cambio",
-    "controvalore",
-    "commissioni fondi sw/ingr/uscita",
-    "commissioni fondi banca corrispondente",
-    "spese fondi sgr",
-    "commissioni amministrato",
-]
-
 GENERIC_TEMPLATE_COLUMNS = [
     "operazione",
     "isin",
@@ -138,9 +120,11 @@ def _prepare_fineco_csv_content(file_content: str, skip_rows: int) -> str:
     if not non_empty_lines:
         return file_content
 
+    # Fineco omits empty fee columns from some exports, so only the
+    # mandatory columns are needed to recognise the header row.
     header_index = _find_header_row_index(
         [_split_delimited_line(line, ";") for line in non_empty_lines],
-        FINECO_HEADER_COLUMNS,
+        REQUIRED_COLUMNS,
     )
     if header_index is not None:
         return "\n".join(non_empty_lines[header_index:])
@@ -154,6 +138,19 @@ def _prepare_fineco_csv_content(file_content: str, skip_rows: int) -> str:
     return CsvImportService._detect_and_normalize(candidate_content)
 
 
+def _xlsx_cell_to_str(value: Any) -> str:
+    """Stringify an Excel cell so _parse_italian_number reads numbers unambiguously.
+
+    Numeric cells are rendered with a comma decimal mark: str(105.123) would
+    otherwise be parsed as 105123 by the thousands-separator heuristic.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        return repr(value).replace(".", ",")
+    return str(value)
+
+
 def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0, broker: str = "generic") -> list[dict[str, str]]:
     """Read an XLSX file and return rows as list of dicts (same as csv.DictReader)."""
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
@@ -165,8 +162,7 @@ def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0, broker: str = "generi
     wb.close()
 
     normalized_rows = [[str(cell or "").strip() for cell in row] for row in all_rows]
-    required_columns = FINECO_HEADER_COLUMNS if broker == "fineco" else REQUIRED_COLUMNS
-    header_index = _find_header_row_index(normalized_rows, required_columns)
+    header_index = _find_header_row_index(normalized_rows, REQUIRED_COLUMNS)
     if header_index is None:
         if len(all_rows) <= skip_rows:
             raise ValueError("Il file Excel non contiene righe dati sufficienti")
@@ -185,7 +181,7 @@ def _read_xlsx_rows(file_bytes: bytes, skip_rows: int = 0, broker: str = "generi
             if not header:
                 continue
             val = row[i] if i < len(row) else None
-            row_dict[header] = str(val) if val is not None else ""
+            row_dict[header] = _xlsx_cell_to_str(val)
         result.append(row_dict)
 
     return result

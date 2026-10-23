@@ -2,7 +2,13 @@ import io
 
 import openpyxl
 
-from app.services.csv_service import BANK_EXPORT_COLUMNS, CsvImportService, _prepare_fineco_csv_content, _read_xlsx_rows
+from app.services.csv_service import (
+    BANK_EXPORT_COLUMNS,
+    CsvImportService,
+    _parse_italian_number,
+    _prepare_fineco_csv_content,
+    _read_xlsx_rows,
+)
 
 
 def test_prepare_fineco_csv_content_keeps_embedded_header_row():
@@ -111,6 +117,87 @@ def test_read_xlsx_rows_detects_fineco_header_without_fixed_skip():
 
     assert len(rows) == 1
     assert rows[0]["Operazione"] == "01/03/2026"
+
+
+REDUCED_FINECO_HEADER = [
+    "Operazione",
+    "Data valuta",
+    "Descrizione",
+    "Titolo",
+    "Isin",
+    "Segno",
+    "Quantita",
+    "Divisa",
+    "Prezzo",
+    "Cambio",
+    "Controvalore",
+    "Commissioni amministrato",
+]
+
+
+def test_read_xlsx_rows_detects_fineco_header_without_fund_fee_columns():
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet.append(["Dossier n.: 00000000"])
+    worksheet.append(["Intestazione Dossier: MARIO ROSSI"])
+    worksheet.append([""])
+    worksheet.append(["RISULTATO RICERCA MOVIMENTI TITOLI"])
+    worksheet.append([""])
+    worksheet.append(REDUCED_FINECO_HEADER)
+    worksheet.append([])
+    worksheet.append(
+        ["13/10/2026", "15/10/2026", "Compravendita titoli", "ISHS EUR CO 1-5 EUR", "IE00B4L60045", "A", 375, "EUR", 105.23067, 1, 39461.5, 19]
+    )
+    worksheet.append(
+        ["13/10/2026", "15/10/2026", "Compravendita titoli", "VAN FTSE ALL USD-AC", "IE00BK5BQT80", "V", 1, "EUR", 153.89, 1, 153.89, 19]
+    )
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+
+    rows = _read_xlsx_rows(buffer.getvalue(), skip_rows=7, broker="fineco")
+
+    assert len(rows) == 2
+    assert rows[0]["Isin"] == "IE00B4L60045"
+    assert rows[1]["Isin"] == "IE00BK5BQT80"
+
+
+def test_read_xlsx_rows_keeps_three_decimal_numeric_cells_as_decimals():
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    assert worksheet is not None
+    worksheet.append(REDUCED_FINECO_HEADER)
+    worksheet.append(
+        ["01/03/2026", "04/03/2026", "Compravendita titoli", "ETF TEST", "IE00TEST0001", "A", 10, "EUR", 105.123, 1, 1051.23, 2.5]
+    )
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    workbook.close()
+
+    rows = _read_xlsx_rows(buffer.getvalue(), broker="fineco")
+
+    assert _parse_italian_number(rows[0]["Prezzo"]) == 105.123
+    assert _parse_italian_number(rows[0]["Quantita"]) == 10
+    assert _parse_italian_number(rows[0]["Controvalore"]) == 1051.23
+
+
+def test_prepare_fineco_csv_content_detects_header_without_fund_fee_columns():
+    content = "\n".join(
+        [
+            "Dossier n.: 00000000",
+            "RISULTATO RICERCA MOVIMENTI TITOLI",
+            ";".join(REDUCED_FINECO_HEADER),
+            "13/10/2026;15/10/2026;Compravendita titoli;ETF;IE00B4L60045;A;375;EUR;105,23;1;39461,5;19",
+        ]
+    )
+
+    normalized = _prepare_fineco_csv_content(content, skip_rows=7)
+
+    assert normalized.splitlines()[0] == ";".join(REDUCED_FINECO_HEADER)
+    assert len(normalized.splitlines()) == 2
 
 
 class _FakeRepo:
