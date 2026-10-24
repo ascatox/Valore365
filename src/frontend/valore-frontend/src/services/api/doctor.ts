@@ -29,6 +29,9 @@ export interface DecumulationScheduleParams {
   pensionAnnual?: number;
   pensionStartAge?: number | null;
   oneOffExpenses?: Array<{ age: number; amount: number }>;
+  /** Desired range of the capital left at the end of the horizon, in today's money. */
+  terminalTargetMin?: number;
+  terminalTargetMax?: number;
 }
 
 function appendDecumulationScheduleParams(query: URLSearchParams, params: DecumulationScheduleParams) {
@@ -45,6 +48,12 @@ function appendDecumulationScheduleParams(query: URLSearchParams, params: Decumu
     query.append('one_off_ages', String(expense.age));
     query.append('one_off_amounts', String(expense.amount));
   });
+  if (params.terminalTargetMin && params.terminalTargetMin > 0) {
+    query.set('terminal_target_min', String(params.terminalTargetMin));
+  }
+  if (params.terminalTargetMax && params.terminalTargetMax > 0) {
+    query.set('terminal_target_max', String(params.terminalTargetMax));
+  }
 }
 
 export const getDecumulationPlan = async (

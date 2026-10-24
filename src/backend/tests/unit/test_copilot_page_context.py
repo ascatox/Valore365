@@ -135,6 +135,7 @@ def test_fire_snapshot_includes_planner_extras(monkeypatch):
             settings.fire_capital_floor = 700000.0
             settings.fire_pension_annual = 18000.0
             settings.fire_pension_start_age = 67
+            settings.fire_terminal_target_min = 200000.0
             return settings
 
     snapshot = build_portfolio_snapshot_light(_RepoWithPlannerExtras(), 1, "user-1", page_context="fire")
@@ -143,6 +144,8 @@ def test_fire_snapshot_includes_planner_extras(monkeypatch):
     assert snapshot["fire"]["pension_annual"] == 18000.0
     assert snapshot["fire"]["pension_start_age"] == 67
     assert "contribution_growth_pct" not in snapshot["fire"]
+    assert snapshot["fire"]["terminal_capital_min_today_eur"] == 200000.0
+    assert "terminal_capital_max_today_eur" not in snapshot["fire"]
 
 
 def test_page_context_filters_available_tools():

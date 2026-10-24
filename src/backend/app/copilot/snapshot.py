@@ -84,6 +84,8 @@ def _fire_planner_extras(user_settings) -> dict:
     pension_annual = getattr(user_settings, "fire_pension_annual", 0) or 0
     pension_start_age = getattr(user_settings, "fire_pension_start_age", None)
     one_off_expenses = getattr(user_settings, "fire_one_off_expenses", None) or []
+    terminal_target_min = getattr(user_settings, "fire_terminal_target_min", 0) or 0
+    terminal_target_max = getattr(user_settings, "fire_terminal_target_max", 0) or 0
     if capital_floor > 0:
         extras["capital_floor_today_eur"] = capital_floor
     if contribution_growth > 0:
@@ -94,6 +96,10 @@ def _fire_planner_extras(user_settings) -> dict:
             extras["pension_start_age"] = pension_start_age
     if one_off_expenses:
         extras["one_off_expenses"] = [item.model_dump() for item in one_off_expenses]
+    if terminal_target_min > 0:
+        extras["terminal_capital_min_today_eur"] = terminal_target_min
+    if terminal_target_max > 0:
+        extras["terminal_capital_max_today_eur"] = terminal_target_max
     return extras
 
 def _resolve_light_snapshot_scope(page_context: str | None) -> dict[str, object]:

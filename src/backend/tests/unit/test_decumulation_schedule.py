@@ -7,6 +7,7 @@ from app.services.portfolio_doctor._monte_carlo import (
     _build_decumulation_schedule,
     _simulate_decumulation_paths,
     _solve_sustainable_withdrawal,
+    _terminal_range_probabilities,
 )
 
 
@@ -111,6 +112,49 @@ def test_sustainable_withdrawal_preserves_capital_floor():
     assert _solve_sustainable_withdrawal(
         **base_kwargs, schedule=DecumulationSchedule(capital_floor=700_000, pension_annual=15_000, pension_start_year=11)
     ) == pytest.approx(10_000 + 15_000 * 20 / 30)
+
+
+def test_sustainable_withdrawal_targets_terminal_capital():
+    base_kwargs = dict(
+        initial_capital=1_000_000,
+        years=30,
+        annual_return_pct=0.0,
+        inflation_rate_pct=0.0,
+        other_income_annual=0.0,
+        capital_gains_tax_rate_pct=0.0,
+        embedded_gain_ratio_pct=0.0,
+    )
+
+    # The bottom of the range is what must be left at the end.
+    assert _solve_sustainable_withdrawal(
+        **base_kwargs, schedule=DecumulationSchedule(terminal_target_min=400_000, terminal_target_max=600_000)
+    ) == pytest.approx(20_000)
+    # A floor above the terminal minimum still wins.
+    assert _solve_sustainable_withdrawal(
+        **base_kwargs, schedule=DecumulationSchedule(capital_floor=700_000, terminal_target_min=400_000)
+    ) == pytest.approx(10_000)
+
+
+def test_terminal_range_probabilities_are_indexed_to_the_horizon():
+    schedule = DecumulationSchedule(terminal_target_min=100_000, terminal_target_max=200_000)
+    factor = 1.02 ** 10
+    final_values = [50_000 * factor, 99_000 * factor, 150_000 * factor, 201_000 * factor]
+
+    result = _terminal_range_probabilities(final_values, schedule, 2.0, 10)
+
+    assert result == {
+        "terminal_below_range_probability_pct": 50.0,
+        "terminal_in_range_probability_pct": 25.0,
+        "terminal_above_range_probability_pct": 25.0,
+    }
+
+
+def test_terminal_range_without_max_has_no_upper_bound():
+    result = _terminal_range_probabilities([0.0, 1e9], DecumulationSchedule(terminal_target_min=1), 0.0, 5)
+
+    assert result["terminal_above_range_probability_pct"] == 0
+    assert result["terminal_in_range_probability_pct"] == 50
+    assert _terminal_range_probabilities([0.0], DecumulationSchedule(), 0.0, 5) == {}
 
 
 def test_settings_accept_one_off_expenses():

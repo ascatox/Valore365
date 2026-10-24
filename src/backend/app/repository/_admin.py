@@ -131,7 +131,9 @@ class AdminMixin:
                            fire_contribution_growth_pct::float8 as fire_contribution_growth_pct,
                            fire_pension_annual::float8 as fire_pension_annual,
                            fire_pension_start_age,
-                           fire_one_off_expenses
+                           fire_one_off_expenses,
+                           fire_terminal_target_min::float8 as fire_terminal_target_min,
+                           fire_terminal_target_max::float8 as fire_terminal_target_max
                     from app_user_settings
                     where user_id = :user_id
                     """
@@ -158,6 +160,8 @@ class AdminMixin:
             fire_pension_annual=float(row["fire_pension_annual"] or 0.0),
             fire_pension_start_age=int(row["fire_pension_start_age"]) if row["fire_pension_start_age"] is not None else None,
             fire_one_off_expenses=_parse_one_off_expenses(row["fire_one_off_expenses"]),
+            fire_terminal_target_min=float(row["fire_terminal_target_min"] or 0.0),
+            fire_terminal_target_max=float(row["fire_terminal_target_max"] or 0.0),
         )
 
     def get_user_copilot_api_key_enc(self, user_id: str) -> str:
@@ -232,6 +236,12 @@ class AdminMixin:
         if "fire_one_off_expenses" in fields_set and one_off_expenses_json is not None:
             set_parts.append("fire_one_off_expenses = cast(:fire_one_off_expenses as jsonb)")
             params["fire_one_off_expenses"] = one_off_expenses_json
+        if "fire_terminal_target_min" in fields_set and payload.fire_terminal_target_min is not None:
+            set_parts.append("fire_terminal_target_min = :fire_terminal_target_min")
+            params["fire_terminal_target_min"] = payload.fire_terminal_target_min
+        if "fire_terminal_target_max" in fields_set and payload.fire_terminal_target_max is not None:
+            set_parts.append("fire_terminal_target_max = :fire_terminal_target_max")
+            params["fire_terminal_target_max"] = payload.fire_terminal_target_max
         if api_key_enc is not None:
             set_parts.append("copilot_api_key_enc = :copilot_api_key_enc")
             params["copilot_api_key_enc"] = api_key_enc
@@ -260,6 +270,8 @@ class AdminMixin:
                       fire_pension_annual,
                       fire_pension_start_age,
                       fire_one_off_expenses,
+                      fire_terminal_target_min,
+                      fire_terminal_target_max,
                       updated_at
                     )
                     values (
@@ -280,6 +292,8 @@ class AdminMixin:
                       coalesce(:fpa, 0),
                       :fpsa,
                       coalesce(cast(:fooe as jsonb), '[]'::jsonb),
+                      coalesce(:fttmin, 0),
+                      coalesce(:fttmax, 0),
                       now()
                     )
                     on conflict (user_id)
@@ -304,6 +318,8 @@ class AdminMixin:
                     "fpa": payload.fire_pension_annual,
                     "fpsa": payload.fire_pension_start_age,
                     "fooe": one_off_expenses_json,
+                    "fttmin": payload.fire_terminal_target_min,
+                    "fttmax": payload.fire_terminal_target_max,
                 },
             )
         return self.get_user_settings(normalized_user_id)

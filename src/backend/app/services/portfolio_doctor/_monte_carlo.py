@@ -1,7 +1,7 @@
 import logging
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from ...repository import PortfolioRepository
 from ...schemas.portfolio_doctor import (
@@ -65,6 +65,13 @@ class DecumulationSchedule:
     pension_annual: float = 0.0
     pension_start_year: int | None = None
     one_off_by_year: dict[int, float] = field(default_factory=dict)
+    # Desired range of the capital left at the end of the horizon; 0 = unset.
+    terminal_target_min: float = 0.0
+    terminal_target_max: float = 0.0
+
+    @property
+    def required_terminal_capital(self) -> float:
+        return max(self.capital_floor, self.terminal_target_min)
 
 
 def _build_decumulation_schedule(
@@ -75,6 +82,8 @@ def _build_decumulation_schedule(
     pension_annual: float,
     pension_start_age: int | None,
     one_off_expenses: list[tuple[int, float]] | None,
+    terminal_target_min: float = 0.0,
+    terminal_target_max: float = 0.0,
 ) -> DecumulationSchedule:
     pension = max(0.0, pension_annual)
     pension_start_year: int | None = None
@@ -97,6 +106,8 @@ def _build_decumulation_schedule(
         pension_annual=pension if pension_start_year is not None else 0.0,
         pension_start_year=pension_start_year,
         one_off_by_year=one_off_by_year,
+        terminal_target_min=max(0.0, terminal_target_min),
+        terminal_target_max=max(0.0, terminal_target_max),
     )
 
 
@@ -114,6 +125,8 @@ def run_decumulation_plan(
     pension_annual: float = 0.0,
     pension_start_age: int | None = None,
     one_off_expenses: list[tuple[int, float]] | None = None,
+    terminal_target_min: float = 0.0,
+    terminal_target_max: float = 0.0,
 ) -> DecumulationPlanResponse:
     if not user_id:
         raise ValueError("Utente non valido")
@@ -141,6 +154,8 @@ def run_decumulation_plan(
             pension_annual=pension_annual,
             pension_start_age=pension_start_age,
             one_off_expenses=one_off_expenses,
+            terminal_target_min=terminal_target_min,
+            terminal_target_max=terminal_target_max,
         ),
     )
     return DecumulationPlanResponse(portfolio_id=portfolio_id, **fields)
@@ -160,6 +175,8 @@ def run_aggregate_decumulation_plan(
     pension_annual: float = 0.0,
     pension_start_age: int | None = None,
     one_off_expenses: list[tuple[int, float]] | None = None,
+    terminal_target_min: float = 0.0,
+    terminal_target_max: float = 0.0,
 ) -> AggregateDecumulationPlanResponse:
     if not user_id:
         raise ValueError("Utente non valido")
@@ -201,6 +218,8 @@ def run_aggregate_decumulation_plan(
             pension_annual=pension_annual,
             pension_start_age=pension_start_age,
             one_off_expenses=one_off_expenses,
+            terminal_target_min=terminal_target_min,
+            terminal_target_max=terminal_target_max,
         ),
     )
     return AggregateDecumulationPlanResponse(portfolio_ids=normalized_ids, base_currency=base_currency, **fields)
@@ -223,15 +242,21 @@ def _compute_decumulation_fields(
     """Shared body of the single and aggregate decumulation responses."""
     estimated_embedded_gain_ratio_pct = _estimate_embedded_gain_ratio(initial_capital, initial_cost_basis) * 100
     mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings) if holdings else (0.0, 0.0, 30.0)
-    sustainable_withdrawal = _solve_sustainable_withdrawal(
-        initial_capital=initial_capital,
-        years=years,
-        annual_return_pct=mu_annual * 100,
-        inflation_rate_pct=inflation_rate_pct,
-        other_income_annual=other_income_annual,
-        capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
-        embedded_gain_ratio_pct=estimated_embedded_gain_ratio_pct,
-        schedule=schedule,
+    solve_kwargs = {
+        "initial_capital": initial_capital,
+        "years": years,
+        "annual_return_pct": mu_annual * 100,
+        "inflation_rate_pct": inflation_rate_pct,
+        "other_income_annual": other_income_annual,
+        "capital_gains_tax_rate_pct": capital_gains_tax_rate_pct,
+        "embedded_gain_ratio_pct": estimated_embedded_gain_ratio_pct,
+    }
+    sustainable_withdrawal = _solve_sustainable_withdrawal(**solve_kwargs, schedule=schedule)
+    # Spending that leaves the top of the terminal range instead of the bottom.
+    withdrawal_for_terminal_max = (
+        _solve_sustainable_withdrawal(**solve_kwargs, schedule=replace(schedule, terminal_target_min=schedule.terminal_target_max))
+        if schedule.terminal_target_max > 0
+        else None
     )
     common = {
         "annual_withdrawal": round(max(0.0, annual_withdrawal), 2),
@@ -243,6 +268,9 @@ def _compute_decumulation_fields(
         "capital_floor": round(schedule.capital_floor, 2),
         "pension_annual": round(schedule.pension_annual, 2),
         "pension_start_year": schedule.pension_start_year,
+        "terminal_target_min": round(schedule.terminal_target_min, 2),
+        "terminal_target_max": round(schedule.terminal_target_max, 2),
+        "withdrawal_for_terminal_max": round(max(0.0, withdrawal_for_terminal_max), 2) if withdrawal_for_terminal_max is not None else None,
     }
 
     if initial_capital <= 0:
@@ -281,6 +309,7 @@ def _compute_decumulation_fields(
         current_age=current_age,
     )
     depletion_year_p50 = next((projection.year for projection in projections if projection.p50_ending_capital <= 0), None)
+    terminal_range = _terminal_range_probabilities(final_values, schedule, inflation_rate_pct, years)
     floor_breach_year_p50 = (
         next((p.year for p in projections if p.p50_ending_capital < p.capital_floor), None)
         if schedule.capital_floor > 0
@@ -302,7 +331,39 @@ def _compute_decumulation_fields(
         "p75_terminal_value": round(_percentile(final_values, 75), 2),
         "depletion_year_p50": depletion_year_p50,
         "floor_breach_year_p50": floor_breach_year_p50,
+        "p50_terminal_value_real": round(_percentile(final_values, 50) / _inflation_factor(inflation_rate_pct, years), 2),
+        **terminal_range,
         "projections": projections,
+    }
+
+
+def _inflation_factor(inflation_rate_pct: float, years: int) -> float:
+    return (1 + max(0.0, inflation_rate_pct) / 100.0) ** years
+
+
+def _terminal_range_probabilities(
+    final_values: list[float],
+    schedule: DecumulationSchedule,
+    inflation_rate_pct: float,
+    years: int,
+) -> dict:
+    """Share of paths ending below, inside and above the terminal target range.
+
+    The range is in today's money, so it is compared with nominal terminal
+    values after indexing it to the end of the horizon.
+    """
+    if schedule.terminal_target_min <= 0 and schedule.terminal_target_max <= 0:
+        return {}
+    num_paths = len(final_values) or 1
+    factor = _inflation_factor(inflation_rate_pct, years)
+    low = schedule.terminal_target_min * factor
+    high = schedule.terminal_target_max * factor if schedule.terminal_target_max > 0 else math.inf
+    below = sum(1 for value in final_values if value < low)
+    above = sum(1 for value in final_values if value > high)
+    return {
+        "terminal_below_range_probability_pct": round((below / num_paths) * 100, 1),
+        "terminal_in_range_probability_pct": round(((num_paths - below - above) / num_paths) * 100, 1),
+        "terminal_above_range_probability_pct": round((above / num_paths) * 100, 1),
     }
 
 
@@ -535,9 +596,10 @@ def _solve_sustainable_withdrawal(
 ) -> float:
     """Constant real net spending sustainable over ``years``.
 
-    The capital floor, one-off expenses and pension are valued in today's
-    money and discounted at the real rate: the floor and one-offs reduce the
-    spendable capital, the pension is spread evenly over the horizon.
+    The capital left at the end (the higher of the floor and the bottom of the
+    terminal range), one-off expenses and pension are valued in today's money
+    and discounted at the real rate: the terminal capital and one-offs reduce
+    the spendable capital, the pension is spread evenly over the horizon.
     """
     schedule = schedule or DecumulationSchedule()
     if initial_capital <= 0 or years <= 0:
@@ -557,9 +619,9 @@ def _solve_sustainable_withdrawal(
     if annuity_factor <= 0:
         return max(0.0, other_income_annual)
 
-    floor_pv = schedule.capital_floor * discount(years)
+    terminal_pv = schedule.required_terminal_capital * discount(years)
     one_off_pv = sum(amount * discount(year) for year, amount in schedule.one_off_by_year.items())
-    spendable_capital = max(0.0, initial_capital - floor_pv - one_off_pv)
+    spendable_capital = max(0.0, initial_capital - terminal_pv - one_off_pv)
     gross_portfolio_withdrawal = spendable_capital / annuity_factor
 
     pension_pv = 0.0
@@ -648,5 +710,7 @@ def _empty_decumulation_fields(
         "p75_terminal_value": 0.0,
         "depletion_year_p50": 1 if years > 0 else None,
         "floor_breach_year_p50": 1 if years > 0 else None,
+        "p50_terminal_value_real": 0.0,
+        **_terminal_range_probabilities([0.0], schedule, inflation_rate_pct, years),
         "projections": projections,
     }

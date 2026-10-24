@@ -193,6 +193,8 @@ create table app_user_settings (
   fire_pension_annual numeric(28,10) not null default 0 check (fire_pension_annual >= 0),
   fire_pension_start_age int check (fire_pension_start_age is null or (fire_pension_start_age >= 18 and fire_pension_start_age <= 100)),
   fire_one_off_expenses jsonb not null default '[]'::jsonb,
+  fire_terminal_target_min numeric(28,10) not null default 0 check (fire_terminal_target_min >= 0),
+  fire_terminal_target_max numeric(28,10) not null default 0 check (fire_terminal_target_max >= 0),
   updated_at timestamptz not null default now()
 );
 

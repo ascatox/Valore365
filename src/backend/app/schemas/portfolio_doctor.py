@@ -120,6 +120,13 @@ class DecumulationPlanResponse(BaseModel):
     p75_terminal_value: float = Field(ge=0)
     depletion_year_p50: int | None = Field(default=None, ge=1)
     floor_breach_year_p50: int | None = Field(default=None, ge=1)
+    p50_terminal_value_real: float = Field(default=0, ge=0)
+    terminal_target_min: float = Field(default=0, ge=0)
+    terminal_target_max: float = Field(default=0, ge=0)
+    terminal_below_range_probability_pct: float | None = Field(default=None, ge=0, le=100)
+    terminal_in_range_probability_pct: float | None = Field(default=None, ge=0, le=100)
+    terminal_above_range_probability_pct: float | None = Field(default=None, ge=0, le=100)
+    withdrawal_for_terminal_max: float | None = Field(default=None, ge=0)
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
 
 
@@ -148,6 +155,13 @@ class AggregateDecumulationPlanResponse(BaseModel):
     p75_terminal_value: float = Field(ge=0)
     depletion_year_p50: int | None = Field(default=None, ge=1)
     floor_breach_year_p50: int | None = Field(default=None, ge=1)
+    p50_terminal_value_real: float = Field(default=0, ge=0)
+    terminal_target_min: float = Field(default=0, ge=0)
+    terminal_target_max: float = Field(default=0, ge=0)
+    terminal_below_range_probability_pct: float | None = Field(default=None, ge=0, le=100)
+    terminal_in_range_probability_pct: float | None = Field(default=None, ge=0, le=100)
+    terminal_above_range_probability_pct: float | None = Field(default=None, ge=0, le=100)
+    withdrawal_for_terminal_max: float | None = Field(default=None, ge=0)
     projections: list[DecumulationYearProjection] = Field(default_factory=list)
 
 

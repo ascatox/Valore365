@@ -34,6 +34,16 @@ def _parse_one_off_expenses(ages: list[int], amounts: list[float]) -> list[tuple
     return [(age, amount) for age, amount in zip(ages, amounts) if amount > 0]
 
 
+def _validate_terminal_range(terminal_min: float, terminal_max: float) -> float:
+    if terminal_max > 0 and terminal_max < terminal_min:
+        raise AppError(
+            code="invalid_request",
+            message="terminal_target_max deve essere maggiore o uguale a terminal_target_min",
+            status_code=400,
+        )
+    return terminal_max
+
+
 def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepository, finance_client: object = None, justetf_client: object = None) -> None:
     settings = get_settings()
 
@@ -99,6 +109,8 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         pension_start_age: int | None = Query(default=None, ge=18, le=100),
         one_off_ages: list[int] = Query(default_factory=list, max_length=50),
         one_off_amounts: list[float] = Query(default_factory=list, max_length=50),
+        terminal_target_min: float = Query(default=0.0, ge=0),
+        terminal_target_max: float = Query(default=0.0, ge=0),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> AggregateDecumulationPlanResponse:
         try:
@@ -116,6 +128,8 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
                 pension_annual=pension_annual,
                 pension_start_age=pension_start_age,
                 one_off_expenses=_parse_one_off_expenses(one_off_ages, one_off_amounts),
+                terminal_target_min=terminal_target_min,
+                terminal_target_max=_validate_terminal_range(terminal_target_min, terminal_target_max),
             )
         except ValueError as exc:
             message = str(exc)
@@ -140,6 +154,8 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         pension_start_age: int | None = Query(default=None, ge=18, le=100),
         one_off_ages: list[int] = Query(default_factory=list, max_length=50),
         one_off_amounts: list[float] = Query(default_factory=list, max_length=50),
+        terminal_target_min: float = Query(default=0.0, ge=0),
+        terminal_target_max: float = Query(default=0.0, ge=0),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> DecumulationPlanResponse:
         try:
@@ -157,6 +173,8 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
                 pension_annual=pension_annual,
                 pension_start_age=pension_start_age,
                 one_off_expenses=_parse_one_off_expenses(one_off_ages, one_off_amounts),
+                terminal_target_min=terminal_target_min,
+                terminal_target_max=_validate_terminal_range(terminal_target_min, terminal_target_max),
             )
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc

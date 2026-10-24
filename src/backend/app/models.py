@@ -41,6 +41,8 @@ class UserSettingsRead(BaseModel):
     fire_pension_annual: float = Field(default=0, ge=0)
     fire_pension_start_age: int | None = Field(default=None, ge=18, le=100)
     fire_one_off_expenses: list[FireOneOffExpense] = Field(default_factory=list, max_length=50)
+    fire_terminal_target_min: float = Field(default=0, ge=0)
+    fire_terminal_target_max: float = Field(default=0, ge=0)
 
 
 class UserSettingsUpdate(BaseModel):
@@ -60,6 +62,8 @@ class UserSettingsUpdate(BaseModel):
     fire_pension_annual: float | None = Field(default=None, ge=0)
     fire_pension_start_age: int | None = Field(default=None, ge=18, le=100)
     fire_one_off_expenses: list[FireOneOffExpense] | None = Field(default=None, max_length=50)
+    fire_terminal_target_min: float | None = Field(default=None, ge=0)
+    fire_terminal_target_max: float | None = Field(default=None, ge=0)
 
 
 class AdminUsageSummary(BaseModel):

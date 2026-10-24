@@ -141,6 +141,8 @@ export interface UserSettings {
   fire_pension_annual: number;
   fire_pension_start_age: number | null;
   fire_one_off_expenses: FireOneOffExpense[];
+  fire_terminal_target_min: number;
+  fire_terminal_target_max: number;
 }
 
 export interface UserSettingsUpdateInput {
@@ -160,6 +162,8 @@ export interface UserSettingsUpdateInput {
   fire_pension_annual?: number;
   fire_pension_start_age?: number | null;
   fire_one_off_expenses?: FireOneOffExpense[];
+  fire_terminal_target_min?: number;
+  fire_terminal_target_max?: number;
 }
 
 export interface AdminUsageSummary {
@@ -306,6 +310,13 @@ export interface DecumulationPlanResponse {
   p75_terminal_value: number;
   depletion_year_p50: number | null;
   floor_breach_year_p50: number | null;
+  p50_terminal_value_real: number;
+  terminal_target_min: number;
+  terminal_target_max: number;
+  terminal_below_range_probability_pct: number | null;
+  terminal_in_range_probability_pct: number | null;
+  terminal_above_range_probability_pct: number | null;
+  withdrawal_for_terminal_max: number | null;
   projections: DecumulationYearProjection[];
 }
 
@@ -334,6 +345,13 @@ export interface AggregateDecumulationPlanResponse {
   p75_terminal_value: number;
   depletion_year_p50: number | null;
   floor_breach_year_p50: number | null;
+  p50_terminal_value_real: number;
+  terminal_target_min: number;
+  terminal_target_max: number;
+  terminal_below_range_probability_pct: number | null;
+  terminal_in_range_probability_pct: number | null;
+  terminal_above_range_probability_pct: number | null;
+  withdrawal_for_terminal_max: number | null;
   projections: DecumulationYearProjection[];
 }
 

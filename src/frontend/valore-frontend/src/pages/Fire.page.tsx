@@ -153,6 +153,8 @@ export function FirePage() {
   const [pensionAnnual, setPensionAnnual] = useState<number | string>(0);
   const [pensionStartAge, setPensionStartAge] = useState<number | string>('');
   const [oneOffExpenses, setOneOffExpenses] = useState<FireOneOffExpense[]>([]);
+  const [terminalTargetMin, setTerminalTargetMin] = useState<number | string>(0);
+  const [terminalTargetMax, setTerminalTargetMax] = useState<number | string>(0);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copilotAvailable, setCopilotAvailable] = useState(false);
@@ -203,6 +205,8 @@ export function FirePage() {
     setPensionAnnual(userSettings.fire_pension_annual ?? 0);
     setPensionStartAge(userSettings.fire_pension_start_age ?? '');
     setOneOffExpenses(userSettings.fire_one_off_expenses ?? []);
+    setTerminalTargetMin(userSettings.fire_terminal_target_min ?? 0);
+    setTerminalTargetMax(userSettings.fire_terminal_target_max ?? 0);
   }, [userSettings]);
 
   useEffect(() => {
@@ -318,6 +322,9 @@ export function FirePage() {
   const contributionGrowthPctValue = Math.max(0, typeof contributionGrowthPct === 'number' ? contributionGrowthPct : Number(contributionGrowthPct || 0));
   const pensionAnnualValue = Math.max(0, typeof pensionAnnual === 'number' ? pensionAnnual : Number(pensionAnnual || 0));
   const pensionStartAgeValue = typeof pensionStartAge === 'number' ? pensionStartAge : Number(pensionStartAge || 0);
+  const terminalTargetMinValue = Math.max(0, typeof terminalTargetMin === 'number' ? terminalTargetMin : Number(terminalTargetMin || 0));
+  const terminalTargetMaxValue = Math.max(0, typeof terminalTargetMax === 'number' ? terminalTargetMax : Number(terminalTargetMax || 0));
+  const terminalRangeInvalid = terminalTargetMaxValue > 0 && terminalTargetMaxValue < terminalTargetMinValue;
   const validOneOffExpenses = useMemo(
     () => oneOffExpenses.filter((expense) => expense.age >= 18 && expense.amount > 0),
     [oneOffExpenses],
@@ -471,7 +478,10 @@ export function FirePage() {
     pensionAnnual: pensionAnnualValue,
     pensionStartAge: pensionStartAgeValue > 0 ? pensionStartAgeValue : null,
     oneOffExpenses: validOneOffExpenses.map(({ age, amount }) => ({ age, amount })),
-  }), [capitalFloorValue, pensionAnnualValue, pensionStartAgeValue, validOneOffExpenses]);
+    // An inverted range is shown as an input error and not sent to the API.
+    terminalTargetMin: terminalRangeInvalid ? 0 : terminalTargetMinValue,
+    terminalTargetMax: terminalRangeInvalid ? 0 : terminalTargetMaxValue,
+  }), [capitalFloorValue, pensionAnnualValue, pensionStartAgeValue, validOneOffExpenses, terminalRangeInvalid, terminalTargetMinValue, terminalTargetMaxValue]);
   const { data: decumulationData, isLoading: decumulationLoading, error: decumulationError } = useDecumulationPlan(
     portfolioId,
     {
@@ -519,6 +529,10 @@ export function FirePage() {
     ? ((aggregateDecumulationData?.success_rate_pct ?? 0) >= 70)
     : ((decumulationData?.success_rate_pct ?? 0) >= 70);
   const floorEnabled = capitalFloorValue > 0 && activeDecumulationData != null && activeDecumulationData.capital_floor > 0;
+  const terminalRangeEnabled = activeDecumulationData?.terminal_in_range_probability_pct != null;
+  const terminalRangeLabel = terminalTargetMaxValue > 0
+    ? `tra ${formatMoney(terminalTargetMinValue, currency)} e ${formatMoney(terminalTargetMaxValue, currency)}`
+    : `sopra ${formatMoney(terminalTargetMinValue, currency)}`;
   const yearRiskPct = (year: DecumulationYearProjection) => (floorEnabled ? year.floor_breach_probability_pct : year.depletion_probability_pct);
   const firstCriticalYear = decumulationPlan.find((year) => year.p50_effective_withdrawal_rate_pct >= swrValue) ?? null;
   const withdrawalCoveragePct = annualWithdrawalValue > 0
@@ -550,6 +564,8 @@ export function FirePage() {
       fire_pension_annual: pensionAnnualValue,
       fire_pension_start_age: pensionStartAgeValue > 0 ? pensionStartAgeValue : null,
       fire_one_off_expenses: validOneOffExpenses,
+      fire_terminal_target_min: terminalTargetMinValue,
+      fire_terminal_target_max: terminalRangeInvalid ? 0 : terminalTargetMaxValue,
     });
   };
 
@@ -852,6 +868,25 @@ export function FirePage() {
                     decimalSeparator=","
                   />
                   <NumberInput
+                    label="Capitale finale desiderato: minimo"
+                    description="In euro di oggi: quanto vuoi avere almeno alla fine dell'orizzonte"
+                    value={terminalTargetMin}
+                    onChange={setTerminalTargetMin}
+                    min={0}
+                    thousandSeparator="."
+                    decimalSeparator=","
+                  />
+                  <NumberInput
+                    label="Capitale finale desiderato: massimo"
+                    description="In euro di oggi: oltre questa cifra avresti potuto spendere di più (0 = nessun limite)"
+                    value={terminalTargetMax}
+                    onChange={setTerminalTargetMax}
+                    min={0}
+                    thousandSeparator="."
+                    decimalSeparator=","
+                    error={terminalRangeInvalid ? 'Il massimo deve essere almeno pari al minimo' : undefined}
+                  />
+                  <NumberInput
                     label="Pensione annua netta"
                     description="In euro di oggi, indicizzata all'inflazione"
                     value={pensionAnnual}
@@ -1013,6 +1048,17 @@ export function FirePage() {
                   {firstCriticalYear ? ` Il guardrail SWR viene toccato entro l'anno ${firstCriticalYear.year}.` : ''}
                 </Alert>
               )}
+              {fireMode === 'decumulation' && terminalRangeEnabled && activeDecumulationData && (
+                <Alert color={(activeDecumulationData.terminal_in_range_probability_pct ?? 0) >= 50 ? 'teal' : 'yellow'} variant="light">
+                  {`Probabilità di chiudere l'orizzonte con un capitale ${terminalRangeLabel} (euro di oggi): ${formatPct(activeDecumulationData.terminal_in_range_probability_pct, 1)}`}
+                  {` · sotto ${formatPct(activeDecumulationData.terminal_below_range_probability_pct, 1)}`}
+                  {terminalTargetMaxValue > 0 ? ` · sopra ${formatPct(activeDecumulationData.terminal_above_range_probability_pct, 1)}` : ''}
+                  {`. Capitale finale mediano ${formatMoney(activeDecumulationData.p50_terminal_value_real, currency)} in euro di oggi.`}
+                  {activeDecumulationData.withdrawal_for_terminal_max != null
+                    ? ` Per finire nell'intervallo la spesa netta sostenibile va da ${formatMoney(activeDecumulationData.withdrawal_for_terminal_max, currency)} a ${formatMoney(activeDecumulationData.sustainable_withdrawal, currency)} l'anno.`
+                    : ''}
+                </Alert>
+              )}
               {fireMode === 'accumulation' && hasAgePlan && targetAgeValue > 0 && (
                 <Alert color={estimatedFireAge != null && estimatedFireAge <= targetAgeValue ? 'teal' : 'yellow'} variant="light">
                   {estimatedFireAge != null
@@ -1072,6 +1118,16 @@ export function FirePage() {
                       )}
                       {(activeDecumulationData?.pension_annual ?? 0) > 0 && (
                         <Table.Tr><Table.Td>Pensione</Table.Td><Table.Td>{`${formatMoney(activeDecumulationData?.pension_annual, currency)} / anno dall'anno ${activeDecumulationData?.pension_start_year ?? 1}`}</Table.Td></Table.Tr>
+                      )}
+                      {terminalRangeEnabled && (
+                        <>
+                          <Table.Tr><Table.Td>Capitale finale desiderato (euro di oggi)</Table.Td><Table.Td>{terminalTargetMaxValue > 0 ? `${formatMoney(terminalTargetMinValue, currency)} – ${formatMoney(terminalTargetMaxValue, currency)}` : `≥ ${formatMoney(terminalTargetMinValue, currency)}`}</Table.Td></Table.Tr>
+                          <Table.Tr><Table.Td>Capitale finale mediano (euro di oggi)</Table.Td><Table.Td>{formatMoney(activeDecumulationData?.p50_terminal_value_real, currency)}</Table.Td></Table.Tr>
+                          <Table.Tr><Table.Td>Probabilità di finire nell'intervallo</Table.Td><Table.Td>{formatPct(activeDecumulationData?.terminal_in_range_probability_pct, 1)}</Table.Td></Table.Tr>
+                          {activeDecumulationData?.withdrawal_for_terminal_max != null && (
+                            <Table.Tr><Table.Td>Spesa netta per finire nell'intervallo</Table.Td><Table.Td>{`${formatMoney(activeDecumulationData.withdrawal_for_terminal_max, currency)} – ${formatMoney(activeDecumulationData.sustainable_withdrawal, currency)}`}</Table.Td></Table.Tr>
+                          )}
+                        </>
                       )}
                     </>
                   )}
