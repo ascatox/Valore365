@@ -452,6 +452,19 @@ def _parse_float(payload: dict, keys: list[str]) -> float | None:
     return None
 
 
+def _to_utc_datetime(value: object) -> datetime | None:
+    """Epoch seconds or a (pandas) datetime, as an aware UTC datetime."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(int(value), tz=UTC)
+    to_pydatetime = getattr(value, 'to_pydatetime', None)
+    moment = to_pydatetime() if to_pydatetime is not None else value
+    if not isinstance(moment, datetime):
+        return None
+    return moment.astimezone(UTC) if moment.tzinfo is not None else moment.replace(tzinfo=UTC)
+
+
 def _parse_date(value: str | None) -> date | None:
     if not value:
         return None
@@ -729,12 +742,11 @@ class YahooFinanceClient:
             source = "history_close"
             warning = f"fast_info unavailable: {exc.__class__.__name__}"
 
-        # Try to get the actual market timestamp from ticker.info
+        # Time of the last trade, from the chart metadata fast_info has just
+        # loaded. Not from ticker.info: quoteSummary needs a Yahoo crumb, and one
+        # call per instrument every minute is what gets the crumb rate-limited.
         try:
-            info = self._ticker_info(ticker, symbol)
-            raw_ts = info.get('regularMarketTime')
-            if raw_ts is not None:
-                market_ts = datetime.fromtimestamp(int(raw_ts), tz=UTC)
+            market_ts = _to_utc_datetime(ticker.get_history_metadata().get('regularMarketTime'))
         except Exception:
             pass
 
