@@ -68,8 +68,19 @@ function formatPct(value: number | null | undefined): string {
   return `${value.toFixed(1)}%`;
 }
 
-function humanize(value: string): string {
-  return value.replace(/_/g, ' ');
+type HealthSummary = PortfolioHealthResponse['summary'];
+
+// Italian labels for the summary levels; "Sovrapposizione" is feminine and
+// "Costi" plural, so each field gets its own agreement.
+const SUMMARY_LABELS: Record<keyof HealthSummary, Record<string, string>> = {
+  risk_level: { low: 'Basso', medium: 'Medio', high: 'Alto', unknown: 'N/D' },
+  diversification: { excellent: 'Eccellente', good: 'Buona', moderate: 'Moderata', weak: 'Debole', unknown: 'N/D' },
+  overlap: { low: 'Bassa', moderate: 'Moderata', high: 'Alta', unknown: 'N/D' },
+  cost_efficiency: { low_cost: 'Bassi', moderate_cost: 'Moderati', high_cost: 'Alti', unknown: 'N/D' },
+};
+
+function summaryLabel(field: keyof HealthSummary, value: string): string {
+  return SUMMARY_LABELS[field][value] ?? value.replace(/_/g, ' ');
 }
 
 interface DoctorEducationStats {
@@ -294,10 +305,10 @@ export function DoctorPage() {
     return [
       `${selectedPortfolio.name} Portfolio Doctor`,
       `Score: ${health.score}/100`,
-      `Rischio: ${humanize(health.summary.risk_level)}`,
-      `Diversificazione: ${humanize(health.summary.diversification)}`,
-      `Sovrapposizione: ${humanize(health.summary.overlap)}`,
-      `Costi: ${humanize(health.summary.cost_efficiency)}`,
+      `Rischio: ${summaryLabel('risk_level', health.summary.risk_level)}`,
+      `Diversificazione: ${summaryLabel('diversification', health.summary.diversification)}`,
+      `Sovrapposizione: ${summaryLabel('overlap', health.summary.overlap)}`,
+      `Costi: ${summaryLabel('cost_efficiency', health.summary.cost_efficiency)}`,
       alerts ? `Avvisi:\n${alerts}` : '',
       suggestions ? `Suggerimenti:\n${suggestions}` : '',
     ].filter(Boolean).join('\n');
@@ -435,7 +446,7 @@ export function DoctorPage() {
   }
 
   return (
-    <PageLayout variant="editorial">
+    <PageLayout>
       <Container fluid px={0}>
         <Stack gap="lg">
           <PageHeader
@@ -499,10 +510,10 @@ export function DoctorPage() {
                       </Group>
 
                       <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-                        <MetricChip label="Rischio" value={health.summary.risk_level} />
-                        <MetricChip label="Diversificazione" value={health.summary.diversification} />
-                        <MetricChip label="Sovrapposizione" value={health.summary.overlap} />
-                        <MetricChip label="Costi" value={health.summary.cost_efficiency} />
+                        <MetricChip label="Rischio" value={summaryLabel('risk_level', health.summary.risk_level)} />
+                        <MetricChip label="Diversificazione" value={summaryLabel('diversification', health.summary.diversification)} />
+                        <MetricChip label="Sovrapposizione" value={summaryLabel('overlap', health.summary.overlap)} />
+                        <MetricChip label="Costi" value={summaryLabel('cost_efficiency', health.summary.cost_efficiency)} />
                       </SimpleGrid>
 
                       <Group gap="sm" wrap="wrap">
@@ -662,17 +673,6 @@ export function DoctorPage() {
                           Apri un alert del Doctor o un termine del glossario per costruire il riepilogo di oggi.
                         </Text>
                       )}
-
-                      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
-                        <EducationMetric label="Alert aperti" value={String(educationStats.today.alertDetailOpens)} />
-                        <EducationMetric label="Prompt guidati" value={String(educationStats.today.quickPromptUses)} />
-                        <EducationMetric label="Glossario aperto" value={String(educationStats.today.glossaryOpens)} />
-                        <EducationMetric label="Visite di ritorno" value={String(educationStats.totals.returnVisits)} />
-                      </SimpleGrid>
-
-                      <Text size="sm" c="dimmed">
-                        Tracking locale nel browser: utile per validare se il flusso Doctor sta diventando piu chiaro e piu usato.
-                      </Text>
                     </Stack>
                   </Card>
                 </Grid.Col>
@@ -790,7 +790,7 @@ export function DoctorPage() {
           aria-label="Apri Doctor Copilot"
           style={{
             position: 'fixed',
-            bottom: isMobile ? 'calc(24px + var(--safe-area-bottom))' : 24,
+            bottom: isMobile ? 'calc(92px + var(--safe-area-bottom-floating))' : 24,
             right: 24,
             zIndex: 100,
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
@@ -825,7 +825,7 @@ function MetricChip({ label, value }: { label: string; value: string }) {
       }}
     >
       <Text size="xs" tt="uppercase" c="rgba(255,255,255,0.7)" style={{ wordBreak: 'break-word' }}>{label}</Text>
-      <Text fw={700} c="white" style={{ wordBreak: 'break-word' }}>{humanize(value)}</Text>
+      <Text fw={700} c="white" style={{ wordBreak: 'break-word' }}>{value}</Text>
     </Box>
   );
 }
@@ -848,26 +848,6 @@ function ScorePill({ label, value }: { label: string; value: string }) {
     >
       <Text size="sm" c="dimmed">{label}</Text>
       <Text fw={800} size="lg">{value}</Text>
-    </Box>
-  );
-}
-
-function EducationMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <Box
-      style={{
-        borderRadius: 14,
-        padding: '12px 14px',
-        border: '1px solid #e2e8f0',
-        background: '#f8fafc',
-      }}
-    >
-      <Text size="xs" tt="uppercase" fw={800} c="dimmed">
-        {label}
-      </Text>
-      <Text fw={800} size="lg">
-        {value}
-      </Text>
     </Box>
   );
 }

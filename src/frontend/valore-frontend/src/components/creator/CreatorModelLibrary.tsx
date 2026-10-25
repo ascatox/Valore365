@@ -99,7 +99,7 @@ export function CreatorModelLibrary({ selected, onSelect }: CreatorModelLibraryP
                     <Text size="xs" c="dimmed">{model.subtitle}</Text>
                   </Stack>
                   {isSelected && (
-                    <Badge circle size="lg" color="blue" variant="filled">
+                    <Badge circle size="lg" color="teal" variant="filled">
                       <IconCheck size={14} />
                     </Badge>
                   )}

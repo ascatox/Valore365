@@ -185,7 +185,9 @@ export function useTargetAllocation(portfolioId: number | null) {
     queryKey: ['target-allocation', portfolioId],
     queryFn: () => getPortfolioTargetAllocation(portfolioId!),
     enabled: portfolioId != null,
-    initialData: [] as Awaited<ReturnType<typeof getPortfolioTargetAllocation>>,
+    // placeholderData, not initialData: initialData counts as fresh for the
+    // 60s staleTime, so the request never ran and targets stayed empty.
+    placeholderData: [] as Awaited<ReturnType<typeof getPortfolioTargetAllocation>>,
   });
 }
 

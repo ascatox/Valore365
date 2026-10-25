@@ -33,7 +33,7 @@ export function CreatorConfirm({
   const canConfirm = portfolioName.trim().length > 0 && Math.abs(total - 100) < 0.5 && capital > 0;
 
   const fmtEur = (v: number) =>
-    v.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' });
+    v.toLocaleString('it-IT', { useGrouping: 'always', style: 'currency', currency: 'EUR' });
 
   return (
     <Stack gap="lg">

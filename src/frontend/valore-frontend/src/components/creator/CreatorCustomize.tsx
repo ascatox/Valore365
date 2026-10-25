@@ -59,7 +59,7 @@ export function CreatorCustomize({ slots, onChange }: CreatorCustomizeProps) {
                   step={0.5}
                   value={slot.weight}
                   onChange={(v) => updateWeight(i, v)}
-                  color={isValid ? 'blue' : 'red'}
+                  color={isValid ? 'teal' : 'red'}
                   size="sm"
                   label={(v) => `${v} %`}
                 />

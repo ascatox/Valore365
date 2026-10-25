@@ -232,7 +232,7 @@ export function XRayCard({ portfolioId }: Props) {
                       <Group key={country} justify="space-between" gap="xs" wrap="nowrap">
                         <Text size="xs" truncate style={{ flex: 1 }}>{country}</Text>
                         <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-                          <Progress value={Math.min(weight, 100)} size="xs" color="blue" style={{ width: 50 }} />
+                          <Progress value={Math.min(weight, 100)} size="xs" color="teal" style={{ width: 50 }} />
                           <Text size="xs" fw={500} w={42} ta="right">{weight.toFixed(1)}%</Text>
                         </Group>
                       </Group>

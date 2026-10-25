@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Group, Paper, SegmentedControl, Select, Text } from '@mantine/core';
+import { Alert, Group, Paper, SegmentedControl, Select, Stack, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
@@ -7,6 +7,7 @@ import { PerformanceChart } from '../summary/PerformanceChart';
 import { BenchmarkComparisonChart } from '../summary/BenchmarkComparisonChart';
 import { BestWorstCards } from '../summary/BestWorstCards';
 import { DashboardMobileKpiCarousel } from '../../mobile/DashboardMobileKpiCarousel';
+import { DashboardMobileHero } from '../../mobile/DashboardMobileHero';
 import { DASHBOARD_WINDOWS } from '../constants';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 import {
@@ -25,10 +26,16 @@ interface PanoramicaTabProps {
   portfolioId: number | null;
   chartWindow: string;
   setChartWindow: (w: string) => void;
+  /** Mobile hero: last update or refresh progress. */
+  statusText?: string | null;
+  refreshing?: boolean;
 }
 
-export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: PanoramicaTabProps) {
+export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, statusText = null, refreshing = false }: PanoramicaTabProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const theme = useMantineTheme();
+  const isDark = useComputedColorScheme('light') === 'dark';
+  const chartColor = theme.colors.teal[isDark ? 4 : 6];
 
   const [selectedBenchmarkId, setSelectedBenchmarkId] = useState<number | null>(null);
   const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
@@ -100,14 +107,14 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     if (isIntradayWindow && portfolioSummary) {
       const pct = portfolioSummary.day_change_pct;
       return [
-        { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+        { label: '', value: formatMoney(last, mvpCurrency), color: 'teal' },
         { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
       ];
     }
     const first = Number(series[0]?.value ?? 0);
     const pct = Number.isFinite(first) && first > 0 ? ((last / first) - 1) * 100 : 0;
     return [
-      { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+      { label: '', value: formatMoney(last, mvpCurrency), color: 'teal' },
       { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
     ];
   }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
@@ -131,7 +138,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       label: isMobile ? 'Valore Tot' : 'Valore Totale',
       value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
       icon: IconCoin,
-      iconColor: 'blue' as const,
+      iconColor: 'teal' as const,
     },
     {
       label: 'P/L Totale',
@@ -154,6 +161,22 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       iconColor: 'grape' as const,
     },
   ], [portfolioSummary, mvpCurrency, isMobile]);
+
+  // The hero already shows total value and today's change on mobile.
+  const mobileKpiItems = useMemo(() => [
+    {
+      label: 'Liquidità',
+      value: portfolioSummary ? formatMoney(portfolioSummary.cash_balance, mvpCurrency) : 'N/D',
+    },
+    {
+      label: 'Valore titoli',
+      value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
+    },
+    {
+      label: 'Investito',
+      value: portfolioSummary ? formatMoney(portfolioSummary.cost_basis, mvpCurrency) : 'N/D',
+    },
+  ], [portfolioSummary, mvpCurrency]);
 
   const { best, worst } = useMemo(() => {
     const items: PerformerItem[] = isIntradayWindow
@@ -258,7 +281,9 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
         </Alert>
       )}
 
-      {isMobile ? <DashboardMobileKpiCarousel items={kpiItems} /> : <KpiStatsGrid items={kpiItems} />}
+      {isMobile
+        ? <DashboardMobileHero summary={portfolioSummary} statusText={statusText} refreshing={refreshing} />
+        : <KpiStatsGrid items={kpiItems} />}
 
       <div style={{ marginTop: 16 }}>
         {hasBenchmark ? (
@@ -275,16 +300,16 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
           />
         ) : (
           <PerformanceChart
-            title={`Andamento Portafoglio (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
+            title={isMobile ? 'Andamento' : `Andamento Portafoglio (${chartWindow === '1' ? '1g' : `${chartWindowDays}g`})`}
             data={portfolioChartData}
             xKey={isIntradayWindow && portfolioIntradayData.length > 0 ? 'time' : 'date'}
             gradientId="mvpTimeseriesGradient"
-            color="#16a34a"
-            stats={chartStats}
+            color={chartColor}
+            stats={isMobile ? chartStats?.filter((s) => s.label === 'Var') : chartStats}
             loading={false}
             emptyMessage="Nessun dato disponibile"
-            subtitle="Calcolato da transazioni + storico prezzi"
-            headerRight={
+            subtitle={isMobile ? undefined : 'Calcolato da transazioni + storico prezzi'}
+            headerRight={isMobile ? undefined : (
               <Group gap="xs">
                 <Select
                   size="xs"
@@ -301,7 +326,26 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
                   data={DASHBOARD_WINDOWS.map((w) => ({ label: w.label, value: w.value }))}
                 />
               </Group>
-            }
+            )}
+            footer={isMobile ? (
+              <Stack gap="xs">
+                <SegmentedControl
+                  fullWidth
+                  radius="xl"
+                  value={chartWindow}
+                  onChange={setChartWindow}
+                  data={DASHBOARD_WINDOWS.map((w) => ({ label: w.label, value: w.value }))}
+                />
+                <Select
+                  size="sm"
+                  label="Confronta con"
+                  data={benchmarkSelectData}
+                  value={selectedBenchmarkId != null ? String(selectedBenchmarkId) : ''}
+                  onChange={(v) => setSelectedBenchmarkId(v ? Number(v) : null)}
+                  allowDeselect={false}
+                />
+              </Stack>
+            ) : undefined}
             tooltipContent={({ active, payload, label }: any) => {
               if (!active || !payload?.length) return null;
               const value = Number(payload[0]?.value ?? 0);
@@ -324,13 +368,20 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
         )}
       </div>
 
+      {isMobile && (
+        <div style={{ marginTop: 16 }}>
+          <DashboardMobileKpiCarousel items={mobileKpiItems} />
+        </div>
+      )}
+
       <div style={{ marginTop: 16 }}>
         <BestWorstCards
           best={best}
           worst={worst}
           periodLabel={periodLabel}
           chartWindow={chartWindow}
-          onWindowChange={setChartWindow}
+          // On mobile the range selector under the chart already drives this.
+          onWindowChange={isMobile ? undefined : setChartWindow}
         />
       </div>
     </>

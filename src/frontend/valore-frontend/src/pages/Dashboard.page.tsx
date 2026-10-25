@@ -11,8 +11,6 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { DashboardMobileHeader } from '../components/mobile/DashboardMobileHeader';
-import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
 import { useDashboardRefresh } from '../components/dashboard/hooks/useDashboardRefresh';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
@@ -47,10 +45,11 @@ export function DashboardPage() {
   });
 
   const [chartWindow, setChartWindow] = useState<string>(() => {
-    if (typeof window === 'undefined') return '1';
+    // Default to 30 days: the 1-day window is a flat line until intraday prices arrive.
+    if (typeof window === 'undefined') return '30';
     const stored = window.localStorage.getItem(STORAGE_KEYS.chartWindow);
     const isValid = stored ? DASHBOARD_WINDOWS.some((w) => w.value === stored) : false;
-    return isValid ? stored : '1';
+    return isValid && stored ? stored : '30';
   });
 
   const [activeTab, setActiveTab] = useState<string | null>(() => {
@@ -102,34 +101,42 @@ export function DashboardPage() {
   };
 
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
-  const mobileTabItems = [
-    { value: 'panoramica', label: 'Home', icon: IconChartPie },
-    { value: 'posizioni', label: 'Posizioni', icon: IconList },
-    ...(SHOW_ANALISI_TAB ? [{ value: 'analisi', label: 'Analisi', icon: IconChartBar }] : []),
-    { value: 'mercati', label: 'Mercati', icon: IconWorld },
-    { value: 'performance', label: 'Perf.', icon: IconPercentage },
-  ];
+  const lastUpdatedAt = !error ? (targetPerformance?.last_updated_at ?? null) : null;
+  const mobileStatusText = refreshing
+    ? 'Aggiornamento in corso...'
+    : refreshMessage ?? (lastUpdatedAt ? `Aggiornato ${formatDateTime(lastUpdatedAt)}` : null);
+  // Mobile: text tabs at the top of the sticky header; the bottom bar is the
+  // app navigation. A second Tabs instance drives the same activeTab.
+  const mobileTabs = (
+    <Tabs value={activeTab} onChange={handleTabChange} mt={6}>
+      <Tabs.List style={{ flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        <Tabs.Tab value="panoramica">Panoramica</Tabs.Tab>
+        <Tabs.Tab value="posizioni">Posizioni</Tabs.Tab>
+        {SHOW_ANALISI_TAB && <Tabs.Tab value="analisi">Analisi</Tabs.Tab>}
+        <Tabs.Tab value="mercati">Mercati</Tabs.Tab>
+        <Tabs.Tab value="performance">Performance</Tabs.Tab>
+      </Tabs.List>
+    </Tabs>
+  );
 
   return (
-    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom-floating))' : undefined}>
+    <PageLayout>
       {isMobile ? (
-        <>
-          <PageHeader
-            eyebrow="Vista operativa del patrimonio"
-            title="Dashboard"
-            description="Monitoraggio quotidiano, performance e mercati in un unico punto."
-          />
-          <DashboardMobileHeader
-            portfolios={portfolios}
-            selectedPortfolioId={selectedPortfolioId}
-            selectedPortfolioCashBalance={summary?.cash_balance ?? null}
-            onSelectPortfolio={(nextValue) => setSelectedPortfolioId(nextValue)}
-            portfoliosLoading={portfoliosLoading}
-            refreshing={refreshing}
-            refreshMessage={refreshMessage}
-            lastUpdatedAt={!error && !refreshing && !refreshMessage ? (targetPerformance?.last_updated_at ?? null) : null}
-          />
-        </>
+        <PageHeader
+          title="Dashboard"
+          hideMobileTitle
+          mobileBelow={mobileTabs}
+          actions={(
+            <PortfolioSwitcher
+              portfolios={portfolios}
+              value={selectedPortfolioId}
+              selectedPortfolioCashBalance={summary?.cash_balance ?? null}
+              onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+              loading={portfoliosLoading}
+              onOpenPortfolio={() => navigate('/portfolio')}
+            />
+          )}
+        />
       ) : (
         <PageHeader
           eyebrow="Vista operativa del patrimonio"
@@ -154,7 +161,7 @@ export function DashboardPage() {
       {!isMobile && (
         <Group mb="md" gap="xs" wrap="wrap">
           {refreshing && (
-            <Badge variant="light" color="blue" size="lg" leftSection={<Loader size={12} />}>
+            <Badge variant="light" color="teal" size="lg" leftSection={<Loader size={12} />}>
               Aggiornamento in corso...
             </Badge>
           )}
@@ -224,7 +231,13 @@ export function DashboardPage() {
 
         <div>
           <Tabs.Panel value="panoramica">
-            <PanoramicaTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
+            <PanoramicaTab
+              portfolioId={portfolioId}
+              chartWindow={chartWindow}
+              setChartWindow={setChartWindow}
+              statusText={mobileStatusText}
+              refreshing={refreshing}
+            />
           </Tabs.Panel>
 
           <Tabs.Panel value="posizioni">
@@ -246,14 +259,6 @@ export function DashboardPage() {
           </Tabs.Panel>
         </div>
       </Tabs>
-
-      {isMobile && (
-        <MobileBottomNav
-          items={mobileTabItems}
-          value={activeTab}
-          onChange={handleTabChange}
-        />
-      )}
 
       {copilotAvailable && (
         <ActionIcon

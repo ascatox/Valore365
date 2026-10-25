@@ -60,6 +60,7 @@ function formatGrowth(value: number): string {
 function formatCurrency(value: number, currency: string): string {
   if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   return value.toLocaleString('it-IT', {
+    useGrouping: 'always',
     style: 'currency',
     currency,
     minimumFractionDigits: 0,

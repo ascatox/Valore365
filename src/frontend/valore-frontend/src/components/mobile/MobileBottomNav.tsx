@@ -1,10 +1,19 @@
-import { Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useRef, type CSSProperties, type PointerEvent } from 'react';
+import { Group, Portal, Text, UnstyledButton, alpha, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Fragment, useRef, type CSSProperties, type PointerEvent } from 'react';
+
+type NavIcon = React.ComponentType<{ size?: string | number; className?: string; style?: CSSProperties }>;
 
 interface MobileBottomNavItem {
   value: string;
   label: string;
-  icon: React.ComponentType<{ size?: string | number; className?: string; style?: CSSProperties }>;
+  icon: NavIcon;
+  disabled?: boolean;
+}
+
+interface MobileBottomNavCenterAction {
+  label: string;
+  icon: NavIcon;
+  onClick: () => void;
 }
 
 // A tap that moves less than this is a tap, not a drag.
@@ -17,9 +26,11 @@ interface MobileBottomNavProps {
   value: string | null;
   onChange: (value: string) => void;
   bottomOffset?: number;
+  /** Raised primary button placed in the middle of the items (e.g. "+"). */
+  centerAction?: MobileBottomNavCenterAction;
 }
 
-export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: MobileBottomNavProps) {
+export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, centerAction }: MobileBottomNavProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -71,22 +82,44 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
         touchAction: 'none',
         padding: 6,
         borderRadius: 20,
-        background: isDark ? 'rgba(30,41,59,0.94)' : 'rgba(255,255,255,0.94)',
+        background: isDark ? alpha(theme.colors.dark[5], 0.94) : 'rgba(255,255,255,0.94)',
         backdropFilter: 'blur(16px)',
         border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
         boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',
       }}
     >
-      {items.map((item) => {
+      {items.map((item, index) => {
         const Icon = item.icon;
         const isActive = value === item.value;
+        const CenterIcon = centerAction?.icon;
         return (
+          <Fragment key={item.value}>
+          {centerAction && CenterIcon && index === Math.ceil(items.length / 2) && (
+            <UnstyledButton
+              onClick={centerAction.onClick}
+              aria-label={centerAction.label}
+              style={{
+                flex: '0 0 auto',
+                width: 48,
+                height: 48,
+                margin: '0 4px',
+                borderRadius: 16,
+                display: 'grid',
+                placeItems: 'center',
+                background: 'var(--mantine-primary-color-filled)',
+                color: '#ffffff',
+                boxShadow: '0 8px 18px rgba(15, 118, 110, 0.35)',
+              }}
+            >
+              <CenterIcon size={24} />
+            </UnstyledButton>
+          )}
           <UnstyledButton
-            key={item.value}
-            onPointerDown={(event) => handlePointerDown(event, item.value)}
-            onPointerUp={(event) => handlePointerUp(event, item.value)}
+            disabled={item.disabled}
+            onPointerDown={item.disabled ? undefined : (event) => handlePointerDown(event, item.value)}
+            onPointerUp={item.disabled ? undefined : (event) => handlePointerUp(event, item.value)}
             onPointerCancel={() => { pressRef.current = null; }}
-            onClick={() => handleClick(item.value)}
+            onClick={item.disabled ? undefined : () => handleClick(item.value)}
             style={{
               flex: '1 1 0',
               minWidth: 44,
@@ -96,6 +129,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
               background: isActive ? 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)' : 'transparent',
               color: isActive ? '#ffffff' : (isDark ? theme.colors.gray[3] : '#475569'),
               textAlign: 'center',
+              opacity: item.disabled ? 0.4 : 1,
               transition: 'all 140ms ease',
             }}
           >
@@ -104,6 +138,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
               {item.label}
             </Text>
           </UnstyledButton>
+          </Fragment>
         );
       })}
     </Group>

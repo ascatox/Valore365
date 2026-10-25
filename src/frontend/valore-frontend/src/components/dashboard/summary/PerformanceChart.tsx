@@ -19,6 +19,8 @@ interface PerformanceChartProps {
   stats?: { label: string; value: string; color?: string }[];
   subtitle?: string;
   headerRight?: React.ReactNode;
+  /** Rendered under the chart (mobile range selector). */
+  footer?: React.ReactNode;
   tooltipContent?: (props: any) => React.ReactNode;
 }
 
@@ -36,6 +38,7 @@ export function PerformanceChart({
   stats,
   subtitle,
   headerRight,
+  footer,
   tooltipContent,
 }: PerformanceChartProps) {
   const theme = useMantineTheme();
@@ -44,20 +47,14 @@ export function PerformanceChart({
   const isMobile = useMediaQuery('(max-width: 48em)');
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
-  const resolvedHeight = isMobile ? Math.max(height, 300) : height;
+  const resolvedHeight = isMobile ? Math.max(height, 240) : height;
 
   return (
     <Card
       withBorder
-      radius={isMobile ? 'xl' : 'md'}
-      p={isMobile ? 'lg' : 'md'}
-      shadow="sm"
-      style={isMobile ? {
-        background: isDark
-          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-          : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-        boxShadow: isDark ? '0 18px 38px rgba(0, 0, 0, 0.28)' : '0 18px 38px rgba(15, 23, 42, 0.08)',
-      } : undefined}
+      radius="md"
+      p="md"
+      shadow={isMobile ? undefined : 'sm'}
     >
       <Group justify="space-between" mb="xs" align={isMobile ? 'flex-start' : 'center'} wrap="wrap" gap="xs">
         <Group gap="xs">
@@ -66,7 +63,7 @@ export function PerformanceChart({
             <Badge
               key={s.label}
               variant="light"
-              color={s.color ?? 'blue'}
+              color={s.color ?? 'teal'}
               size={isMobile ? 'lg' : 'md'}
               styles={{
                 root: {
@@ -150,6 +147,7 @@ export function PerformanceChart({
           </ResponsiveContainer>
         )}
       </div>
+      {footer && <div style={{ marginTop: 12 }}>{footer}</div>}
     </Card>
   );
 }

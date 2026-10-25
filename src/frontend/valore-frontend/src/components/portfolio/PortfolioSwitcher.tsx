@@ -34,6 +34,7 @@ import {
   IconWallet,
 } from '@tabler/icons-react';
 import type { Portfolio } from '../../services/api';
+import { BOTTOM_SHEET_PROPS } from '../mobile/bottomSheet';
 
 interface PortfolioSwitcherProps {
   portfolios: Portfolio[];
@@ -54,6 +55,7 @@ interface PortfolioSwitcherProps {
 }
 
 const formatMoney = (value: number, currency: string) => new Intl.NumberFormat('it-IT', {
+  useGrouping: 'always',
   style: 'currency',
   currency,
   maximumFractionDigits: 0,
@@ -148,7 +150,7 @@ export function PortfolioSwitcher({
         leftSection={<IconSearch size={16} />}
       />
 
-      <ScrollArea.Autosize mah={isMobile ? '60vh' : 360} offsetScrollbars>
+      <ScrollArea.Autosize mah={isMobile ? '45dvh' : 360} offsetScrollbars>
         <Stack gap="xs">
           {selectedPortfolio && orderedPortfolios.length > 0 && (
             <Box>
@@ -179,11 +181,11 @@ export function PortfolioSwitcher({
                       <Badge variant="outline" color="gray" radius="xl">{`#${selectedPortfolio.id}`}</Badge>
                     </Group>
                     <Group gap={8} wrap="wrap" mb={8}>
-                      <Badge variant="light" color="blue" leftSection={<IconWallet size={12} />}>
+                      <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
                         {`Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`}
                       </Badge>
                       {selectedPortfolio.target_notional != null && (
-                        <Badge variant="light" color="orange" leftSection={<IconTarget size={12} />}>
+                        <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
                           {`Target ${formatMoney(selectedPortfolio.target_notional, selectedPortfolio.base_currency)}`}
                         </Badge>
                       )}
@@ -240,11 +242,11 @@ export function PortfolioSwitcher({
                       <Badge variant="outline" color="gray" radius="xl">{`#${portfolio.id}`}</Badge>
                     </Group>
                     <Group gap={8} wrap="wrap" mb={6}>
-                      <Badge variant="light" color="blue" leftSection={<IconWallet size={12} />}>
+                      <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
                         {formatMoney(portfolio.current_cash_balance ?? portfolio.cash_balance ?? 0, portfolio.base_currency)}
                       </Badge>
                       {portfolio.target_notional != null && (
-                        <Badge variant="light" color="orange" leftSection={<IconTarget size={12} />}>
+                        <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
                           {formatMoney(portfolio.target_notional, portfolio.base_currency)}
                         </Badge>
                       )}
@@ -363,11 +365,11 @@ export function PortfolioSwitcher({
             </Text>
             {selectedPortfolio && (
               <Group gap={6} mt={8} wrap="wrap">
-                <Badge variant="light" color="blue" size="sm" leftSection={<IconWallet size={11} />}>
+                <Badge variant="light" color="teal" size="sm" leftSection={<IconWallet size={11} />}>
                   {formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}
                 </Badge>
                 {selectedPortfolio.target_notional != null && (
-                  <Badge variant="light" color="orange" size="sm" leftSection={<IconTarget size={11} />}>
+                  <Badge variant="light" color="gray" size="sm" leftSection={<IconTarget size={11} />}>
                     {formatMoney(selectedPortfolio.target_notional, selectedPortfolio.base_currency)}
                   </Badge>
                 )}
@@ -382,6 +384,46 @@ export function PortfolioSwitcher({
     </UnstyledButton>
   );
 
+  // Mobile: a compact chip that fits the sticky page header; cash and target
+  // are shown in the bottom sheet it opens.
+  const chipTrigger = (
+    <UnstyledButton
+      onClick={() => setOpened(true)}
+      disabled={loading || portfolios.length === 0}
+      aria-label={`Portafoglio attivo: ${triggerLabel}. Cambia portafoglio`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        maxWidth: '100%',
+        minHeight: 40,
+        padding: '4px 12px 4px 4px',
+        borderRadius: 999,
+        border: `1px solid var(--mantine-color-default-border)`,
+        background: 'var(--mantine-color-body)',
+      }}
+    >
+      <Box
+        style={{
+          width: 30,
+          height: 30,
+          minWidth: 30,
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'var(--mantine-color-teal-filled)',
+          color: '#ffffff',
+        }}
+      >
+        <IconBriefcase2 size={16} />
+      </Box>
+      <Text fw={700} size="sm" truncate="end" style={{ minWidth: 0 }}>
+        {triggerLabel}
+      </Text>
+      <IconChevronDown size={16} color="var(--mantine-color-dimmed)" style={{ flexShrink: 0 }} />
+    </UnstyledButton>
+  );
+
   return (
     <Box style={style}>
       {label && (
@@ -392,21 +434,15 @@ export function PortfolioSwitcher({
 
       {isMobile ? (
         <>
-          {trigger}
+          {chipTrigger}
           <Drawer
             opened={opened}
             onClose={() => {
               setOpened(false);
               setQuery('');
             }}
-            position="bottom"
-            size="100%"
-            radius="24px 24px 0 0"
+            {...BOTTOM_SHEET_PROPS}
             title="Seleziona portafoglio"
-            styles={{
-              content: { paddingBottom: 'var(--safe-area-bottom)' },
-              body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
-            }}
           >
             {list}
           </Drawer>

@@ -168,7 +168,7 @@ export function PacSection({
                   <Table.Td>{rule.mode === 'amount' ? 'Importo' : 'Quantità'}</Table.Td>
                   <Table.Td>
                     {rule.mode === 'amount'
-                      ? `${rule.amount?.toLocaleString('it-IT', { minimumFractionDigits: 2 })} ${baseCurrency}`
+                      ? `${rule.amount?.toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: 2 })} ${baseCurrency}`
                       : rule.quantity != null ? formatNum(rule.quantity, 4) : undefined
                     }
                   </Table.Td>

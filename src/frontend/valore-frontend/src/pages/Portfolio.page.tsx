@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Table,
-  Card,
   Button,
   Text,
   Group,
@@ -11,17 +11,13 @@ import {
   Tabs,
   Tooltip,
   UnstyledButton,
-  useComputedColorScheme,
-  useMantineTheme,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconCopy, IconFileImport, IconCoins, IconSettings2, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconFileImport, IconCoins, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/modals/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/modals/TargetAllocationCsvImportModal.tsx';
 import { PacRuleDrawer } from '../components/portfolio/drawers/PacRuleDrawer.tsx';
 import { PacSection } from '../components/portfolio/sections/PacSection.tsx';
-import { MobileActionSheet } from '../components/mobile/MobileActionSheet.tsx';
-import { MobileBottomNav } from '../components/mobile/MobileBottomNav.tsx';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher.tsx';
 import { PortfolioAiExportMenu } from '../components/portfolio/PortfolioAiExportMenu.tsx';
 import { usePortfolioAiExport } from '../components/portfolio/hooks/usePortfolioAiExport';
@@ -40,18 +36,48 @@ import { PortfolioModal, PortfolioCloneModal, PortfolioDeleteModal, EditTransact
 import { TransactionDrawer } from '../components/portfolio/drawers/TransactionDrawer';
 import { TargetAllocationDrawer } from '../components/portfolio/drawers/TargetAllocationDrawer';
 import { PortfolioEmptyState } from '../components/portfolio/sections/PortfolioEmptyState';
-import { TransactionMobileCard } from '../components/portfolio/TransactionMobileCard';
+import { TransactionMobileList } from '../components/portfolio/TransactionMobileList';
 import { AssetInfoModal } from '../components/dashboard/holdings/AssetInfoModal';
 
 export function PortfolioPage() {
   const s = usePortfolioPage();
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
-  const isDark = colorScheme === 'dark';
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
   const aiExport = usePortfolioAiExport(portfolioId);
+
+  // Quick actions from the mobile "+" sheet arrive as ?azione=<name>.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedAction = searchParams.get('azione');
+  useEffect(() => {
+    if (!requestedAction || s.loadingPortfolios) return;
+    switch (requestedAction) {
+      case 'nuova-transazione':
+        s.setPortfolioView('transactions');
+        if (s.selectedPortfolioId) s.setTransactionDrawerOpened(true);
+        break;
+      case 'importa':
+        s.setPortfolioView('transactions');
+        s.setCsvImportOpened(true);
+        break;
+      case 'nuova-regola-pac':
+        s.setPortfolioView('pac');
+        if (s.selectedPortfolioId) {
+          s.setEditingPacRule(null);
+          s.setPacDrawerOpened(true);
+        }
+        break;
+      case 'nuovo-portafoglio':
+        s.openCreatePortfolioModal();
+        break;
+      default:
+        break;
+    }
+    setSearchParams((params) => {
+      params.delete('azione');
+      return params;
+    }, { replace: true });
+  }, [requestedAction, s, setSearchParams]);
 
   // --- Transaction table rows ---
   const transactionRows = s.sortedTransactions.map((tx) => {
@@ -87,7 +113,7 @@ export function PortfolioPage() {
         {!s.isMobile && (
           <Table.Td style={{ textAlign: 'right' }}>
             <Group gap={6} justify="flex-end" wrap="nowrap" style={{ minWidth: 74 }}>
-              <ActionIcon color="blue" variant="light" onClick={() => s.openEditTransactionModal(tx)} aria-label={`Modifica transazione ${tx.id}`}>
+              <ActionIcon color="teal" variant="light" onClick={() => s.openEditTransactionModal(tx)} aria-label={`Modifica transazione ${tx.id}`}>
                 <IconEdit size={16} />
               </ActionIcon>
               <ActionIcon color="red" variant="light" onClick={() => s.openDeleteTransactionModal(tx)} loading={s.deletingTransactionId === tx.id} aria-label={`Elimina transazione ${tx.id}`}>
@@ -99,27 +125,6 @@ export function PortfolioPage() {
       </Table.Tr>
     );
   });
-
-  // --- Transaction mobile cards (using reusable component) ---
-  const transactionMobileCards = s.sortedTransactions.map((tx) => (
-    <TransactionMobileCard
-      key={`tx-mobile-${tx.id}`}
-      id={tx.id}
-      symbol={tx.symbol}
-      assetName={tx.asset_name}
-      side={tx.side}
-      tradeAt={tx.trade_at}
-      quantity={tx.quantity}
-      price={tx.price}
-      fees={tx.fees ?? 0}
-      taxes={tx.taxes ?? 0}
-      tradeCurrency={tx.trade_currency}
-      notes={tx.notes}
-      deleting={s.deletingTransactionId === tx.id}
-      onEdit={() => s.openEditTransactionModal(tx)}
-      onDelete={() => s.openDeleteTransactionModal(tx)}
-    />
-  ));
 
   // --- Totals row ---
   if (s.sortedTransactions.length > 0) {
@@ -150,51 +155,25 @@ export function PortfolioPage() {
       </Table.Tr>,
     );
 
-    transactionMobileCards.push(
-      <Card
-        key="tx-mobile-total"
-        radius="xl"
-        p="lg"
-        style={{
-          background: isDark
-            ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 100%)`
-            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-          color: '#ffffff',
-          boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.32)' : '0 18px 36px rgba(15, 23, 42, 0.20)',
-        }}
-      >
-        <Group justify="space-between" gap="xs">
-          <Text fw={700} c="rgba(255,255,255,0.75)">Totale filtro</Text>
-          {s.transactionTotals.mixedCurrencies ? (
-            <Text fw={700} c="rgba(255,255,255,0.75)">Valute miste</Text>
-          ) : (
-            <Text fw={700}>
-              {formatMoneyOrNA(s.transactionTotals.totalValue, s.transactionTotals.currency ?? s.selectedPortfolio?.base_currency)}
-            </Text>
-          )}
-        </Group>
-      </Card>,
-    );
   }
 
-  const mobileTabItems: { value: string; label: string; icon: typeof IconTarget }[] = [];
 
   return (
     <>
-      <PageLayout mobileBottomPadding={s.isMobile ? 'calc(180px + var(--safe-area-bottom))' : undefined} style={s.isMobile ? { paddingTop: 4 } : undefined}>
+      <PageLayout>
       <PageHeader
         eyebrow="Gestione movimenti, liquidita e target"
         title="Portfolio"
         description="Operazioni, allocazione e struttura del portafoglio in una vista operativa unica."
         actions={(
-          <Group align="flex-start" gap="xs" style={s.isMobile ? { width: '100%' } : undefined}>
+          <Group align="flex-start" gap="xs" wrap="nowrap" style={s.isMobile ? { minWidth: 0 } : undefined}>
             <PortfolioSwitcher
               portfolios={s.portfolios}
               value={s.selectedPortfolioId}
               selectedPortfolioCashBalance={summary?.cash_balance ?? null}
               onChange={(nextValue) => s.setSelectedPortfolioId(nextValue)}
               loading={s.loadingPortfolios}
-              style={s.isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
+              style={s.isMobile ? { minWidth: 0 } : { width: '100%', maxWidth: 360 }}
               onCreatePortfolio={s.openCreatePortfolioModal}
               onEditPortfolio={s.selectedPortfolioId ? s.openEditPortfolioModal : null}
               onClonePortfolio={s.selectedPortfolioId ? s.openClonePortfolioModal : null}
@@ -202,7 +181,7 @@ export function PortfolioPage() {
               onCopyForAi={portfolioId != null ? aiExport.copyForAi : null}
               onDownloadMarkdown={portfolioId != null ? aiExport.downloadMarkdown : null}
             />
-            <PortfolioAiExportMenu portfolioId={portfolioId} />
+            {!s.isMobile && <PortfolioAiExportMenu portfolioId={portfolioId} />}
           </Group>
         )}
       />
@@ -226,7 +205,6 @@ export function PortfolioPage() {
           variant="default"
           style={s.isMobile ? { width: '100%' } : undefined}
         >
-          {!s.isMobile && (
             <Tabs.List style={{ flexWrap: 'nowrap', overflowX: 'auto', overflowY: 'hidden', WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', paddingBottom: 0, gap: 0 }}>
               <Tabs.Tab value="transactions" leftSection={<IconArrowsExchange size={16} />}>
                 <Text span>Transazioni</Text>
@@ -238,7 +216,6 @@ export function PortfolioPage() {
                 <Text span>Piano di Accumulo</Text>
               </Tabs.Tab>
             </Tabs.List>
-          )}
         </Tabs>
         {s.portfolioView === 'transactions' && !s.isMobile && (
           <Group gap="xs">
@@ -282,7 +259,20 @@ export function PortfolioPage() {
           sortDir={s.transactionSortDir}
           onSortDirChange={(value) => s.setTransactionSortDir((value as 'asc' | 'desc') ?? 'desc')}
           rows={transactionRows}
-          mobileCards={transactionMobileCards}
+          mobileCards={(
+            <TransactionMobileList
+              transactions={s.sortedTransactions}
+              groupByDate={s.transactionSortKey === 'trade_at'}
+              totalLabel={s.sortedTransactions.length === 0
+                ? null
+                : s.transactionTotals.mixedCurrencies
+                  ? 'Valute miste'
+                  : formatMoneyOrNA(s.transactionTotals.totalValue, s.transactionTotals.currency ?? s.selectedPortfolio?.base_currency)}
+              deletingId={s.deletingTransactionId}
+              onEdit={s.openEditTransactionModal}
+              onDelete={s.openDeleteTransactionModal}
+            />
+          )}
           hasRows={s.sortedTransactions.length > 0}
           selectedPortfolioId={s.selectedPortfolioId}
           showActions={!s.isMobile}
@@ -303,40 +293,6 @@ export function PortfolioPage() {
         />
       )}
       </PageLayout>
-
-      {s.isMobile && (
-        <MobileBottomNav
-          items={mobileTabItems}
-          value={s.portfolioView === 'target' ? 'target' : null}
-          bottomOffset={86}
-          onChange={() => {}}
-        />
-      )}
-
-      {s.isMobile && (
-        <MobileActionSheet
-          opened={s.mobileActionSheetOpened}
-          onOpen={() => s.setMobileActionSheetOpened(true)}
-          onClose={() => s.setMobileActionSheetOpened(false)}
-          title="Azioni portfolio"
-          bottomOffset={12}
-          badge={s.selectedPortfolio ? s.selectedPortfolio.name : 'Seleziona portafoglio'}
-          primaryAction={{
-            label: s.portfolioView === 'pac' ? 'Nuova regola PAC' : 'Nuova transazione',
-            onClick: s.portfolioView === 'pac' ? () => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); } : () => s.setTransactionDrawerOpened(true),
-            disabled: !s.selectedPortfolioId,
-          }}
-          items={[
-            { label: 'Nuova transazione', description: 'Apri il drawer rapido per acquisti e vendite', icon: IconArrowsExchange, onClick: () => s.setTransactionDrawerOpened(true), disabled: !s.selectedPortfolioId },
-            { label: 'Importa', description: 'Carica movimenti o storico dal file broker', icon: IconFileImport, onClick: () => s.setCsvImportOpened(true), disabled: s.portfolioView !== 'transactions' },
-            { label: 'Nuovo portfolio', description: 'Crea un nuovo contenitore con valuta e cash dedicati', icon: IconPlus, onClick: s.openCreatePortfolioModal },
-            { label: 'Clona portfolio', description: 'Duplica impostazioni e target allocation', icon: IconCopy, onClick: s.openClonePortfolioModal, disabled: !s.selectedPortfolioId },
-            { label: 'Liquidità', description: 'Gestisci la liquidità del portafoglio', icon: IconWallet, onClick: () => { s.setPortfolioView('cash'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
-            { label: 'Piano di Accumulo', description: 'Visualizza e gestisci le regole PAC', icon: IconCoins, onClick: () => { s.setPortfolioView('pac'); s.setMobileActionSheetOpened(false); }, disabled: !s.selectedPortfolioId },
-            { label: 'Modifica portfolio', description: 'Aggiorna nome, valuta base, timezone e cash', icon: IconSettings2, onClick: s.openEditPortfolioModal, disabled: !s.selectedPortfolioId },
-          ]}
-        />
-      )}
 
       {/* --- Modals & Drawers --- */}
 
@@ -448,7 +404,7 @@ export function PortfolioPage() {
         <ActionIcon
           variant="filled" color="teal" size={52} radius="xl"
           onClick={s.openCopilot} aria-label="Apri Portfolio Copilot"
-          style={{ position: 'fixed', bottom: s.isMobile ? 'calc(80px + var(--safe-area-bottom))' : 24, right: 24, zIndex: 100, boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
+          style={{ position: 'fixed', bottom: s.isMobile ? 'calc(92px + var(--safe-area-bottom-floating))' : 24, right: 24, zIndex: 100, boxShadow: '0 4px 16px rgba(0,0,0,0.2)' }}
         >
           <IconRobot size={24} />
         </ActionIcon>

@@ -85,7 +85,7 @@ describe('MarketCalendarView', () => {
     // 18:00 UTC is 19:00 in Rome after the switch to CET.
     expect(screen.getByText('ore 19:00 · USA')).toBeInTheDocument();
     expect(screen.getByText('Dopo la chiusura USA · USA · MSFT')).toBeInTheDocument();
-    expect(screen.getByText('Cap. 3500 mld $ · EPS atteso 3,9')).toBeInTheDocument();
+    expect(screen.getByText('Cap. 3.500 mld $ · EPS atteso 3,9')).toBeInTheDocument();
     expect(screen.getByText("Da tenere d'occhio")).toBeInTheDocument();
     expect(screen.getByText('Calendario dei dati macroeconomici momentaneamente non disponibile.')).toBeInTheDocument();
   });

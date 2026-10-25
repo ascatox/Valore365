@@ -51,7 +51,7 @@ const formatDayLabel = (day: string) => {
 };
 
 const formatValue = (value: number) =>
-  new Intl.NumberFormat('it-IT', { minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
+  new Intl.NumberFormat('it-IT', { useGrouping: 'always', minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value);
 
 function formatEventTime(event: MarketCalendarEvent): string {
   if (event.time_hint) return event.time_hint;

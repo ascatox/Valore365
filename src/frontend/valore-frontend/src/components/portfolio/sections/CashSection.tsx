@@ -136,14 +136,14 @@ export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreat
               <div>
                 <Text size="sm" c="dimmed">Saldo Totale</Text>
                 <Text size="xl" fw={700} c={cashData.total_cash >= 0 ? 'teal' : 'red'}>
-                  {cashData.total_cash.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  {cashData.total_cash.toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Text>
               </div>
               {cashData.currency_breakdown.map((b) => (
                 <div key={b.currency}>
                   <Text size="sm" c="dimmed">{b.currency}</Text>
                   <Text size="lg" fw={600}>
-                    {b.balance.toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {b.balance.toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Text>
                 </div>
               ))}
@@ -170,7 +170,7 @@ export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreat
                           </Badge>
                         </Table.Td>
                         <Table.Td style={{ textAlign: 'right' }}>
-                          {(m.quantity * m.price).toLocaleString('it-IT', { minimumFractionDigits: 2 })} {m.trade_currency}
+                          {(m.quantity * m.price).toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: 2 })} {m.trade_currency}
                         </Table.Td>
                         <Table.Td>
                           <Text size="sm" c="dimmed" lineClamp={1}>{m.notes || '-'}</Text>

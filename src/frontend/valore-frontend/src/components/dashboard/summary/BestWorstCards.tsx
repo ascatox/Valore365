@@ -34,7 +34,7 @@ function PerformerList({
   return (
     <Card withBorder radius="md" p="md" shadow="sm" h="100%">
       <Group gap="xs" mb="sm">
-        <Icon size={20} color={headerColor === 'green' ? '#16a34a' : '#dc2626'} />
+        <Icon size={20} color={`var(--mantine-color-${headerColor}-text)`} />
         <Text fw={700} size="md">{title}</Text>
       </Group>
       {periodLabel && (

@@ -71,7 +71,7 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
                 {tone.label}
               </Title>
               <Text size="sm" c={isDark ? theme.colors.gray[4] : '#6b7280'}>
-                Valore: EUR {result.summary.total_value.toLocaleString('it-IT')}
+                Valore: EUR {result.summary.total_value.toLocaleString('it-IT', { useGrouping: 'always' })}
               </Text>
             </Stack>
           </Group>

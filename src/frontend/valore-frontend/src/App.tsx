@@ -3,16 +3,21 @@ import {
   AppShell,
   Badge,
   Box,
-  Burger,
+  Drawer,
+  SimpleGrid,
+  Stack,
+  Text,
+  UnstyledButton,
   Group,
   ActionIcon,
+  Menu,
   NavLink,
   Container,
   Transition,
   Tooltip,
   useMantineColorScheme,
 } from '@mantine/core';
-import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import { useMediaQuery } from '@mantine/hooks';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
 import {
   IconRefresh,
@@ -31,12 +36,21 @@ import {
   IconDeviceMobile,
   IconInfoCircle,
   IconSparkles,
+  IconDotsVertical,
+  IconDots,
+  IconPlus,
+  IconArrowsExchange,
+  IconFileImport,
+  IconCoins,
+  IconFolderPlus,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
 import { AuthGuard } from './components/AuthGuard';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { BrandMark } from './components/BrandMark';
+import { MobileBottomNav } from './components/mobile/MobileBottomNav';
+import { BOTTOM_SHEET_PROPS } from './components/mobile/bottomSheet';
 import { STORAGE_KEYS } from './components/dashboard/constants';
 import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
 
@@ -84,7 +98,6 @@ function ProtectedApp() {
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement | null>(null);
-  const [opened, { toggle, close }] = useDisclosure();
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -106,7 +119,7 @@ function ProtectedApp() {
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', colorScheme === 'dark' ? '#242424' : '#ffffff');
+      meta.setAttribute('content', colorScheme === 'dark' ? '#0e1514' : '#ffffff');
     }
   }, [colorScheme]);
 
@@ -227,10 +240,49 @@ function ProtectedApp() {
   const { pulling, pullDistance, reached } = usePullToRefresh(mainRef, handleGlobalRefresh, { enabled: Boolean(isMobile) });
   const lockNonPortfolioNavigation = hasPortfolios === false;
 
+  // --- Mobile app navigation: one bottom bar on every page ---
+  const [moreSheetOpened, setMoreSheetOpened] = useState(false);
+  const [actionSheetOpened, setActionSheetOpened] = useState(false);
+
+  const mobileNavItems = [
+    { value: '/dashboard', label: 'Home', icon: IconLayoutDashboard, disabled: lockNonPortfolioNavigation },
+    { value: '/portfolio', label: 'Portfolio', icon: IconBriefcase },
+    { value: '/doctor', label: 'Doctor', icon: IconHeartRateMonitor, disabled: lockNonPortfolioNavigation },
+    { value: 'altro', label: 'Altro', icon: IconDots },
+  ];
+  const activeMobileNav = mobileNavItems.some((item) => item.value === location.pathname)
+    ? location.pathname
+    : 'altro';
+
+  const moreItems = [
+    { to: '/fire', label: 'FIRE', icon: IconFlame, disabled: lockNonPortfolioNavigation },
+    { to: '/creator', label: 'Creator', icon: IconSparkles },
+    { to: '/settings', label: 'Impostazioni', icon: IconSettings, disabled: lockNonPortfolioNavigation },
+    { to: '/about', label: 'About', icon: IconInfoCircle },
+    ...(isAdmin ? [{ to: '/admin', label: 'Admin', icon: IconShieldLock }] : []),
+  ];
+
+  // The "+" sheet hands its action to the Portfolio page through ?azione=,
+  // which opens the matching drawer or modal there.
+  const quickActions = [
+    { action: 'nuova-transazione', label: 'Nuova transazione', description: 'Acquisto, vendita, dividendo o movimento di cassa', icon: IconArrowsExchange, disabled: lockNonPortfolioNavigation },
+    { action: 'importa', label: 'Importa movimenti', description: 'Da file CSV o XLSX del broker', icon: IconFileImport },
+    { action: 'nuova-regola-pac', label: 'Nuova regola PAC', description: 'Versamento ricorrente su un asset', icon: IconCoins, disabled: lockNonPortfolioNavigation },
+    { action: 'nuovo-portafoglio', label: 'Nuovo portafoglio', description: 'Con valuta base e liquidità dedicate', icon: IconFolderPlus },
+  ];
+
+  const handleMobileNavChange = (value: string) => {
+    if (value === 'altro') {
+      setMoreSheetOpened(true);
+      return;
+    }
+    navigate(value);
+  };
+
   return (
       <AppShell
         header={{ height: `calc(${headerHeight}px + var(--safe-area-top))` }}
-        navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+        navbar={{ width: navbarExpanded ? 250 : 74, breakpoint: 'sm', collapsed: { mobile: true } }}
         padding={isLandscape ? 'xs' : 'md'}
         styles={{
           header: {
@@ -239,14 +291,13 @@ function ProtectedApp() {
             paddingRight: 'var(--safe-area-right)',
           },
           main: isMobile
-            ? { paddingInline: 'var(--mantine-spacing-xs)' }
+            ? { paddingInline: 'var(--mantine-spacing-xs)', paddingBottom: 'var(--v365-mobile-nav-space)' }
             : undefined,
         }}
       >
         <AppShell.Header>
           <Group h="100%" px="md" justify="space-between" wrap="nowrap">
             <Group wrap="nowrap">
-              <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="md" />
               <ActionIcon
                 visibleFrom="sm"
                 variant="default"
@@ -265,21 +316,49 @@ function ProtectedApp() {
             </Group>
             <Group gap="xs" wrap="nowrap">
               <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
-                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
+                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'teal' : undefined}>
                   {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
+              {isMobile ? (
+                // Pull-to-refresh covers the everyday update on mobile; the
+                // explicit refresh and the 60s auto-refresh live in a menu.
+                <Menu position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <ActionIcon
+                      variant={autoRefresh ? 'filled' : 'default'}
+                      color={autoRefresh ? 'teal' : undefined}
+                      size={42}
+                      aria-label="Altre azioni"
+                    >
+                      <IconDotsVertical size={22} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item leftSection={<IconRefresh size={16} />} onClick={handleGlobalRefresh}>
+                      Aggiorna ora
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={autoRefresh ? <IconPlayerStop size={16} /> : <IconPlayerPlay size={16} />}
+                      onClick={toggleAutoRefresh}
+                    >
+                      {autoRefresh ? `Ferma auto-refresh (${countdownSec}s)` : 'Auto-refresh ogni 60s'}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              ) : (
+              <>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : undefined}
-                  size={isMobile ? 42 : 'lg'}
+                  color={autoRefresh ? 'teal' : undefined}
+                  size="lg"
                   onClick={handleGlobalRefresh}
                   onDoubleClick={toggleAutoRefresh}
                   aria-label="Aggiorna"
                 >
                   <IconRefresh
-                    size={isMobile ? 22 : 18}
+                    size={18}
                     style={autoRefresh ? { animation: 'spin 2s linear infinite' } : undefined}
                   />
                 </ActionIcon>
@@ -287,16 +366,18 @@ function ProtectedApp() {
               <Tooltip label={autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh (60s)'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : undefined}
-                  size={isMobile ? 42 : 'lg'}
+                  color={autoRefresh ? 'teal' : undefined}
+                  size="lg"
                   onClick={toggleAutoRefresh}
                   aria-label="Auto-refresh"
                 >
                   {autoRefresh
-                    ? <IconPlayerStop size={isMobile ? 22 : 18} />
-                    : <IconPlayerPlay size={isMobile ? 22 : 18} />}
+                    ? <IconPlayerStop size={18} />
+                    : <IconPlayerPlay size={18} />}
                 </ActionIcon>
               </Tooltip>
+              </>
+              )}
               {clerkEnabled && <UserButton afterSignOutUrl="/" />}
             </Group>
           </Group>
@@ -311,7 +392,6 @@ function ProtectedApp() {
                 leftSection={<IconLayoutDashboard size={16} />}
                 aria-label="Dashboard"
                 disabled={lockNonPortfolioNavigation}
-                onClick={close}
             />
           </Tooltip>
           <Tooltip label="Doctor" position="right" withArrow disabled={navbarExpanded}>
@@ -322,7 +402,6 @@ function ProtectedApp() {
                 leftSection={<IconHeartRateMonitor size={16} />}
                 aria-label="Doctor"
                 disabled={lockNonPortfolioNavigation}
-                onClick={close}
             />
           </Tooltip>
           <Tooltip label="Portfolio" position="right" withArrow disabled={navbarExpanded}>
@@ -332,7 +411,6 @@ function ProtectedApp() {
                 label={navbarExpanded ? 'Portfolio' : undefined}
                 leftSection={<IconBriefcase size={16} />}
                 aria-label="Portfolio"
-                onClick={close}
             />
           </Tooltip>
           <Tooltip label="Creator" position="right" withArrow disabled={navbarExpanded}>
@@ -342,7 +420,6 @@ function ProtectedApp() {
                 label={navbarExpanded ? 'Creator' : undefined}
                 leftSection={<IconSparkles size={16} />}
                 aria-label="Creator"
-                onClick={close}
             />
           </Tooltip>
           <Tooltip label="FIRE" position="right" withArrow disabled={navbarExpanded}>
@@ -353,7 +430,6 @@ function ProtectedApp() {
                 leftSection={<IconFlame size={16} />}
                 aria-label="FIRE"
                 disabled={lockNonPortfolioNavigation}
-                onClick={close}
             />
           </Tooltip>
           <Tooltip label="Impostazioni" position="right" withArrow disabled={navbarExpanded}>
@@ -364,7 +440,6 @@ function ProtectedApp() {
                 leftSection={<IconSettings size={16} />}
                 aria-label="Impostazioni"
                 disabled={lockNonPortfolioNavigation}
-                onClick={close}
             />
           </Tooltip>
           <Tooltip label="About" position="right" withArrow disabled={navbarExpanded}>
@@ -374,7 +449,6 @@ function ProtectedApp() {
                 label={navbarExpanded ? 'About' : undefined}
                 leftSection={<IconInfoCircle size={16} />}
                 aria-label="About"
-                onClick={close}
             />
           </Tooltip>
           {isAdmin && (
@@ -385,7 +459,6 @@ function ProtectedApp() {
                   label={navbarExpanded ? 'Admin' : undefined}
                   leftSection={<IconShieldLock size={16} />}
                   aria-label="Admin"
-                  onClick={close}
               />
             </Tooltip>
           )}
@@ -425,7 +498,7 @@ function ProtectedApp() {
                     transition: 'transform 0.2s',
                     transform: `rotate(${pullDistance * 3}deg)`,
                     opacity: reached ? 1 : 0.4,
-                    color: reached ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-dimmed)',
+                    color: reached ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-dimmed)',
                   }}
                 />
               </div>
@@ -445,6 +518,96 @@ function ProtectedApp() {
             </Routes>
           </Container>
         </AppShell.Main>
+
+        {isMobile && (
+          <>
+            <MobileBottomNav
+              items={mobileNavItems}
+              value={activeMobileNav}
+              onChange={handleMobileNavChange}
+              centerAction={{ label: 'Azioni rapide', icon: IconPlus, onClick: () => setActionSheetOpened(true) }}
+            />
+
+            <Drawer
+              {...BOTTOM_SHEET_PROPS}
+              opened={actionSheetOpened}
+              onClose={() => setActionSheetOpened(false)}
+              title="Azioni rapide"
+            >
+              <Stack gap={4}>
+                {quickActions.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <UnstyledButton
+                      key={item.action}
+                      disabled={item.disabled}
+                      onClick={() => {
+                        setActionSheetOpened(false);
+                        navigate(`/portfolio?azione=${item.action}`);
+                      }}
+                      style={{ padding: '10px 4px', borderRadius: 12, opacity: item.disabled ? 0.45 : 1 }}
+                    >
+                      <Group gap="sm" wrap="nowrap">
+                        <Box
+                          style={{
+                            width: 40,
+                            height: 40,
+                            flexShrink: 0,
+                            borderRadius: 12,
+                            display: 'grid',
+                            placeItems: 'center',
+                            background: 'var(--mantine-primary-color-light)',
+                            color: 'var(--mantine-primary-color-light-color)',
+                          }}
+                        >
+                          <Icon size={20} />
+                        </Box>
+                        <Box style={{ minWidth: 0 }}>
+                          <Text fw={700} size="sm">{item.label}</Text>
+                          <Text size="xs" c="dimmed">{item.description}</Text>
+                        </Box>
+                      </Group>
+                    </UnstyledButton>
+                  );
+                })}
+              </Stack>
+            </Drawer>
+
+            <Drawer
+              {...BOTTOM_SHEET_PROPS}
+              opened={moreSheetOpened}
+              onClose={() => setMoreSheetOpened(false)}
+              title="Altro"
+            >
+              <SimpleGrid cols={3} spacing="sm">
+                {moreItems.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = location.pathname === item.to;
+                  return (
+                    <UnstyledButton
+                      key={item.to}
+                      disabled={item.disabled}
+                      onClick={() => {
+                        setMoreSheetOpened(false);
+                        navigate(item.to);
+                      }}
+                      style={{
+                        padding: '14px 6px',
+                        borderRadius: 14,
+                        textAlign: 'center',
+                        border: `1px solid ${isActive ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-default-border)'}`,
+                        opacity: item.disabled ? 0.45 : 1,
+                      }}
+                    >
+                      <Icon size={22} style={{ display: 'block', margin: '0 auto 6px', color: 'var(--mantine-primary-color-filled)' }} />
+                      <Text size="sm" fw={600}>{item.label}</Text>
+                    </UnstyledButton>
+                  );
+                })}
+              </SimpleGrid>
+            </Drawer>
+          </>
+        )}
       </AppShell>
   );
 }
