@@ -1,13 +1,13 @@
-import { useMemo, useState } from 'react';
-import { Alert, Badge, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon } from '@mantine/core';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Badge, Box, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon, Tooltip as MantineTooltip } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
-import { IconAlertTriangle, IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
+import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import { formatDateTime, formatPct, getVariationColor } from '../formatters';
 import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
 import { formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
-import { getClosedExchanges } from '../exchangeSchedules';
+import { getExchangeStatus, type ExchangeStatus } from '../exchangeSchedules';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
 import { MarketCalendarCard } from './MarketCalendarCard';
 import { MarketTicker } from './MarketTicker';
@@ -81,7 +81,38 @@ function IntradayMiniChart({ item }: { item: MarketQuoteItem }) {
   );
 }
 
-function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: () => void }) {
+function ExchangeStatusDot({ status }: { status: ExchangeStatus }) {
+  const label = status.open
+    ? `${status.exchange}: aperta`
+    : `${status.exchange}: chiusa (${status.closedReason})`;
+  return (
+    <MantineTooltip label={label} withArrow>
+      <Box
+        component="span"
+        role="img"
+        aria-label={label}
+        style={{
+          display: 'inline-block',
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          flexShrink: 0,
+          backgroundColor: `var(--mantine-color-${status.open ? 'green' : 'red'}-6)`,
+        }}
+      />
+    </MantineTooltip>
+  );
+}
+
+function MarketItemCard({
+  item,
+  exchangeStatus,
+  onClick,
+}: {
+  item: MarketQuoteItem;
+  exchangeStatus: ExchangeStatus | null;
+  onClick?: () => void;
+}) {
   const variation = item.change_pct;
   const variationColor = variation != null ? getVariationColor(variation) : 'gray';
   const isError = !!item.error;
@@ -92,7 +123,10 @@ function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: ()
       <Stack gap={4}>
         <Group justify="space-between" align="flex-start" wrap="nowrap">
           <div>
-            <Text fw={600}>{item.name}</Text>
+            <Group gap={6} wrap="nowrap">
+              {exchangeStatus && <ExchangeStatusDot status={exchangeStatus} />}
+              <Text fw={600}>{item.name}</Text>
+            </Group>
             <Text size="xs" c="dimmed">{item.symbol}</Text>
           </div>
           <ThemeIcon
@@ -153,8 +187,14 @@ function MarketItemCard({ item, onClick }: { item: MarketQuoteItem; onClick?: ()
 
 export function MercatiTab() {
   const { data, isLoading, error } = useMarketQuotes();
-  const [closedAlertDismissed, setClosedAlertDismissed] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  // Re-evaluates the open/closed status of each exchange every minute.
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const lastUpdatedAt = useMemo(() => {
     if (!data) return null;
@@ -167,12 +207,6 @@ export function MercatiTab() {
       }
     }
     return latestTs;
-  }, [data]);
-
-  const closedExchanges = useMemo(() => {
-    if (!data) return [];
-    const allSymbols = data.categories.flatMap((c) => c.items.map((i) => i.symbol));
-    return getClosedExchanges(allSymbols, new Date());
   }, [data]);
 
   const degradedItems = useMemo(
@@ -194,25 +228,6 @@ export function MercatiTab() {
       <MarketTicker />
       <NewsTicker />
       <MarketCalendarCard onSymbolClick={setSelectedSymbol} />
-
-      {closedExchanges.length > 0 && !closedAlertDismissed && (
-        <Alert
-          color="yellow"
-          icon={<IconAlertTriangle size={18} />}
-          title="Alcune borse sono attualmente chiuse"
-          withCloseButton
-          onClose={() => setClosedAlertDismissed(true)}
-        >
-          {closedExchanges.map((e) => (
-            <Text key={e.exchange} size="sm">
-              <Text span fw={600}>{e.exchange}</Text> — chiusa per {e.reason}
-            </Text>
-          ))}
-          <Text size="xs" c="dimmed" mt={4}>
-            I prezzi mostrati potrebbero riferirsi all&apos;ultima chiusura disponibile.
-          </Text>
-        </Alert>
-      )}
 
       <Text size="xs" c="dimmed">
         Ultimo aggiornamento: {lastUpdatedAt ? formatDateTime(lastUpdatedAt) : 'N/D'}
@@ -245,7 +260,12 @@ export function MercatiTab() {
           <Text fw={700} mb="sm">{category.label}</Text>
           <SimpleGrid cols={{ base: 1, xs: 2, sm: 2, md: 3, lg: 4 }} spacing="sm">
             {category.items.map((item) => (
-              <MarketItemCard key={item.symbol} item={item} onClick={() => setSelectedSymbol(item.symbol)} />
+              <MarketItemCard
+                key={item.symbol}
+                item={item}
+                exchangeStatus={getExchangeStatus(item.symbol, now)}
+                onClick={() => setSelectedSymbol(item.symbol)}
+              />
             ))}
           </SimpleGrid>
         </Card>

@@ -68,23 +68,16 @@ function getClosedReason(schedule: ExchangeSchedule, now: Date): string {
   return 'orario di chiusura';
 }
 
-export interface ClosedExchangeInfo {
+export interface ExchangeStatus {
   exchange: string;
-  reason: string;
+  open: boolean;
+  // Why the exchange is closed; null while it is open.
+  closedReason: string | null;
 }
 
-export function getClosedExchanges(symbols: string[], now: Date): ClosedExchangeInfo[] {
-  const seen = new Set<string>();
-  const result: ClosedExchangeInfo[] = [];
-
-  for (const symbol of symbols) {
-    const schedule = EXCHANGE_SCHEDULES[symbol];
-    if (!schedule || seen.has(schedule.exchange)) continue;
-    seen.add(schedule.exchange);
-
-    if (!isExchangeOpen(schedule, now)) {
-      result.push({ exchange: schedule.exchange, reason: getClosedReason(schedule, now) });
-    }
-  }
-  return result;
+export function getExchangeStatus(symbol: string, now: Date): ExchangeStatus | null {
+  const schedule = EXCHANGE_SCHEDULES[symbol];
+  if (!schedule) return null;
+  const open = isExchangeOpen(schedule, now);
+  return { exchange: schedule.exchange, open, closedReason: open ? null : getClosedReason(schedule, now) };
 }
