@@ -6,6 +6,7 @@ import {
   Burger,
   Group,
   ActionIcon,
+  Menu,
   NavLink,
   Container,
   Transition,
@@ -31,6 +32,7 @@ import {
   IconDeviceMobile,
   IconInfoCircle,
   IconSparkles,
+  IconDotsVertical,
 } from '@tabler/icons-react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { UserButton } from '@clerk/clerk-react';
@@ -269,17 +271,45 @@ function ProtectedApp() {
                   {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
+              {isMobile ? (
+                // Pull-to-refresh covers the everyday update on mobile; the
+                // explicit refresh and the 60s auto-refresh live in a menu.
+                <Menu position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <ActionIcon
+                      variant={autoRefresh ? 'filled' : 'default'}
+                      color={autoRefresh ? 'teal' : undefined}
+                      size={42}
+                      aria-label="Altre azioni"
+                    >
+                      <IconDotsVertical size={22} />
+                    </ActionIcon>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item leftSection={<IconRefresh size={16} />} onClick={handleGlobalRefresh}>
+                      Aggiorna ora
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={autoRefresh ? <IconPlayerStop size={16} /> : <IconPlayerPlay size={16} />}
+                      onClick={toggleAutoRefresh}
+                    >
+                      {autoRefresh ? `Ferma auto-refresh (${countdownSec}s)` : 'Auto-refresh ogni 60s'}
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+              ) : (
+              <>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
                   color={autoRefresh ? 'teal' : undefined}
-                  size={isMobile ? 42 : 'lg'}
+                  size="lg"
                   onClick={handleGlobalRefresh}
                   onDoubleClick={toggleAutoRefresh}
                   aria-label="Aggiorna"
                 >
                   <IconRefresh
-                    size={isMobile ? 22 : 18}
+                    size={18}
                     style={autoRefresh ? { animation: 'spin 2s linear infinite' } : undefined}
                   />
                 </ActionIcon>
@@ -288,15 +318,17 @@ function ProtectedApp() {
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
                   color={autoRefresh ? 'teal' : undefined}
-                  size={isMobile ? 42 : 'lg'}
+                  size="lg"
                   onClick={toggleAutoRefresh}
                   aria-label="Auto-refresh"
                 >
                   {autoRefresh
-                    ? <IconPlayerStop size={isMobile ? 22 : 18} />
-                    : <IconPlayerPlay size={isMobile ? 22 : 18} />}
+                    ? <IconPlayerStop size={18} />
+                    : <IconPlayerPlay size={18} />}
                 </ActionIcon>
               </Tooltip>
+              </>
+              )}
               {clerkEnabled && <UserButton afterSignOutUrl="/" />}
             </Group>
           </Group>

@@ -446,7 +446,7 @@ export function DoctorPage() {
   }
 
   return (
-    <PageLayout variant="editorial">
+    <PageLayout>
       <Container fluid px={0}>
         <Stack gap="lg">
           <PageHeader

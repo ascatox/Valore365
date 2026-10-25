@@ -187,14 +187,14 @@ export function PortfolioPage() {
         title="Portfolio"
         description="Operazioni, allocazione e struttura del portafoglio in una vista operativa unica."
         actions={(
-          <Group align="flex-start" gap="xs" style={s.isMobile ? { width: '100%' } : undefined}>
+          <Group align="flex-start" gap="xs" wrap="nowrap" style={s.isMobile ? { minWidth: 0 } : undefined}>
             <PortfolioSwitcher
               portfolios={s.portfolios}
               value={s.selectedPortfolioId}
               selectedPortfolioCashBalance={summary?.cash_balance ?? null}
               onChange={(nextValue) => s.setSelectedPortfolioId(nextValue)}
               loading={s.loadingPortfolios}
-              style={s.isMobile ? { width: '100%' } : { width: '100%', maxWidth: 360 }}
+              style={s.isMobile ? { minWidth: 0 } : { width: '100%', maxWidth: 360 }}
               onCreatePortfolio={s.openCreatePortfolioModal}
               onEditPortfolio={s.selectedPortfolioId ? s.openEditPortfolioModal : null}
               onClonePortfolio={s.selectedPortfolioId ? s.openClonePortfolioModal : null}
@@ -202,7 +202,7 @@ export function PortfolioPage() {
               onCopyForAi={portfolioId != null ? aiExport.copyForAi : null}
               onDownloadMarkdown={portfolioId != null ? aiExport.downloadMarkdown : null}
             />
-            <PortfolioAiExportMenu portfolioId={portfolioId} />
+            {!s.isMobile && <PortfolioAiExportMenu portfolioId={portfolioId} />}
           </Group>
         )}
       />

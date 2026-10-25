@@ -571,7 +571,7 @@ export function FirePage() {
   };
 
   return (
-    <PageLayout variant="fire" mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
+    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
       <Stack gap="lg">
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"

@@ -61,6 +61,8 @@ const theme = createTheme({
     orange: attention,
     dark: petrolDark,
   },
+  // Radius by role: 8 for inputs, buttons and chips, 14 for cards, 20 for sheets.
+  radius: { xs: '4px', sm: '8px', md: '14px', lg: '20px', xl: '28px' },
   fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif',
   headings: {
     fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif',

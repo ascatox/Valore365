@@ -149,7 +149,7 @@ export function PortfolioSwitcher({
         leftSection={<IconSearch size={16} />}
       />
 
-      <ScrollArea.Autosize mah={isMobile ? '60vh' : 360} offsetScrollbars>
+      <ScrollArea.Autosize mah={isMobile ? '45dvh' : 360} offsetScrollbars>
         <Stack gap="xs">
           {selectedPortfolio && orderedPortfolios.length > 0 && (
             <Box>
@@ -383,6 +383,46 @@ export function PortfolioSwitcher({
     </UnstyledButton>
   );
 
+  // Mobile: a compact chip that fits the sticky page header; cash and target
+  // are shown in the bottom sheet it opens.
+  const chipTrigger = (
+    <UnstyledButton
+      onClick={() => setOpened(true)}
+      disabled={loading || portfolios.length === 0}
+      aria-label={`Portafoglio attivo: ${triggerLabel}. Cambia portafoglio`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 8,
+        maxWidth: '100%',
+        minHeight: 40,
+        padding: '4px 12px 4px 4px',
+        borderRadius: 999,
+        border: `1px solid var(--mantine-color-default-border)`,
+        background: 'var(--mantine-color-body)',
+      }}
+    >
+      <Box
+        style={{
+          width: 30,
+          height: 30,
+          minWidth: 30,
+          borderRadius: '50%',
+          display: 'grid',
+          placeItems: 'center',
+          background: 'var(--mantine-color-teal-filled)',
+          color: '#ffffff',
+        }}
+      >
+        <IconBriefcase2 size={16} />
+      </Box>
+      <Text fw={700} size="sm" truncate="end" style={{ minWidth: 0 }}>
+        {triggerLabel}
+      </Text>
+      <IconChevronDown size={16} color="var(--mantine-color-dimmed)" style={{ flexShrink: 0 }} />
+    </UnstyledButton>
+  );
+
   return (
     <Box style={style}>
       {label && (
@@ -393,7 +433,7 @@ export function PortfolioSwitcher({
 
       {isMobile ? (
         <>
-          {trigger}
+          {chipTrigger}
           <Drawer
             opened={opened}
             onClose={() => {
@@ -401,8 +441,8 @@ export function PortfolioSwitcher({
               setQuery('');
             }}
             position="bottom"
-            size="100%"
-            radius="24px 24px 0 0"
+            size="auto"
+            radius="20px 20px 0 0"
             title="Seleziona portafoglio"
             styles={{
               content: { paddingBottom: 'var(--safe-area-bottom)' },

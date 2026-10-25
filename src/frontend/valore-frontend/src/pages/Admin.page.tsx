@@ -92,7 +92,7 @@ export function AdminPage() {
   }, []);
 
   return (
-    <PageLayout variant="settings">
+    <PageLayout>
       <Stack gap="lg">
         <PageHeader
           eyebrow="Area riservata"
