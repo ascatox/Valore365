@@ -89,6 +89,17 @@ select:focus-visible {
   padding-bottom: max(var(--safe-area-bottom), 0px);
 }
 
+/* Full-screen modals (mobile) cover the area under the iOS status bar too,
+   since viewport-fit=cover hands it to the page: keep the header, and its
+   close button, below the status bar and the content above the home indicator. */
+.mantine-Modal-content[data-full-screen] .mantine-Modal-header {
+  padding-top: calc(var(--safe-area-top) + var(--mb-padding, var(--mantine-spacing-md)));
+}
+
+.mantine-Modal-content[data-full-screen] .mantine-Modal-body {
+  padding-bottom: calc(var(--safe-area-bottom) + var(--mb-padding, var(--mantine-spacing-md)));
+}
+
 /* Mantine renders the ScrollArea content as `display: table`, which on iOS
    Safari grows to the widest chat bubble instead of wrapping it. */
 .copilot-scroll .mantine-ScrollArea-viewport > div {
