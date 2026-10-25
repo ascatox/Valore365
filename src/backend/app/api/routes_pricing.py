@@ -13,6 +13,7 @@ from ..models import (
     PriceRefreshResponse,
 )
 from ..repository import PortfolioRepository
+from ..single_flight import SingleFlight
 
 
 def register_pricing_routes(
@@ -24,6 +25,11 @@ def register_pricing_routes(
     finance_client: object,
     ensure_target_allocation_enabled: object,
 ) -> None:
+    # Refresh and backfill download every asset of a portfolio from the price
+    # provider; identical requests arriving while one runs (refresh button,
+    # pull-to-refresh, auto-refresh, another device) share that run.
+    price_jobs = SingleFlight()
+
 
     @router.post("/prices/refresh", response_model=PriceRefreshResponse, responses={400: {"model": ErrorResponse}})
     def refresh_prices(
@@ -40,7 +46,10 @@ def register_pricing_routes(
             if cached:
                 return PriceRefreshResponse.model_validate(cached)
         try:
-            response = pricing_service.refresh_prices(portfolio_id=portfolio_id, asset_scope=asset_scope, user_id=_auth.user_id)
+            response = price_jobs.run(
+                ("refresh", _auth.user_id, portfolio_id, asset_scope),
+                lambda: pricing_service.refresh_prices(portfolio_id=portfolio_id, asset_scope=asset_scope, user_id=_auth.user_id),
+            )
             if idempotency_key:
                 repo.save_idempotency_response(
                     idempotency_key=idempotency_key, endpoint=endpoint, response_payload=response.model_dump(mode="json"), user_id=_auth.user_id
@@ -97,7 +106,12 @@ def register_pricing_routes(
             if cached:
                 return DailyBackfillResponse.model_validate(cached)
         try:
-            response = historical_service.backfill_daily(portfolio_id=portfolio_id, days=days, asset_scope=asset_scope, user_id=_auth.user_id)
+            response = price_jobs.run(
+                ("backfill_daily", _auth.user_id, portfolio_id, days, asset_scope),
+                lambda: historical_service.backfill_daily(
+                    portfolio_id=portfolio_id, days=days, asset_scope=asset_scope, user_id=_auth.user_id
+                ),
+            )
             if idempotency_key:
                 repo.save_idempotency_response(
                     idempotency_key=idempotency_key, endpoint=endpoint, response_payload=response.model_dump(mode="json"), user_id=_auth.user_id

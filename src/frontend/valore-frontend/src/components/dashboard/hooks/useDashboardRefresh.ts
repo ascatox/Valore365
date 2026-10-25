@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../../../services/api';
 
@@ -40,12 +40,17 @@ export function useDashboardRefresh(portfolioId: number | null) {
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  // The refresh button, pull-to-refresh and auto-refresh all fire the same
+  // event, and each run downloads every asset's prices: one run at a time.
+  const inFlightRef = useRef(false);
 
   const doRefresh = useCallback(async () => {
     if (!portfolioId || !Number.isFinite(portfolioId)) {
       setRefreshMessage('Seleziona un portfolio prima di aggiornare');
       return;
     }
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
 
     setRefreshError(null);
     setRefreshMessage(null);
@@ -73,6 +78,7 @@ export function useDashboardRefresh(portfolioId: number | null) {
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : 'Errore durante aggiornamento prezzi');
     } finally {
+      inFlightRef.current = false;
       setRefreshing(false);
     }
   }, [portfolioId, queryClient]);
