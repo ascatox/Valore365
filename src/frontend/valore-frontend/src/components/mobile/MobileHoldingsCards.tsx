@@ -1,7 +1,9 @@
-import { ActionIcon, Badge, Box, Card, Group, Progress, Stack, Text, Tooltip, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { IconAlertTriangle, IconArrowUpRight, IconRefresh, IconTarget, IconTrendingUp, IconWallet } from '@tabler/icons-react';
+import { useMemo, useState } from 'react';
+import { Badge, Box, Button, Chip, Drawer, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
+import { IconAlertTriangle, IconRefresh } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../dashboard/formatters';
+import { BOTTOM_SHEET_PROPS } from './bottomSheet';
 
 interface MobileHoldingsCardsProps {
   positions: Position[];
@@ -12,231 +14,250 @@ interface MobileHoldingsCardsProps {
   refreshing?: boolean;
 }
 
-function formatFirstTrade(value?: string | null): string {
+type SortKey = 'value' | 'day' | 'pl' | 'drift';
+
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'value', label: 'Valore' },
+  { value: 'day', label: 'Oggi' },
+  { value: 'pl', label: 'P/L' },
+  { value: 'drift', label: 'Scostamento' },
+];
+
+// Same threshold the target badges used: beyond 5 points the weight needs attention.
+const TARGET_DRIFT_WARNING = 5;
+
+type AssetClass = 'equity' | 'bond' | 'gold' | 'cash' | 'crypto';
+
+const ASSET_CLASS_COLORS: Record<AssetClass, string> = {
+  equity: 'var(--mantine-color-teal-6)',
+  bond: '#47607a',
+  gold: '#b08a2e',
+  cash: '#7a8786',
+  crypto: 'var(--mantine-color-grape-6)',
+};
+
+function assetClassOf(position: Position): AssetClass {
+  const focus = `${position.investment_focus ?? ''} ${position.name ?? ''}`.toLowerCase();
+  if (position.asset_type === 'crypto') return 'crypto';
+  if (position.asset_type === 'cash' || /money market|overnight|monetar|cash/.test(focus)) return 'cash';
+  if (position.asset_type === 'bond' || /bond|fixed income|obbligaz|aggregate|treasury/.test(focus)) return 'bond';
+  if (/gold|oro|commodit|precious/.test(focus)) return 'gold';
+  return 'equity';
+}
+
+function formatDate(value?: string | null): string {
   if (!value) return '—';
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return '—';
   return dt.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-function formatPriceDate(value?: string | null): string {
-  if (!value) return 'N/D';
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return 'N/D';
-  return dt.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
-}
-
 export function MobileHoldingsCards({ positions, currency, summary, targetMap, onRefreshPrices, refreshing }: MobileHoldingsCardsProps) {
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
-  const isDark = colorScheme === 'dark';
-  const hasTargets = targetMap && targetMap.size > 0;
+  const [sortKey, setSortKey] = useState<SortKey>('value');
+  const [selected, setSelected] = useState<Position | null>(null);
+  const hasTargets = !!targetMap && targetMap.size > 0;
 
-  const totals = (() => {
-    const totalValue = summary?.market_value ?? positions.reduce((sum, position) => sum + position.market_value, 0);
-    const totalPl = summary?.unrealized_pl ?? positions.reduce((sum, position) => sum + position.unrealized_pl, 0);
-    const totalCost = summary?.cost_basis ?? positions.reduce((sum, position) => sum + (position.market_value - position.unrealized_pl), 0);
-    const totalPlPct = summary?.unrealized_pl_pct ?? (totalCost > 0 ? (totalPl / totalCost) * 100 : 0);
-    return { totalValue, totalPl, totalPlPct };
-  })();
+  const drift = (position: Position) => {
+    const target = targetMap?.get(position.asset_id);
+    return target != null ? position.weight - target : null;
+  };
+
+  const sorted = useMemo(() => {
+    const value = (p: Position) => {
+      switch (sortKey) {
+        case 'day': return p.day_change_pct;
+        case 'pl': return p.unrealized_pl;
+        case 'drift': {
+          const target = targetMap?.get(p.asset_id);
+          return target != null ? Math.abs(p.weight - target) : -1;
+        }
+        default: return p.market_value;
+      }
+    };
+    return [...positions].sort((a, b) => value(b) - value(a));
+  }, [positions, sortKey, targetMap]);
+
+  const totals = useMemo(() => {
+    const totalValue = summary?.market_value ?? positions.reduce((sum, p) => sum + p.market_value, 0);
+    const totalPlPct = summary?.unrealized_pl_pct ?? 0;
+    return { totalValue, totalPlPct };
+  }, [positions, summary]);
 
   if (!positions.length) {
-    return (
-      <Card withBorder radius="xl" p="lg" bg={isDark ? theme.colors.dark[6] : '#f8fafc'}>
-        <Text c="dimmed" ta="center" size="sm">Nessuna posizione disponibile</Text>
-      </Card>
-    );
+    return <Text c="dimmed" ta="center" size="sm" py="md">Nessuna posizione disponibile</Text>;
   }
 
+  const selectedDrift = selected ? drift(selected) : null;
+  const selectedTarget = selected ? targetMap?.get(selected.asset_id) : undefined;
+
   return (
-    <Stack gap="md">
-      {positions.map((position) => {
-        const target = targetMap?.get(position.asset_id);
-        const delta = target != null ? position.weight - target : null;
-        const warnTarget = delta != null && Math.abs(delta) > 5;
-        const plColor = getVariationColor(position.unrealized_pl);
-        const pctColor = getVariationColor(position.unrealized_pl_pct);
-        const dayColor = getVariationColor(position.day_change_pct);
+    <Stack gap="sm">
+      <Group justify="space-between" wrap="nowrap">
+        <Text size="sm" c="dimmed">{`Totale ${formatMoney(totals.totalValue, currency)}`}</Text>
+        <Text size="sm" fw={700} c={getVariationColor(totals.totalPlPct)}>{formatPct(totals.totalPlPct)}</Text>
+      </Group>
 
-        return (
-          <Card
-            key={position.asset_id}
-            withBorder
-            radius="xl"
-            p="lg"
-            style={{
-              background: isDark
-                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
-            }}
-          >
-            <Stack gap="md">
-              <Group justify="space-between" align="flex-start" wrap="nowrap">
-                <Box style={{ minWidth: 0 }}>
-                  <Group gap={6} wrap="wrap" mb={6}>
-                    <Text fw={800} size="lg" c={isDark ? theme.white : '#0f172a'}>
-                      {position.name || position.symbol}
-                    </Text>
-                    {position.price_stale && (
-                      <Tooltip
-                        label={`Prezzo non aggiornato${position.price_date ? ` (ultimo: ${formatPriceDate(position.price_date)})` : ''}`}
-                        withArrow
-                      >
-                        <Badge color="yellow" variant="light" leftSection={<IconAlertTriangle size={12} />}>
-                          Prezzo non aggiornato
-                        </Badge>
-                      </Tooltip>
-                    )}
-                  </Group>
-                  <Text size="sm" c="dimmed" lineClamp={2}>{position.symbol}</Text>
-                </Box>
+      <Chip.Group value={sortKey} onChange={(value) => setSortKey(value as SortKey)}>
+        <Group gap={6} wrap="nowrap" style={{ overflowX: 'auto', scrollbarWidth: 'none' }}>
+          {SORT_OPTIONS.filter((option) => option.value !== 'drift' || hasTargets).map((option) => (
+            <Chip key={option.value} value={option.value} size="sm" variant="outline">
+              {option.label}
+            </Chip>
+          ))}
+        </Group>
+      </Chip.Group>
 
+      <Box>
+        {sorted.map((position, index) => {
+          const target = targetMap?.get(position.asset_id);
+          const delta = drift(position);
+          const warn = delta != null && Math.abs(delta) > TARGET_DRIFT_WARNING;
+          const assetClass = assetClassOf(position);
+          return (
+            <UnstyledButton
+              key={position.asset_id}
+              onClick={() => setSelected(position)}
+              aria-label={`Dettagli ${position.symbol}`}
+              style={{
+                display: 'block',
+                width: '100%',
+                padding: '10px 0',
+                borderTop: index === 0 ? undefined : '1px solid var(--mantine-color-default-border)',
+              }}
+            >
+              <Group gap={10} wrap="nowrap" align="center">
                 <Box
                   style={{
-                    minWidth: 112,
-                    borderRadius: 18,
-                    padding: '10px 12px',
-                    background: isDark ? 'rgba(20, 184, 166, 0.12)' : 'linear-gradient(135deg, rgba(15,118,110,0.10), rgba(15,118,110,0.04))',
-                    border: isDark ? `1px solid ${theme.colors.teal[8]}` : '1px solid rgba(15,118,110,0.12)',
-                    textAlign: 'right',
+                    width: 36,
+                    height: 36,
+                    flexShrink: 0,
+                    borderRadius: 10,
+                    display: 'grid',
+                    placeItems: 'center',
+                    background: ASSET_CLASS_COLORS[assetClass],
+                    color: '#ffffff',
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: 0.2,
                   }}
                 >
-                  <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ letterSpacing: 0.8 }}>
-                    Valore
+                  {position.symbol.slice(0, 4)}
+                </Box>
+                <Box style={{ minWidth: 0, flex: 1 }}>
+                  <Group gap={4} wrap="nowrap">
+                    <Text fw={700} size="sm">{position.symbol}</Text>
+                    {position.price_stale && <IconAlertTriangle size={14} color="var(--mantine-color-orange-text)" aria-label="Prezzo non aggiornato" />}
+                  </Group>
+                  <Text size="xs" c="dimmed" truncate="end">{position.name || position.symbol}</Text>
+                </Box>
+                <Box style={{ textAlign: 'right', flexShrink: 0 }}>
+                  <Text fw={700} size="sm">{formatMoney(position.market_value, currency)}</Text>
+                  <Text size="xs" fw={600} c={getVariationColor(sortKey === 'day' ? position.day_change_pct : position.unrealized_pl)}>
+                    {sortKey === 'day'
+                      ? `${formatPct(position.day_change_pct)} oggi`
+                      : `${formatMoney(position.unrealized_pl, currency, true)} · ${formatPct(position.unrealized_pl_pct)}`}
                   </Text>
-                  <Text fw={800} size="sm" c={isDark ? theme.white : '#0f172a'}>{formatMoney(position.market_value, currency)}</Text>
                 </Box>
               </Group>
 
-              <Group grow>
-                <Box
-                  style={{
-                    borderRadius: 18,
-                    padding: '12px 14px',
-                    background: isDark ? theme.colors.dark[5] : '#f8fafc',
-                    border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
-                  }}
-                >
-                  <Group justify="space-between" wrap="nowrap" mb={4}>
-                    <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
-                      P/L
+              <Box ml={46} mt={8}>
+                <Box style={{ position: 'relative', height: 4, borderRadius: 2, background: 'var(--mantine-color-default-border)' }}>
+                  <Box
+                    style={{
+                      position: 'absolute',
+                      inset: '0 auto 0 0',
+                      width: `${Math.min(100, Math.max(0, position.weight))}%`,
+                      borderRadius: 2,
+                      background: warn ? 'var(--mantine-color-orange-filled)' : 'var(--mantine-primary-color-filled)',
+                    }}
+                  />
+                  {target != null && (
+                    <Box
+                      aria-hidden
+                      style={{
+                        position: 'absolute',
+                        top: -3,
+                        left: `calc(${Math.min(100, target)}% - 1px)`,
+                        width: 2,
+                        height: 10,
+                        borderRadius: 1,
+                        background: 'var(--mantine-color-text)',
+                      }}
+                    />
+                  )}
+                </Box>
+                <Group justify="space-between" mt={4} wrap="nowrap">
+                  <Text size="xs" c="dimmed">
+                    {target != null ? `${formatNum(position.weight, 1)}% · target ${formatNum(target, 0)}%` : `${formatNum(position.weight, 1)}% del portafoglio`}
+                  </Text>
+                  {delta != null && (
+                    <Text size="xs" fw={warn ? 700 : 500} c={warn ? 'orange' : 'dimmed'}>
+                      {`${delta > 0 ? '+' : ''}${formatNum(delta, 1)} pt`}
                     </Text>
-                    <IconArrowUpRight size={14} color={`var(--mantine-color-${plColor}-text)`} />
-                  </Group>
-                  <Text fw={800} size="sm" c={plColor}>{formatMoney(position.unrealized_pl, currency, true)}</Text>
-                  <Text size="xs" c={pctColor}>{formatPct(position.unrealized_pl_pct)}</Text>
-                </Box>
+                  )}
+                </Group>
+              </Box>
+            </UnstyledButton>
+          );
+        })}
+      </Box>
 
-                <Box
-                  style={{
-                    borderRadius: 18,
-                    padding: '12px 14px',
-                    background: isDark ? theme.colors.dark[5] : '#f8fafc',
-                    border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
-                  }}
-                >
-                  <Group justify="space-between" wrap="nowrap" mb={4}>
-                    <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
-                      Var. Giorn.
-                    </Text>
-                    <Group gap={4} wrap="nowrap">
-                      {onRefreshPrices && (
-                        <Tooltip label="Aggiorna variazione %" withArrow>
-                          <ActionIcon
-                            variant="subtle"
-                            size="lg"
-                            loading={refreshing}
-                            onClick={onRefreshPrices}
-                            color={isDark ? 'gray.4' : 'gray.6'}
-                            aria-label="Aggiorna variazione %"
-                          >
-                            <IconRefresh size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                      )}
-                      <IconTrendingUp size={14} color={`var(--mantine-color-${dayColor}-text)`} />
-                    </Group>
-                  </Group>
-                  <Text fw={800} size="sm" c={dayColor}>{formatPct(position.day_change_pct)}</Text>
-                </Box>
-              </Group>
-
-              <Group grow>
-                <Box
-                  style={{
-                    borderRadius: 18,
-                    padding: '12px 14px',
-                    background: isDark ? theme.colors.dark[5] : '#f8fafc',
-                    border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid #e2e8f0',
-                  }}
-                >
-                  <Group justify="space-between" wrap="nowrap" mb={4}>
-                    <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
-                      Peso
-                    </Text>
-                    <IconWallet size={14} color="var(--mantine-primary-color-filled)" />
-                  </Group>
-                  <Progress value={position.weight} size="sm" radius="xl" color={warnTarget ? 'orange' : 'teal'} mb={6} />
-                  <Text fw={700} size="sm">{formatNum(position.weight, 1)}%</Text>
-                </Box>
-              </Group>
-
-              <Group gap="xs" wrap="wrap">
-                <Badge variant="light" color="gray">{`Qta ${formatNum(position.quantity)}`}</Badge>
-                <Badge variant="light" color="gray">{`Prezzo ${formatMoney(position.market_price, currency)}`}</Badge>
-                <Badge variant="light" color="gray">{`Prima op. ${formatFirstTrade(position.first_trade_at)}`}</Badge>
-                {hasTargets && target != null && (
-                  <Badge
-                    variant="light"
-                    color={warnTarget ? 'orange' : 'teal'}
-                    leftSection={<IconTarget size={12} />}
-                  >
-                    {`Target ${formatNum(target, 1)}%${delta != null ? ` · ${delta > 0 ? '+' : ''}${formatNum(delta, 1)}%` : ''}`}
-                  </Badge>
-                )}
-              </Group>
-            </Stack>
-          </Card>
-        );
-      })}
-
-      <Card
-        radius="xl"
-        p="lg"
-        style={{
-          background: isDark
-            ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[6]} 100%)`
-            : 'linear-gradient(135deg, #0f1f1e 0%, #1b2726 100%)',
-          color: '#ffffff',
-          boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.34)' : '0 18px 36px rgba(15, 23, 42, 0.20)',
-        }}
+      <Drawer
+        opened={!!selected}
+        onClose={() => setSelected(null)}
+        {...BOTTOM_SHEET_PROPS}
+        title={selected ? selected.symbol : ''}
       >
-        <Stack gap="sm">
-          <Group justify="space-between" wrap="nowrap">
-            <Text fw={700} size="sm" c="rgba(255,255,255,0.72)">Totale portafoglio</Text>
-            <Text fw={800} size="lg">{formatMoney(totals.totalValue, currency)}</Text>
-          </Group>
-          <Group grow>
-            <Box>
-              <Text size="xs" fw={700} tt="uppercase" c="rgba(255,255,255,0.58)" style={{ letterSpacing: 0.8 }}>
-                P/L
-              </Text>
-              <Text fw={800} size="sm" c={totals.totalPl > 0 ? '#86efac' : totals.totalPl < 0 ? '#fca5a5' : '#e2e8f0'}>
-                {formatMoney(totals.totalPl, currency, true)}
-              </Text>
-            </Box>
-            <Box>
-              <Text size="xs" fw={700} tt="uppercase" c="rgba(255,255,255,0.58)" style={{ letterSpacing: 0.8 }}>
-                P/L %
-              </Text>
-              <Text fw={800} size="sm" c={totals.totalPlPct > 0 ? '#86efac' : totals.totalPlPct < 0 ? '#fca5a5' : '#e2e8f0'}>
-                {formatPct(totals.totalPlPct)}
-              </Text>
-            </Box>
-          </Group>
-        </Stack>
-      </Card>
+        {selected && (
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">{selected.name}</Text>
+            {selected.price_stale && (
+              <Badge color="orange" variant="light" leftSection={<IconAlertTriangle size={12} />} style={{ alignSelf: 'flex-start' }}>
+                {`Prezzo non aggiornato${selected.price_date ? ` · ultimo ${formatDate(selected.price_date)}` : ''}`}
+              </Badge>
+            )}
+            <SimpleGrid cols={2} spacing="md" verticalSpacing="sm">
+              <Detail label="Valore" value={formatMoney(selected.market_value, currency)} />
+              <Detail
+                label="P/L"
+                value={`${formatMoney(selected.unrealized_pl, currency, true)} · ${formatPct(selected.unrealized_pl_pct)}`}
+                color={getVariationColor(selected.unrealized_pl)}
+              />
+              <Detail label="Oggi" value={formatPct(selected.day_change_pct)} color={getVariationColor(selected.day_change_pct)} />
+              <Detail
+                label="Peso"
+                value={selectedTarget != null
+                  ? `${formatNum(selected.weight, 1)}% (target ${formatNum(selectedTarget, 0)}%)`
+                  : `${formatNum(selected.weight, 1)}%`}
+                color={selectedDrift != null && Math.abs(selectedDrift) > TARGET_DRIFT_WARNING ? 'orange' : undefined}
+              />
+              <Detail label="Quantità" value={formatNum(selected.quantity, 4)} />
+              <Detail label="Prezzo" value={formatMoney(selected.market_price, currency)} />
+              <Detail label="Prezzo medio" value={formatMoney(selected.avg_cost, currency)} />
+              <Detail label="Prima operazione" value={formatDate(selected.first_trade_at)} />
+            </SimpleGrid>
+            {onRefreshPrices && (
+              <Button
+                variant="light"
+                leftSection={<IconRefresh size={16} />}
+                loading={refreshing}
+                onClick={onRefreshPrices}
+              >
+                Aggiorna prezzi
+              </Button>
+            )}
+          </Stack>
+        )}
+      </Drawer>
     </Stack>
+  );
+}
+
+function Detail({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <Box>
+      <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 0.6 }}>{label}</Text>
+      <Text fw={700} size="sm" c={color}>{value}</Text>
+    </Box>
   );
 }

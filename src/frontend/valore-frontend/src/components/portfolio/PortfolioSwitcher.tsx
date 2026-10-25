@@ -34,6 +34,7 @@ import {
   IconWallet,
 } from '@tabler/icons-react';
 import type { Portfolio } from '../../services/api';
+import { BOTTOM_SHEET_PROPS } from '../mobile/bottomSheet';
 
 interface PortfolioSwitcherProps {
   portfolios: Portfolio[];
@@ -440,14 +441,8 @@ export function PortfolioSwitcher({
               setOpened(false);
               setQuery('');
             }}
-            position="bottom"
-            size="auto"
-            radius="20px 20px 0 0"
+            {...BOTTOM_SHEET_PROPS}
             title="Seleziona portafoglio"
-            styles={{
-              content: { paddingBottom: 'var(--safe-area-bottom)' },
-              body: { paddingBottom: 'calc(var(--mantine-spacing-md) + var(--safe-area-bottom))' },
-            }}
           >
             {list}
           </Drawer>

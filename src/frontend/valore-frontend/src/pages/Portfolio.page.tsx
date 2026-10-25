@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Table,
-  Card,
   Button,
   Text,
   Group,
@@ -11,8 +10,6 @@ import {
   Tabs,
   Tooltip,
   UnstyledButton,
-  useComputedColorScheme,
-  useMantineTheme,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconCopy, IconFileImport, IconCoins, IconSettings2, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
@@ -40,14 +37,11 @@ import { PortfolioModal, PortfolioCloneModal, PortfolioDeleteModal, EditTransact
 import { TransactionDrawer } from '../components/portfolio/drawers/TransactionDrawer';
 import { TargetAllocationDrawer } from '../components/portfolio/drawers/TargetAllocationDrawer';
 import { PortfolioEmptyState } from '../components/portfolio/sections/PortfolioEmptyState';
-import { TransactionMobileCard } from '../components/portfolio/TransactionMobileCard';
+import { TransactionMobileList } from '../components/portfolio/TransactionMobileList';
 import { AssetInfoModal } from '../components/dashboard/holdings/AssetInfoModal';
 
 export function PortfolioPage() {
   const s = usePortfolioPage();
-  const theme = useMantineTheme();
-  const colorScheme = useComputedColorScheme('light');
-  const isDark = colorScheme === 'dark';
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
@@ -100,27 +94,6 @@ export function PortfolioPage() {
     );
   });
 
-  // --- Transaction mobile cards (using reusable component) ---
-  const transactionMobileCards = s.sortedTransactions.map((tx) => (
-    <TransactionMobileCard
-      key={`tx-mobile-${tx.id}`}
-      id={tx.id}
-      symbol={tx.symbol}
-      assetName={tx.asset_name}
-      side={tx.side}
-      tradeAt={tx.trade_at}
-      quantity={tx.quantity}
-      price={tx.price}
-      fees={tx.fees ?? 0}
-      taxes={tx.taxes ?? 0}
-      tradeCurrency={tx.trade_currency}
-      notes={tx.notes}
-      deleting={s.deletingTransactionId === tx.id}
-      onEdit={() => s.openEditTransactionModal(tx)}
-      onDelete={() => s.openDeleteTransactionModal(tx)}
-    />
-  ));
-
   // --- Totals row ---
   if (s.sortedTransactions.length > 0) {
     transactionRows.push(
@@ -150,31 +123,6 @@ export function PortfolioPage() {
       </Table.Tr>,
     );
 
-    transactionMobileCards.push(
-      <Card
-        key="tx-mobile-total"
-        radius="xl"
-        p="lg"
-        style={{
-          background: isDark
-            ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[7]} 100%)`
-            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-          color: '#ffffff',
-          boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.32)' : '0 18px 36px rgba(15, 23, 42, 0.20)',
-        }}
-      >
-        <Group justify="space-between" gap="xs">
-          <Text fw={700} c="rgba(255,255,255,0.75)">Totale filtro</Text>
-          {s.transactionTotals.mixedCurrencies ? (
-            <Text fw={700} c="rgba(255,255,255,0.75)">Valute miste</Text>
-          ) : (
-            <Text fw={700}>
-              {formatMoneyOrNA(s.transactionTotals.totalValue, s.transactionTotals.currency ?? s.selectedPortfolio?.base_currency)}
-            </Text>
-          )}
-        </Group>
-      </Card>,
-    );
   }
 
   const mobileTabItems: { value: string; label: string; icon: typeof IconTarget }[] = [];
@@ -282,7 +230,20 @@ export function PortfolioPage() {
           sortDir={s.transactionSortDir}
           onSortDirChange={(value) => s.setTransactionSortDir((value as 'asc' | 'desc') ?? 'desc')}
           rows={transactionRows}
-          mobileCards={transactionMobileCards}
+          mobileCards={(
+            <TransactionMobileList
+              transactions={s.sortedTransactions}
+              groupByDate={s.transactionSortKey === 'trade_at'}
+              totalLabel={s.sortedTransactions.length === 0
+                ? null
+                : s.transactionTotals.mixedCurrencies
+                  ? 'Valute miste'
+                  : formatMoneyOrNA(s.transactionTotals.totalValue, s.transactionTotals.currency ?? s.selectedPortfolio?.base_currency)}
+              deletingId={s.deletingTransactionId}
+              onEdit={s.openEditTransactionModal}
+              onDelete={s.openDeleteTransactionModal}
+            />
+          )}
           hasRows={s.sortedTransactions.length > 0}
           selectedPortfolioId={s.selectedPortfolioId}
           showActions={!s.isMobile}
