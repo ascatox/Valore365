@@ -16,6 +16,14 @@ export const formatNum = (value: number, decimals = 2) =>
 
 export const formatPct = (value: number) => `${value >= 0 ? '+' : ''}${formatNum(value, 2)}%`;
 
+// Interest rates are in percent; their changes are shown in basis points.
+export const formatRate = (value: number) => `${formatNum(value, 3)}%`;
+
+export const formatBasisPoints = (percentagePoints: number) => {
+  const bp = Math.round(percentagePoints * 100);
+  return `${bp > 0 ? '+' : ''}${bp} pb`;
+};
+
 export const getVariationColor = (value: number) => (value > 0 ? 'green' : value < 0 ? 'red' : 'gray');
 
 export const formatMoney = (value: number, currency = 'EUR', withSign = false) => {

@@ -24,6 +24,7 @@ from ..models import (
 )
 from ..repository import PortfolioRepository
 from ..services.market_calendar_service import MAX_TRADING_DAYS, MarketCalendarService
+from ..services.rates_service import RatesService
 
 
 def register_markets_routes(
@@ -31,8 +32,10 @@ def register_markets_routes(
     repo: PortfolioRepository,
     finance_client: object,
     market_calendar_service: MarketCalendarService | None = None,
+    rates_service: RatesService | None = None,
 ) -> None:
     calendar_service = market_calendar_service or MarketCalendarService()
+    rates = rates_service or RatesService()
 
     MARKET_QUOTES_CACHE_TTL_SECONDS = 60.0
     _market_quotes_cache: dict[str, Any] = {"payload": None, "expires_at": 0.0}
@@ -106,6 +109,7 @@ def register_markets_routes(
             with ThreadPoolExecutor(max_workers=min(4, len(symbol_items))) as executor:
                 items = list(executor.map(lambda item: fetch_one(item[0], item[1]), symbol_items))
             categories.append(MarketCategory(category=cat_key, label=cat_info["label"], items=items))
+        categories.append(MarketCategory(category="rates", label="Tassi", items=rates.get_items()))
 
         response = MarketQuotesResponse(categories=categories)
         with _market_quotes_cache_lock:

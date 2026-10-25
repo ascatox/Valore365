@@ -3,6 +3,8 @@ import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
 import { useChartColors } from '../chartColors';
+import { sortCategoriesByOpenExchange } from '../exchangeSchedules';
+import { formatBasisPoints, formatRate } from '../formatters';
 
 const ANIMATION_DURATION_PER_ITEM = 3; // seconds per item
 
@@ -26,7 +28,8 @@ function formatTickerChange(pct: number | null): string {
 function TickerItem({ item, isDark }: { item: MarketQuoteItem; isDark: boolean }) {
   const theme = useMantineTheme();
   const chartColors = useChartColors();
-  const pct = item.change_pct;
+  const isRate = item.kind === 'rate';
+  const pct = isRate ? item.change : item.change_pct;
   const isPositive = pct != null && pct >= 0;
   const color = pct == null ? (isDark ? theme.colors.dark[1] : '#666')
     : isPositive ? chartColors.gain : chartColors.loss;
@@ -45,7 +48,7 @@ function TickerItem({ item, isDark }: { item: MarketQuoteItem; isDark: boolean }
         {item.name}
       </Text>
       <Text fw={600} size="sm" style={{ whiteSpace: 'nowrap' }}>
-        {formatTickerPrice(item.price)}
+        {isRate && item.price != null ? formatRate(item.price) : formatTickerPrice(item.price)}
       </Text>
       {pct != null && (
         <Group gap={2} wrap="nowrap">
@@ -53,7 +56,7 @@ function TickerItem({ item, isDark }: { item: MarketQuoteItem; isDark: boolean }
             ? <IconTrendingUp size={14} color={color} />
             : <IconTrendingDown size={14} color={color} />}
           <Text fw={600} size="sm" c={color} style={{ whiteSpace: 'nowrap' }}>
-            {formatTickerChange(pct)}
+            {isRate ? formatBasisPoints(pct) : formatTickerChange(pct)}
           </Text>
         </Group>
       )}
@@ -67,7 +70,9 @@ export function MarketTicker() {
   const theme = useMantineTheme();
   const isDark = colorScheme === 'dark';
 
-  const allItems: MarketQuoteItem[] = data?.categories.flatMap((c) => c.items) ?? [];
+  const allItems: MarketQuoteItem[] = data
+    ? sortCategoriesByOpenExchange(data.categories, new Date()).flatMap((c) => c.items)
+    : [];
 
   if (allItems.length === 0) return null;
 

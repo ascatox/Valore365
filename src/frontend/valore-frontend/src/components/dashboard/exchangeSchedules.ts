@@ -81,3 +81,18 @@ export function getExchangeStatus(symbol: string, now: Date): ExchangeStatus | n
   const open = isExchangeOpen(schedule, now);
   return { exchange: schedule.exchange, open, closedReason: open ? null : getClosedReason(schedule, now) };
 }
+
+// Puts the instruments whose exchange is open first, keeping the given order
+// otherwise; symbols without a schedule (such as interest rates) count as closed.
+export function sortByOpenExchange<T extends { symbol: string }>(items: T[], now: Date): T[] {
+  const isOpen = (item: T) => getExchangeStatus(item.symbol, now)?.open === true;
+  return [...items.filter(isOpen), ...items.filter((item) => !isOpen(item))];
+}
+
+// Same order for categories: those with at least one open exchange come first,
+// each with its open instruments on top.
+export function sortCategoriesByOpenExchange<C extends { items: { symbol: string }[] }>(categories: C[], now: Date): C[] {
+  const sorted = categories.map((category) => ({ ...category, items: sortByOpenExchange(category.items, now) }));
+  const hasOpen = (category: C) => category.items.some((item) => getExchangeStatus(item.symbol, now)?.open === true);
+  return [...sorted.filter(hasOpen), ...sorted.filter((category) => !hasOpen(category))];
+}

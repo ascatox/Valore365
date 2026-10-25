@@ -659,6 +659,8 @@ class MarketQuoteItem(BaseModel):
     is_fallback: bool = False
     stale: bool = False
     warning: str | None = None
+    # "rate": price is an interest rate in percent and change is in percentage points.
+    kind: Literal["price", "rate"] = "price"
 
 
 class MarketCategory(BaseModel):

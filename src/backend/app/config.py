@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     fmt_api_key: str = ""
     fmt_api_base_url: str = "https://financialmodelingprep.com/stable"
     fmt_timeout_seconds: float = 10.0
+    # Interest rates of the Markets tab: Euribor from the ECB data portal,
+    # IRS (Eurirs) read from a public web page.
+    ecb_data_api_base_url: str = "https://data-api.ecb.europa.eu/service"
+    irs_rates_url: str = "https://www.comparasemplice.it/mutui-online/irs-oggi"
+    rates_timeout_seconds: float = 10.0
 
     price_scheduler_enabled: bool = False
     price_scheduler_interval_seconds: int = 60

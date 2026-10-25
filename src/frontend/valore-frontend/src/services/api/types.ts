@@ -869,6 +869,8 @@ export interface MarketQuoteItem {
   is_fallback: boolean;
   stale: boolean;
   warning: string | null;
+  // 'rate': price is an interest rate in percent, change is in percentage points.
+  kind?: 'price' | 'rate';
 }
 
 export interface MarketCategory {

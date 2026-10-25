@@ -3,11 +3,11 @@ import { Alert, Badge, Box, Card, Group, Loader, Paper, SimpleGrid, Stack, Text,
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
-import { formatDateTime, formatPct, getVariationColor } from '../formatters';
+import { formatBasisPoints, formatDateTime, formatPct, formatRate, getVariationColor } from '../formatters';
 import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
 import { formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
-import { getExchangeStatus, type ExchangeStatus } from '../exchangeSchedules';
+import { getExchangeStatus, sortCategoriesByOpenExchange, type ExchangeStatus } from '../exchangeSchedules';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
 import { MarketCalendarCard } from './MarketCalendarCard';
 import { MarketTicker } from './MarketTicker';
@@ -116,8 +116,11 @@ function MarketItemCard({
   exchangeStatus: ExchangeStatus | null;
   onClick?: () => void;
 }) {
-  const variation = item.change_pct;
+  const isRate = item.kind === 'rate';
+  // Rates move by percentage points: their trend follows the change, shown in basis points.
+  const variation = isRate ? item.change : item.change_pct;
   const variationColor = variation != null ? getVariationColor(variation) : 'gray';
+  const variationLabel = variation == null ? 'N/D' : isRate ? formatBasisPoints(variation) : formatPct(variation);
   const isError = !!item.error;
   const dataWarning = formatProviderWarning(item.warning) ?? (item.stale ? 'Prezzo non realtime.' : null);
   // One badge for data quality: the degradation, if any, then the price source.
@@ -129,7 +132,7 @@ function MarketItemCard({
   ].filter(Boolean).join(' · ');
 
   return (
-    <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1, cursor: 'pointer' }} onClick={onClick}>
+    <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1, cursor: onClick ? 'pointer' : 'default' }} onClick={onClick}>
       <Stack gap={4}>
         <Group justify="space-between" align="flex-start" wrap="nowrap">
           <div>
@@ -149,7 +152,9 @@ function MarketItemCard({
           </ThemeIcon>
         </Group>
 
-        <Text fw={700} size="lg">{formatMarketPrice(item.price)}</Text>
+        <Text fw={700} size="lg">
+          {isRate ? (item.price != null ? formatRate(item.price) : 'N/D') : formatMarketPrice(item.price)}
+        </Text>
 
         {qualityLabel && (
           <Badge
@@ -164,11 +169,13 @@ function MarketItemCard({
 
         <Group justify="space-between" gap="xs">
           <Text size="sm" c={variationColor} fw={600}>
-            {variation != null ? formatPct(variation) : 'N/D'}
+            {variationLabel}
           </Text>
-          <Text size="xs" c="dimmed">
-            {item.ts ? formatDateTime(item.ts) : 'N/D'}
-          </Text>
+          {!isRate && (
+            <Text size="xs" c="dimmed">
+              {item.ts ? formatDateTime(item.ts) : 'N/D'}
+            </Text>
+          )}
         </Group>
 
         <IntradayMiniChart item={item} />
@@ -211,6 +218,11 @@ export function MercatiTab() {
     }
     return latestTs;
   }, [data]);
+
+  const categories = useMemo(
+    () => (data ? sortCategoriesByOpenExchange(data.categories, now) : []),
+    [data, now],
+  );
 
   const degradedItems = useMemo(
     () => data?.categories.flatMap((category) => category.items).filter((item) => item.stale || item.is_fallback) ?? [],
@@ -258,7 +270,7 @@ export function MercatiTab() {
         <Text size="sm" c="dimmed">Nessun dato di mercato disponibile.</Text>
       )}
 
-      {data?.categories.map((category) => (
+      {categories.map((category) => (
         <Card key={category.category} withBorder radius="md" p="sm" shadow="sm">
           <Text fw={700} mb="sm">{category.label}</Text>
           <SimpleGrid cols={{ base: 1, xs: 2, sm: 2, md: 3, lg: 4 }} spacing="sm">
@@ -267,7 +279,8 @@ export function MercatiTab() {
                 key={item.symbol}
                 item={item}
                 exchangeStatus={getExchangeStatus(item.symbol, now)}
-                onClick={() => setSelectedSymbol(item.symbol)}
+                // Rates have no Yahoo symbol to describe.
+                onClick={item.kind === 'rate' ? undefined : () => setSelectedSymbol(item.symbol)}
               />
             ))}
           </SimpleGrid>
