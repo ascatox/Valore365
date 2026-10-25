@@ -7,6 +7,7 @@ import {
   formatMoneyOrNA,
   formatNum,
   formatTransactionSideLabel,
+  getTransactionNetTotal,
   getTransactionSideColor,
 } from '../dashboard/formatters';
 import { BOTTOM_SHEET_PROPS } from '../mobile/bottomSheet';
@@ -23,12 +24,6 @@ interface TransactionMobileListProps {
 
 // Money flowing into the portfolio's positions or cash vs out of it.
 const INBOUND_SIDES = new Set(['buy', 'deposit', 'dividend', 'interest']);
-
-function transactionTotal(tx: TransactionListItem): number {
-  const gross = tx.quantity * tx.price;
-  const costs = (tx.fees ?? 0) + (tx.taxes ?? 0);
-  return tx.side === 'buy' ? gross + costs : gross - costs;
-}
 
 function dayKey(value: string): string {
   const dt = new Date(value);
@@ -117,7 +112,7 @@ export function TransactionMobileList({
                     </Text>
                   </Box>
                   <Text fw={700} size="sm" style={{ flexShrink: 0 }}>
-                    {formatMoneyOrNA(transactionTotal(tx), tx.trade_currency)}
+                    {formatMoneyOrNA(getTransactionNetTotal(tx), tx.trade_currency)}
                   </Text>
                 </Group>
               </UnstyledButton>
@@ -150,7 +145,7 @@ export function TransactionMobileList({
               <Detail label="Commissioni" value={formatMoneyOrNA(selected.fees ?? 0, selected.trade_currency)} />
               <Detail label="Tasse" value={formatMoneyOrNA(selected.taxes ?? 0, selected.trade_currency)} />
               <Detail label="Lordo" value={formatMoneyOrNA(selected.quantity * selected.price, selected.trade_currency)} />
-              <Detail label="Totale" value={formatMoneyOrNA(transactionTotal(selected), selected.trade_currency)} />
+              <Detail label="Totale" value={formatMoneyOrNA(getTransactionNetTotal(selected), selected.trade_currency)} />
             </SimpleGrid>
             {!!selected.notes && (
               <Box>

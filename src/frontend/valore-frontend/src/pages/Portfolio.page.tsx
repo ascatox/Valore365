@@ -24,7 +24,7 @@ import { usePortfolioAiExport } from '../components/portfolio/hooks/usePortfolio
 
 import { TransactionsSection } from '../components/portfolio/sections/TransactionsSection.tsx';
 
-import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel, getTransactionSideColor } from '../components/dashboard/formatters';
+import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel, getTransactionNetTotal, getTransactionSideColor } from '../components/dashboard/formatters';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -81,8 +81,7 @@ export function PortfolioPage() {
 
   // --- Transaction table rows ---
   const transactionRows = s.sortedTransactions.map((tx) => {
-    const gross = tx.quantity * tx.price;
-    const total = tx.side === 'buy' ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0) : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+    const total = getTransactionNetTotal(tx);
     return (
       <Table.Tr key={tx.id}>
         <Table.Td>{formatDateTime(tx.trade_at)}</Table.Td>

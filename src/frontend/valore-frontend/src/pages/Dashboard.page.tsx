@@ -158,6 +158,15 @@ export function DashboardPage() {
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
 
+      {/* The Panoramica hero carries this line; the other tabs need it too,
+          since pull-to-refresh and auto-refresh work from any of them. */}
+      {isMobile && activeTab !== 'panoramica' && mobileStatusText && (
+        <Group gap={6} mb="sm" wrap="nowrap">
+          {refreshing && <Loader size={10} />}
+          <Text size="xs" c="dimmed">{mobileStatusText}</Text>
+        </Group>
+      )}
+
       {!isMobile && (
         <Group mb="md" gap="xs" wrap="wrap">
           {refreshing && (

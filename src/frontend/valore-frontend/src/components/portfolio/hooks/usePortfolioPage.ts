@@ -19,7 +19,7 @@ import type {
   TransactionListItem,
 } from '../../../services/api';
 import { STORAGE_KEYS } from '../../dashboard/constants';
-import { formatNum, formatTransactionSideLabel } from '../../dashboard/formatters';
+import { formatNum, formatTransactionSideLabel, getTransactionNetTotal } from '../../dashboard/formatters';
 
 import { useRebalance } from './useRebalance';
 
@@ -98,7 +98,6 @@ export function usePortfolioPage() {
   const [csvImportOpened, setCsvImportOpened] = useState(false);
   const [targetCsvImportOpened, setTargetCsvImportOpened] = useState(false);
   const [pacDrawerOpened, setPacDrawerOpened] = useState(false);
-  const [mobileActionSheetOpened, setMobileActionSheetOpened] = useState(false);
   const [editingPacRule, setEditingPacRule] = useState<PacRuleRead | null>(null);
   const [pacRefreshTrigger, setPacRefreshTrigger] = useState(0);
 
@@ -258,13 +257,6 @@ export function usePortfolioPage() {
   }, [transactions, transactionFilterQuery, transactionFilterSide]);
 
   const sortedTransactions = useMemo(() => {
-    const getDisplayedValue = (tx: TransactionListItem) => {
-      const gross = tx.quantity * tx.price;
-      return tx.side === 'buy'
-        ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
-        : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
-    };
-
     const copy = [...filteredTransactions];
     copy.sort((a, b) => {
       let av: string | number;
@@ -279,8 +271,8 @@ export function usePortfolioPage() {
           bv = b.side;
           break;
         case 'value':
-          av = getDisplayedValue(a);
-          bv = getDisplayedValue(b);
+          av = getTransactionNetTotal(a);
+          bv = getTransactionNetTotal(b);
           break;
         case 'trade_at':
         default:
@@ -299,11 +291,7 @@ export function usePortfolioPage() {
     let totalValue = 0;
     let totalFees = 0;
     for (const tx of sortedTransactions) {
-      const gross = tx.quantity * tx.price;
-      const displayed = tx.side === 'buy'
-        ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0)
-        : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
-      totalValue += displayed;
+      totalValue += getTransactionNetTotal(tx);
       totalFees += tx.fees ?? 0;
     }
     const currencies = Array.from(new Set(sortedTransactions.map((tx) => tx.trade_currency).filter(Boolean)));
@@ -553,8 +541,6 @@ export function usePortfolioPage() {
     csvImportOpened, setCsvImportOpened, targetCsvImportOpened, setTargetCsvImportOpened,
     // PAC
     pacDrawerOpened, setPacDrawerOpened, editingPacRule, setEditingPacRule, pacRefreshTrigger, setPacRefreshTrigger,
-    // Mobile
-    mobileActionSheetOpened, setMobileActionSheetOpened,
     // Copilot
     copilotOpened, openCopilot, closeCopilot, copilotAvailable,
     // Data loaders
