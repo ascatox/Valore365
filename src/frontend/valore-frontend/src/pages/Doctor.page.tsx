@@ -3,15 +3,15 @@ import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Box,
   Button,
   Card,
   Container,
-  CopyButton,
+  Drawer,
   Grid,
   Group,
   Loader,
+  Modal,
   SimpleGrid,
   Stack,
   Table,
@@ -25,11 +25,7 @@ import {
   IconAlertTriangle,
   IconBook2,
   IconChartBubble,
-  IconCheck,
-  IconCopy,
-  IconLink,
   IconRobot,
-  IconShare,
   IconSparkles,
 } from '@tabler/icons-react';
 import { toBlob, toPng } from 'html-to-image';
@@ -38,7 +34,9 @@ import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
 import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetailsModal';
-import { DOCTOR_GLOSSARY, GlossaryTooltip } from '../components/doctor/GlossaryTooltip';
+import { DOCTOR_GLOSSARY, GlossaryTooltip, type GlossaryEntry } from '../components/doctor/GlossaryTooltip';
+import { DoctorScoreCard, type DoctorFactor } from '../components/doctor/DoctorScoreCard';
+import { BOTTOM_SHEET_PROPS } from '../components/mobile/bottomSheet';
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
 import { StressTestCard } from '../components/doctor/StressTestCard';
 import { XRayCard } from '../components/doctor/XRayCard';
@@ -57,8 +55,8 @@ function isPrivacyModeEnabled(): boolean {
 
 function scoreTone(score: number): { label: string; color: string } {
   if (score >= 80) return { label: 'Eccellente', color: 'teal' };
-  if (score >= 70) return { label: 'Buono', color: 'blue' };
-  if (score >= 60) return { label: 'Nella media', color: 'yellow' };
+  if (score >= 70) return { label: 'Buono', color: 'teal' };
+  if (score >= 60) return { label: 'Nella media', color: 'orange' };
   return { label: 'Debole', color: 'red' };
 }
 
@@ -239,6 +237,26 @@ function glossaryConceptKey(concept: string | undefined): string | null {
   return null;
 }
 
+// Doctor alert types and glossary term behind each summary factor.
+const FACTOR_ALERT_TYPES: Record<DoctorFactor, string[]> = {
+  risk_level: ['portfolio_risk'],
+  diversification: ['geographic_concentration', 'position_concentration'],
+  overlap: ['etf_overlap'],
+  cost_efficiency: ['high_costs'],
+};
+
+const FACTOR_GLOSSARY_TERM: Record<DoctorFactor, string> = {
+  risk_level: 'volatilita',
+  diversification: 'diversificazione',
+  overlap: 'overlap',
+  cost_efficiency: 'TER',
+};
+
+// Leaves the share button, chevrons and "Come migliorare" out of the shared image.
+function shareImageFilter(node: HTMLElement): boolean {
+  return !(node.dataset && 'shareExclude' in node.dataset);
+}
+
 export function DoctorPage() {
   type PendingCopilotPrompt = { id: number; text: string } | null;
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -252,6 +270,8 @@ export function DoctorPage() {
   const [pendingCopilotPrompt, setPendingCopilotPrompt] = useState<PendingCopilotPrompt>(null);
   const [educationStats, setEducationStats] = useState<DoctorEducationStats>(() => createEmptyDoctorEducationStats());
   const profileCardRef = useRef<HTMLDivElement | null>(null);
+  const signalsRef = useRef<HTMLDivElement | null>(null);
+  const [glossaryEntry, setGlossaryEntry] = useState<GlossaryEntry | null>(null);
   const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
 
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
@@ -344,6 +364,18 @@ export function DoctorPage() {
     setEducationStats(nextStats);
   }
 
+  // A factor opens its alert when the Doctor raised one, else its glossary entry.
+  function handleFactorOpen(factor: DoctorFactor) {
+    const alert = health?.alerts.find((item) => FACTOR_ALERT_TYPES[factor].includes(item.type));
+    if (alert) {
+      handleAlertDetailsOpen(alert);
+      return;
+    }
+    const term = FACTOR_GLOSSARY_TERM[factor];
+    handleGlossaryOpen(term);
+    setGlossaryEntry(DOCTOR_GLOSSARY.find((entry) => entry.term === term) ?? null);
+  }
+
   function handleAlertDetailsOpen(alert: PortfolioHealthAlert) {
     updateEducationStats((stats) => {
       stats.totals.alertDetailOpens += 1;
@@ -406,7 +438,7 @@ export function DoctorPage() {
 
       // Strategy 1: Web Share API (works on Mobile Safari / iOS)
       if (navigator.share && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        const dataUrl = await toPng(profileCardRef.current, { cacheBust: true, pixelRatio });
+        const dataUrl = await toPng(profileCardRef.current, { cacheBust: true, pixelRatio, filter: shareImageFilter });
         const res = await fetch(dataUrl);
         const blob = await res.blob();
         const file = new File([blob], 'doctor-report.png', { type: 'image/png' });
@@ -421,7 +453,7 @@ export function DoctorPage() {
 
       // Strategy 2: Clipboard API (desktop browsers)
       if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
-        const blob = await toBlob(profileCardRef.current, { cacheBust: true, pixelRatio });
+        const blob = await toBlob(profileCardRef.current, { cacheBust: true, pixelRatio, filter: shareImageFilter });
         if (!blob) throw new Error('Image export failed');
         await navigator.clipboard.write([
           new ClipboardItem({ [blob.type || 'image/png']: blob }),
@@ -432,7 +464,7 @@ export function DoctorPage() {
       }
 
       // Strategy 3: Download fallback (any browser)
-      const dataUrl = await toPng(profileCardRef.current, { cacheBust: true, pixelRatio });
+      const dataUrl = await toPng(profileCardRef.current, { cacheBust: true, pixelRatio, filter: shareImageFilter });
       const link = document.createElement('a');
       link.download = 'doctor-report.png';
       link.href = dataUrl;
@@ -485,99 +517,33 @@ export function DoctorPage() {
             <>
               <Grid gutter="lg" align="stretch">
                 <Grid.Col span={{ base: 12, xl: 8 }}>
-                  <Card
+                  <DoctorScoreCard
                     ref={profileCardRef}
-                    radius="xl"
-                    padding={{ base: 'md', sm: 'xl' }}
-                    withBorder
-                    style={{ background: 'linear-gradient(140deg, #103c39 0%, #1f5d59 58%, #f0b24f 160%)', color: 'white', overflow: 'hidden' }}
-                  >
-                    <Stack gap="lg">
-                      <Group justify="space-between" align="flex-start" wrap="wrap">
-                        <div>
-                          <Text tt="uppercase" fw={800} size="xs" style={{ opacity: 0.72 }}>Portfolio Doctor</Text>
-                          <Title order={1} mt={6} c="white" style={{ fontSize: 'clamp(3rem, 7vw, 5.5rem)', lineHeight: 0.95 }}>
-                            {isPrivacyModeEnabled() ? PRIVACY_MASK : health.score}
-                            {!isPrivacyModeEnabled() && <Text component="span" inherit style={{ opacity: 0.72 }}> / 100</Text>}
-                          </Title>
-                          <Text c="rgba(255,255,255,0.82)" mt="sm" size="lg">
-                            {selectedPortfolio.name}
-                          </Text>
-                        </div>
-                        <Badge size="xl" radius="sm" color={tone.color} variant="filled">
-                          {tone.label}
-                        </Badge>
-                      </Group>
-
-                      <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="md">
-                        <MetricChip label="Rischio" value={summaryLabel('risk_level', health.summary.risk_level)} />
-                        <MetricChip label="Diversificazione" value={summaryLabel('diversification', health.summary.diversification)} />
-                        <MetricChip label="Sovrapposizione" value={summaryLabel('overlap', health.summary.overlap)} />
-                        <MetricChip label="Costi" value={summaryLabel('cost_efficiency', health.summary.cost_efficiency)} />
-                      </SimpleGrid>
-
-                      <Group gap="sm" wrap="wrap">
-                        <CopyButton value={shareSummary}>
-                          {({ copied, copy }) => (
-                            <Button
-                              variant="white"
-                              color="dark"
-                              leftSection={copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
-                              onClick={copy}
-                              radius="xl"
-                            >
-                              {copied ? 'Riepilogo copiato' : 'Copia riepilogo'}
-                            </Button>
-                          )}
-                        </CopyButton>
-                        <CopyButton value={typeof window !== 'undefined' ? window.location.href : '/doctor'}>
-                          {({ copied, copy }) => (
-                            <Button
-                              variant="outline"
-                              color="gray"
-                              leftSection={copied ? <IconCheck size={16} /> : <IconLink size={16} />}
-                              onClick={copy}
-                              radius="xl"
-                            >
-                              {copied ? 'Link copiato' : 'Copia link'}
-                            </Button>
-                          )}
-                        </CopyButton>
-                        <Button
-                          variant="outline"
-                          color="gray"
-                          leftSection={copyImageState === 'copied' ? <IconCheck size={16} /> : <IconShare size={16} />}
-                          onClick={handleCopyProfileImage}
-                          radius="xl"
-                          loading={copyImageState === 'copying'}
-                        >
-                          {copyImageState === 'copied'
-                            ? 'Fatto!'
-                            : copyImageState === 'error'
-                              ? 'Non disponibile'
-                              : 'Condividi immagine'}
-                        </Button>
-                        {copilotAvailable && (
-                          <Button
-                            variant="light"
-                            color="teal"
-                            leftSection={<IconRobot size={16} />}
-                            onClick={openCopilot}
-                            radius="xl"
-                          >
-                            Apri Doctor Copilot
-                          </Button>
-                        )}
-                        <Badge variant="light" color="yellow" leftSection={<IconShare size={12} />} style={{ whiteSpace: 'normal', height: 'auto', lineHeight: 1.4 }}>
-                          Pensato per la condivisione via screenshot
-                        </Badge>
-                      </Group>
-                    </Stack>
-                  </Card>
+                    score={health.score}
+                    verdict={tone.label}
+                    verdictColor={tone.color}
+                    summary={health.summary}
+                    summaryLabel={summaryLabel}
+                    privacy={isPrivacyModeEnabled()}
+                    shareSummary={shareSummary}
+                    shareLink={typeof window !== 'undefined' ? window.location.href : '/doctor'}
+                    shareImageState={copyImageState}
+                    onShareImage={handleCopyProfileImage}
+                    onFactorOpen={handleFactorOpen}
+                    onImprove={() => signalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  />
                 </Grid.Col>
 
                 <Grid.Col span={{ base: 12, xl: 4 }}>
-                  <Card withBorder radius="xl" padding="lg" h="100%" style={{ overflow: 'hidden' }}>
+                  <Card
+                    ref={signalsRef}
+                    withBorder
+                    radius="xl"
+                    padding="lg"
+                    h="100%"
+                    // "Come migliorare" scrolls here; keep it clear of the sticky headers.
+                    style={{ overflow: 'hidden', scrollMarginTop: 'calc(var(--app-shell-header-offset, 0px) + 72px)' }}
+                  >
                     <Stack gap="md">
                       <Group gap="sm">
                         <ThemeIcon color="yellow" variant="light" radius="xl">
@@ -768,6 +734,16 @@ export function DoctorPage() {
 
               <StressTestCard portfolioId={portfolioId} />
 
+              {isMobile ? (
+                <Drawer {...BOTTOM_SHEET_PROPS} opened={glossaryEntry != null} onClose={() => setGlossaryEntry(null)} title={glossaryEntry?.title}>
+                  {glossaryEntry && <GlossaryBody entry={glossaryEntry} />}
+                </Drawer>
+              ) : (
+                <Modal opened={glossaryEntry != null} onClose={() => setGlossaryEntry(null)} title={glossaryEntry?.title} centered>
+                  {glossaryEntry && <GlossaryBody entry={glossaryEntry} />}
+                </Modal>
+              )}
+
               <DoctorAlertDetailsModal
                 alert={detailsAlert}
                 opened={detailsAlert != null}
@@ -814,19 +790,18 @@ export function DoctorPage() {
   );
 }
 
-function MetricChip({ label, value }: { label: string; value: string }) {
+function GlossaryBody({ entry }: { entry: GlossaryEntry }) {
   return (
-    <Box
-      style={{
-        borderRadius: 16,
-        padding: '14px 16px',
-        background: 'rgba(255,255,255,0.12)',
-        border: '1px solid rgba(255,255,255,0.16)',
-      }}
-    >
-      <Text size="xs" tt="uppercase" c="rgba(255,255,255,0.7)" style={{ wordBreak: 'break-word' }}>{label}</Text>
-      <Text fw={700} c="white" style={{ wordBreak: 'break-word' }}>{value}</Text>
-    </Box>
+    <Stack gap="md">
+      <Box>
+        <Text size="xs" tt="uppercase" fw={800} c="dimmed">Cos'è</Text>
+        <Text size="sm" lh={1.55}>{entry.definition}</Text>
+      </Box>
+      <Box>
+        <Text size="xs" tt="uppercase" fw={800} c="dimmed">Esempio sul portafoglio</Text>
+        <Text size="sm" lh={1.55}>{entry.portfolioExample}</Text>
+      </Box>
+    </Stack>
   );
 }
 

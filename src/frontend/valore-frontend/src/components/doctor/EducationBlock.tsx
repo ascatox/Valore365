@@ -9,7 +9,7 @@ interface EducationBlockProps {
 
 export function EducationBlock({ education, onPromptSelect }: EducationBlockProps) {
   return (
-    <Card withBorder radius="lg" padding="lg" bg="var(--mantine-color-gray-0)">
+    <Card withBorder radius="lg" padding="lg" bg="var(--mantine-color-default-hover)">
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <Group gap="sm" align="flex-start">
