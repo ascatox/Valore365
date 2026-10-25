@@ -62,7 +62,7 @@ export function CreatorCapital({ capital, onChange, slots }: CreatorCapitalProps
                       <Text size="sm">{slot.label}</Text>
                     </Group>
                     <Text size="sm" fw={600}>
-                      {amount.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}
+                      {amount.toLocaleString('it-IT', { useGrouping: 'always', style: 'currency', currency: 'EUR' })}
                     </Text>
                   </Group>
                 );

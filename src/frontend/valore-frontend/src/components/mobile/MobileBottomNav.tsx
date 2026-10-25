@@ -1,4 +1,4 @@
-import { Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Group, Portal, Text, UnstyledButton, alpha, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useRef, type CSSProperties, type PointerEvent } from 'react';
 
 interface MobileBottomNavItem {
@@ -71,7 +71,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12 }: M
         touchAction: 'none',
         padding: 6,
         borderRadius: 20,
-        background: isDark ? 'rgba(30,41,59,0.94)' : 'rgba(255,255,255,0.94)',
+        background: isDark ? alpha(theme.colors.dark[5], 0.94) : 'rgba(255,255,255,0.94)',
         backdropFilter: 'blur(16px)',
         border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
         boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',

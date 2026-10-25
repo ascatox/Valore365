@@ -18,6 +18,7 @@ const formatMarketPrice = (value: number | null) => {
   const abs = Math.abs(value);
   const decimals = abs >= 1000 ? 2 : abs >= 1 ? 2 : 4;
   return new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
   }).format(value);
@@ -117,6 +118,13 @@ function MarketItemCard({
   const variationColor = variation != null ? getVariationColor(variation) : 'gray';
   const isError = !!item.error;
   const dataWarning = formatProviderWarning(item.warning) ?? (item.stale ? 'Prezzo non realtime.' : null);
+  // One badge for data quality: the degradation, if any, then the price source.
+  // The banner above the grid already explains fallback and delayed prices.
+  const degraded = item.is_fallback || item.stale;
+  const qualityLabel = [
+    item.is_fallback ? 'Fallback' : item.stale ? 'Differito' : null,
+    item.price_source ? formatPriceSourceLabel(item.price_source) : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <Card withBorder radius="sm" shadow="xs" p="sm" style={{ opacity: isError ? 0.75 : 1, cursor: 'pointer' }} onClick={onClick}>
@@ -141,23 +149,16 @@ function MarketItemCard({
 
         <Text fw={700} size="lg">{formatMarketPrice(item.price)}</Text>
 
-        <Group gap={6} wrap="wrap">
-          {item.is_fallback && (
-            <Badge size="xs" variant="light" color="yellow">
-              prezzo fallback
-            </Badge>
-          )}
-          {item.stale && (
-            <Badge size="xs" variant="light" color="orange">
-              non realtime
-            </Badge>
-          )}
-          {item.price_source && (
-            <Badge size="xs" variant="outline" color="gray">
-              {formatPriceSourceLabel(item.price_source)}
-            </Badge>
-          )}
-        </Group>
+        {qualityLabel && (
+          <Badge
+            size="xs"
+            variant={degraded ? 'light' : 'outline'}
+            color={degraded ? 'orange' : 'gray'}
+            style={{ alignSelf: 'flex-start' }}
+          >
+            {qualityLabel}
+          </Badge>
+        )}
 
         <Group justify="space-between" gap="xs">
           <Text size="sm" c={variationColor} fw={600}>

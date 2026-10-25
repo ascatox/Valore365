@@ -122,7 +122,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                     <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
                       P/L
                     </Text>
-                    <IconArrowUpRight size={14} color={plColor === 'green' ? '#16a34a' : plColor === 'red' ? '#dc2626' : (isDark ? theme.colors.gray[4] : '#64748b')} />
+                    <IconArrowUpRight size={14} color={`var(--mantine-color-${plColor}-text)`} />
                   </Group>
                   <Text fw={800} size="sm" c={plColor}>{formatMoney(position.unrealized_pl, currency, true)}</Text>
                   <Text size="xs" c={pctColor}>{formatPct(position.unrealized_pl_pct)}</Text>
@@ -145,16 +145,17 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                         <Tooltip label="Aggiorna variazione %" withArrow>
                           <ActionIcon
                             variant="subtle"
-                            size="xs"
+                            size="lg"
                             loading={refreshing}
                             onClick={onRefreshPrices}
                             color={isDark ? 'gray.4' : 'gray.6'}
+                            aria-label="Aggiorna variazione %"
                           >
-                            <IconRefresh size={12} />
+                            <IconRefresh size={16} />
                           </ActionIcon>
                         </Tooltip>
                       )}
-                      <IconTrendingUp size={14} color={dayColor === 'green' ? '#16a34a' : dayColor === 'red' ? '#dc2626' : (isDark ? theme.colors.gray[4] : '#64748b')} />
+                      <IconTrendingUp size={14} color={`var(--mantine-color-${dayColor}-text)`} />
                     </Group>
                   </Group>
                   <Text fw={800} size="sm" c={dayColor}>{formatPct(position.day_change_pct)}</Text>
@@ -174,9 +175,9 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                     <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
                       Peso
                     </Text>
-                    <IconWallet size={14} color={theme.colors.blue[5]} />
+                    <IconWallet size={14} color="var(--mantine-primary-color-filled)" />
                   </Group>
-                  <Progress value={position.weight} size="sm" radius="xl" color="blue" mb={6} />
+                  <Progress value={position.weight} size="sm" radius="xl" color={warnTarget ? 'orange' : 'teal'} mb={6} />
                   <Text fw={700} size="sm">{formatNum(position.weight, 1)}%</Text>
                 </Box>
               </Group>
@@ -206,7 +207,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
         style={{
           background: isDark
             ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[6]} 100%)`
-            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            : 'linear-gradient(135deg, #0f1f1e 0%, #1b2726 100%)',
           color: '#ffffff',
           boxShadow: isDark ? '0 18px 36px rgba(0, 0, 0, 0.34)' : '0 18px 36px rgba(15, 23, 42, 0.20)',
         }}

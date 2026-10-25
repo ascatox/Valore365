@@ -8,7 +8,7 @@ export function KpiStatCard({ label, value, color, icon: Icon, iconColor, gaugeV
       <Group justify="space-between" mb={4}>
         <Text size="xs" c="dimmed" tt="uppercase" fw={600}>{label}</Text>
         {Icon && (
-          <ThemeIcon color={iconColor ?? 'blue'} variant="light" size="sm" radius="md">
+          <ThemeIcon color={iconColor ?? 'teal'} variant="light" size="sm" radius="md">
             <Icon size={14} />
           </ThemeIcon>
         )}

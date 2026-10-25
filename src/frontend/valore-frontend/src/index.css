@@ -28,6 +28,8 @@ html {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Fixed-width digits keep amounts aligned in lists and steady on refresh. */
+  font-variant-numeric: tabular-nums;
 }
 
 body,
@@ -57,9 +59,9 @@ nav,
   -webkit-touch-callout: none;
 }
 
-[data-mantine-color-scheme='dark'] html,
+[data-mantine-color-scheme='dark'],
 [data-mantine-color-scheme='dark'] body {
-  background-color: #242424;
+  background-color: var(--mantine-color-dark-7);
 }
 
 a {
@@ -71,7 +73,7 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--mantine-color-blue-6);
+  outline: 2px solid var(--mantine-primary-color-filled);
   outline-offset: 2px;
 }
 
@@ -82,6 +84,15 @@ select:focus-visible {
   textarea,
   select {
     font-size: 16px !important;
+  }
+
+  /* Range and period selectors render at size="xs" (~28px tall); give each
+     option a thumb-sized hit area on touch screens. */
+  .mantine-SegmentedControl-label {
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 }
 

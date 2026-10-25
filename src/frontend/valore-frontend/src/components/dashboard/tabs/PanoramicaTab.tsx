@@ -100,14 +100,14 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
     if (isIntradayWindow && portfolioSummary) {
       const pct = portfolioSummary.day_change_pct;
       return [
-        { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+        { label: '', value: formatMoney(last, mvpCurrency), color: 'teal' },
         { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
       ];
     }
     const first = Number(series[0]?.value ?? 0);
     const pct = Number.isFinite(first) && first > 0 ? ((last / first) - 1) * 100 : 0;
     return [
-      { label: '', value: formatMoney(last, mvpCurrency), color: 'blue' },
+      { label: '', value: formatMoney(last, mvpCurrency), color: 'teal' },
       { label: 'Var', value: formatPct(pct), color: getVariationColor(pct) },
     ];
   }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
@@ -131,7 +131,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow }: Pano
       label: isMobile ? 'Valore Tot' : 'Valore Totale',
       value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
       icon: IconCoin,
-      iconColor: 'blue' as const,
+      iconColor: 'teal' as const,
     },
     {
       label: 'P/L Totale',

@@ -62,6 +62,7 @@ function formatMoney(value: number | null | undefined, currency = 'EUR'): string
   if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     style: 'currency',
     currency,
     maximumFractionDigits: 0,
@@ -658,7 +659,7 @@ export function FirePage() {
             radius="xl"
             padding="xl"
             withBorder
-            style={{ background: 'linear-gradient(140deg, #5f1111 0%, #8f1d1d 56%, #ff8f6b 160%)', color: 'white' }}
+            style={{ background: 'linear-gradient(140deg, #083634 0%, #0b4a46 56%, #c2620a 170%)', color: 'white' }}
           >
             <Stack gap="lg">
               <Group justify="space-between" align="flex-start" wrap="wrap">
@@ -685,7 +686,7 @@ export function FirePage() {
                   radius="sm"
                   color={
                     fireMode === 'accumulation'
-                      ? (coveragePct != null && coveragePct >= 100 ? 'teal' : 'red')
+                      ? (coveragePct != null && coveragePct >= 100 ? 'teal' : 'orange')
                       : (decumulationSuccess ? 'teal' : 'yellow')
                   }
                   variant="filled"
@@ -735,7 +736,7 @@ export function FirePage() {
                 </Group>
                 <Progress
                   value={Math.max(0, Math.min(100, fireMode === 'accumulation' ? (coveragePct ?? 0) : (withdrawalCoveragePct ?? 0)))}
-                  color={fireMode === 'accumulation' ? 'red' : 'teal'}
+                  color={fireMode === 'accumulation' ? 'orange' : 'teal'}
                   radius="xl"
                   size="lg"
                 />
@@ -746,7 +747,7 @@ export function FirePage() {
           <Card withBorder radius="xl" padding="lg">
             <Stack gap="md">
               <Group gap="sm">
-                <ThemeIcon color="red" variant="light" radius="xl">
+                <ThemeIcon color="orange" variant="light" radius="xl">
                   <IconTarget size={18} />
                 </ThemeIcon>
                 <Title order={4}>{fireMode === 'accumulation' ? 'Ipotesi del piano' : 'Ipotesi di decumulo'}</Title>
@@ -918,7 +919,7 @@ export function FirePage() {
                   {fireMode === 'decumulation' ? ` Fiscalità stimata: ${formatPct(capitalGainsTaxRateValue, 1)} sulle plusvalenze.` : ''}
                   {aggregateModeEnabled && fireMode === 'decumulation' ? ' In modalità aggregata il decumulo usa un Monte Carlo reale sul perimetro selezionato.' : ''}
                 </Text>
-                <Button color="red" onClick={handleSave} loading={settingsMutation.isPending || settingsLoading}>
+                <Button onClick={handleSave} loading={settingsMutation.isPending || settingsLoading}>
                   Salva piano FIRE
                 </Button>
               </Group>
@@ -939,7 +940,7 @@ export function FirePage() {
             <>
               <StatCard
                 icon={IconWallet}
-                color="red"
+                color="teal"
                 label="Patrimonio investibile"
                 value={formatMoney(totalNetWorth, currency)}
                 note={`${formatMoney(investedValue, currency)} investiti + ${formatMoney(cashBalance, currency)} liquidità`}
@@ -974,7 +975,7 @@ export function FirePage() {
             <>
               <StatCard
                 icon={IconWallet}
-                color="red"
+                color="teal"
                 label="Capitale iniziale"
                 value={formatMoney(totalNetWorth, currency)}
                 note={`${formatMoney(investedValue, currency)} investiti + ${formatMoney(cashBalance, currency)} liquidità`}
@@ -1014,7 +1015,7 @@ export function FirePage() {
           <Card withBorder radius="xl" padding="lg">
             <Stack gap="md">
               <Group gap="sm">
-                <ThemeIcon color="red" variant="light" radius="xl">
+                <ThemeIcon color="orange" variant="light" radius="xl">
                   <IconFlame size={18} />
                 </ThemeIcon>
                 <Title order={4}>{fireMode === 'accumulation' ? 'Lettura del piano' : 'Lettura del decumulo'}</Title>
@@ -1160,8 +1161,8 @@ export function FirePage() {
               </Group>
                 <Text size="sm" c="dimmed">
                 {fireMode === 'accumulation'
-                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 5000).toLocaleString('it-IT')} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
-                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 5000).toLocaleString('it-IT')} percorsi) anno per anno del capitale residuo, con spesa netta indicizzata all'inflazione e fiscalità stimata sulle plusvalenze.`}
+                  ? `Proiezioni sul capitale già investito basate su ${(monteCarlo?.num_simulations ?? 5000).toLocaleString('it-IT', { useGrouping: 'always' })} simulazioni Monte Carlo. I valori sotto non includono nuovi versamenti futuri.`
+                  : `Simulazione Monte Carlo (${(activeDecumulationData?.num_simulations ?? 5000).toLocaleString('it-IT', { useGrouping: 'always' })} percorsi) anno per anno del capitale residuo, con spesa netta indicizzata all'inflazione e fiscalità stimata sulle plusvalenze.`}
                 </Text>
               {fireMode === 'accumulation' && monteCarloChartData.length > 0 && (() => {
                 const tealColor = theme.colors.teal[isDark ? 4 : 6];
@@ -1192,7 +1193,7 @@ export function FirePage() {
                             orientation="right"
                             tick={{ fontSize: 11 }}
                             tickFormatter={(v: number) =>
-                              ((v / 100) * mv).toLocaleString('it-IT', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })
+                              ((v / 100) * mv).toLocaleString('it-IT', { useGrouping: 'always', style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 })
                             }
                             domain={['auto', 'auto']}
                           />
@@ -1202,7 +1203,7 @@ export function FirePage() {
                             if (!active || !payload?.length) return null;
                             const d = payload[0]?.payload as { year: string; p10: number; p25: number; p50: number; p75: number; p90: number };
                             const fmtGrowth = (v: number) => { const pct = v - 100; return pct >= 0 ? `+${pct.toFixed(0)}%` : `${pct.toFixed(0)}%`; };
-                            const fmtVal = (v: number) => ((v / 100) * mv).toLocaleString('it-IT', { style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                            const fmtVal = (v: number) => ((v / 100) * mv).toLocaleString('it-IT', { useGrouping: 'always', style: 'currency', currency: currency, minimumFractionDigits: 0, maximumFractionDigits: 0 });
                             return (
                               <Box style={{ background: isDark ? theme.colors.dark[7] : 'white', border: `1px solid ${isDark ? theme.colors.dark[4] : '#e2e8f0'}`, borderRadius: 8, padding: '8px 12px' }}>
                                 <Text fw={700} size="sm" mb={4}>{d.year === '0' ? 'Oggi' : `Anno ${d.year}`}</Text>
@@ -1536,7 +1537,6 @@ function OneOffExpensesEditor({
         </div>
         <Button
           variant="light"
-          color="red"
           size="xs"
           leftSection={<IconPlus size={14} />}
           onClick={() => onChange([...expenses, { age: (currentAge ?? 50) + 1, amount: 0, label: '' }])}

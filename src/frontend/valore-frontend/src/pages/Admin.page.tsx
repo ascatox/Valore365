@@ -54,7 +54,7 @@ function MetricCard({ label, value, metricKey }: { label: string; value: number;
       <Group justify="space-between" align="flex-start" wrap="nowrap">
         <Stack gap={4}>
           <Text size="sm" c="dimmed" fw={600}>{label}</Text>
-          <Title order={2} c={isDark ? 'white' : undefined}>{value.toLocaleString('it-IT')}</Title>
+          <Title order={2} c={isDark ? 'white' : undefined}>{value.toLocaleString('it-IT', { useGrouping: 'always' })}</Title>
         </Stack>
         <ThemeIcon color={color} variant="light" size="lg" radius="xl">
           <Icon size={18} />

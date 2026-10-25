@@ -54,6 +54,7 @@ interface PortfolioSwitcherProps {
 }
 
 const formatMoney = (value: number, currency: string) => new Intl.NumberFormat('it-IT', {
+  useGrouping: 'always',
   style: 'currency',
   currency,
   maximumFractionDigits: 0,
@@ -179,11 +180,11 @@ export function PortfolioSwitcher({
                       <Badge variant="outline" color="gray" radius="xl">{`#${selectedPortfolio.id}`}</Badge>
                     </Group>
                     <Group gap={8} wrap="wrap" mb={8}>
-                      <Badge variant="light" color="blue" leftSection={<IconWallet size={12} />}>
+                      <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
                         {`Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`}
                       </Badge>
                       {selectedPortfolio.target_notional != null && (
-                        <Badge variant="light" color="orange" leftSection={<IconTarget size={12} />}>
+                        <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
                           {`Target ${formatMoney(selectedPortfolio.target_notional, selectedPortfolio.base_currency)}`}
                         </Badge>
                       )}
@@ -240,11 +241,11 @@ export function PortfolioSwitcher({
                       <Badge variant="outline" color="gray" radius="xl">{`#${portfolio.id}`}</Badge>
                     </Group>
                     <Group gap={8} wrap="wrap" mb={6}>
-                      <Badge variant="light" color="blue" leftSection={<IconWallet size={12} />}>
+                      <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
                         {formatMoney(portfolio.current_cash_balance ?? portfolio.cash_balance ?? 0, portfolio.base_currency)}
                       </Badge>
                       {portfolio.target_notional != null && (
-                        <Badge variant="light" color="orange" leftSection={<IconTarget size={12} />}>
+                        <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
                           {formatMoney(portfolio.target_notional, portfolio.base_currency)}
                         </Badge>
                       )}
@@ -363,11 +364,11 @@ export function PortfolioSwitcher({
             </Text>
             {selectedPortfolio && (
               <Group gap={6} mt={8} wrap="wrap">
-                <Badge variant="light" color="blue" size="sm" leftSection={<IconWallet size={11} />}>
+                <Badge variant="light" color="teal" size="sm" leftSection={<IconWallet size={11} />}>
                   {formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}
                 </Badge>
                 {selectedPortfolio.target_notional != null && (
-                  <Badge variant="light" color="orange" size="sm" leftSection={<IconTarget size={11} />}>
+                  <Badge variant="light" color="gray" size="sm" leftSection={<IconTarget size={11} />}>
                     {formatMoney(selectedPortfolio.target_notional, selectedPortfolio.base_currency)}
                   </Badge>
                 )}

@@ -17,7 +17,7 @@ export function UpdatePrompt() {
       withCloseButton
       onClose={dismiss}
       icon={needRefresh ? <IconRefresh size={18} /> : <IconCheck size={18} />}
-      color={needRefresh ? 'blue' : 'green'}
+      color={needRefresh ? 'teal' : 'green'}
       title={
         needRefresh
           ? 'Nuova versione disponibile'

@@ -106,7 +106,7 @@ function ProtectedApp() {
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', colorScheme === 'dark' ? '#242424' : '#ffffff');
+      meta.setAttribute('content', colorScheme === 'dark' ? '#0e1514' : '#ffffff');
     }
   }, [colorScheme]);
 
@@ -265,14 +265,14 @@ function ProtectedApp() {
             </Group>
             <Group gap="xs" wrap="nowrap">
               <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
-                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'blue' : undefined}>
+                <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'teal' : undefined}>
                   {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
               <Tooltip label={autoRefresh ? `Auto-refresh attivo (${countdownSec}s)` : 'Aggiorna'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : undefined}
+                  color={autoRefresh ? 'teal' : undefined}
                   size={isMobile ? 42 : 'lg'}
                   onClick={handleGlobalRefresh}
                   onDoubleClick={toggleAutoRefresh}
@@ -287,7 +287,7 @@ function ProtectedApp() {
               <Tooltip label={autoRefresh ? 'Disattiva auto-refresh' : 'Attiva auto-refresh (60s)'} withArrow>
                 <ActionIcon
                   variant={autoRefresh ? 'filled' : 'default'}
-                  color={autoRefresh ? 'blue' : undefined}
+                  color={autoRefresh ? 'teal' : undefined}
                   size={isMobile ? 42 : 'lg'}
                   onClick={toggleAutoRefresh}
                   aria-label="Auto-refresh"
@@ -425,7 +425,7 @@ function ProtectedApp() {
                     transition: 'transform 0.2s',
                     transform: `rotate(${pullDistance * 3}deg)`,
                     opacity: reached ? 1 : 0.4,
-                    color: reached ? 'var(--mantine-color-blue-6)' : 'var(--mantine-color-dimmed)',
+                    color: reached ? 'var(--mantine-primary-color-filled)' : 'var(--mantine-color-dimmed)',
                   }}
                 />
               </div>

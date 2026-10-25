@@ -176,7 +176,7 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
                 </Group>
                 <Stack gap={0} align="flex-end" style={{ flexShrink: 0 }}>
                   <Badge variant="light" color="teal" size="sm">{position.weight.toFixed(1)}%</Badge>
-                  <Text size="xs" c={textSecondary}>EUR {position.value.toLocaleString('it-IT')}</Text>
+                  <Text size="xs" c={textSecondary}>EUR {position.value.toLocaleString('it-IT', { useGrouping: 'always' })}</Text>
                 </Stack>
               </Group>
             ))}

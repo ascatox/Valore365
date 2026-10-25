@@ -154,7 +154,7 @@ export function DashboardPage() {
       {!isMobile && (
         <Group mb="md" gap="xs" wrap="wrap">
           {refreshing && (
-            <Badge variant="light" color="blue" size="lg" leftSection={<Loader size={12} />}>
+            <Badge variant="light" color="teal" size="lg" leftSection={<Loader size={12} />}>
               Aggiornamento in corso...
             </Badge>
           )}

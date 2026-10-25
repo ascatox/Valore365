@@ -87,7 +87,7 @@ export function PortfolioPage() {
         {!s.isMobile && (
           <Table.Td style={{ textAlign: 'right' }}>
             <Group gap={6} justify="flex-end" wrap="nowrap" style={{ minWidth: 74 }}>
-              <ActionIcon color="blue" variant="light" onClick={() => s.openEditTransactionModal(tx)} aria-label={`Modifica transazione ${tx.id}`}>
+              <ActionIcon color="teal" variant="light" onClick={() => s.openEditTransactionModal(tx)} aria-label={`Modifica transazione ${tx.id}`}>
                 <IconEdit size={16} />
               </ActionIcon>
               <ActionIcon color="red" variant="light" onClick={() => s.openDeleteTransactionModal(tx)} loading={s.deletingTransactionId === tx.id} aria-label={`Elimina transazione ${tx.id}`}>

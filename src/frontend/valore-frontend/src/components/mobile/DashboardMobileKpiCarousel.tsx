@@ -40,7 +40,7 @@ export function DashboardMobileKpiCarousel({ items }: DashboardMobileKpiCarousel
                   {label}
                 </Text>
                 {Icon && (
-                  <ThemeIcon color={iconColor ?? 'blue'} variant="light" size="lg" radius="xl">
+                  <ThemeIcon color={iconColor ?? 'teal'} variant="light" size="lg" radius="xl">
                     <Icon size={18} />
                   </ThemeIcon>
                 )}

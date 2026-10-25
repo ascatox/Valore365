@@ -222,7 +222,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }}>
                     <Group gap="xs" wrap="nowrap" justify="flex-end">
-                      <Progress value={p.weight} size="sm" w={60} color="blue" visibleFrom="sm" />
+                      <Progress value={p.weight} size="sm" w={60} color="teal" visibleFrom="sm" />
                       <Text size="xs">{formatNum(p.weight, 1)}%</Text>
                     </Group>
                   </Table.Td>

@@ -9,6 +9,7 @@ const isPrivacyModeEnabled = () => {
 
 export const formatNum = (value: number, decimals = 2) =>
   new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(value);
@@ -20,6 +21,7 @@ export const getVariationColor = (value: number) => (value > 0 ? 'green' : value
 export const formatMoney = (value: number, currency = 'EUR', withSign = false) => {
   if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   const formatted = new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     style: 'currency',
     currency,
     maximumFractionDigits: 2,
@@ -35,6 +37,7 @@ export const formatMoneyOrNA = (value: number | null | undefined, currency?: str
   if (isPrivacyModeEnabled()) return PRIVACY_MASK;
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     style: 'currency',
     currency: currency || 'EUR',
     maximumFractionDigits: 2,
@@ -70,6 +73,7 @@ export const formatGrossTotal = (quantity: number | string, price: number | stri
   const p = toNum(price);
   if (q == null || p == null) return '';
   return new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(q * p);

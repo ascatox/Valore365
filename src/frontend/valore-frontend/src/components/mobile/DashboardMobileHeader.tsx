@@ -59,7 +59,7 @@ export function DashboardMobileHeader({
 
           <Group gap="xs" wrap="wrap">
             {refreshing ? (
-              <Badge variant="light" color="blue" leftSection={<Loader size={12} />}>
+              <Badge variant="light" color="teal" leftSection={<Loader size={12} />}>
                 Aggiornamento in corso...
               </Badge>
             ) : refreshMessage ? (

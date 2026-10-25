@@ -61,6 +61,7 @@ function formatPct(value: number | null | undefined): string {
 function formatMoney(value: number | null | undefined, currency = 'EUR'): string {
   if (value == null || !Number.isFinite(value)) return 'N/D';
   return new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     style: 'currency',
     currency,
     maximumFractionDigits: 2,

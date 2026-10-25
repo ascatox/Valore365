@@ -1,4 +1,4 @@
-import { Button, Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Button, Group, Portal, Text, UnstyledButton, alpha, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import type { CSSProperties, ReactNode } from 'react';
 
 interface MobileBottomControlAction {
@@ -73,7 +73,7 @@ export function MobileBottomControl({
           padding: leftAction ? '12px 16px' : '14px 18px',
           background: isDark
             ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, ${theme.colors.dark[6]} 100%)`
-            : 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            : 'linear-gradient(135deg, #0f1f1e 0%, #1b2726 100%)',
           color: '#ffffff',
           boxShadow: isDark ? '0 14px 30px rgba(0, 0, 0, 0.34)' : '0 14px 30px rgba(15, 23, 42, 0.22)',
           opacity: action.disabled ? 0.55 : 1,
@@ -113,7 +113,7 @@ export function MobileBottomControl({
           zIndex: 44,
           padding: 8,
           borderRadius: 24,
-          background: isDark ? 'rgba(30, 41, 59, 0.94)' : 'rgba(255,255,255,0.94)',
+          background: isDark ? alpha(theme.colors.dark[5], 0.94) : 'rgba(255,255,255,0.94)',
           backdropFilter: 'blur(16px)',
           border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
           boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',

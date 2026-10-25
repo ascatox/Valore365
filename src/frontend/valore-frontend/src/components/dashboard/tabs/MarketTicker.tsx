@@ -10,6 +10,7 @@ function formatTickerPrice(value: number | null): string {
   const abs = Math.abs(value);
   const decimals = abs >= 1000 ? 2 : abs >= 1 ? 2 : 4;
   return new Intl.NumberFormat('it-IT', {
+    useGrouping: 'always',
     minimumFractionDigits: 0,
     maximumFractionDigits: decimals,
   }).format(value);
