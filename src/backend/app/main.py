@@ -2,6 +2,7 @@
 import json
 import logging
 import math
+import os
 import warnings
 from contextlib import asynccontextmanager
 from typing import Any
@@ -86,9 +87,21 @@ if not logging.getLogger().handlers:
 # warning per downloaded series floods the logs with nothing to act on here.
 # Importing yfinance re-enables its own deprecation warnings, so it is imported
 # first and this filter goes ahead of its own.
-import yfinance  # noqa: E402, F401
+import yfinance  # noqa: E402
 
 warnings.filterwarnings("ignore", message="The inplace keyword", module="yfinance")
+
+# yfinance creates its cache folder (ticker timezones, Yahoo cookie) on first
+# use without tolerating a concurrent creation: two request threads racing on
+# it make yfinance drop both caches for the life of the process ("Failed to
+# create TzCache ... File exists"), which means more requests to Yahoo.
+# Create the folder before any request runs.
+_yfinance_cache_dir = os.path.join(os.path.expanduser("~"), ".cache", "py-yfinance")
+try:
+    os.makedirs(_yfinance_cache_dir, exist_ok=True)
+    yfinance.set_tz_cache_location(_yfinance_cache_dir)
+except OSError as exc:
+    logging.getLogger(__name__).warning("yfinance cache folder unavailable (%s): %s", _yfinance_cache_dir, exc)
 
 repo = PortfolioRepository(engine)
 pricing_service = PriceIngestionService(settings, repo)

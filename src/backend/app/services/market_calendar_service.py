@@ -293,28 +293,28 @@ def fetch_yahoo_watchlist_earnings(start: date, end: date) -> list[EarningsRow]:
             cached = _watchlist_cache.get(symbol)
         if cached is not None and cached[0] > _time.monotonic():
             return cached[1]
-        row = watchlist_row_from_calendar(symbol, BIG_TECH_COMPANIES[symbol], yf.Ticker(symbol).calendar)
+        calendar = yf.Ticker(symbol).calendar
+        if not calendar:
+            # yfinance logs Yahoo errors (e.g. 401 Invalid Crumb) and returns an
+            # empty calendar: a failure, not a company without a date.
+            raise RuntimeError(f"no calendar data for {symbol}")
+        row = watchlist_row_from_calendar(symbol, BIG_TECH_COMPANIES[symbol], calendar)
         with _watchlist_cache_lock:
             _watchlist_cache[symbol] = (_time.monotonic() + WATCHLIST_CACHE_TTL_SECONDS, row)
         return row
 
+    # One symbol first: when Yahoo rejects the session (no crumb) every lookup
+    # fails the same way, and sending all of them only feeds the rate limit.
+    probe, *others = BIG_TECH_COMPANIES
+    found = [fetch_one(probe)]
     with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {symbol: executor.submit(fetch_one, symbol) for symbol in BIG_TECH_COMPANIES}
-
-    rows: list[EarningsRow] = []
-    failures = 0
+        futures = {symbol: executor.submit(fetch_one, symbol) for symbol in others}
     for symbol, future in futures.items():
         try:
-            row = future.result()
+            found.append(future.result())
         except Exception as exc:
-            failures += 1
             logger.debug("Earnings date unavailable for %s: %s", symbol, exc)
-            continue
-        if row is not None and start <= row.starts_at.date() <= end:
-            rows.append(row)
-    if failures == len(futures):
-        raise RuntimeError("earnings dates unavailable for every Big Tech symbol")
-    return rows
+    return [row for row in found if row is not None and start <= row.starts_at.date() <= end]
 
 
 def watchlist_row_from_calendar(symbol: str, company: str, calendar: dict | None) -> EarningsRow | None:

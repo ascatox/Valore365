@@ -434,6 +434,9 @@ def test_fetch_yahoo_watchlist_earnings_skips_failing_symbols(monkeypatch):
                 return {"Earnings Date": [date(2026, 10, 28)]}
             if self.symbol == "AAPL":
                 return {"Earnings Date": [date(2026, 11, 20)]}
+            if self.symbol == "NVDA":
+                # What yfinance returns after logging a Yahoo error.
+                return {}
             raise RuntimeError("Too Many Requests")
 
     monkeypatch.setattr(yf, "Ticker", _Ticker)
@@ -441,28 +444,34 @@ def test_fetch_yahoo_watchlist_earnings_skips_failing_symbols(monkeypatch):
     rows = fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
 
     assert [row.symbol for row in rows] == ["MSFT"]
-    # Cached: a second call makes no request for symbols that answered.
+    # Answers are cached; failures, empty calendars included, are retried.
     requested.clear()
     fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
     assert "MSFT" not in requested and "AAPL" not in requested
+    assert "NVDA" in requested
 
 
-def test_fetch_yahoo_watchlist_earnings_fails_when_no_symbol_answers(monkeypatch):
+def test_fetch_yahoo_watchlist_earnings_stops_when_yahoo_rejects_the_first_lookup(monkeypatch):
     yf = pytest.importorskip("yfinance")
     monkeypatch.setattr(market_calendar_service, "_watchlist_cache", {})
+    requested = []
 
     class _Ticker:
         def __init__(self, symbol):
-            pass
+            self.symbol = symbol
 
         @property
         def calendar(self):
-            raise RuntimeError("Too Many Requests")
+            # yfinance logs "HTTP Error 401 ... Invalid Crumb" and returns {}.
+            requested.append(self.symbol)
+            return {}
 
     monkeypatch.setattr(yf, "Ticker", _Ticker)
 
     with pytest.raises(RuntimeError):
         fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
+    assert requested == ["AAPL"]
+    assert market_calendar_service._watchlist_cache == {}
 
 
 def test_calendar_route_validates_days():
