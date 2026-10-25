@@ -21,7 +21,7 @@ export function DashboardMobileHero({ summary, statusText, refreshing = false }:
       <Text size="xs" fw={700} tt="uppercase" c="dimmed" style={{ letterSpacing: 0.8 }}>
         Patrimonio totale
       </Text>
-      <Text fw={800} lh={1.05} style={{ fontSize: 34, letterSpacing: '-0.02em' }}>
+      <Text fw={800} lh={1.05} style={{ fontSize: '2.125rem', letterSpacing: '-0.02em' }}>
         {total != null ? formatMoney(total, currency) : '—'}
       </Text>
       {summary && (
@@ -32,7 +32,7 @@ export function DashboardMobileHero({ summary, statusText, refreshing = false }:
             size="lg"
             radius="xl"
             leftSection={<DayIcon size={14} />}
-            styles={{ root: { textTransform: 'none', fontSize: 13 } }}
+            styles={{ root: { textTransform: 'none', fontSize: '0.8125rem' } }}
           >
             {`${formatMoney(summary.day_change, currency, true)} · ${formatPct(summary.day_change_pct)}`}
           </Badge>

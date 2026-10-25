@@ -52,7 +52,7 @@ function IntradayMiniChart({ item }: { item: MarketQuoteItem }) {
             dataKey="time"
             axisLine={false}
             tickLine={false}
-            tick={{ fill: tickColor, fontSize: 9 }}
+            tick={{ fill: tickColor, fontSize: '0.5625rem' }}
             interval="preserveStartEnd"
             tickFormatter={(v: string) => v.split(' ')[0]}
           />

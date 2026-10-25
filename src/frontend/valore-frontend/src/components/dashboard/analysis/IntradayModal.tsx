@@ -78,7 +78,7 @@ export function IntradayModal({ opened, onClose, dateLabel, loading, error, char
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
+              <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: '0.75rem' }} />
               <YAxis hide domain={['auto', 'auto']} />
               <Tooltip
                 content={({ active, payload, label }: any) => {

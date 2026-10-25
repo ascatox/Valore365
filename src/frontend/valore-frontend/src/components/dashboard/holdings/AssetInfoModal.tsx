@@ -146,7 +146,7 @@ function PriceHistoryChart({ data, currency }: { data: { date: string; close: nu
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 10 }} interval="preserveStartEnd" />
+            <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: '0.625rem' }} interval="preserveStartEnd" />
             <YAxis hide domain={['auto', 'auto']} />
             <RechartsTooltip
               content={({ active, payload, label }: any) => {
@@ -332,7 +332,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                   variant="light"
                   color={getVariationColor(info.day_change_pct)}
                   size="lg"
-                  styles={{ root: { fontSize: 14, fontWeight: 600 } }}
+                  styles={{ root: { fontSize: '0.875rem', fontWeight: 600 } }}
                 >
                   {formatPct(info.day_change_pct)}
                 </Badge>

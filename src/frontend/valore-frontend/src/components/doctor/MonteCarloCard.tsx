@@ -155,12 +155,12 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
               <CartesianGrid strokeDasharray="3 3" stroke={isDark ? theme.colors.dark[4] : '#e2e8f0'} />
               <XAxis
                 dataKey="year"
-                tick={{ fontSize: isMobile ? 10 : 12 }}
+                tick={{ fontSize: isMobile ? '0.625rem' : '0.75rem' }}
                 tickFormatter={(v) => v === '0' ? 'Oggi' : `${v}a`}
               />
               <YAxis
                 yAxisId="left"
-                tick={{ fontSize: isMobile ? 10 : 12 }}
+                tick={{ fontSize: isMobile ? '0.625rem' : '0.75rem' }}
                 tickFormatter={(v: number) => `${v}`}
                 domain={['auto', 'auto']}
                 width={isMobile ? 35 : 60}
@@ -169,7 +169,7 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
                 <YAxis
                   yAxisId="right"
                   orientation="right"
-                  tick={{ fontSize: 11 }}
+                  tick={{ fontSize: '0.6875rem' }}
                   tickFormatter={(v: number) => formatCurrency(indexToValue(v, marketValue), currency)}
                   domain={['auto', 'auto']}
                 />

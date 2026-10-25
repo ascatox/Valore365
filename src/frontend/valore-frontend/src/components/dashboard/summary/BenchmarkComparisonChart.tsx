@@ -54,11 +54,11 @@ export function BenchmarkComparisonChart({
           {comparisonStats && (
             <>
               <Badge variant="light" color={getVariationColor(comparisonStats.pPct)} size={isMobile ? 'lg' : 'md'}
-                styles={{ root: { fontSize: isMobile ? 14 : 13, fontWeight: 600, paddingInline: isMobile ? 12 : 10, height: isMobile ? 32 : 28 } }}>
+                styles={{ root: { fontSize: isMobile ? '0.875rem' : '0.8125rem', fontWeight: 600, paddingInline: isMobile ? 12 : 10, height: isMobile ? '2rem' : '1.75rem' } }}>
                 Portafoglio {formatPct(comparisonStats.pPct)}
               </Badge>
               <Badge variant="light" color={getVariationColor(comparisonStats.bPct)} size={isMobile ? 'lg' : 'md'}
-                styles={{ root: { fontSize: isMobile ? 14 : 13, fontWeight: 600, paddingInline: isMobile ? 12 : 10, height: isMobile ? 32 : 28 } }}>
+                styles={{ root: { fontSize: isMobile ? '0.875rem' : '0.8125rem', fontWeight: 600, paddingInline: isMobile ? 12 : 10, height: isMobile ? '2rem' : '1.75rem' } }}>
                 {comparisonStats.benchLabel} {formatPct(comparisonStats.bPct)}
               </Badge>
             </>
@@ -103,7 +103,7 @@ export function BenchmarkComparisonChart({
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: '0.75rem' }} />
               <YAxis hide domain={['auto', 'auto']} />
               <Tooltip
                 content={({ active, payload, label }: any) => {

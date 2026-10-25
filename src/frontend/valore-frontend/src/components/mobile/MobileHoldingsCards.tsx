@@ -131,15 +131,15 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
               <Group gap={10} wrap="nowrap" align="center">
                 <Box
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: '2.25rem',
+                    height: '2.25rem',
                     flexShrink: 0,
                     borderRadius: 10,
                     display: 'grid',
                     placeItems: 'center',
                     background: ASSET_CLASS_COLORS[assetClass],
                     color: '#ffffff',
-                    fontSize: 10,
+                    fontSize: '0.625rem',
                     fontWeight: 800,
                     letterSpacing: 0.2,
                   }}

@@ -86,13 +86,13 @@ export function GainTwrChart({ data, loading, currency, lastGain, lastTwr }: Gai
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
-              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: 12 }} />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: tickColor, fontSize: '0.75rem' }} />
               <YAxis
                 yAxisId="gain"
                 orientation="left"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: tickColor, fontSize: 11 }}
+                tick={{ fill: tickColor, fontSize: '0.6875rem' }}
                 width={55}
                 tickFormatter={(value: number) => formatNum(value, value >= 1000 ? 0 : 1)}
                 hide={!showGain}
@@ -102,7 +102,7 @@ export function GainTwrChart({ data, loading, currency, lastGain, lastTwr }: Gai
                 orientation="right"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fill: tickColor, fontSize: 11 }}
+                tick={{ fill: tickColor, fontSize: '0.6875rem' }}
                 width={45}
                 tickFormatter={(value: number) => `${formatNum(value, 1)}%`}
                 hide={!showTwr}

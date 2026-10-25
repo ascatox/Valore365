@@ -3,6 +3,7 @@ import { ActionIcon, Box, Button, Group, Menu, RingProgress, Stack, Text, Unstyl
 import { useClipboard } from '@mantine/hooks';
 import { IconCheck, IconChevronRight, IconCopy, IconLink, IconPhoto, IconShare } from '@tabler/icons-react';
 import type { PortfolioHealthResponse } from '../../services/api';
+import { LARGE_TEXT_SCALE, useTextScale } from '../../textScale';
 
 type HealthSummary = PortfolioHealthResponse['summary'];
 export type DoctorFactor = keyof HealthSummary;
@@ -63,6 +64,9 @@ export const DoctorScoreCard = forwardRef<HTMLDivElement, DoctorScoreCardProps>(
   ref,
 ) {
   const theme = useMantineTheme();
+  // RingProgress takes pixels; grow it with the iOS text size like the label inside.
+  const textScale = useTextScale();
+  const largeText = textScale >= LARGE_TEXT_SCALE;
   const summaryClipboard = useClipboard({ timeout: 2000 });
   const linkClipboard = useClipboard({ timeout: 2000 });
 
@@ -98,22 +102,23 @@ export const DoctorScoreCard = forwardRef<HTMLDivElement, DoctorScoreCardProps>(
         color: '#ffffff',
       }}
     >
-      <Group align="center" wrap="nowrap" gap="md">
+      {/* With a large iOS text size the verdict moves under the ring, full width. */}
+      <Group align={largeText ? 'flex-start' : 'center'} wrap={largeText ? 'wrap' : 'nowrap'} gap="md">
         <RingProgress
-          size={104}
-          thickness={9}
+          size={Math.round(104 * textScale)}
+          thickness={Math.round(9 * textScale)}
           roundCaps
           rootColor="rgba(255,255,255,0.14)"
           sections={[{ value: privacy ? 0 : score, color: theme.colors[verdictColor]?.[4] ?? theme.colors.teal[4] }]}
           label={(
             <Stack gap={0} align="center">
-              <Text fw={800} lh={1} c="white" style={{ fontSize: 30 }}>{privacy ? '••' : score}</Text>
+              <Text fw={800} lh={1} c="white" style={{ fontSize: '1.875rem' }}>{privacy ? '••' : score}</Text>
               <Text size="xs" c="rgba(255,255,255,0.65)">su 100</Text>
             </Stack>
           )}
         />
-        <Box style={{ minWidth: 0, flex: 1 }}>
-          <Text fw={800} c="white" style={{ fontSize: 22, lineHeight: 1.2 }}>{verdict}</Text>
+        <Box style={{ minWidth: 0, flex: largeText ? '1 1 100%' : 1, order: largeText ? 3 : undefined }}>
+          <Text fw={800} c="white" style={{ fontSize: '1.375rem', lineHeight: 1.2 }}>{verdict}</Text>
           <Text size="sm" c="rgba(255,255,255,0.8)" mt={2}>
             {weakest ? (
               <>
@@ -134,7 +139,7 @@ export const DoctorScoreCard = forwardRef<HTMLDivElement, DoctorScoreCardProps>(
               size={40}
               radius="md"
               aria-label="Condividi il referto"
-              style={{ alignSelf: 'flex-start', borderColor: 'rgba(255,255,255,0.25)' }}
+              style={{ alignSelf: 'flex-start', marginLeft: largeText ? 'auto' : undefined, borderColor: 'rgba(255,255,255,0.25)' }}
               loading={shareImageState === 'copying'}
             >
               {copiedSomething ? <IconCheck size={18} /> : <IconShare size={18} />}

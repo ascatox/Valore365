@@ -124,6 +124,8 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
           )}
           <UnstyledButton
             disabled={item.disabled}
+            // Labels are hidden with a large iOS text size (see index.css); keep the name.
+            aria-label={item.label}
             onPointerDown={item.disabled ? undefined : (event) => handlePointerDown(event, item.value)}
             onPointerUp={item.disabled ? undefined : (event) => handlePointerUp(event, item.value)}
             onPointerCancel={() => { pressRef.current = null; }}

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
 import App from './App.tsx';
+import { initTextScale } from './textScale';
 
 // Importa gli stili obbligatori di Mantine
 import '@mantine/core/styles.css';
@@ -61,10 +62,10 @@ const CLOSE_TEXT_STYLES = {
   width: 'auto',
   minWidth: 'auto',
   height: 'auto',
-  minHeight: 36,
+  minHeight: '2.25rem',
   paddingInline: 10,
   borderRadius: 8,
-  fontSize: 15,
+  fontSize: '0.9375rem',
   fontWeight: 600,
   color: 'var(--mantine-primary-color-filled)',
   backgroundColor: 'transparent',
@@ -142,6 +143,9 @@ function Root() {
     </QueryClientProvider>
   );
 }
+
+// Before the first render, so the page doesn't reflow once it's on screen.
+initTextScale();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

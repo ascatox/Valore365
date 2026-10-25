@@ -70,10 +70,10 @@ export function PerformanceChart({
               size={isMobile ? 'lg' : 'md'}
               styles={{
                 root: {
-                  fontSize: isMobile ? 14 : 13,
+                  fontSize: isMobile ? '0.875rem' : '0.8125rem',
                   fontWeight: 600,
                   paddingInline: isMobile ? 12 : 10,
-                  height: isMobile ? 32 : 28,
+                  height: isMobile ? '2rem' : '1.75rem',
                 },
               }}
             >
@@ -109,14 +109,14 @@ export function PerformanceChart({
                 axisLine={false}
                 tickLine={false}
                 minTickGap={isMobile ? 24 : 8}
-                tick={{ fill: tickColor, fontSize: isMobile ? 11 : 12 }}
+                tick={{ fill: tickColor, fontSize: isMobile ? '0.6875rem' : '0.75rem' }}
               />
               <YAxis
                 domain={['auto', 'auto']}
                 axisLine={false}
                 tickLine={false}
                 hide={isMobile}
-                tick={{ fill: tickColor, fontSize: 11 }}
+                tick={{ fill: tickColor, fontSize: '0.6875rem' }}
                 width={50}
                 tickFormatter={(v: number) => formatNum(v, v >= 1000 ? 0 : 1)}
               />

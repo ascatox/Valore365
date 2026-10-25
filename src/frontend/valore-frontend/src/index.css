@@ -98,7 +98,8 @@ select:focus-visible {
   input,
   textarea,
   select {
-    font-size: 16px !important;
+    /* At least 16px to stop the zoom; larger when the iOS text size is. */
+    font-size: max(16px, 1rem) !important;
   }
 
   /* Range and period selectors render at size="xs" (~28px tall); give each
@@ -249,6 +250,18 @@ select:focus-visible {
   border: none;
   border-top: 1px solid var(--mantine-color-default-border);
   margin: 0.5em 0;
+}
+
+/* Large iOS text size: like the iOS tab bar, the bottom nav shows icons only
+   (labels would be cut off) and the icons grow instead. */
+.v365-large-text .mobile-bottom-nav .nav-label {
+  display: none;
+}
+
+.v365-large-text .mobile-bottom-nav .nav-icon {
+  width: 26px;
+  height: 26px;
+  margin-bottom: 0 !important;
 }
 
 /* Landscape mobile: compact header and bottom nav */

@@ -58,10 +58,10 @@ export function AssetMiniChartsGrid({ assets, chartWindow, assetIntradayLoading 
                 size={isMobile ? 'lg' : 'md'}
                 styles={{
                   root: {
-                    fontSize: isMobile ? 14 : 13,
+                    fontSize: isMobile ? '0.875rem' : '0.8125rem',
                     fontWeight: 700,
                     paddingInline: isMobile ? 12 : 10,
-                    height: isMobile ? 32 : 28,
+                    height: isMobile ? '2rem' : '1.75rem',
                   },
                 }}
               >
@@ -92,7 +92,7 @@ export function AssetMiniChartsGrid({ assets, chartWindow, assetIntradayLoading 
                       dataKey={chartWindow === '1' ? 'time' : 'date'}
                       axisLine={false}
                       tickLine={false}
-                      tick={{ fill: tickColor, fontSize: 11 }}
+                      tick={{ fill: tickColor, fontSize: '0.6875rem' }}
                       minTickGap={24}
                     />
                     <YAxis hide domain={['auto', 'auto']} />

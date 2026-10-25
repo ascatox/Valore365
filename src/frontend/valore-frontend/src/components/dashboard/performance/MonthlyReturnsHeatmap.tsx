@@ -76,7 +76,7 @@ export function MonthlyReturnsHeatmap({ matrix, loading, startDate, endDate }: M
                           background: colors.background,
                           color: colors.color,
                           border: colors.border,
-                          fontSize: 12,
+                          fontSize: '0.75rem',
                           fontWeight: 700,
                         }}
                       >
@@ -94,7 +94,7 @@ export function MonthlyReturnsHeatmap({ matrix, loading, startDate, endDate }: M
                       background: heatmapCellColors(row.yearReturn, isDark).background,
                       color: heatmapCellColors(row.yearReturn, isDark).color,
                       border: heatmapCellColors(row.yearReturn, isDark).border,
-                      fontSize: 12,
+                      fontSize: '0.75rem',
                       fontWeight: 700,
                     }}
                   >
