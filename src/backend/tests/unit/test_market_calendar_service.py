@@ -6,6 +6,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes_markets import register_markets_routes
+from app.services import market_calendar_service
 from app.services.market_calendar_service import (
     EarningsRow,
     EconomicRow,
@@ -16,8 +17,10 @@ from app.services.market_calendar_service import (
     economic_rows_from_frame,
     fetch_yahoo_earnings,
     fetch_yahoo_economic_events,
+    fetch_yahoo_watchlist_earnings,
     macro_events,
     upcoming_trading_days,
+    watchlist_row_from_calendar,
 )
 
 # Sunday: the outlook starts on the following Monday.
@@ -143,7 +146,15 @@ class _Clock:
         return self.now
 
 
-def test_service_groups_by_day_and_caches():
+def _failing(calls=None):
+    def fetcher(start, end):
+        if calls is not None:
+            calls.append(start)
+        raise RuntimeError("Too Many Requests")
+    return fetcher
+
+
+def test_service_groups_by_day_and_caches_one_fetch_for_every_range():
     calls = []
 
     def earnings_fetcher(start, end):
@@ -154,7 +165,7 @@ def test_service_groups_by_day_and_caches():
         return [_release("GDP Advance", "US", datetime(2026, 10, 28, 12, 30, tzinfo=UTC))]
 
     clock = _Clock()
-    service = MarketCalendarService(earnings_fetcher, economic_fetcher, clock=clock)
+    service = MarketCalendarService(earnings_fetcher, economic_fetcher, _failing(), clock=clock)
 
     response = service.get_calendar(3, today=SUNDAY)
 
@@ -165,36 +176,77 @@ def test_service_groups_by_day_and_caches():
     # High importance first, then by time: Fed at 18:00 UTC, Meta after the close, then GDP (medium).
     assert titles == ["Fed: decisione sui tassi", "Trimestrale Meta Platforms", "PIL USA"]
     assert response.warnings == []
-    assert calls == [(WINDOW[0], WINDOW[-1])]
+    # Fetched once for the five-day window, which the three-day view reuses.
+    assert calls == [(WINDOW[0], date(2026, 10, 30))]
 
-    service.get_calendar(3, today=SUNDAY)
+    assert service.get_calendar(5, today=SUNDAY).end_date == date(2026, 10, 30)
     assert len(calls) == 1
     clock.now += 1801
     service.get_calendar(3, today=SUNDAY)
     assert len(calls) == 2
 
 
-def test_service_reports_provider_failure_and_retries_sooner():
+def test_service_reports_provider_failure_and_waits_before_retrying():
     calls = []
-
-    def failing_fetcher(start, end):
-        calls.append(start)
-        raise RuntimeError("Too Many Requests")
-
     clock = _Clock()
-    service = MarketCalendarService(failing_fetcher, lambda start, end: [], clock=clock)
+    service = MarketCalendarService(_failing(calls), lambda start, end: [], _failing(), clock=clock)
 
     response = service.get_calendar(3, today=SUNDAY)
 
     assert response.warnings == ["Calendario delle trimestrali momentaneamente non disponibile."]
     assert [event.id for event in response.days[2].events] == ["fed-2026-10-28"]
-    clock.now += 121
+    clock.now += 120
+    service.get_calendar(3, today=SUNDAY)
+    assert len(calls) == 1
+    clock.now += 181
     service.get_calendar(3, today=SUNDAY)
     assert len(calls) == 2
 
 
+def test_service_falls_back_to_big_tech_dates_when_the_earnings_calendar_fails():
+    def fallback(start, end):
+        return [_earnings("MSFT", "Microsoft", None, datetime(2026, 10, 28, tzinfo=UTC))]
+
+    service = MarketCalendarService(_failing(), lambda start, end: [], fallback)
+
+    response = service.get_calendar(3, today=SUNDAY)
+
+    [microsoft] = [event for event in response.days[2].events if event.category == "earnings"]
+    assert microsoft.title == "Trimestrale Microsoft"
+    assert microsoft.importance == "high"
+    assert microsoft.starts_at is None
+    assert response.warnings == [
+        "Calendario completo delle trimestrali non disponibile: sono mostrate solo le Big Tech.",
+    ]
+
+
+def test_service_keeps_the_last_good_rows_when_a_refresh_fails():
+    state = {"fail": False}
+
+    def earnings_fetcher(start, end):
+        if state["fail"]:
+            raise RuntimeError("Too Many Requests")
+        return [_earnings("V", "Visa Inc.", 6.0e11, datetime(2026, 10, 27, 20, 5, tzinfo=UTC), "AMC")]
+
+    def economic_fetcher(start, end):
+        if state["fail"]:
+            raise RuntimeError("Too Many Requests")
+        return [_release("CPI YY, NSA", "US", datetime(2026, 10, 27, 12, 30, tzinfo=UTC))]
+
+    clock = _Clock()
+    service = MarketCalendarService(earnings_fetcher, economic_fetcher, _failing(), clock=clock)
+    service.get_calendar(3, today=SUNDAY)
+
+    state["fail"] = True
+    clock.now += 1801
+    response = service.get_calendar(3, today=SUNDAY)
+
+    assert [event.title for event in response.days[1].events] == ["Inflazione USA (CPI)", "Trimestrale Visa"]
+    assert response.warnings == []
+
+
 def test_service_warns_when_central_bank_calendar_is_missing_a_year():
-    service = MarketCalendarService(lambda start, end: [], lambda start, end: [])
+    service = MarketCalendarService(lambda start, end: [], lambda start, end: [], _failing())
 
     response = service.get_calendar(3, today=date(2028, 1, 3))
 
@@ -347,6 +399,72 @@ def test_fetch_yahoo_economic_events_parses_a_yahoo_payload(monkeypatch):
     assert offsets == [0]
 
 
+def test_watchlist_row_needs_a_single_announced_date():
+    announced = {"Earnings Date": [date(2026, 10, 28)], "Earnings Average": 3.9}
+    estimated = {"Earnings Date": [date(2026, 10, 27), date(2026, 10, 31)]}
+
+    row = watchlist_row_from_calendar("MSFT", "Microsoft", announced)
+
+    assert row == EarningsRow(
+        symbol="MSFT",
+        company="Microsoft",
+        market_cap=None,
+        starts_at=datetime(2026, 10, 28, tzinfo=UTC),
+        timing=None,
+        eps_estimate=3.9,
+        eps_actual=None,
+    )
+    assert watchlist_row_from_calendar("MSFT", "Microsoft", estimated) is None
+    assert watchlist_row_from_calendar("MSFT", "Microsoft", {}) is None
+
+
+def test_fetch_yahoo_watchlist_earnings_skips_failing_symbols(monkeypatch):
+    yf = pytest.importorskip("yfinance")
+    monkeypatch.setattr(market_calendar_service, "_watchlist_cache", {})
+    requested = []
+
+    class _Ticker:
+        def __init__(self, symbol):
+            self.symbol = symbol
+
+        @property
+        def calendar(self):
+            requested.append(self.symbol)
+            if self.symbol == "MSFT":
+                return {"Earnings Date": [date(2026, 10, 28)]}
+            if self.symbol == "AAPL":
+                return {"Earnings Date": [date(2026, 11, 20)]}
+            raise RuntimeError("Too Many Requests")
+
+    monkeypatch.setattr(yf, "Ticker", _Ticker)
+
+    rows = fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
+
+    assert [row.symbol for row in rows] == ["MSFT"]
+    # Cached: a second call makes no request for symbols that answered.
+    requested.clear()
+    fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
+    assert "MSFT" not in requested and "AAPL" not in requested
+
+
+def test_fetch_yahoo_watchlist_earnings_fails_when_no_symbol_answers(monkeypatch):
+    yf = pytest.importorskip("yfinance")
+    monkeypatch.setattr(market_calendar_service, "_watchlist_cache", {})
+
+    class _Ticker:
+        def __init__(self, symbol):
+            pass
+
+        @property
+        def calendar(self):
+            raise RuntimeError("Too Many Requests")
+
+    monkeypatch.setattr(yf, "Ticker", _Ticker)
+
+    with pytest.raises(RuntimeError):
+        fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
+
+
 def test_calendar_route_validates_days():
     class _FakeService:
         def __init__(self):
@@ -354,7 +472,8 @@ def test_calendar_route_validates_days():
 
         def get_calendar(self, trading_days):
             self.calls.append(trading_days)
-            return MarketCalendarService(lambda s, e: [], lambda s, e: []).get_calendar(trading_days, today=SUNDAY)
+            service = MarketCalendarService(lambda s, e: [], lambda s, e: [], _failing())
+            return service.get_calendar(trading_days, today=SUNDAY)
 
     service = _FakeService()
     app = FastAPI()

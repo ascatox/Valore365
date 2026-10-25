@@ -23,7 +23,7 @@ from ..models import (
     MarketQuotesResponse,
 )
 from ..repository import PortfolioRepository
-from ..services.market_calendar_service import MarketCalendarService
+from ..services.market_calendar_service import MAX_TRADING_DAYS, MarketCalendarService
 
 
 def register_markets_routes(
@@ -181,7 +181,7 @@ def register_markets_routes(
 
     @router.get("/markets/calendar", response_model=MarketCalendarResponse)
     def get_market_calendar(
-        days: int = Query(default=3, ge=1, le=5, description="Giorni di borsa (lun-ven) a partire da oggi"),
+        days: int = Query(default=3, ge=1, le=MAX_TRADING_DAYS, description="Giorni di borsa (lun-ven) a partire da oggi"),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> MarketCalendarResponse:
         return calendar_service.get_calendar(days)

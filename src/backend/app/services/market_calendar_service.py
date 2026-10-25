@@ -2,7 +2,9 @@
 
 Central bank decisions come from the static calendar in constants/market_calendar;
 earnings and economic releases come from Yahoo's calendars through yfinance. A
-provider failure only drops its own category and is reported as a warning.
+provider failure keeps the rows of the last successful fetch for the same window
+or, failing that, drops its own category with a warning. When the earnings
+calendar fails, Big Tech earnings dates are looked up one symbol at a time.
 """
 
 import logging
@@ -19,6 +21,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from ..constants.market_calendar import (
+    BIG_TECH_COMPANIES,
     BIG_TECH_SYMBOLS,
     CENTRAL_BANK_CALENDAR_YEARS,
     CENTRAL_BANKS,
@@ -35,9 +38,15 @@ CALENDAR_TZ_NAME = "Europe/Rome"
 CALENDAR_TZ = ZoneInfo(CALENDAR_TZ_NAME)
 _NEW_YORK_TZ = ZoneInfo("America/New_York")
 
+# Provider rows are fetched once for the widest window the outlook offers and
+# shared by every shorter one.
+MAX_TRADING_DAYS = 5
 CACHE_TTL_SECONDS = 1800.0
-# A response missing a category is retried sooner.
-DEGRADED_CACHE_TTL_SECONDS = 120.0
+# After a provider failure, retry on the next request past this delay rather
+# than on every request, which would keep a Yahoo rate limit going.
+RETRY_AFTER_FAILURE_SECONDS = 300.0
+# Earnings dates rarely move, so the per-symbol Big Tech lookups last longer.
+WATCHLIST_CACHE_TTL_SECONDS = 12 * 3600.0
 
 # Yahoo caps a calendar page at 100 rows. Economic releases cover every country
 # and come newest first, so a busy week takes several pages to reach today.
@@ -270,6 +279,68 @@ def fetch_yahoo_economic_events(start: date, end: date) -> list[EconomicRow]:
     return rows
 
 
+_watchlist_cache: dict[str, tuple[float, EarningsRow | None]] = {}
+_watchlist_cache_lock = threading.Lock()
+
+
+def fetch_yahoo_watchlist_earnings(start: date, end: date) -> list[EarningsRow]:
+    """Big Tech earnings dates one symbol at a time, through Yahoo's quoteSummary
+    (the endpoint behind asset details) rather than its earnings calendar."""
+    import yfinance as yf
+
+    def fetch_one(symbol: str) -> EarningsRow | None:
+        with _watchlist_cache_lock:
+            cached = _watchlist_cache.get(symbol)
+        if cached is not None and cached[0] > _time.monotonic():
+            return cached[1]
+        row = watchlist_row_from_calendar(symbol, BIG_TECH_COMPANIES[symbol], yf.Ticker(symbol).calendar)
+        with _watchlist_cache_lock:
+            _watchlist_cache[symbol] = (_time.monotonic() + WATCHLIST_CACHE_TTL_SECONDS, row)
+        return row
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {symbol: executor.submit(fetch_one, symbol) for symbol in BIG_TECH_COMPANIES}
+
+    rows: list[EarningsRow] = []
+    failures = 0
+    for symbol, future in futures.items():
+        try:
+            row = future.result()
+        except Exception as exc:
+            failures += 1
+            logger.debug("Earnings date unavailable for %s: %s", symbol, exc)
+            continue
+        if row is not None and start <= row.starts_at.date() <= end:
+            rows.append(row)
+    if failures == len(futures):
+        raise RuntimeError("earnings dates unavailable for every Big Tech symbol")
+    return rows
+
+
+def watchlist_row_from_calendar(symbol: str, company: str, calendar: dict | None) -> EarningsRow | None:
+    """Row for a ``yf.Ticker.calendar`` dict, or None without a single announced
+    date: two dates are Yahoo's estimated window, not the actual day."""
+    calendar = calendar or {}
+    days = {
+        value.date() if isinstance(value, datetime) else value
+        for value in calendar.get("Earnings Date") or []
+        if isinstance(value, date)
+    }
+    if len(days) != 1:
+        return None
+    [day] = days
+    return EarningsRow(
+        symbol=symbol,
+        company=company,
+        market_cap=None,
+        # Midnight UTC marks a bare date, as in Yahoo's earnings calendar.
+        starts_at=datetime.combine(day, time(0, 0), tzinfo=UTC),
+        timing=None,
+        eps_estimate=_clean_float(calendar.get("Earnings Average")),
+        eps_actual=None,
+    )
+
+
 def earnings_rows_from_frame(frame: pd.DataFrame | None) -> list[EarningsRow]:
     """Rows of ``yf.Calendars.get_earnings_calendar`` (indexed by symbol)."""
     if frame is None or frame.empty:
@@ -347,73 +418,116 @@ def _clean_datetime(value: Any) -> datetime | None:
 # Service
 # ---------------------------------------------------------------------------
 
+@dataclass(frozen=True)
+class _ProviderRows:
+    expires_at: float
+    # None when the category could not be fetched.
+    earnings: list[EarningsRow] | None
+    # False when the earnings come from the Big Tech lookups only.
+    earnings_complete: bool
+    economic: list[EconomicRow] | None
+
+
 class MarketCalendarService:
     def __init__(
         self,
         earnings_fetcher: EarningsFetcher = fetch_yahoo_earnings,
         economic_fetcher: EconomicFetcher = fetch_yahoo_economic_events,
+        fallback_earnings_fetcher: EarningsFetcher = fetch_yahoo_watchlist_earnings,
         clock: Callable[[], float] = _time.monotonic,
     ) -> None:
         self._earnings_fetcher = earnings_fetcher
         self._economic_fetcher = economic_fetcher
+        self._fallback_earnings_fetcher = fallback_earnings_fetcher
         self._clock = clock
-        self._cache: dict[tuple[date, int], tuple[float, MarketCalendarResponse]] = {}
-        self._cache_lock = threading.Lock()
+        self._rows: dict[date, _ProviderRows] = {}
+        self._rows_lock = threading.Lock()
 
     def get_calendar(self, trading_days: int, today: date | None = None) -> MarketCalendarResponse:
         today = today or datetime.now(CALENDAR_TZ).date()
-        key = (today, trading_days)
-        with self._cache_lock:
-            cached = self._cache.get(key)
-            if cached is not None and cached[0] > self._clock():
-                return cached[1]
+        window = upcoming_trading_days(today, max(trading_days, MAX_TRADING_DAYS))
+        rows = self._provider_rows(today, window)
+        return self._build(window[:trading_days], rows)
 
-        response, complete = self._build(today, trading_days)
-        ttl = CACHE_TTL_SECONDS if complete else DEGRADED_CACHE_TTL_SECONDS
-        now = self._clock()
-        with self._cache_lock:
-            self._cache = {k: v for k, v in self._cache.items() if v[0] > now}
-            self._cache[key] = (now + ttl, response)
-        return response
+    def _provider_rows(self, today: date, window: list[date]) -> _ProviderRows:
+        with self._rows_lock:
+            cached = self._rows.get(today)
+        if cached is not None and cached.expires_at > self._clock():
+            return cached
 
-    def _build(self, today: date, trading_days: int) -> tuple[MarketCalendarResponse, bool]:
-        days = upcoming_trading_days(today, trading_days)
-        start, end = days[0], days[-1]
+        start, end = window[0], window[-1]
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            earnings_future = executor.submit(self._fetch_earnings, start, end)
+            economic_future = executor.submit(self._fetch_economic, start, end)
+        earnings, earnings_complete = earnings_future.result()
+        economic = economic_future.result()
+        fresh = earnings_complete and economic is not None
+
+        # A failed refresh keeps what an earlier fetch of the same window got.
+        if cached is not None:
+            if not earnings_complete and cached.earnings_complete:
+                earnings, earnings_complete = cached.earnings, True
+            elif earnings is None:
+                earnings = cached.earnings
+            if economic is None:
+                economic = cached.economic
+
+        entry = _ProviderRows(
+            expires_at=self._clock() + (CACHE_TTL_SECONDS if fresh else RETRY_AFTER_FAILURE_SECONDS),
+            earnings=earnings,
+            earnings_complete=earnings_complete,
+            economic=economic,
+        )
+        with self._rows_lock:
+            # Earlier days are never asked for again.
+            self._rows = {today: entry}
+        return entry
+
+    def _fetch_earnings(self, start: date, end: date) -> tuple[list[EarningsRow] | None, bool]:
+        try:
+            return self._earnings_fetcher(start, end), True
+        except Exception as exc:
+            logger.warning("Earnings calendar unavailable for %s..%s: %s", start, end, exc)
+        try:
+            return self._fallback_earnings_fetcher(start, end), False
+        except Exception as exc:
+            logger.warning("Big Tech earnings dates unavailable for %s..%s: %s", start, end, exc)
+            return None, False
+
+    def _fetch_economic(self, start: date, end: date) -> list[EconomicRow] | None:
+        try:
+            return self._economic_fetcher(start, end)
+        except Exception as exc:
+            logger.warning("Economic calendar unavailable for %s..%s: %s", start, end, exc)
+            return None
+
+    def _build(self, days: list[date], rows: _ProviderRows) -> MarketCalendarResponse:
         warnings: list[str] = []
-        complete = True
-
         events = central_bank_events(days)
         uncovered_years = sorted({d.year for d in days} - CENTRAL_BANK_CALENDAR_YEARS)
         if uncovered_years:
             years = ", ".join(str(year) for year in uncovered_years)
             warnings.append(f"Calendario delle riunioni Fed e BCE non ancora disponibile per il {years}.")
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            earnings_future = executor.submit(self._earnings_fetcher, start, end)
-            economic_future = executor.submit(self._economic_fetcher, start, end)
-
-        try:
-            events.extend(earnings_events(earnings_future.result(), days))
-        except Exception as exc:
-            logger.warning("Earnings calendar unavailable for %s..%s: %s", start, end, exc)
+        if rows.earnings is None:
             warnings.append("Calendario delle trimestrali momentaneamente non disponibile.")
-            complete = False
-        try:
-            events.extend(macro_events(economic_future.result(), days))
-        except Exception as exc:
-            logger.warning("Economic calendar unavailable for %s..%s: %s", start, end, exc)
+        else:
+            events.extend(earnings_events(rows.earnings, days))
+            if not rows.earnings_complete:
+                warnings.append("Calendario completo delle trimestrali non disponibile: sono mostrate solo le Big Tech.")
+        if rows.economic is None:
             warnings.append("Calendario dei dati macroeconomici momentaneamente non disponibile.")
-            complete = False
+        else:
+            events.extend(macro_events(rows.economic, days))
 
         by_day: dict[date, list[MarketCalendarEvent]] = {d: [] for d in days}
         for event in events:
             by_day[event.day].append(event)
-        response = MarketCalendarResponse(
-            start_date=start,
-            end_date=end,
+        return MarketCalendarResponse(
+            start_date=days[0],
+            end_date=days[-1],
             timezone=CALENDAR_TZ_NAME,
             days=[MarketCalendarDay(day=d, events=sorted(by_day[d], key=_sort_key)) for d in days],
             warnings=warnings,
             generated_at=datetime.now(UTC),
         )
-        return response, complete

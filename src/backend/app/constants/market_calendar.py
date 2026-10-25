@@ -83,11 +83,30 @@ CENTRAL_BANK_CALENDAR_YEARS: frozenset[int] = frozenset.intersection(
 )
 
 # Companies whose results move the whole market: the largest weights of the
-# S&P 500 / Nasdaq and, through them, of global equity ETFs.
-BIG_TECH_SYMBOLS: frozenset[str] = frozenset({
-    "AAPL", "MSFT", "NVDA", "GOOGL", "GOOG", "AMZN", "META", "TSLA", "AVGO",
-    "ORCL", "NFLX", "AMD", "TSM", "ASML", "SAP", "CRM", "ADBE", "INTC", "QCOM", "PLTR",
-})
+# S&P 500 / Nasdaq and, through them, of global equity ETFs. Their earnings
+# dates are also looked up one by one when Yahoo's earnings calendar fails.
+BIG_TECH_COMPANIES: dict[str, str] = {
+    "AAPL": "Apple",
+    "MSFT": "Microsoft",
+    "NVDA": "Nvidia",
+    "GOOGL": "Alphabet",
+    "AMZN": "Amazon",
+    "META": "Meta Platforms",
+    "TSLA": "Tesla",
+    "AVGO": "Broadcom",
+    "ORCL": "Oracle",
+    "NFLX": "Netflix",
+    "AMD": "AMD",
+    "TSM": "TSMC",
+    "ASML": "ASML",
+    "SAP": "SAP",
+    "CRM": "Salesforce",
+    "ADBE": "Adobe",
+    "INTC": "Intel",
+    "QCOM": "Qualcomm",
+    "PLTR": "Palantir",
+}
+BIG_TECH_SYMBOLS: frozenset[str] = frozenset(BIG_TECH_COMPANIES) | {"GOOG"}
 
 # Earnings are listed only for companies above this market cap (USD).
 EARNINGS_MIN_MARKET_CAP_USD = 100_000_000_000
