@@ -1,10 +1,11 @@
 """Upcoming market events for the Markets tab: central banks, big earnings, macro data.
 
-Central bank decisions come from the static calendar in constants/market_calendar;
-earnings and economic releases come from Yahoo's calendars through yfinance. A
-provider failure keeps the rows of the last successful fetch for the same window
-or, failing that, drops its own category with a warning. When the earnings
-calendar fails, Big Tech earnings dates are looked up one symbol at a time.
+Central bank decisions come from the static calendar in constants/market_calendar,
+economic releases from Yahoo's calendar through yfinance, and earnings from
+Financial Modeling Prep when an API key is configured, then from Yahoo; when both
+earnings calendars fail, Big Tech earnings dates are looked up one symbol at a
+time. A provider failure keeps the rows of the last successful fetch for the same
+window or, failing that, drops its own category with a warning.
 """
 
 import logging
@@ -18,8 +19,10 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import httpx
 import pandas as pd
 
+from ..config import get_settings
 from ..constants.market_calendar import (
     BIG_TECH_COMPANIES,
     BIG_TECH_SYMBOLS,
@@ -28,7 +31,9 @@ from ..constants.market_calendar import (
     EARNINGS_HIGH_IMPACT_MARKET_CAP_USD,
     EARNINGS_MIN_MARKET_CAP_USD,
     EURO_AREA_REGIONS,
+    LARGE_CAP_COMPANIES,
     MACRO_EVENT_RULES,
+    MEGA_CAP_SYMBOLS,
 )
 from ..models import MarketCalendarDay, MarketCalendarEvent, MarketCalendarResponse
 
@@ -142,7 +147,9 @@ def earnings_events(rows: list[EarningsRow], days: list[date]) -> list[MarketCal
         if row.starts_at is None:
             continue
         is_big_tech = row.symbol in BIG_TECH_SYMBOLS
-        if not is_big_tech and (row.market_cap or 0.0) < EARNINGS_MIN_MARKET_CAP_USD:
+        # Rows without a market cap come from sources that select large caps
+        # themselves (FMP through LARGE_CAP_COMPANIES, the Big Tech lookups).
+        if row.market_cap is not None and not is_big_tech and row.market_cap < EARNINGS_MIN_MARKET_CAP_USD:
             continue
         starts_at: datetime | None = row.starts_at
         if starts_at.astimezone(UTC).time() == time(0, 0):
@@ -158,7 +165,10 @@ def earnings_events(rows: list[EarningsRow], days: list[date]) -> list[MarketCal
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
-        high_impact = is_big_tech or (row.market_cap or 0.0) >= EARNINGS_HIGH_IMPACT_MARKET_CAP_USD
+        if row.market_cap is not None:
+            high_impact = is_big_tech or row.market_cap >= EARNINGS_HIGH_IMPACT_MARKET_CAP_USD
+        else:
+            high_impact = is_big_tech or row.symbol in MEGA_CAP_SYMBOLS
         events.append(MarketCalendarEvent(
             id=f"earnings-{row.symbol}-{day.isoformat()}",
             category="earnings",
@@ -415,6 +425,79 @@ def _clean_datetime(value: Any) -> datetime | None:
 
 
 # ---------------------------------------------------------------------------
+# Financial Modeling Prep
+# ---------------------------------------------------------------------------
+
+def fetch_earnings(start: date, end: date) -> list[EarningsRow]:
+    """FMP's earnings calendar when an API key is configured, Yahoo's otherwise
+    or when FMP fails: FMP needs no Yahoo crumb, which Yahoo rate-limits."""
+    if get_settings().fmt_api_key.strip():
+        try:
+            rows = fetch_fmp_earnings(start, end)
+            logger.info("Earnings calendar from FMP for %s..%s: %d large caps", start, end, len(rows))
+            return rows
+        except Exception as exc:
+            logger.warning("FMP earnings calendar unavailable for %s..%s: %s", start, end, exc)
+    return fetch_yahoo_earnings(start, end)
+
+
+def fetch_fmp_earnings(start: date, end: date) -> list[EarningsRow]:
+    settings = get_settings()
+    try:
+        response = httpx.get(
+            f"{settings.fmt_api_base_url.rstrip('/')}/earnings-calendar",
+            params={"from": start.isoformat(), "to": end.isoformat(), "apikey": settings.fmt_api_key.strip()},
+            timeout=settings.fmt_timeout_seconds,
+        )
+    except httpx.HTTPError as exc:
+        # The request URL carries the API key: report the error without it.
+        raise RuntimeError(f"FMP request failed: {exc.__class__.__name__}") from None
+    if response.status_code != 200:
+        raise RuntimeError(f"FMP HTTP {response.status_code}: {response.text[:200]}")
+    payload = response.json()
+    if not isinstance(payload, list):
+        # Errors such as an exhausted quota come as {"Error Message": ...}.
+        raise RuntimeError(f"unexpected FMP response: {str(payload)[:200]}")
+    if not payload:
+        # The calendar covers every listed company worldwide: a whole week
+        # without a single report means FMP served no data, not a quiet week.
+        raise RuntimeError("FMP returned an empty earnings calendar")
+    return fmp_earnings_rows(payload)
+
+
+def fmp_earnings_rows(payload: list) -> list[EarningsRow]:
+    """Rows of FMP's earnings calendar, which lists every listed company
+    worldwide: only LARGE_CAP_COMPANIES are kept, named from that list."""
+    rows: list[EarningsRow] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        symbol = (_clean_str(item.get("symbol")) or "").upper()
+        company = LARGE_CAP_COMPANIES.get(symbol)
+        day = _parse_day(item.get("date"))
+        if company is None or day is None:
+            continue
+        rows.append(EarningsRow(
+            symbol=symbol,
+            company=company,
+            market_cap=None,
+            # FMP gives the day only: midnight UTC marks a bare date.
+            starts_at=datetime.combine(day, time(0, 0), tzinfo=UTC),
+            timing=None,
+            eps_estimate=_clean_float(item.get("epsEstimated")),
+            eps_actual=_clean_float(item.get("epsActual")),
+        ))
+    return rows
+
+
+def _parse_day(value: Any) -> date | None:
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Service
 # ---------------------------------------------------------------------------
 
@@ -431,7 +514,7 @@ class _ProviderRows:
 class MarketCalendarService:
     def __init__(
         self,
-        earnings_fetcher: EarningsFetcher = fetch_yahoo_earnings,
+        earnings_fetcher: EarningsFetcher = fetch_earnings,
         economic_fetcher: EconomicFetcher = fetch_yahoo_economic_events,
         fallback_earnings_fetcher: EarningsFetcher = fetch_yahoo_watchlist_earnings,
         clock: Callable[[], float] = _time.monotonic,

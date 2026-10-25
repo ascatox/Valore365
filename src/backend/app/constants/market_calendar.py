@@ -108,6 +108,45 @@ BIG_TECH_COMPANIES: dict[str, str] = {
 }
 BIG_TECH_SYMBOLS: frozenset[str] = frozenset(BIG_TECH_COMPANIES) | {"GOOG"}
 
+# US-listed companies (ADRs included) worth roughly $100B or more, for earnings
+# sources that give neither market cap nor company name (FMP). Review it once a
+# year: companies that grow past the threshold are otherwise left out.
+LARGE_CAP_COMPANIES: dict[str, str] = {
+    **BIG_TECH_COMPANIES,
+    # Technology, media and telecom
+    "CSCO": "Cisco", "IBM": "IBM", "TXN": "Texas Instruments", "NOW": "ServiceNow",
+    "INTU": "Intuit", "AMAT": "Applied Materials", "MU": "Micron", "LRCX": "Lam Research",
+    "KLAC": "KLA", "ANET": "Arista Networks", "PANW": "Palo Alto Networks",
+    "CRWD": "CrowdStrike", "UBER": "Uber", "SHOP": "Shopify", "APP": "AppLovin",
+    "SONY": "Sony", "BABA": "Alibaba", "PDD": "PDD Holdings", "SPOT": "Spotify",
+    "TMUS": "T-Mobile US", "VZ": "Verizon", "T": "AT&T", "DIS": "Disney", "CMCSA": "Comcast",
+    # Financials
+    "BRK-B": "Berkshire Hathaway", "JPM": "JPMorgan Chase", "V": "Visa", "MA": "Mastercard",
+    "BAC": "Bank of America", "WFC": "Wells Fargo", "GS": "Goldman Sachs",
+    "MS": "Morgan Stanley", "C": "Citigroup", "AXP": "American Express",
+    "SCHW": "Charles Schwab", "BLK": "BlackRock", "BX": "Blackstone", "SPGI": "S&P Global",
+    "PGR": "Progressive", "HSBC": "HSBC", "RY": "Royal Bank of Canada", "MUFG": "Mitsubishi UFJ",
+    # Health care
+    "LLY": "Eli Lilly", "UNH": "UnitedHealth", "JNJ": "Johnson & Johnson", "ABBV": "AbbVie",
+    "MRK": "Merck & Co.", "PFE": "Pfizer", "TMO": "Thermo Fisher", "ABT": "Abbott",
+    "ISRG": "Intuitive Surgical", "AMGN": "Amgen", "DHR": "Danaher", "GILD": "Gilead",
+    "BSX": "Boston Scientific", "NVO": "Novo Nordisk", "AZN": "AstraZeneca",
+    "NVS": "Novartis", "SNY": "Sanofi",
+    # Consumer
+    "WMT": "Walmart", "COST": "Costco", "PG": "Procter & Gamble", "KO": "Coca-Cola",
+    "PEP": "PepsiCo", "HD": "Home Depot", "MCD": "McDonald's", "NKE": "Nike",
+    "PM": "Philip Morris", "LOW": "Lowe's", "BKNG": "Booking", "TJX": "TJX",
+    "TM": "Toyota", "UL": "Unilever",
+    # Energy, industrials and utilities
+    "XOM": "ExxonMobil", "CVX": "Chevron", "SHEL": "Shell", "TTE": "TotalEnergies",
+    "GE": "GE Aerospace", "CAT": "Caterpillar", "RTX": "RTX", "HON": "Honeywell",
+    "BA": "Boeing", "UNP": "Union Pacific", "DE": "Deere", "LIN": "Linde",
+    "NEE": "NextEra Energy", "ETN": "Eaton",
+}
+# Outside Big Tech, the companies whose results are high impact when the source
+# gives no market cap to tell (above ~$500B for years).
+MEGA_CAP_SYMBOLS: frozenset[str] = frozenset({"BRK-B", "LLY", "JPM", "V", "MA", "WMT", "XOM"})
+
 # Earnings are listed only for companies above this market cap (USD).
 EARNINGS_MIN_MARKET_CAP_USD = 100_000_000_000
 # ...and are flagged as high impact above this one, even outside BIG_TECH_SYMBOLS.

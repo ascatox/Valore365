@@ -83,6 +83,9 @@ from .api.routes_copilot import register_copilot_routes
 settings = get_settings()
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# httpx logs every request URL at INFO, query string included: that would put
+# API keys passed as parameters (FMP) in the logs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 # yfinance still passes inplace=True to pandas, which pandas 3 deprecates: one
 # warning per downloaded series floods the logs with nothing to act on here.
 # Importing yfinance re-enables its own deprecation warnings, so it is imported

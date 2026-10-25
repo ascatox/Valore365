@@ -1,5 +1,7 @@
 from datetime import UTC, date, datetime
+from types import SimpleNamespace
 
+import httpx
 import pandas as pd
 import pytest
 from fastapi import APIRouter, FastAPI
@@ -16,8 +18,11 @@ from app.services.market_calendar_service import (
     earnings_rows_from_frame,
     economic_rows_from_frame,
     fetch_yahoo_earnings,
+    fetch_earnings,
+    fetch_fmp_earnings,
     fetch_yahoo_economic_events,
     fetch_yahoo_watchlist_earnings,
+    fmp_earnings_rows,
     macro_events,
     upcoming_trading_days,
     watchlist_row_from_calendar,
@@ -472,6 +477,140 @@ def test_fetch_yahoo_watchlist_earnings_stops_when_yahoo_rejects_the_first_looku
         fetch_yahoo_watchlist_earnings(WINDOW[0], WINDOW[-1])
     assert requested == ["AAPL"]
     assert market_calendar_service._watchlist_cache == {}
+
+
+FMP_KEY = "secret-fmp-key"
+
+
+def _fmp_settings(monkeypatch, api_key=FMP_KEY):
+    settings = SimpleNamespace(
+        fmt_api_key=api_key,
+        fmt_api_base_url="https://financialmodelingprep.com/stable/",
+        fmt_timeout_seconds=5.0,
+    )
+    monkeypatch.setattr(market_calendar_service, "get_settings", lambda: settings)
+
+
+def test_fmp_earnings_rows_keep_large_caps_named_from_the_static_list():
+    payload = [
+        {"symbol": "MSFT", "date": "2026-10-28", "epsEstimated": 3.9, "epsActual": None},
+        {"symbol": "jnj", "date": "2026-10-27", "epsEstimated": 2.75},
+        {"symbol": "ISP.MI", "date": "2026-10-28", "epsEstimated": 0.12},
+        {"symbol": "TINY", "date": "2026-10-28"},
+        {"symbol": "AAPL", "date": "not a date"},
+        "garbage",
+    ]
+
+    rows = fmp_earnings_rows(payload)
+
+    assert rows == [
+        EarningsRow(
+            symbol="MSFT",
+            company="Microsoft",
+            market_cap=None,
+            starts_at=datetime(2026, 10, 28, tzinfo=UTC),
+            timing=None,
+            eps_estimate=3.9,
+            eps_actual=None,
+        ),
+        EarningsRow(
+            symbol="JNJ",
+            company="Johnson & Johnson",
+            market_cap=None,
+            starts_at=datetime(2026, 10, 27, tzinfo=UTC),
+            timing=None,
+            eps_estimate=2.75,
+            eps_actual=None,
+        ),
+    ]
+
+
+def test_earnings_events_rate_rows_without_market_cap_from_the_static_lists():
+    def row(symbol, company):
+        return _earnings(symbol, company, None, datetime(2026, 10, 27, tzinfo=UTC))
+
+    events = {event.symbol: event for event in earnings_events(
+        [row("MSFT", "Microsoft"), row("JPM", "JPMorgan Chase"), row("JNJ", "Johnson & Johnson")],
+        WINDOW,
+    )}
+
+    assert {symbol: event.importance for symbol, event in events.items()} == {
+        "MSFT": "high",
+        "JPM": "high",
+        "JNJ": "medium",
+    }
+    assert events["JNJ"].starts_at is None
+    assert events["JNJ"].time_hint is None
+
+
+def test_fetch_fmp_earnings_calls_the_stable_calendar(monkeypatch):
+    _fmp_settings(monkeypatch)
+    calls = []
+
+    def fake_get(url, params, timeout):
+        calls.append((url, params))
+        return httpx.Response(200, json=[{"symbol": "META", "date": "2026-10-28", "epsEstimated": 7.1}])
+
+    monkeypatch.setattr(market_calendar_service.httpx, "get", fake_get)
+
+    [row] = fetch_fmp_earnings(WINDOW[0], WINDOW[-1])
+
+    assert (row.symbol, row.company, row.eps_estimate) == ("META", "Meta Platforms", 7.1)
+    assert calls == [(
+        "https://financialmodelingprep.com/stable/earnings-calendar",
+        {"from": "2026-10-26", "to": "2026-10-28", "apikey": FMP_KEY},
+    )]
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(402, text="Premium endpoint"),
+        httpx.Response(200, json={"Error Message": "Limit Reach"}),
+        httpx.Response(200, json=[]),
+        httpx.ConnectTimeout(f"timed out: https://financialmodelingprep.com/stable/earnings-calendar?apikey={FMP_KEY}"),
+    ],
+)
+def test_fetch_fmp_earnings_errors_never_carry_the_api_key(monkeypatch, response):
+    _fmp_settings(monkeypatch)
+
+    def fake_get(url, params, timeout):
+        if isinstance(response, Exception):
+            raise response
+        return response
+
+    monkeypatch.setattr(market_calendar_service.httpx, "get", fake_get)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        fetch_fmp_earnings(WINDOW[0], WINDOW[-1])
+    assert FMP_KEY not in str(excinfo.value)
+    assert excinfo.value.__cause__ is None
+
+
+def test_fetch_earnings_prefers_fmp_and_falls_back_to_yahoo(monkeypatch):
+    _fmp_settings(monkeypatch)
+    fmp_row = _earnings("MSFT", "Microsoft", None, datetime(2026, 10, 28, tzinfo=UTC))
+    yahoo_row = _earnings("V", "Visa Inc.", 6.0e11, datetime(2026, 10, 27, 20, 5, tzinfo=UTC), "AMC")
+    monkeypatch.setattr(market_calendar_service, "fetch_yahoo_earnings", lambda start, end: [yahoo_row])
+
+    monkeypatch.setattr(market_calendar_service, "fetch_fmp_earnings", lambda start, end: [fmp_row])
+    assert fetch_earnings(WINDOW[0], WINDOW[-1]) == [fmp_row]
+
+    monkeypatch.setattr(market_calendar_service, "fetch_fmp_earnings", _failing())
+    assert fetch_earnings(WINDOW[0], WINDOW[-1]) == [yahoo_row]
+
+
+def test_fetch_earnings_uses_yahoo_without_an_fmp_key(monkeypatch):
+    _fmp_settings(monkeypatch, api_key=" ")
+    yahoo_row = _earnings("V", "Visa Inc.", 6.0e11, datetime(2026, 10, 27, 20, 5, tzinfo=UTC), "AMC")
+    monkeypatch.setattr(market_calendar_service, "fetch_yahoo_earnings", lambda start, end: [yahoo_row])
+
+    def unexpected_fmp_call(start, end):
+        raise AssertionError("FMP must not be called without an API key")
+
+    monkeypatch.setattr(market_calendar_service, "fetch_fmp_earnings", unexpected_fmp_call)
+
+    assert fetch_earnings(WINDOW[0], WINDOW[-1]) == [yahoo_row]
 
 
 def test_calendar_route_validates_days():
