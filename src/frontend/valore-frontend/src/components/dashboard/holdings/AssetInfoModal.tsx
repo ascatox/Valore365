@@ -9,6 +9,7 @@ import type { AssetInfo, EtfEnrichment } from '../../../services/api';
 import { formatMetadataStatusLabel, formatPriceHistoryStatusLabel, formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
 import { getAssetInfo, getMarketSymbolInfo, getEtfEnrichment, refreshEtfEnrichment } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
+import { useChartColors } from '../chartColors';
 
 function formatMarketCap(value: number | null): string {
   if (value == null) return 'N/D';
@@ -106,6 +107,7 @@ const COUNTRY_COLORS = ['#228be6', '#40c057', '#fab005', '#fa5252', '#be4bdb', '
 const SECTOR_COLORS = ['#7048e8', '#12b886', '#e8590c', '#4263eb', '#f06595', '#20c997', '#845ef7', '#fcc419'];
 
 function PriceHistoryChart({ data, currency }: { data: { date: string; close: number }[]; currency: string | null }) {
+  const chartColors = useChartColors();
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -124,7 +126,7 @@ function PriceHistoryChart({ data, currency }: { data: { date: string; close: nu
   const first = data[0]?.close ?? 0;
   const last = data[data.length - 1]?.close ?? 0;
   const changePct = first > 0 ? ((last / first) - 1) * 100 : 0;
-  const color = changePct >= 0 ? '#16a34a' : '#dc2626';
+  const color = chartColors.signed(changePct);
 
   return (
     <Stack gap={4}>

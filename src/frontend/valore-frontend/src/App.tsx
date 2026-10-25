@@ -3,7 +3,6 @@ import {
   AppShell,
   Badge,
   Box,
-  Drawer,
   SimpleGrid,
   Stack,
   Text,
@@ -50,7 +49,7 @@ import { AuthGuard } from './components/AuthGuard';
 import { UpdatePrompt } from './pwa/UpdatePrompt';
 import { BrandMark } from './components/BrandMark';
 import { MobileBottomNav } from './components/mobile/MobileBottomNav';
-import { BOTTOM_SHEET_PROPS } from './components/mobile/bottomSheet';
+import { BottomSheet } from './components/mobile/BottomSheet';
 import { STORAGE_KEYS } from './components/dashboard/constants';
 import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
 
@@ -528,8 +527,7 @@ function ProtectedApp() {
               centerAction={{ label: 'Azioni rapide', icon: IconPlus, onClick: () => setActionSheetOpened(true) }}
             />
 
-            <Drawer
-              {...BOTTOM_SHEET_PROPS}
+            <BottomSheet
               opened={actionSheetOpened}
               onClose={() => setActionSheetOpened(false)}
               title="Azioni rapide"
@@ -571,10 +569,9 @@ function ProtectedApp() {
                   );
                 })}
               </Stack>
-            </Drawer>
+            </BottomSheet>
 
-            <Drawer
-              {...BOTTOM_SHEET_PROPS}
+            <BottomSheet
               opened={moreSheetOpened}
               onClose={() => setMoreSheetOpened(false)}
               title="Altro"
@@ -605,7 +602,7 @@ function ProtectedApp() {
                   );
                 })}
               </SimpleGrid>
-            </Drawer>
+            </BottomSheet>
           </>
         )}
       </AppShell>

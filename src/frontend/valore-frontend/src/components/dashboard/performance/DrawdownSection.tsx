@@ -1,6 +1,7 @@
 import { Card, Paper, SimpleGrid, Stack, Text } from '@mantine/core';
 import { formatMoney, formatPct, formatShortDate, getVariationColor } from '../formatters';
 import { PerformanceChart } from '../summary/PerformanceChart';
+import { useChartColors } from '../chartColors';
 
 interface DrawdownData {
   points: Array<{ date: string; drawdown_pct: number }>;
@@ -20,13 +21,14 @@ interface DrawdownSectionProps {
 }
 
 export function DrawdownSection({ drawdown, chartData, loading, currency }: DrawdownSectionProps) {
+  const chartColors = useChartColors();
   return (
     <Stack gap="md">
       <PerformanceChart
         title="Underwater drawdown"
         data={chartData}
         gradientId="drawdownGradient"
-        color="#ef4444"
+        color={chartColors.loss}
         loading={loading}
         emptyMessage="Nessun drawdown disponibile"
         subtitle="Scostamento percentuale dal picco cumulato del periodo."

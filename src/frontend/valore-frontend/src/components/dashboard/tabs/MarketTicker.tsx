@@ -2,6 +2,7 @@ import { Box, Group, Text, useComputedColorScheme, useMantineTheme } from '@mant
 import { IconTrendingDown, IconTrendingUp } from '@tabler/icons-react';
 import { useMarketQuotes } from '../hooks/queries';
 import type { MarketQuoteItem } from '../../../services/api';
+import { useChartColors } from '../chartColors';
 
 const ANIMATION_DURATION_PER_ITEM = 3; // seconds per item
 
@@ -24,10 +25,11 @@ function formatTickerChange(pct: number | null): string {
 
 function TickerItem({ item, isDark }: { item: MarketQuoteItem; isDark: boolean }) {
   const theme = useMantineTheme();
+  const chartColors = useChartColors();
   const pct = item.change_pct;
   const isPositive = pct != null && pct >= 0;
   const color = pct == null ? (isDark ? theme.colors.dark[1] : '#666')
-    : isPositive ? '#16a34a' : '#dc2626';
+    : isPositive ? chartColors.gain : chartColors.loss;
 
   return (
     <Group

@@ -4,6 +4,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
 import { formatNum } from '../formatters';
+import { useChartColors } from '../chartColors';
 
 interface PerformanceChartProps {
   title: string;
@@ -30,7 +31,7 @@ export function PerformanceChart({
   dataKey = 'value',
   xKey = 'date',
   height = 220,
-  color = '#228be6',
+  color,
   gradientId,
   loading = false,
   emptyMessage = 'Nessun dato disponibile',
@@ -48,6 +49,8 @@ export function PerformanceChart({
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
   const resolvedHeight = isMobile ? Math.max(height, 240) : height;
+  const chartColors = useChartColors();
+  const seriesColor = color ?? chartColors.primary;
 
   return (
     <Card
@@ -96,8 +99,8 @@ export function PerformanceChart({
             <AreaChart data={data} onClick={onClick}>
               <defs>
                 <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={color} stopOpacity={0.24} />
-                  <stop offset="95%" stopColor={color} stopOpacity={0} />
+                  <stop offset="5%" stopColor={seriesColor} stopOpacity={0.24} />
+                  <stop offset="95%" stopColor={seriesColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -137,7 +140,7 @@ export function PerformanceChart({
               <Area
                 type="monotone"
                 dataKey={dataKey}
-                stroke={color}
+                stroke={seriesColor}
                 strokeWidth={isMobile ? 3 : 2.5}
                 fillOpacity={1}
                 fill={`url(#${gradientId})`}

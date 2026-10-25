@@ -3,6 +3,7 @@ import { Card, Group, Loader, Paper, Text, UnstyledButton } from '@mantine/core'
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer } from 'recharts';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
+import { useChartColors } from '../chartColors';
 
 interface GainTwrChartProps {
   data: Array<{ date: string; gain?: number; twr?: number }>;
@@ -22,8 +23,10 @@ export function GainTwrChart({ data, loading, currency, lastGain, lastTwr }: Gai
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 
-  const gainChartColor = lastGain != null && lastGain >= 0 ? '#16a34a' : '#dc2626';
-  const twrChartColor = lastTwr != null && lastTwr >= 0 ? '#2563eb' : '#9333ea';
+  const chartColors = useChartColors();
+  // Gain keeps its sign colour; TWR is the brand series (its sign is in the badge).
+  const gainChartColor = chartColors.signed(lastGain);
+  const twrChartColor = chartColors.primary;
 
   return (
     <Card withBorder radius="md" p="md" shadow="sm">

@@ -12,6 +12,7 @@ import { AssetInfoModal } from '../holdings/AssetInfoModal';
 import { MarketCalendarCard } from './MarketCalendarCard';
 import { MarketTicker } from './MarketTicker';
 import { NewsTicker } from './NewsTicker';
+import { useChartColors } from '../chartColors';
 
 const formatMarketPrice = (value: number | null) => {
   if (value == null || !Number.isFinite(value)) return 'N/D';
@@ -29,12 +30,13 @@ function IntradayMiniChart({ item }: { item: MarketQuoteItem }) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+  const chartColors = useChartColors();
 
   const data = item.intraday;
   if (!data || data.length < 2) return null;
 
   const variation = item.change_pct;
-  const color = variation != null && variation < 0 ? '#dc2626' : '#16a34a';
+  const color = chartColors.signed(variation);
 
   return (
     <div style={{ height: 80, marginTop: 4 }}>

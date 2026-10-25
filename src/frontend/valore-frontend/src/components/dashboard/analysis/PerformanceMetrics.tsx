@@ -23,6 +23,7 @@ import { RollingWindowsSection } from '../performance/RollingWindowsSection';
 import { HallOfFameSection } from '../performance/HallOfFameSection';
 import { formatChartDate, formatYearMonth, periodToStartDate } from '../performance/utils';
 import type { PeriodKey, RollingWindowKey } from '../performance/utils';
+import { useChartColors } from '../chartColors';
 
 interface PerformanceMetricsProps {
   portfolioId: number | null;
@@ -126,10 +127,10 @@ export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
     return [{ label: 'MWR', value: formatPct(last), color: getVariationColor(last) }];
   }, [mwrChartData]);
 
-  const mwrColor = useMemo(() => {
-    if (!mwrChartData.length) return '#228be6';
-    return mwrChartData[mwrChartData.length - 1].value >= 0 ? '#16a34a' : '#dc2626';
-  }, [mwrChartData]);
+  const chartColors = useChartColors();
+  const mwrColor = mwrChartData.length
+    ? chartColors.signed(mwrChartData[mwrChartData.length - 1].value)
+    : chartColors.primary;
 
   return (
     <Stack gap="md">

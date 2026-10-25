@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { Box, Button, Drawer, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Box, Button, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
 import { IconArrowDownLeft, IconArrowUpRight, IconEdit, IconTrash } from '@tabler/icons-react';
 import type { TransactionListItem } from '../../services/api';
 import {
@@ -10,7 +10,7 @@ import {
   getTransactionNetTotal,
   getTransactionSideColor,
 } from '../dashboard/formatters';
-import { BOTTOM_SHEET_PROPS } from '../mobile/bottomSheet';
+import { BottomSheet } from '../mobile/BottomSheet';
 
 interface TransactionMobileListProps {
   transactions: TransactionListItem[];
@@ -128,10 +128,9 @@ export function TransactionMobileList({
         </Group>
       )}
 
-      <Drawer
+      <BottomSheet
         opened={!!selected}
         onClose={() => setSelected(null)}
-        {...BOTTOM_SHEET_PROPS}
         title={selected ? `${formatTransactionSideLabel(selected.side)} ${selected.symbol ?? ''}`.trim() : ''}
       >
         {selected && (
@@ -179,7 +178,7 @@ export function TransactionMobileList({
             </Button>
           </Stack>
         )}
-      </Drawer>
+      </BottomSheet>
     </Stack>
   );
 }

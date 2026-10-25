@@ -52,6 +52,25 @@ const petrolDark: MantineColorsTuple = [
   '#1b2726', '#151f1e', '#0e1514', '#0b1110', '#070c0b',
 ];
 
+const IS_TOUCH_DEVICE = typeof window !== 'undefined'
+  && window.matchMedia?.('(hover: none) and (pointer: coarse)').matches === true;
+
+// Panels close with a "Chiudi" text button instead of an X icon.
+const CLOSE_BUTTON_PROPS = { icon: <span>Chiudi</span>, 'aria-label': 'Chiudi' };
+const CLOSE_TEXT_STYLES = {
+  width: 'auto',
+  minWidth: 'auto',
+  height: 'auto',
+  minHeight: 36,
+  paddingInline: 10,
+  borderRadius: 8,
+  fontSize: 15,
+  fontWeight: 600,
+  color: 'var(--mantine-primary-color-filled)',
+  backgroundColor: 'transparent',
+  border: 'none',
+};
+
 const theme = createTheme({
   primaryColor: 'teal',
   colors: {
@@ -72,38 +91,30 @@ const theme = createTheme({
       defaultProps: {
         thousandSeparator: '.',
         decimalSeparator: ',',
+        // The default "numeric" keypad on iOS has no decimal separator.
+        inputMode: 'decimal',
+        // The up/down steppers are too small to tap; touch users type the value.
+        hideControls: IS_TOUCH_DEVICE,
       },
     }),
     Modal: Modal.extend({
+      defaultProps: { closeButtonProps: CLOSE_BUTTON_PROPS },
       styles: (theme) => ({
         title: {
           color: theme.colors[theme.primaryColor][6],
           fontWeight: 700,
         },
-        close: {
-          color: 'var(--mantine-color-text)',
-          border: '1px solid var(--mantine-color-default-border)',
-          backgroundColor: 'var(--mantine-color-body)',
-          '&:hover': {
-            backgroundColor: 'var(--mantine-color-default-hover)',
-          },
-        },
+        close: CLOSE_TEXT_STYLES,
       }),
     }),
     Drawer: Drawer.extend({
+      defaultProps: { closeButtonProps: CLOSE_BUTTON_PROPS },
       styles: (theme) => ({
         title: {
           color: theme.colors[theme.primaryColor][6],
           fontWeight: 700,
         },
-        close: {
-          color: 'var(--mantine-color-text)',
-          border: '1px solid var(--mantine-color-default-border)',
-          backgroundColor: 'var(--mantine-color-body)',
-          '&:hover': {
-            backgroundColor: 'var(--mantine-color-default-hover)',
-          },
-        },
+        close: CLOSE_TEXT_STYLES,
       }),
     }),
   },

@@ -4,6 +4,7 @@ import { useMediaQuery } from '@mantine/hooks';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DASHBOARD_WINDOWS } from '../constants';
 import { formatPct, getVariationColor } from '../formatters';
+import { useChartColors } from '../chartColors';
 
 interface ComparisonPoint {
   rawDate: string;
@@ -41,6 +42,7 @@ export function BenchmarkComparisonChart({
   const isDark = colorScheme === 'dark';
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+  const chartColors = useChartColors();
 
   return (
     <Card withBorder radius="md" p="md" shadow="sm">
@@ -96,8 +98,8 @@ export function BenchmarkComparisonChart({
             <AreaChart data={data}>
               <defs>
                 <linearGradient id="compPortfolioGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#16a34a" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#16a34a" stopOpacity={0} />
+                  <stop offset="5%" stopColor={chartColors.primary} stopOpacity={0.15} />
+                  <stop offset="95%" stopColor={chartColors.primary} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -111,7 +113,7 @@ export function BenchmarkComparisonChart({
                   return (
                     <Paper withBorder p="xs" radius="sm" shadow="xs">
                       <Text size="xs" c="dimmed">{`Data ${label}`}</Text>
-                      <Text size="sm" fw={600} c="#16a34a">{`Portafoglio: ${formatPct(pv - 100)}`}</Text>
+                      <Text size="sm" fw={600} c={chartColors.primary}>{`Portafoglio: ${formatPct(pv - 100)}`}</Text>
                       <Text size="sm" fw={600} c="#2563eb">{`${comparisonStats?.benchLabel ?? 'Benchmark'}: ${formatPct(bv - 100)}`}</Text>
                     </Paper>
                   );
@@ -125,7 +127,7 @@ export function BenchmarkComparisonChart({
               <Area
                 type="monotone"
                 dataKey="portfolio"
-                stroke="#16a34a"
+                stroke={chartColors.primary}
                 strokeWidth={2.5}
                 fillOpacity={1}
                 fill="url(#compPortfolioGrad)"
@@ -133,7 +135,7 @@ export function BenchmarkComparisonChart({
               <Area
                 type="monotone"
                 dataKey="benchmark"
-                stroke="#2563eb"
+                stroke={chartColors.benchmark}
                 strokeWidth={2}
                 strokeDasharray="5 5"
                 fillOpacity={0}
