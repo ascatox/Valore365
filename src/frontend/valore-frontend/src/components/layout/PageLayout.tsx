@@ -4,7 +4,6 @@ import { useMediaQuery } from '@mantine/hooks';
 
 interface PageLayoutProps {
   children: ReactNode;
-  mobileBottomPadding?: number | string;
   style?: CSSProperties;
 }
 
@@ -12,7 +11,6 @@ interface PageLayoutProps {
 // cards carry their own surface, so no per-page gradients.
 export function PageLayout({
   children,
-  mobileBottomPadding,
   style,
 }: PageLayoutProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -22,7 +20,8 @@ export function PageLayout({
       style={{
         minHeight: '100%',
         paddingTop: 'var(--mantine-spacing-sm)',
-        paddingBottom: (isMobile ? mobileBottomPadding : undefined) ?? 'var(--mantine-spacing-sm)',
+        // On mobile AppShell.Main already reserves room for the bottom nav.
+        paddingBottom: 'var(--mantine-spacing-sm)',
         paddingInline: isMobile ? 'var(--mantine-spacing-xs)' : 'var(--mantine-spacing-sm)',
         ...style,
       }}

@@ -44,7 +44,6 @@ import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
-import { MobileBottomControl } from '../components/mobile/MobileBottomControl';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
 import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type DecumulationYearProjection, type FireOneOffExpense, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
@@ -571,7 +570,7 @@ export function FirePage() {
   };
 
   return (
-    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
+    <PageLayout>
       <Stack gap="lg">
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
@@ -624,7 +623,6 @@ export function FirePage() {
           </Text>
         </Group>
 
-        {!isMobile && (
           <Group justify="space-between" align="center" wrap="wrap">
             <Tabs value={fireMode} onChange={(value) => setFireMode((value as FireMode) ?? 'accumulation')} variant="default">
               <Tabs.List
@@ -652,7 +650,6 @@ export function FirePage() {
                 : 'Modalità orientata alla sostenibilità dei prelievi nel tempo.'}
             </Text>
           </Group>
-        )}
 
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
           <Card
@@ -1373,25 +1370,6 @@ export function FirePage() {
           </Card>
         </SimpleGrid>
 
-        {isMobile && (
-          <MobileBottomControl
-            bottomOffset={12}
-            leftAction={{
-              label: 'Accumulo',
-              onClick: () => setFireMode('accumulation'),
-              icon: fireMode === 'decumulation' ? IconTrendingUp : undefined,
-              variant: fireMode === 'accumulation' ? 'filled' : 'dark',
-              grow: fireMode === 'accumulation',
-            }}
-            rightAction={{
-              label: 'Decumulo',
-              onClick: () => setFireMode('decumulation'),
-              icon: fireMode === 'accumulation' ? IconWallet : undefined,
-              variant: fireMode === 'decumulation' ? 'filled' : 'dark',
-              grow: fireMode === 'decumulation',
-            }}
-          />
-        )}
       </Stack>
       <Modal
         opened={aggregateSelectionOpened}
@@ -1467,7 +1445,7 @@ export function FirePage() {
           aria-label="Apri FIRE Copilot"
           style={{
             position: 'fixed',
-            bottom: isMobile ? 'calc(80px + var(--safe-area-bottom))' : 24,
+            bottom: isMobile ? 'calc(92px + var(--safe-area-bottom-floating))' : 24,
             right: 24,
             zIndex: 100,
             boxShadow: '0 4px 16px rgba(0,0,0,0.2)',

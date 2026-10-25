@@ -11,7 +11,6 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
 import { useDashboardRefresh } from '../components/dashboard/hooks/useDashboardRefresh';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
@@ -106,20 +105,27 @@ export function DashboardPage() {
   const mobileStatusText = refreshing
     ? 'Aggiornamento in corso...'
     : refreshMessage ?? (lastUpdatedAt ? `Aggiornato ${formatDateTime(lastUpdatedAt)}` : null);
-  const mobileTabItems = [
-    { value: 'panoramica', label: 'Home', icon: IconChartPie },
-    { value: 'posizioni', label: 'Posizioni', icon: IconList },
-    ...(SHOW_ANALISI_TAB ? [{ value: 'analisi', label: 'Analisi', icon: IconChartBar }] : []),
-    { value: 'mercati', label: 'Mercati', icon: IconWorld },
-    { value: 'performance', label: 'Perf.', icon: IconPercentage },
-  ];
+  // Mobile: text tabs at the top of the sticky header; the bottom bar is the
+  // app navigation. A second Tabs instance drives the same activeTab.
+  const mobileTabs = (
+    <Tabs value={activeTab} onChange={handleTabChange} mt={6}>
+      <Tabs.List style={{ flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none' }}>
+        <Tabs.Tab value="panoramica">Panoramica</Tabs.Tab>
+        <Tabs.Tab value="posizioni">Posizioni</Tabs.Tab>
+        {SHOW_ANALISI_TAB && <Tabs.Tab value="analisi">Analisi</Tabs.Tab>}
+        <Tabs.Tab value="mercati">Mercati</Tabs.Tab>
+        <Tabs.Tab value="performance">Performance</Tabs.Tab>
+      </Tabs.List>
+    </Tabs>
+  );
 
   return (
-    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom-floating))' : undefined}>
+    <PageLayout>
       {isMobile ? (
         <PageHeader
           title="Dashboard"
           hideMobileTitle
+          mobileBelow={mobileTabs}
           actions={(
             <PortfolioSwitcher
               portfolios={portfolios}
@@ -253,14 +259,6 @@ export function DashboardPage() {
           </Tabs.Panel>
         </div>
       </Tabs>
-
-      {isMobile && (
-        <MobileBottomNav
-          items={mobileTabItems}
-          value={activeTab}
-          onChange={handleTabChange}
-        />
-      )}
 
       {copilotAvailable && (
         <ActionIcon

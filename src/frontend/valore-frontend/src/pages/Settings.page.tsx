@@ -23,7 +23,6 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop, IconRobot } from '@tabler/icons-react';
-import { MobileBottomNav } from '../components/mobile/MobileBottomNav';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
 import type { CopilotStatus } from '../services/api';
@@ -181,15 +180,8 @@ export function SettingsPage() {
       });
   };
 
-  const mobileTabItems = [
-    { value: 'general', label: 'Generale', icon: IconSettings },
-    { value: 'copilot', label: 'Copilot', icon: IconRobot },
-    { value: 'tax', label: 'Fiscalità', icon: IconReceipt },
-    { value: 'security', label: 'Sicurezza', icon: IconShield },
-  ];
-
   return (
-    <PageLayout mobileBottomPadding={isMobile ? 'calc(104px + var(--safe-area-bottom))' : undefined}>
+    <PageLayout>
     <Stack gap={isMobile ? 'xs' : 0}>
       <PageHeader
         eyebrow="Preferenze, tema e configurazione"
@@ -198,14 +190,12 @@ export function SettingsPage() {
       />
 
       <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} value={activeTab} onChange={(v) => setActiveTab(v ?? 'general')} variant="pills" radius="md">
-        {!isMobile && (
-        <Tabs.List>
+        <Tabs.List style={isMobile ? { flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none', marginBottom: 'var(--mantine-spacing-sm)' } : undefined}>
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
           <Tabs.Tab value="copilot" leftSection={<IconRobot size={18} />}>Copilot</Tabs.Tab>
           <Tabs.Tab value="tax" leftSection={<IconReceipt size={18} />}>Fiscalità</Tabs.Tab>
           <Tabs.Tab value="security" leftSection={<IconShield size={18} />}>Sicurezza</Tabs.Tab>
         </Tabs.List>
-        )}
 
         <Tabs.Panel value="general">
           <Paper
@@ -489,13 +479,6 @@ export function SettingsPage() {
       </Tabs>
     </Stack>
 
-      {isMobile && (
-        <MobileBottomNav
-          items={mobileTabItems}
-          value={activeTab}
-          onChange={setActiveTab}
-        />
-      )}
     </PageLayout>
   );
 }
