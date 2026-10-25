@@ -1,3 +1,4 @@
+import { useChartColors } from '../chartColors';
 interface MiniGaugeProps {
   /** Percentage value (e.g. -2.5 for -2.5%) */
   value: number;
@@ -12,6 +13,7 @@ interface MiniGaugeProps {
  * based on a percentage value. Green when positive, red when negative.
  */
 export function MiniGauge({ value, max = 5, size = 48 }: MiniGaugeProps) {
+  const chartColors = useChartColors();
   const clamped = Math.max(-max, Math.min(max, value));
   // Map [-max, +max] to [π, 0] (left to right semicircle)
   const ratio = (clamped + max) / (2 * max); // 0..1
@@ -25,7 +27,7 @@ export function MiniGauge({ value, max = 5, size = 48 }: MiniGaugeProps) {
   const needleX = cx + needleLen * Math.cos(angle);
   const needleY = cy - needleLen * Math.sin(angle);
 
-  const color = value >= 0 ? '#16a34a' : '#dc2626';
+  const color = chartColors.signed(value);
   const trackGray = '#e2e8f0';
 
   // Arc path for the semicircle track

@@ -3,6 +3,7 @@ import { formatNum, formatPct, getVariationColor } from '../formatters';
 import { PerformanceChart } from '../summary/PerformanceChart';
 import { formatPctPlain, ROLLING_WINDOW_OPTIONS } from './utils';
 import type { RollingWindowKey } from './utils';
+import { useChartColors } from '../chartColors';
 
 interface ChartPoint {
   rawDate: string;
@@ -35,6 +36,7 @@ export function RollingWindowsSection({
   latest,
   loading,
 }: RollingWindowsSectionProps) {
+  const chartColors = useChartColors();
   return (
     <Stack gap="md">
       <Group justify="space-between" align="center" wrap="wrap" gap="xs">
@@ -52,7 +54,7 @@ export function RollingWindowsSection({
           title={`CAGR rolling ${rollingWindow}M`}
           data={cagrData}
           gradientId="rollingCagrGradient"
-          color="#2563eb"
+          color={chartColors.primary}
           loading={loading}
           emptyMessage={`Servono almeno ${rollingWindow} mesi di storico`}
           subtitle="Rendimento annualizzato della finestra mobile."
@@ -76,12 +78,12 @@ export function RollingWindowsSection({
           title={`Volatilità rolling ${rollingWindow}M`}
           data={volData}
           gradientId="rollingVolGradient"
-          color="#f59e0b"
+          color={chartColors.attention}
           loading={loading}
           emptyMessage={`Servono almeno ${rollingWindow} mesi di storico`}
           subtitle="Deviazione standard annualizzata dei rendimenti mensili."
           stats={latest?.volatility_pct != null ? [
-            { label: 'Ultima', value: formatPctPlain(latest.volatility_pct), color: 'yellow' },
+            { label: 'Ultima', value: formatPctPlain(latest.volatility_pct), color: 'orange' },
           ] : undefined}
           tooltipContent={({ active, payload, label }: any) => {
             if (!active || !payload?.length) return null;
@@ -100,7 +102,7 @@ export function RollingWindowsSection({
           title={`Sharpe rolling ${rollingWindow}M`}
           data={sharpeData}
           gradientId="rollingSharpeGradient"
-          color="#7c3aed"
+          color={chartColors.secondary}
           loading={loading}
           emptyMessage={`Servono almeno ${rollingWindow} mesi di storico`}
           subtitle="Sharpe ratio con risk-free al 2%."

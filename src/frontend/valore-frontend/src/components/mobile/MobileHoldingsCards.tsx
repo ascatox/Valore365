@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { Badge, Box, Button, Chip, Drawer, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
+import { Badge, Box, Button, Chip, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@mantine/core';
 import { IconAlertTriangle, IconRefresh } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../dashboard/formatters';
-import { BOTTOM_SHEET_PROPS } from './bottomSheet';
+import { BottomSheet } from './BottomSheet';
 
 interface MobileHoldingsCardsProps {
   positions: Position[];
@@ -205,10 +205,9 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
         })}
       </Box>
 
-      <Drawer
+      <BottomSheet
         opened={!!selected}
         onClose={() => setSelectedId(null)}
-        {...BOTTOM_SHEET_PROPS}
         title={selected ? selected.symbol : ''}
       >
         {selected && (
@@ -251,7 +250,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
             )}
           </Stack>
         )}
-      </Drawer>
+      </BottomSheet>
     </Stack>
   );
 }

@@ -5,7 +5,6 @@ import {
   Box,
   Button,
   Divider,
-  Drawer,
   Group,
   Paper,
   Popover,
@@ -34,7 +33,7 @@ import {
   IconWallet,
 } from '@tabler/icons-react';
 import type { Portfolio } from '../../services/api';
-import { BOTTOM_SHEET_PROPS } from '../mobile/bottomSheet';
+import { BottomSheet } from '../mobile/BottomSheet';
 
 interface PortfolioSwitcherProps {
   portfolios: Portfolio[];
@@ -435,17 +434,16 @@ export function PortfolioSwitcher({
       {isMobile ? (
         <>
           {chipTrigger}
-          <Drawer
+          <BottomSheet
             opened={opened}
             onClose={() => {
               setOpened(false);
               setQuery('');
             }}
-            {...BOTTOM_SHEET_PROPS}
             title="Seleziona portafoglio"
           >
             {list}
-          </Drawer>
+          </BottomSheet>
         </>
       ) : (
         <Popover

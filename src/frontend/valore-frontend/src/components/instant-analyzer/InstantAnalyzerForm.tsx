@@ -11,7 +11,7 @@ import {
   Textarea,
 } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { IconFileImport, IconPlayerPlay, IconPlus, IconTrash, IconUpload, IconX } from '@tabler/icons-react';
+import { IconFileImport, IconPlayerPlay, IconPlus, IconTrash, IconUpload } from '@tabler/icons-react';
 import { InstantAnalyzerExamples } from './InstantAnalyzerExamples';
 
 export interface ManualPositionDraft {
@@ -153,8 +153,9 @@ export function InstantAnalyzerForm({
                   color="gray"
                   onClick={() => onManualRemove(position.id)}
                   disabled={manualPositions.length === 1}
+                  aria-label="Rimuovi posizione"
                 >
-                  <IconX size={16} />
+                  <IconTrash size={16} />
                 </Button>
               </Group>
             ))}

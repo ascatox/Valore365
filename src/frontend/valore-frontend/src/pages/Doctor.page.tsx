@@ -7,7 +7,6 @@ import {
   Button,
   Card,
   Container,
-  Drawer,
   Grid,
   Group,
   Loader,
@@ -36,7 +35,7 @@ import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../compo
 import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetailsModal';
 import { DOCTOR_GLOSSARY, GlossaryTooltip, type GlossaryEntry } from '../components/doctor/GlossaryTooltip';
 import { DoctorScoreCard, type DoctorFactor } from '../components/doctor/DoctorScoreCard';
-import { BOTTOM_SHEET_PROPS } from '../components/mobile/bottomSheet';
+import { BottomSheet } from '../components/mobile/BottomSheet';
 import { MonteCarloCard } from '../components/doctor/MonteCarloCard';
 import { StressTestCard } from '../components/doctor/StressTestCard';
 import { XRayCard } from '../components/doctor/XRayCard';
@@ -735,9 +734,9 @@ export function DoctorPage() {
               <StressTestCard portfolioId={portfolioId} />
 
               {isMobile ? (
-                <Drawer {...BOTTOM_SHEET_PROPS} opened={glossaryEntry != null} onClose={() => setGlossaryEntry(null)} title={glossaryEntry?.title}>
+                <BottomSheet opened={glossaryEntry != null} onClose={() => setGlossaryEntry(null)} title={glossaryEntry?.title}>
                   {glossaryEntry && <GlossaryBody entry={glossaryEntry} />}
-                </Drawer>
+                </BottomSheet>
               ) : (
                 <Modal opened={glossaryEntry != null} onClose={() => setGlossaryEntry(null)} title={glossaryEntry?.title} centered>
                   {glossaryEntry && <GlossaryBody entry={glossaryEntry} />}
