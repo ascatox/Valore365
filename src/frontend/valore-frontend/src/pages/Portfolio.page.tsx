@@ -24,10 +24,11 @@ import { usePortfolioAiExport } from '../components/portfolio/hooks/usePortfolio
 
 import { TransactionsSection } from '../components/portfolio/sections/TransactionsSection.tsx';
 
-import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel, getTransactionSideColor } from '../components/dashboard/formatters';
+import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel, getTransactionNetTotal, getTransactionSideColor } from '../components/dashboard/formatters';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { useSwipeTabs } from '../hooks/useSwipeTabs';
 
 import { usePortfolioPage } from '../components/portfolio/hooks/usePortfolioPage';
 import { usePortfolioSummary } from '../components/dashboard/hooks/queries';
@@ -39,12 +40,21 @@ import { PortfolioEmptyState } from '../components/portfolio/sections/PortfolioE
 import { TransactionMobileList } from '../components/portfolio/TransactionMobileList';
 import { AssetInfoModal } from '../components/dashboard/holdings/AssetInfoModal';
 
+// Order of the view tabs, for swiping between them on mobile.
+const PORTFOLIO_VIEWS = ['transactions', 'cash', 'pac'] as const;
+
 export function PortfolioPage() {
   const s = usePortfolioPage();
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
   const aiExport = usePortfolioAiExport(portfolioId);
+  const swipeRef = useSwipeTabs({
+    tabs: PORTFOLIO_VIEWS,
+    active: s.portfolioView,
+    onChange: (view) => s.setPortfolioView(view as (typeof PORTFOLIO_VIEWS)[number]),
+    enabled: s.isMobile,
+  });
 
   // Quick actions from the mobile "+" sheet arrive as ?azione=<name>.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -81,8 +91,7 @@ export function PortfolioPage() {
 
   // --- Transaction table rows ---
   const transactionRows = s.sortedTransactions.map((tx) => {
-    const gross = tx.quantity * tx.price;
-    const total = tx.side === 'buy' ? gross + (tx.fees ?? 0) + (tx.taxes ?? 0) : gross - (tx.fees ?? 0) - (tx.taxes ?? 0);
+    const total = getTransactionNetTotal(tx);
     return (
       <Table.Tr key={tx.id}>
         <Table.Td>{formatDateTime(tx.trade_at)}</Table.Td>
@@ -187,7 +196,7 @@ export function PortfolioPage() {
       />
 
       <Group mb={s.isMobile ? 'xs' : 'md'} align="flex-end" gap="xs">
-        {(s.loadingPortfolios || s.loadingData) && (
+        {!s.isMobile && (s.loadingPortfolios || s.loadingData) && (
           <Group gap="xs">
             <Loader size="sm" />
             <Text size="sm" c="dimmed">Caricamento...</Text>
@@ -234,13 +243,14 @@ export function PortfolioPage() {
         )}
       </Group>
 
+      <div ref={swipeRef}>
       {s.error && <Alert color="red" mb="md">{s.error}</Alert>}
       {s.transactionsError && <Alert color="red" mb="md">{s.transactionsError}</Alert>}
       {s.formSuccess && <Alert color="teal" mb="md">{s.formSuccess}</Alert>}
       {aiExport.copied && <Alert color="teal" mb="md">Snapshot del portafoglio copiato negli appunti, pronto da incollare in un'altra AI.</Alert>}
       {aiExport.error && <Alert color="red" mb="md">{aiExport.error}</Alert>}
 
-      {s.portfolios.length === 0 && (
+      {!s.loadingPortfolios && s.portfolios.length === 0 && (
         <PortfolioEmptyState
           onCreatePortfolio={s.openCreatePortfolioModal}
           onImportFromFile={() => s.setCsvImportOpened(true)}
@@ -249,7 +259,7 @@ export function PortfolioPage() {
 
       {s.portfolioView === 'transactions' && (
         <TransactionsSection
-          loading={s.loadingTransactions}
+          loading={s.loadingPortfolios || s.loadingTransactions}
           filterQuery={s.transactionFilterQuery}
           onFilterQueryChange={s.setTransactionFilterQuery}
           filterSide={s.transactionFilterSide}
@@ -292,6 +302,7 @@ export function PortfolioPage() {
           refreshTrigger={s.pacRefreshTrigger}
         />
       )}
+      </div>
       </PageLayout>
 
       {/* --- Modals & Drawers --- */}

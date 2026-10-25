@@ -1,4 +1,4 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { keepPreviousData, queryOptions, useQuery, type QueryClient } from '@tanstack/react-query';
 import {
   backfillBenchmarkPrices,
   getAdminPortfolios,
@@ -283,28 +283,56 @@ export function useBenchmarkPrices(
 
 // ---- Market quotes ----
 
+// Shared by the hooks and by prefetchMarketData, so both use the same keys
+// and freshness.
+const marketQuotesQuery = queryOptions({
+  queryKey: ['market-quotes'],
+  queryFn: getMarketQuotes,
+});
+
+const marketNewsQuery = queryOptions({
+  queryKey: ['market-news'],
+  queryFn: getMarketNews,
+});
+
+const marketCalendarQuery = (days: number) => queryOptions({
+  queryKey: ['market-calendar', days],
+  queryFn: () => getMarketCalendar(days),
+  staleTime: 15 * 60 * 1000, // the backend caches the calendar for 30 minutes
+});
+
+// Range the Mercati calendar card opens with.
+export const DEFAULT_MARKET_CALENDAR_DAYS = 3;
+
 export function useMarketQuotes() {
-  return useQuery({
-    queryKey: ['market-quotes'],
-    queryFn: getMarketQuotes,
-  });
+  return useQuery(marketQuotesQuery);
 }
 
 export function useMarketNews() {
   return useQuery({
-    queryKey: ['market-news'],
-    queryFn: getMarketNews,
+    ...marketNewsQuery,
     refetchInterval: 5 * 60 * 1000, // refresh every 5 minutes
   });
 }
 
 export function useMarketCalendar(days: number) {
   return useQuery({
-    queryKey: ['market-calendar', days],
-    queryFn: () => getMarketCalendar(days),
-    staleTime: 15 * 60 * 1000, // the backend caches the calendar for 30 minutes
+    ...marketCalendarQuery(days),
     placeholderData: keepPreviousData, // keep the current days on screen while switching range
   });
+}
+
+/**
+ * Load what the Mercati tab shows (quotes, news, the default calendar range)
+ * into the cache without rendering it, so the tab opens with data. Fresh
+ * entries are not fetched again.
+ */
+export function prefetchMarketData(queryClient: QueryClient) {
+  return Promise.all([
+    queryClient.prefetchQuery(marketQuotesQuery),
+    queryClient.prefetchQuery(marketNewsQuery),
+    queryClient.prefetchQuery(marketCalendarQuery(DEFAULT_MARKET_CALENDAR_DAYS)),
+  ]);
 }
 
 // ---- Performance metrics (TWR, MWR, Gain) ----

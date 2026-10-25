@@ -11,7 +11,8 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
+import { prefetchMarketData, usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDashboardRefresh } from '../components/dashboard/hooks/useDashboardRefresh';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
@@ -26,6 +27,7 @@ import { getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { useSwipeTabs } from '../hooks/useSwipeTabs';
 
 const DASHBOARD_TABS: string[] = [
   'panoramica',
@@ -71,6 +73,15 @@ export function DashboardPage() {
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
   const { refreshing, refreshMessage, refreshError, refreshVersion } = useDashboardRefresh(portfolioId);
 
+  // Load the Mercati tab's data with the dashboard, once the portfolio summary
+  // is in (so it doesn't compete with what's on screen): the tab then opens
+  // with quotes, news and calendar ready instead of a spinner.
+  const queryClient = useQueryClient();
+  const summaryLoaded = summary != null;
+  useEffect(() => {
+    if (summaryLoaded) void prefetchMarketData(queryClient);
+  }, [summaryLoaded, queryClient]);
+
   useEffect(() => {
     if (!portfolios.length) return;
     setSelectedPortfolioId((prev) => {
@@ -99,6 +110,8 @@ export function DashboardPage() {
       window.localStorage.setItem(STORAGE_KEYS.activeTab, tab);
     }
   };
+
+  const swipeRef = useSwipeTabs({ tabs: DASHBOARD_TABS, active: activeTab, onChange: handleTabChange, enabled: !!isMobile });
 
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
   const lastUpdatedAt = !error ? (targetPerformance?.last_updated_at ?? null) : null;
@@ -157,6 +170,15 @@ export function DashboardPage() {
       )}
 
       {error && <Alert color="red" mb="md">{error}</Alert>}
+
+      {/* The Panoramica hero carries this line; the other tabs need it too,
+          since pull-to-refresh and auto-refresh work from any of them. */}
+      {isMobile && activeTab !== 'panoramica' && mobileStatusText && (
+        <Group gap={6} mb="sm" wrap="nowrap">
+          {refreshing && <Loader size={10} />}
+          <Text size="xs" c="dimmed">{mobileStatusText}</Text>
+        </Group>
+      )}
 
       {!isMobile && (
         <Group mb="md" gap="xs" wrap="wrap">
@@ -229,7 +251,7 @@ export function DashboardPage() {
           </Tabs.List>
         )}
 
-        <div>
+        <div ref={swipeRef}>
           <Tabs.Panel value="panoramica">
             <PanoramicaTab
               portfolioId={portfolioId}

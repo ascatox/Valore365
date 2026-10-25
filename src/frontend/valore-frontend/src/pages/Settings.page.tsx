@@ -28,6 +28,7 @@ import { getUserSettings, updateUserSettings, getCopilotStatus } from '../servic
 import type { CopilotStatus } from '../services/api';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { useSwipeTabs } from '../hooks/useSwipeTabs';
 
 export function SettingsPage() {
   const theme = useMantineTheme();
@@ -180,6 +181,13 @@ export function SettingsPage() {
       });
   };
 
+  const swipeRef = useSwipeTabs({
+    tabs: ['general', 'copilot', 'tax', 'security'],
+    active: activeTab,
+    onChange: setActiveTab,
+    enabled: !!isMobile,
+  });
+
   return (
     <PageLayout>
     <Stack gap={isMobile ? 'xs' : 0}>
@@ -189,7 +197,7 @@ export function SettingsPage() {
         description="Controlli dell'app, aspetto visivo e settaggi personali raccolti in un'unica vista."
       />
 
-      <Tabs orientation={isMobile ? 'horizontal' : 'vertical'} value={activeTab} onChange={(v) => setActiveTab(v ?? 'general')} variant="pills" radius="md">
+      <Tabs ref={swipeRef} orientation={isMobile ? 'horizontal' : 'vertical'} value={activeTab} onChange={(v) => setActiveTab(v ?? 'general')} variant="pills" radius="md">
         <Tabs.List style={isMobile ? { flexWrap: 'nowrap', overflowX: 'auto', scrollbarWidth: 'none', marginBottom: 'var(--mantine-spacing-sm)' } : undefined}>
           <Tabs.Tab value="general" leftSection={<IconSettings size={18} />}>Generale</Tabs.Tab>
           <Tabs.Tab value="copilot" leftSection={<IconRobot size={18} />}>Copilot</Tabs.Tab>

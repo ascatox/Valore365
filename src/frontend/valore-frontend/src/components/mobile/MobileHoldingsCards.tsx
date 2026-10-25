@@ -54,7 +54,10 @@ function formatDate(value?: string | null): string {
 
 export function MobileHoldingsCards({ positions, currency, summary, targetMap, onRefreshPrices, refreshing }: MobileHoldingsCardsProps) {
   const [sortKey, setSortKey] = useState<SortKey>('value');
-  const [selected, setSelected] = useState<Position | null>(null);
+  // The id, not the row: the sheet then shows the refreshed values after
+  // "Aggiorna prezzi" refetches the positions.
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const selected = selectedId != null ? positions.find((p) => p.asset_id === selectedId) ?? null : null;
   const hasTargets = !!targetMap && targetMap.size > 0;
 
   const drift = (position: Position) => {
@@ -116,7 +119,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
           return (
             <UnstyledButton
               key={position.asset_id}
-              onClick={() => setSelected(position)}
+              onClick={() => setSelectedId(position.asset_id)}
               aria-label={`Dettagli ${position.symbol}`}
               style={{
                 display: 'block',
@@ -204,7 +207,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
 
       <Drawer
         opened={!!selected}
-        onClose={() => setSelected(null)}
+        onClose={() => setSelectedId(null)}
         {...BOTTOM_SHEET_PROPS}
         title={selected ? selected.symbol : ''}
       >

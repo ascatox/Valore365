@@ -79,6 +79,13 @@ export const formatGrossTotal = (quantity: number | string, price: number | stri
   }).format(q * p);
 };
 
+// Amount a transaction moves: fees and taxes add to a buy and reduce every other side.
+export const getTransactionNetTotal = (tx: { side: string; quantity: number; price: number; fees?: number | null; taxes?: number | null }) => {
+  const gross = tx.quantity * tx.price;
+  const costs = (tx.fees ?? 0) + (tx.taxes ?? 0);
+  return tx.side === 'buy' ? gross + costs : gross - costs;
+};
+
 export const getTransactionSideColor = (side: string) => {
   switch (side) {
     case 'buy': return 'teal';

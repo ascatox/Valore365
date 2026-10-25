@@ -48,6 +48,7 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { useAggregateDecumulationPlan, useDecumulationPlan, useMonteCarloProjection, usePortfolioSummary, usePortfolios, useUserSettings } from '../components/dashboard/hooks/queries';
 import { getCopilotStatus, getMonteCarloProjection, getPortfolioSummary, type DecumulationYearProjection, type FireOneOffExpense, type MonteCarloProjectionResponse, type PortfolioSummary, updateUserSettings } from '../services/api';
 import { computeFireTarget, estimateYearsToFire, solveRequiredContribution, type AccumulationInput } from '../components/fire/accumulation';
+import { useSwipeTabs } from '../hooks/useSwipeTabs';
 
 const PRIVACY_MASK = '******';
 const DEFAULT_FIRE_EXPECTED_RETURN_PCT = 5;
@@ -97,6 +98,9 @@ function getDecumulationOutcomeTooltip(
 
 type FireMode = 'accumulation' | 'decumulation';
 type FireScopeMode = 'single' | 'aggregate';
+
+// Order of the mode tabs, for swiping between them on mobile.
+const FIRE_MODES = ['accumulation', 'decumulation'] as const;
 
 export function FirePage() {
   const queryClient = useQueryClient();
@@ -548,6 +552,13 @@ export function FirePage() {
     : (selectedPortfolio?.name ?? 'N/D');
   const incompatiblePortfolioCount = portfolios.length - availableAggregatePortfolios.length;
 
+  const swipeRef = useSwipeTabs({
+    tabs: FIRE_MODES,
+    active: fireMode,
+    onChange: (mode) => setFireMode(mode as FireMode),
+    enabled: !!isMobile,
+  });
+
   const handleSave = () => {
     setSaveMessage(null);
     setSaveError(null);
@@ -571,7 +582,7 @@ export function FirePage() {
 
   return (
     <PageLayout>
-      <Stack gap="lg">
+      <Stack gap="lg" ref={swipeRef}>
         <PageHeader
           eyebrow="Indipendenza finanziaria e piano di decumulo"
           title="FIRE"

@@ -16,6 +16,9 @@ interface MobileBottomNavCenterAction {
   onClick: () => void;
 }
 
+// Press key of the center action, distinct from any item value.
+const CENTER_ACTION_KEY = '__center-action__';
+
 // A tap that moves less than this is a tap, not a drag.
 const TAP_SLOP_PX = 10;
 // Clicks following a pointer-activated tap within this window are duplicates.
@@ -44,7 +47,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
     pressRef.current = { value: itemValue, x: event.clientX, y: event.clientY };
   };
 
-  const handlePointerUp = (event: PointerEvent, itemValue: string) => {
+  const handlePointerUp = (event: PointerEvent, itemValue: string, activate: () => void = () => onChange(itemValue)) => {
     const press = pressRef.current;
     pressRef.current = null;
     if (
@@ -56,12 +59,12 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
       return;
     }
     lastPointerTapRef.current = Date.now();
-    onChange(itemValue);
+    activate();
   };
 
-  const handleClick = (itemValue: string) => {
+  const handleClick = (itemValue: string, activate: () => void = () => onChange(itemValue)) => {
     if (Date.now() - lastPointerTapRef.current < CLICK_DEDUPE_MS) return;
-    onChange(itemValue);
+    activate();
   };
 
   if (items.length === 0) return null;
@@ -96,7 +99,12 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
           <Fragment key={item.value}>
           {centerAction && CenterIcon && index === Math.ceil(items.length / 2) && (
             <UnstyledButton
-              onClick={centerAction.onClick}
+              // Same pointer activation as the tabs, so a tap during momentum
+              // scrolling still opens the sheet on iOS.
+              onPointerDown={(event) => handlePointerDown(event, CENTER_ACTION_KEY)}
+              onPointerUp={(event) => handlePointerUp(event, CENTER_ACTION_KEY, centerAction.onClick)}
+              onPointerCancel={() => { pressRef.current = null; }}
+              onClick={() => handleClick(CENTER_ACTION_KEY, centerAction.onClick)}
               aria-label={centerAction.label}
               style={{
                 flex: '0 0 auto',
