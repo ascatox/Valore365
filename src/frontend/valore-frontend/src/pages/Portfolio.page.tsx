@@ -28,6 +28,7 @@ import { formatNum, formatMoneyOrNA, formatDateTime, formatTransactionSideLabel,
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { useSwipeTabs } from '../hooks/useSwipeTabs';
 
 import { usePortfolioPage } from '../components/portfolio/hooks/usePortfolioPage';
 import { usePortfolioSummary } from '../components/dashboard/hooks/queries';
@@ -39,12 +40,21 @@ import { PortfolioEmptyState } from '../components/portfolio/sections/PortfolioE
 import { TransactionMobileList } from '../components/portfolio/TransactionMobileList';
 import { AssetInfoModal } from '../components/dashboard/holdings/AssetInfoModal';
 
+// Order of the view tabs, for swiping between them on mobile.
+const PORTFOLIO_VIEWS = ['transactions', 'cash', 'pac'] as const;
+
 export function PortfolioPage() {
   const s = usePortfolioPage();
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
   const { data: summary } = usePortfolioSummary(portfolioId);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
   const aiExport = usePortfolioAiExport(portfolioId);
+  const swipeRef = useSwipeTabs({
+    tabs: PORTFOLIO_VIEWS,
+    active: s.portfolioView,
+    onChange: (view) => s.setPortfolioView(view as (typeof PORTFOLIO_VIEWS)[number]),
+    enabled: s.isMobile,
+  });
 
   // Quick actions from the mobile "+" sheet arrive as ?azione=<name>.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -233,6 +243,7 @@ export function PortfolioPage() {
         )}
       </Group>
 
+      <div ref={swipeRef}>
       {s.error && <Alert color="red" mb="md">{s.error}</Alert>}
       {s.transactionsError && <Alert color="red" mb="md">{s.transactionsError}</Alert>}
       {s.formSuccess && <Alert color="teal" mb="md">{s.formSuccess}</Alert>}
@@ -291,6 +302,7 @@ export function PortfolioPage() {
           refreshTrigger={s.pacRefreshTrigger}
         />
       )}
+      </div>
       </PageLayout>
 
       {/* --- Modals & Drawers --- */}

@@ -26,6 +26,7 @@ import { getCopilotStatus } from '../services/api';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
+import { useSwipeTabs } from '../hooks/useSwipeTabs';
 
 const DASHBOARD_TABS: string[] = [
   'panoramica',
@@ -99,6 +100,8 @@ export function DashboardPage() {
       window.localStorage.setItem(STORAGE_KEYS.activeTab, tab);
     }
   };
+
+  const swipeRef = useSwipeTabs({ tabs: DASHBOARD_TABS, active: activeTab, onChange: handleTabChange, enabled: !!isMobile });
 
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
   const lastUpdatedAt = !error ? (targetPerformance?.last_updated_at ?? null) : null;
@@ -238,7 +241,7 @@ export function DashboardPage() {
           </Tabs.List>
         )}
 
-        <div>
+        <div ref={swipeRef}>
           <Tabs.Panel value="panoramica">
             <PanoramicaTab
               portfolioId={portfolioId}
