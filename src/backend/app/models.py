@@ -683,6 +683,50 @@ class MarketNewsResponse(BaseModel):
     items: list[MarketNewsItem]
 
 
+MarketCalendarCategory = Literal['central_bank', 'earnings', 'macro']
+MarketCalendarImportance = Literal['high', 'medium']
+
+
+class MarketCalendarEvent(BaseModel):
+    id: str
+    category: MarketCalendarCategory
+    importance: MarketCalendarImportance
+    title: str
+    description: str | None = None
+    day: date
+    # None when only the day is known (e.g. earnings with no announced slot).
+    starts_at: datetime | None = None
+    time_hint: str | None = None
+    region: str | None = None
+    tags: list[str] = []
+    # Earnings
+    symbol: str | None = None
+    company: str | None = None
+    market_cap: float | None = None
+    eps_estimate: float | None = None
+    eps_actual: float | None = None
+    # Macro releases, in the provider's own units
+    source_name: str | None = None
+    period: str | None = None
+    expected: float | None = None
+    previous: float | None = None
+    actual: float | None = None
+
+
+class MarketCalendarDay(BaseModel):
+    day: date
+    events: list[MarketCalendarEvent]
+
+
+class MarketCalendarResponse(BaseModel):
+    start_date: date
+    end_date: date
+    timezone: str
+    days: list[MarketCalendarDay]
+    warnings: list[str] = []
+    generated_at: datetime
+
+
 # --- Feature 2: Cash Movements ---
 
 class CashMovementCreate(BaseModel):

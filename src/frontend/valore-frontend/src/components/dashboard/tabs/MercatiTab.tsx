@@ -9,6 +9,7 @@ import type { MarketQuoteItem } from '../../../services/api';
 import { formatPriceSourceLabel, formatProviderWarning } from '../../../services/dataQuality';
 import { getClosedExchanges } from '../exchangeSchedules';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
+import { MarketCalendarCard } from './MarketCalendarCard';
 import { MarketTicker } from './MarketTicker';
 import { NewsTicker } from './NewsTicker';
 
@@ -192,6 +193,7 @@ export function MercatiTab() {
     <Stack gap="md">
       <MarketTicker />
       <NewsTicker />
+      <MarketCalendarCard onSymbolClick={setSelectedSymbol} />
 
       {closedExchanges.length > 0 && !closedAlertDismissed && (
         <Alert

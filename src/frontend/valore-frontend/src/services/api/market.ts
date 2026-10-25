@@ -2,6 +2,7 @@ import { apiFetch } from './client';
 import type {
   MarketQuotesResponse,
   MarketNewsResponse,
+  MarketCalendarResponse,
   AssetInfo,
   BenchmarkItem,
 } from './types';
@@ -12,6 +13,10 @@ export const getMarketQuotes = async (): Promise<MarketQuotesResponse> => {
 
 export const getMarketNews = async (): Promise<MarketNewsResponse> => {
   return apiFetch<MarketNewsResponse>('/markets/news');
+};
+
+export const getMarketCalendar = async (days = 3): Promise<MarketCalendarResponse> => {
+  return apiFetch<MarketCalendarResponse>(`/markets/calendar?days=${days}`);
 };
 
 export const getMarketSymbolInfo = async (symbol: string): Promise<AssetInfo> => {

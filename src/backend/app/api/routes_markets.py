@@ -14,6 +14,7 @@ from ..models import (
     AssetInfoPricePoint,
     AssetInfoResponse,
     ErrorResponse,
+    MarketCalendarResponse,
     MarketCategory,
     MarketIntradayPoint,
     MarketNewsItem,
@@ -22,13 +23,17 @@ from ..models import (
     MarketQuotesResponse,
 )
 from ..repository import PortfolioRepository
+from ..services.market_calendar_service import MarketCalendarService
 
 
 def register_markets_routes(
     router: APIRouter,
     repo: PortfolioRepository,
     finance_client: object,
+    market_calendar_service: MarketCalendarService | None = None,
 ) -> None:
+    calendar_service = market_calendar_service or MarketCalendarService()
+
     MARKET_QUOTES_CACHE_TTL_SECONDS = 60.0
     _market_quotes_cache: dict[str, Any] = {"payload": None, "expires_at": 0.0}
     _market_quotes_cache_lock = threading.Lock()
@@ -173,6 +178,13 @@ def register_markets_routes(
             _market_news_cache["payload"] = response
             _market_news_cache["expires_at"] = _time.monotonic() + MARKET_NEWS_CACHE_TTL_SECONDS
         return response
+
+    @router.get("/markets/calendar", response_model=MarketCalendarResponse)
+    def get_market_calendar(
+        days: int = Query(default=3, ge=1, le=5, description="Giorni di borsa (lun-ven) a partire da oggi"),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> MarketCalendarResponse:
+        return calendar_service.get_calendar(days)
 
     @router.get("/markets/symbol-info", response_model=AssetInfoResponse, responses={404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}})
     def get_market_symbol_info(symbol: str = Query(min_length=1), _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetInfoResponse:

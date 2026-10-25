@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import {
   backfillBenchmarkPrices,
   getAdminPortfolios,
@@ -8,6 +8,7 @@ import {
   getBenchmarks,
   getGainTimeseries,
   getHallOfFame,
+  getMarketCalendar,
   getMarketNews,
   getMarketQuotes,
   getMonteCarloProjection,
@@ -292,6 +293,15 @@ export function useMarketNews() {
     queryKey: ['market-news'],
     queryFn: getMarketNews,
     refetchInterval: 5 * 60 * 1000, // refresh every 5 minutes
+  });
+}
+
+export function useMarketCalendar(days: number) {
+  return useQuery({
+    queryKey: ['market-calendar', days],
+    queryFn: () => getMarketCalendar(days),
+    staleTime: 15 * 60 * 1000, // the backend caches the calendar for 30 minutes
+    placeholderData: keepPreviousData, // keep the current days on screen while switching range
   });
 }
 

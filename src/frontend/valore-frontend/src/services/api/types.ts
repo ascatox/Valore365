@@ -963,6 +963,47 @@ export interface MarketNewsResponse {
   items: MarketNewsItem[];
 }
 
+// Market Calendar (upcoming events)
+
+export type MarketCalendarCategory = 'central_bank' | 'earnings' | 'macro';
+
+export interface MarketCalendarEvent {
+  id: string;
+  category: MarketCalendarCategory;
+  importance: 'high' | 'medium';
+  title: string;
+  description: string | null;
+  day: string;
+  starts_at: string | null;
+  time_hint: string | null;
+  region: string | null;
+  tags: string[];
+  symbol: string | null;
+  company: string | null;
+  market_cap: number | null;
+  eps_estimate: number | null;
+  eps_actual: number | null;
+  source_name: string | null;
+  period: string | null;
+  expected: number | null;
+  previous: number | null;
+  actual: number | null;
+}
+
+export interface MarketCalendarDay {
+  day: string;
+  events: MarketCalendarEvent[];
+}
+
+export interface MarketCalendarResponse {
+  start_date: string;
+  end_date: string;
+  timezone: string;
+  days: MarketCalendarDay[];
+  warnings: string[];
+  generated_at: string;
+}
+
 // ETF Enrichment
 
 export interface EtfEnrichmentWeight {
