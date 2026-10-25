@@ -29,6 +29,28 @@ import type { CopilotStatus } from '../services/api';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useSwipeTabs } from '../hooks/useSwipeTabs';
+import {
+  LARGE_TEXT_SCALE,
+  getTextSizePreference,
+  setTextSizePreference,
+  systemTextSizeSupported,
+  useTextScale,
+  type TextSizePreference,
+} from '../textScale';
+
+const COLOR_SCHEME_OPTIONS = [
+  { value: 'light', label: 'Chiaro', icon: IconSun },
+  { value: 'dark', label: 'Scuro', icon: IconMoon },
+  { value: 'auto', label: 'Auto', icon: IconDeviceDesktop },
+];
+
+const TEXT_SIZE_OPTIONS: { value: TextSizePreference; label: string }[] = [
+  { value: 'system', label: 'Sistema' },
+  { value: 'small', label: 'Piccolo (90%)' },
+  { value: 'normal', label: 'Normale (100%)' },
+  { value: 'large', label: 'Grande (115%)' },
+  { value: 'xlarge', label: 'Molto grande (130%)' },
+];
 
 export function SettingsPage() {
   const theme = useMantineTheme();
@@ -36,6 +58,8 @@ export function SettingsPage() {
   const colorScheme = useComputedColorScheme('light');
   const isMobile = useMediaQuery('(max-width: 48em)');
   const [activeTab, setActiveTab] = useState('general');
+  const [textSize, setTextSize] = useState<TextSizePreference>(() => getTextSizePreference());
+  const largeText = useTextScale() >= LARGE_TEXT_SCALE;
   const [brokerDefaultFee, setBrokerDefaultFee] = useState<number | string>(1.99);
   const [capitalGainsTaxRate, setCapitalGainsTaxRate] = useState<number | string>(26);
   const [privacyModeEnabled, setPrivacyModeEnabled] = useState(false);
@@ -241,36 +265,40 @@ export function SettingsPage() {
                 <SegmentedControl
                   value={colorSchemeRaw}
                   onChange={(value) => setColorScheme(value as 'light' | 'dark' | 'auto')}
-                  data={[
-                    {
-                      value: 'light',
-                      label: (
-                        <Center>
-                          <IconSun size={16} />
-                          <Box ml="xs">Chiaro</Box>
-                        </Center>
-                      ),
-                    },
-                    {
-                      value: 'dark',
-                      label: (
-                        <Center>
-                          <IconMoon size={16} />
-                          <Box ml="xs">Scuro</Box>
-                        </Center>
-                      ),
-                    },
-                    {
-                      value: 'auto',
-                      label: (
-                        <Center>
-                          <IconDeviceDesktop size={16} />
-                          <Box ml="xs">Auto</Box>
-                        </Center>
-                      ),
-                    },
-                  ]}
+                  fullWidth
+                  // With large text the icons would push "Auto" out of the card.
+                  data={COLOR_SCHEME_OPTIONS.map(({ value, label, icon: Icon }) => ({
+                    value,
+                    label: largeText ? label : (
+                      <Center>
+                        <Icon size={16} />
+                        <Box ml="xs">{label}</Box>
+                      </Center>
+                    ),
+                  }))}
                 />
+              </Stack>
+              <Stack gap="xs">
+                <Select
+                  label="Dimensione del testo"
+                  description={textSize === 'system'
+                    ? (systemTextSizeSupported()
+                      ? 'Segue Dimensioni testo di iOS (Impostazioni › Schermo e luminosità).'
+                      : 'Dimensione standard. Su iPhone segue Dimensioni testo di iOS.')
+                    : 'Vale per questo dispositivo.'}
+                  data={TEXT_SIZE_OPTIONS}
+                  value={textSize}
+                  onChange={(value) => {
+                    const next = (value ?? 'system') as TextSizePreference;
+                    setTextSize(next);
+                    setTextSizePreference(next);
+                  }}
+                  allowDeselect={false}
+                />
+                <Text size="sm" c="dimmed">
+                  {'Anteprima: '}
+                  <Text span fw={700} c="var(--mantine-color-text)">Patrimonio totale 131.635,35 €</Text>
+                </Text>
               </Stack>
             </Stack>
           </Paper>

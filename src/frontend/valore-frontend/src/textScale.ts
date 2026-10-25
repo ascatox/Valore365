@@ -1,8 +1,14 @@
 import { useSyncExternalStore } from 'react';
 
 /*
- * Follow the iOS text size (Settings > Display & Brightness > Text Size, and
- * the larger accessibility sizes) on phones.
+ * Root text size of the app, chosen in Impostazioni > Generale:
+ * - "system" (default) follows the iOS text size on phones (see below) and
+ *   stays at 16px elsewhere;
+ * - the fixed sizes apply on every device.
+ * The choice is stored on the device, like a browser zoom level.
+ *
+ * Following the iOS text size (Settings > Display & Brightness > Text Size,
+ * and the larger accessibility sizes) on phones:
  *
  * Safari doesn't apply that setting to web pages, but it exposes it through
  * the system font keyword `-apple-system-body`: its size is 17px at the
@@ -22,6 +28,49 @@ export const MAX_TEXT_SCALE = 1.3;
 export const LARGE_TEXT_SCALE = 1.15;
 
 const MOBILE_QUERY = '(max-width: 48em)';
+const STORAGE_KEY = 'valore365.settings.textSize';
+
+export type TextSizePreference = 'system' | 'small' | 'normal' | 'large' | 'xlarge';
+
+export const TEXT_SIZE_SCALES: Record<Exclude<TextSizePreference, 'system'>, number> = {
+  small: 0.9,
+  normal: 1,
+  large: LARGE_TEXT_SCALE,
+  xlarge: MAX_TEXT_SCALE,
+};
+
+function isTextSizePreference(value: unknown): value is TextSizePreference {
+  return value === 'system' || (typeof value === 'string' && value in TEXT_SIZE_SCALES);
+}
+
+export function getTextSizePreference(): TextSizePreference {
+  try {
+    const stored = window.localStorage.getItem(STORAGE_KEY);
+    return isTextSizePreference(stored) ? stored : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+// Fallback when localStorage is unavailable.
+let sessionPreference: TextSizePreference | null = null;
+
+/** Save the choice on this device and apply it right away. */
+export function setTextSizePreference(preference: TextSizePreference) {
+  try {
+    if (preference === 'system') window.localStorage.removeItem(STORAGE_KEY);
+    else window.localStorage.setItem(STORAGE_KEY, preference);
+  } catch {
+    // Storage blocked (private mode): the choice still applies for this visit.
+  }
+  sessionPreference = preference;
+  applyTextScale();
+}
+
+/** Whether "system" can follow the OS text size here (iOS Safari / home-screen app). */
+export function systemTextSizeSupported(): boolean {
+  return typeof CSS !== 'undefined' && CSS.supports?.('font', '-apple-system-body') === true;
+}
 
 /** Root scale for a given -apple-system-body size, clamped to the supported range. */
 export function textScaleFromIosBodySize(bodyPx: number): number {
@@ -31,7 +80,7 @@ export function textScaleFromIosBodySize(bodyPx: number): number {
 }
 
 function readIosBodySize(): number | null {
-  if (typeof window === 'undefined' || typeof CSS === 'undefined' || !CSS.supports?.('font', '-apple-system-body')) {
+  if (typeof window === 'undefined' || !systemTextSizeSupported()) {
     return null;
   }
   const probe = document.createElement('span');
@@ -63,9 +112,15 @@ function setScale(scale: number) {
   }
 }
 
-/** Read the iOS text size and apply it (phones only). Safe to call repeatedly. */
+/** Apply the chosen text size, or the iOS one for "system". Safe to call repeatedly. */
 export function applyTextScale() {
   if (typeof window === 'undefined') return;
+  const stored = getTextSizePreference();
+  const preference = stored === 'system' && sessionPreference ? sessionPreference : stored;
+  if (preference !== 'system') {
+    setScale(TEXT_SIZE_SCALES[preference]);
+    return;
+  }
   const isPhone = window.matchMedia?.(MOBILE_QUERY).matches ?? false;
   const bodyPx = isPhone ? readIosBodySize() : null;
   setScale(bodyPx == null ? 1 : textScaleFromIosBodySize(bodyPx));
