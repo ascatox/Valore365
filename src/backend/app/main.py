@@ -2,6 +2,7 @@
 import json
 import logging
 import math
+import warnings
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -81,6 +82,13 @@ from .api.routes_copilot import register_copilot_routes
 settings = get_settings()
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# yfinance still passes inplace=True to pandas, which pandas 3 deprecates: one
+# warning per downloaded series floods the logs with nothing to act on here.
+# Importing yfinance re-enables its own deprecation warnings, so it is imported
+# first and this filter goes ahead of its own.
+import yfinance  # noqa: E402, F401
+
+warnings.filterwarnings("ignore", message="The inplace keyword", module="yfinance")
 
 repo = PortfolioRepository(engine)
 pricing_service = PriceIngestionService(settings, repo)

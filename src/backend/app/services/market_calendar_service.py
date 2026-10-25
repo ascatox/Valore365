@@ -462,6 +462,14 @@ class MarketCalendarService:
         earnings, earnings_complete = earnings_future.result()
         economic = economic_future.result()
         fresh = earnings_complete and economic is not None
+        logger.info(
+            "Market calendar fetched %s..%s: earnings=%s (%s) economic=%s",
+            start,
+            end,
+            "unavailable" if earnings is None else len(earnings),
+            "full calendar" if earnings_complete else "Big Tech only",
+            "unavailable" if economic is None else len(economic),
+        )
 
         # A failed refresh keeps what an earlier fetch of the same window got.
         if cached is not None:
