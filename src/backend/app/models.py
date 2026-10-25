@@ -263,7 +263,7 @@ class AssetInfoResponse(BaseModel):
     market_cap: float | None = None
     trailing_pe: float | None = None
     forward_pe: float | None = None
-    dividend_yield: float | None = None
+    dividend_yield: float | None = None  # percentage points (6.34 = 6.34%)
     beta: float | None = None
     fifty_two_week_high: float | None = None
     fifty_two_week_low: float | None = None

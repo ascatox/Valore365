@@ -486,7 +486,7 @@ export interface AssetInfo {
   market_cap: number | null;
   trailing_pe: number | null;
   forward_pe: number | null;
-  dividend_yield: number | null;
+  dividend_yield: number | null; // percentage points (6.34 = 6.34%)
   beta: number | null;
   fifty_two_week_high: number | null;
   fifty_two_week_low: number | null;

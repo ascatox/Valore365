@@ -118,6 +118,7 @@ class ProviderAssetInfo:
     market_cap: float | None
     trailing_pe: float | None
     forward_pe: float | None
+    # Percentage points (6.34 = 6.34%): Yahoo's dividendYield, already a percentage.
     dividend_yield: float | None
     beta: float | None
     fifty_two_week_high: float | None

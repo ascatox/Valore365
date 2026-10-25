@@ -388,7 +388,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                       />
                     )}
                     {info.dividend_yield != null && (
-                      <InfoRow label="Dist. Yield" value={formatPct(info.dividend_yield * 100)} />
+                      <InfoRow label="Dist. Yield" value={formatPercentValue(info.dividend_yield)} />
                     )}
                     {enrichment?.fund_currency && <InfoRow label="Valuta fondo" value={enrichment.fund_currency} />}
                     {enrichment?.volatility_1y != null && (
@@ -494,7 +494,7 @@ export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoMo
                 {info.trailing_pe != null && <InfoRow label="P/E (TTM)" value={formatNum(info.trailing_pe)} />}
                 {info.forward_pe != null && <InfoRow label="P/E (Fwd)" value={formatNum(info.forward_pe)} />}
                 {!isFundLike && info.dividend_yield != null && (
-                  <InfoRow label="Div. Yield" value={formatPct(info.dividend_yield * 100)} />
+                  <InfoRow label="Div. Yield" value={formatPercentValue(info.dividend_yield)} />
                 )}
                 {info.beta != null && <InfoRow label="Beta" value={formatNum(info.beta)} />}
                 <InfoRow label="Vol. Medio" value={formatVolume(info.avg_volume)} />
