@@ -186,7 +186,7 @@ export function PortfolioPage() {
       />
 
       <Group mb={s.isMobile ? 'xs' : 'md'} align="flex-end" gap="xs">
-        {(s.loadingPortfolios || s.loadingData) && (
+        {!s.isMobile && (s.loadingPortfolios || s.loadingData) && (
           <Group gap="xs">
             <Loader size="sm" />
             <Text size="sm" c="dimmed">Caricamento...</Text>
@@ -239,7 +239,7 @@ export function PortfolioPage() {
       {aiExport.copied && <Alert color="teal" mb="md">Snapshot del portafoglio copiato negli appunti, pronto da incollare in un'altra AI.</Alert>}
       {aiExport.error && <Alert color="red" mb="md">{aiExport.error}</Alert>}
 
-      {s.portfolios.length === 0 && (
+      {!s.loadingPortfolios && s.portfolios.length === 0 && (
         <PortfolioEmptyState
           onCreatePortfolio={s.openCreatePortfolioModal}
           onImportFromFile={() => s.setCsvImportOpened(true)}
@@ -248,7 +248,7 @@ export function PortfolioPage() {
 
       {s.portfolioView === 'transactions' && (
         <TransactionsSection
-          loading={s.loadingTransactions}
+          loading={s.loadingPortfolios || s.loadingTransactions}
           filterQuery={s.transactionFilterQuery}
           onFilterQueryChange={s.setTransactionFilterQuery}
           filterSide={s.transactionFilterSide}

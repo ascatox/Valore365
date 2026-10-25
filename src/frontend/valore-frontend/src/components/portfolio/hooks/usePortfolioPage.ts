@@ -69,7 +69,8 @@ export function usePortfolioPage() {
   // --- Transaction state ---
   const [transactions, setTransactions] = useState<TransactionListItem[]>([]);
   const [transactionsError, setTransactionsError] = useState<string | null>(null);
-  const [loadingTransactions, setLoadingTransactions] = useState(false);
+  // Starts true: until the first load ends, "no transactions" would be a lie.
+  const [loadingTransactions, setLoadingTransactions] = useState(true);
   const [deletingTransactionId, setDeletingTransactionId] = useState<number | null>(null);
   const [transactionDeleteOpened, setTransactionDeleteOpened] = useState(false);
   const [transactionIdToDelete, setTransactionIdToDelete] = useState<number | null>(null);
@@ -219,6 +220,7 @@ export function usePortfolioPage() {
     if (!selectedPortfolioId) {
       setTransactions([]);
       setTransactionsError(null);
+      setLoadingTransactions(false);
       return;
     }
     const portfolioId = Number(selectedPortfolioId);

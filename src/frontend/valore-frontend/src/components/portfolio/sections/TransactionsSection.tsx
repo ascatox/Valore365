@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Card, Group, Loader, Select, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core';
+import { Card, Group, Loader, Select, Skeleton, Stack, Table, Text, TextInput, Title, UnstyledButton } from '@mantine/core';
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
 
 interface TransactionsSectionProps {
@@ -107,6 +107,21 @@ export function TransactionsSection({
       <Stack gap="sm" hiddenFrom="sm">
         {hasRows ? (
           mobileCards
+        ) : loading ? (
+          // Placeholder rows shaped like the list, instead of an empty state
+          // that would flash before the transactions arrive.
+          <Stack gap={0} aria-busy="true" aria-label="Caricamento transazioni">
+            {[0, 1, 2, 3, 4].map((i) => (
+              <Group key={i} gap="sm" wrap="nowrap" py={10}>
+                <Skeleton circle height={32} />
+                <Stack gap={6} style={{ flex: 1 }}>
+                  <Skeleton height={12} width="55%" />
+                  <Skeleton height={10} width="35%" />
+                </Stack>
+                <Skeleton height={12} width={70} />
+              </Group>
+            ))}
+          </Stack>
         ) : (
           <Card withBorder>
             <Text c="dimmed" ta="center">
@@ -141,6 +156,14 @@ export function TransactionsSection({
           <Table.Tbody>
             {hasRows ? (
               rows
+            ) : loading ? (
+              [0, 1, 2, 3, 4].map((i) => (
+                <Table.Tr key={`skeleton-${i}`}>
+                  <Table.Td colSpan={showActions ? 8 : 7}>
+                    <Skeleton height={14} />
+                  </Table.Td>
+                </Table.Tr>
+              ))
             ) : (
               <Table.Tr>
                 <Table.Td colSpan={showActions ? 8 : 7}>
