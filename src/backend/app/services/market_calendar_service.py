@@ -1,10 +1,9 @@
 """Upcoming market events for the Markets tab: central banks, big earnings, macro data.
 
-Central bank decisions come from the static calendar in constants/market_calendar,
-economic releases from Yahoo's calendar through yfinance, and earnings from
-Financial Modeling Prep when an API key is configured, then from Yahoo; when both
-earnings calendars fail, Big Tech earnings dates are looked up one symbol at a
-time. A provider failure keeps the rows of the last successful fetch for the same
+Central bank decisions come from the static calendar in constants/market_calendar;
+earnings and economic releases from Financial Modeling Prep when an API key is
+configured, then from Yahoo's calendars through yfinance; when both earnings
+calendars fail, Big Tech earnings dates are looked up one symbol at a time. A provider failure keeps the rows of the last successful fetch for the same
 window or, failing that, drops its own category with a warning.
 """
 
@@ -441,11 +440,32 @@ def fetch_earnings(start: date, end: date) -> list[EarningsRow]:
     return fetch_yahoo_earnings(start, end)
 
 
+def fetch_economic_events(start: date, end: date) -> list[EconomicRow]:
+    """FMP's economic calendar when an API key is configured, Yahoo's otherwise
+    or when FMP fails."""
+    if get_settings().fmt_api_key.strip():
+        try:
+            rows = fetch_fmp_economic_events(start, end)
+            logger.info("Economic calendar from FMP for %s..%s: %d releases", start, end, len(rows))
+            return rows
+        except Exception as exc:
+            logger.warning("FMP economic calendar unavailable for %s..%s: %s", start, end, exc)
+    return fetch_yahoo_economic_events(start, end)
+
+
 def fetch_fmp_earnings(start: date, end: date) -> list[EarningsRow]:
+    return fmp_earnings_rows(_fmp_calendar("earnings-calendar", start, end))
+
+
+def fetch_fmp_economic_events(start: date, end: date) -> list[EconomicRow]:
+    return fmp_economic_rows(_fmp_calendar("economic-calendar", start, end))
+
+
+def _fmp_calendar(path: str, start: date, end: date) -> list:
     settings = get_settings()
     try:
         response = httpx.get(
-            f"{settings.fmt_api_base_url.rstrip('/')}/earnings-calendar",
+            f"{settings.fmt_api_base_url.rstrip('/')}/{path}",
             params={"from": start.isoformat(), "to": end.isoformat(), "apikey": settings.fmt_api_key.strip()},
             timeout=settings.fmt_timeout_seconds,
         )
@@ -459,10 +479,10 @@ def fetch_fmp_earnings(start: date, end: date) -> list[EarningsRow]:
         # Errors such as an exhausted quota come as {"Error Message": ...}.
         raise RuntimeError(f"unexpected FMP response: {str(payload)[:200]}")
     if not payload:
-        # The calendar covers every listed company worldwide: a whole week
-        # without a single report means FMP served no data, not a quiet week.
-        raise RuntimeError("FMP returned an empty earnings calendar")
-    return fmp_earnings_rows(payload)
+        # Both calendars cover the whole world: a week without a single entry
+        # means FMP served no data, not a quiet week.
+        raise RuntimeError(f"FMP returned an empty {path}")
+    return payload
 
 
 def fmp_earnings_rows(payload: list) -> list[EarningsRow]:
@@ -486,6 +506,28 @@ def fmp_earnings_rows(payload: list) -> list[EarningsRow]:
             timing=None,
             eps_estimate=_clean_float(item.get("epsEstimated")),
             eps_actual=_clean_float(item.get("epsActual")),
+        ))
+    return rows
+
+
+def fmp_economic_rows(payload: list) -> list[EconomicRow]:
+    """Rows of FMP's economic calendar (times in UTC); MACRO_EVENT_RULES picks
+    the releases worth showing, as for Yahoo's."""
+    rows: list[EconomicRow] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        name = _clean_str(item.get("event"))
+        if not name:
+            continue
+        rows.append(EconomicRow(
+            name=name,
+            region=_clean_str(item.get("country")),
+            starts_at=_clean_datetime(item.get("date")),
+            period=None,
+            expected=_clean_float(item.get("estimate")),
+            previous=_clean_float(item.get("previous")),
+            actual=_clean_float(item.get("actual")),
         ))
     return rows
 
@@ -515,7 +557,7 @@ class MarketCalendarService:
     def __init__(
         self,
         earnings_fetcher: EarningsFetcher = fetch_earnings,
-        economic_fetcher: EconomicFetcher = fetch_yahoo_economic_events,
+        economic_fetcher: EconomicFetcher = fetch_economic_events,
         fallback_earnings_fetcher: EarningsFetcher = fetch_yahoo_watchlist_earnings,
         clock: Callable[[], float] = _time.monotonic,
     ) -> None:

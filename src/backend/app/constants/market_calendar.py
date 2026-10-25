@@ -156,8 +156,9 @@ EARNINGS_HIGH_IMPACT_MARKET_CAP_USD = 500_000_000_000
 EURO_AREA_REGIONS: frozenset[str] = frozenset({"EZ", "EU", "EA", "EMU", "XM"})
 
 # Economic releases worth showing, matched case-insensitively against the
-# release name. Rules are tried in order and the first match wins. Rate
-# decisions are not listed: CENTRAL_BANKS already covers them.
+# release name, which differs by source (Yahoo "CPI YY, NSA", FMP "Inflation
+# Rate YoY"). Rules are tried in order and the first match wins. Rate decisions
+# are not listed: CENTRAL_BANKS already covers them.
 MACRO_EVENT_RULES: list[dict] = [
     {
         "key": "us_payrolls",
@@ -169,7 +170,7 @@ MACRO_EVENT_RULES: list[dict] = [
     },
     {
         "key": "us_cpi",
-        "pattern": r"\bcpi\b",
+        "pattern": r"\bcpi\b|inflation rate",
         "regions": frozenset({"US"}),
         "title": "Inflazione USA (CPI)",
         "description": "Un'inflazione sopra le attese allontana i tagli dei tassi e pesa su azioni e obbligazioni.",
@@ -249,7 +250,7 @@ MACRO_EVENT_RULES: list[dict] = [
     },
     {
         "key": "de_inflation",
-        "pattern": r"\bhicp\b|\bcpi\b",
+        "pattern": r"\bhicp\b|\bcpi\b|inflation rate",
         "regions": frozenset({"DE"}),
         "title": "Inflazione Germania",
         "description": "Esce prima del dato dell'Eurozona e ne anticipa la direzione.",
@@ -273,7 +274,7 @@ MACRO_EVENT_RULES: list[dict] = [
     },
     {
         "key": "it_inflation",
-        "pattern": r"\bhicp\b|\bcpi\b",
+        "pattern": r"\bhicp\b|\bcpi\b|inflation rate",
         "regions": frozenset({"IT"}),
         "title": "Inflazione Italia",
         "description": None,

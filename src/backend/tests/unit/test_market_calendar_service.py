@@ -19,10 +19,13 @@ from app.services.market_calendar_service import (
     economic_rows_from_frame,
     fetch_yahoo_earnings,
     fetch_earnings,
+    fetch_economic_events,
     fetch_fmp_earnings,
+    fetch_fmp_economic_events,
     fetch_yahoo_economic_events,
     fetch_yahoo_watchlist_earnings,
     fmp_earnings_rows,
+    fmp_economic_rows,
     macro_events,
     upcoming_trading_days,
     watchlist_row_from_calendar,
@@ -611,6 +614,83 @@ def test_fetch_earnings_uses_yahoo_without_an_fmp_key(monkeypatch):
     monkeypatch.setattr(market_calendar_service, "fetch_fmp_earnings", unexpected_fmp_call)
 
     assert fetch_earnings(WINDOW[0], WINDOW[-1]) == [yahoo_row]
+
+
+def test_fmp_economic_rows_read_utc_times_and_values():
+    payload = [
+        {"date": "2026-10-27 12:30:00", "country": "US", "event": "Inflation Rate YoY",
+         "currency": "USD", "previous": 3.0, "estimate": 2.9, "actual": None, "impact": "High"},
+        {"date": "2026-10-27 12:30:00", "country": "US", "event": ""},
+        "garbage",
+    ]
+
+    assert fmp_economic_rows(payload) == [
+        EconomicRow(
+            name="Inflation Rate YoY",
+            region="US",
+            starts_at=datetime(2026, 10, 27, 12, 30, tzinfo=UTC),
+            period=None,
+            expected=2.9,
+            previous=3.0,
+            actual=None,
+        ),
+    ]
+
+
+def test_macro_events_match_fmp_release_names():
+    at = datetime(2026, 10, 28, 12, 30, tzinfo=UTC)
+    rows = [
+        _release("Non Farm Payrolls", "US", at),
+        _release("Core Inflation Rate YoY", "US", at),
+        _release("Inflation Rate YoY", "US", at, expected=2.9),
+        _release("Inflation Rate YoY Prel", "DE", datetime(2026, 10, 28, 13, 0, tzinfo=UTC)),
+        _release("Inflation Rate YoY Flash", "EU", datetime(2026, 10, 28, 9, 0, tzinfo=UTC)),
+        _release("Fed Interest Rate Decision", "US", at),
+        _release("Inflation Rate YoY", "JP", at),
+    ]
+
+    events = {event.id: event for event in macro_events(rows, WINDOW)}
+
+    assert set(events) == {
+        "macro-us_payrolls-2026-10-28",
+        "macro-us_cpi-2026-10-28",
+        "macro-de_inflation-2026-10-28",
+        "macro-ez_inflation-2026-10-28",
+    }
+    assert events["macro-us_cpi-2026-10-28"].source_name == "Inflation Rate YoY"
+
+
+def test_fetch_fmp_economic_events_calls_the_stable_calendar(monkeypatch):
+    _fmp_settings(monkeypatch)
+    urls = []
+
+    def fake_get(url, params, timeout):
+        urls.append(url)
+        return httpx.Response(200, json=[{"date": "2026-10-28 12:30:00", "country": "US", "event": "GDP Growth Rate QoQ Adv"}])
+
+    monkeypatch.setattr(market_calendar_service.httpx, "get", fake_get)
+
+    [row] = fetch_fmp_economic_events(WINDOW[0], WINDOW[-1])
+
+    assert row.name == "GDP Growth Rate QoQ Adv"
+    assert urls == ["https://financialmodelingprep.com/stable/economic-calendar"]
+
+
+def test_fetch_economic_events_prefers_fmp_and_falls_back_to_yahoo(monkeypatch):
+    fmp_row = _release("Non Farm Payrolls", "US", datetime(2026, 10, 30, 12, 30, tzinfo=UTC))
+    yahoo_row = _release("Nonfarm Payrolls", "US", datetime(2026, 10, 30, 12, 30, tzinfo=UTC))
+    monkeypatch.setattr(market_calendar_service, "fetch_yahoo_economic_events", lambda start, end: [yahoo_row])
+
+    _fmp_settings(monkeypatch)
+    monkeypatch.setattr(market_calendar_service, "fetch_fmp_economic_events", lambda start, end: [fmp_row])
+    assert fetch_economic_events(WINDOW[0], WINDOW[-1]) == [fmp_row]
+
+    monkeypatch.setattr(market_calendar_service, "fetch_fmp_economic_events", _failing())
+    assert fetch_economic_events(WINDOW[0], WINDOW[-1]) == [yahoo_row]
+
+    _fmp_settings(monkeypatch, api_key="")
+    monkeypatch.setattr(market_calendar_service, "fetch_fmp_economic_events", lambda start, end: [fmp_row])
+    assert fetch_economic_events(WINDOW[0], WINDOW[-1]) == [yahoo_row]
 
 
 def test_calendar_route_validates_days():
