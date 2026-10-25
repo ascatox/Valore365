@@ -11,7 +11,8 @@ import {
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
+import { prefetchMarketData, usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { useDashboardRefresh } from '../components/dashboard/hooks/useDashboardRefresh';
 import { PanoramicaTab } from '../components/dashboard/tabs/PanoramicaTab';
 import { PosizioniTab } from '../components/dashboard/tabs/PosizioniTab';
@@ -71,6 +72,15 @@ export function DashboardPage() {
   const { data: summary } = usePortfolioSummary(portfolioId);
   const { data: targetPerformance } = useTargetPerformance(portfolioId);
   const { refreshing, refreshMessage, refreshError, refreshVersion } = useDashboardRefresh(portfolioId);
+
+  // Load the Mercati tab's data with the dashboard, once the portfolio summary
+  // is in (so it doesn't compete with what's on screen): the tab then opens
+  // with quotes, news and calendar ready instead of a spinner.
+  const queryClient = useQueryClient();
+  const summaryLoaded = summary != null;
+  useEffect(() => {
+    if (summaryLoaded) void prefetchMarketData(queryClient);
+  }, [summaryLoaded, queryClient]);
 
   useEffect(() => {
     if (!portfolios.length) return;

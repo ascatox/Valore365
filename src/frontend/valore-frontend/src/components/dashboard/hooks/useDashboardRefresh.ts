@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../../../services/api';
+import { prefetchMarketData } from './queries';
 
 // Queries whose data depends on prices. Static lists (portfolios, benchmark
 // catalogue) are left out: a price refresh doesn't change them.
@@ -70,6 +71,9 @@ export function useDashboardRefresh(portfolioId: number | null) {
       // invalidateQueries refetches active queries once and marks the others
       // stale. resetQueries + refetchQueries fetched every active query twice.
       await queryClient.invalidateQueries({ predicate: matchesPortfolio, refetchType: 'active' });
+      // Mercati is usually not the open tab, so its invalidated quotes and
+      // news would wait for the tab to open: reload them now, in background.
+      void prefetchMarketData(queryClient);
 
       setRefreshVersion((current) => current + 1);
       setRefreshMessage(

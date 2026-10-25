@@ -16,7 +16,7 @@ import {
 } from '@mantine/core';
 import { IconBuildingBank, IconCalendarEvent, IconChartLine, IconFlame, IconReportMoney } from '@tabler/icons-react';
 import { formatNum } from '../formatters';
-import { useMarketCalendar } from '../hooks/queries';
+import { DEFAULT_MARKET_CALENDAR_DAYS, useMarketCalendar } from '../hooks/queries';
 import type { MarketCalendarCategory, MarketCalendarEvent, MarketCalendarResponse } from '../../../services/api';
 
 const CALENDAR_TZ = 'Europe/Rome';
@@ -253,7 +253,7 @@ export function MarketCalendarView({
 }
 
 export function MarketCalendarCard({ onSymbolClick }: { onSymbolClick?: (symbol: string) => void }) {
-  const [days, setDays] = useState('3');
+  const [days, setDays] = useState(String(DEFAULT_MARKET_CALENDAR_DAYS));
   const { data, isLoading, error } = useMarketCalendar(Number(days));
 
   return (
