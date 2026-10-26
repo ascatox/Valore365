@@ -140,6 +140,129 @@ export function PortfolioSwitcher({
     { label: 'Elimina', icon: IconTrash, onClick: onDeletePortfolio, color: 'red' },
   ].filter((action) => action.onClick);
 
+  // On mobile the bottom sheet itself scrolls with a finger drag; a nested
+  // ScrollArea there could only be scrolled by grabbing its scrollbar.
+  const portfolioItems = (
+    <Stack gap="xs">
+      {selectedPortfolio && orderedPortfolios.length > 0 && (
+        <Box>
+          <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
+            Attivo
+          </Text>
+          <UnstyledButton
+            onClick={() => {
+              onChange(String(selectedPortfolio.id));
+              setOpened(false);
+              setQuery('');
+            }}
+            style={{
+              width: '100%',
+              borderRadius: 18,
+              border: `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`,
+              background: isDark ? 'rgba(20,184,166,0.12)' : 'linear-gradient(135deg, rgba(15,118,110,0.13), rgba(15,118,110,0.05))',
+              padding: '16px',
+              textAlign: 'left',
+              boxShadow: isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)',
+            }}
+          >
+            <Group justify="space-between" align="flex-start" wrap="nowrap">
+              <Box style={{ minWidth: 0 }}>
+                <Group gap={8} mb={8} wrap="wrap">
+                  <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'}>{selectedPortfolio.name}</Text>
+                  <Badge variant="light" color="teal" radius="xl">{selectedPortfolio.base_currency}</Badge>
+                  <Badge variant="outline" color="gray" radius="xl">{`#${selectedPortfolio.id}`}</Badge>
+                </Group>
+                <Group gap={8} wrap="wrap" mb={8}>
+                  <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
+                    {`Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`}
+                  </Badge>
+                  {selectedPortfolio.target_notional != null && (
+                    <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
+                      {`Target ${formatMoney(selectedPortfolio.target_notional, selectedPortfolio.base_currency)}`}
+                    </Badge>
+                  )}
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {`Creato ${formatDate(selectedPortfolio.created_at)} · TZ ${selectedPortfolio.timezone}`}
+                </Text>
+              </Box>
+              <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />
+            </Group>
+          </UnstyledButton>
+        </Box>
+      )}
+
+      {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).length ? (
+        <>
+          <Box>
+            <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
+              {selectedPortfolio ? 'Tutti i portafogli' : 'Portafogli'}
+            </Text>
+            <Stack gap="xs">
+              {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).map((portfolio) => {
+        const isActive = String(portfolio.id) === value;
+        return (
+          <UnstyledButton
+            key={portfolio.id}
+            onClick={() => {
+              onChange(String(portfolio.id));
+              setOpened(false);
+              setQuery('');
+            }}
+            style={{
+              width: '100%',
+              borderRadius: 16,
+              border: isActive
+                ? `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`
+                : `1px solid ${isDark ? theme.colors.dark[4] : '#d6d9de'}`,
+              background: isActive
+                ? (isDark ? 'rgba(20,184,166,0.10)' : 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(15,118,110,0.04))')
+                : (isDark ? theme.colors.dark[6] : '#ffffff'),
+              padding: '14px 16px',
+              textAlign: 'left',
+              transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
+              boxShadow: isActive
+                ? (isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)')
+                : (isDark ? '0 8px 20px rgba(0, 0, 0, 0.18)' : '0 8px 20px rgba(15, 23, 42, 0.05)'),
+            }}
+          >
+            <Group justify="space-between" align="flex-start" wrap="nowrap">
+              <Box style={{ minWidth: 0 }}>
+                <Group gap={8} mb={6} wrap="wrap">
+                  <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'} lineClamp={1}>{portfolio.name}</Text>
+                  <Badge variant="light" color="teal" radius="xl">{portfolio.base_currency}</Badge>
+                  <Badge variant="outline" color="gray" radius="xl">{`#${portfolio.id}`}</Badge>
+                </Group>
+                <Group gap={8} wrap="wrap" mb={6}>
+                  <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
+                    {formatMoney(portfolio.current_cash_balance ?? portfolio.cash_balance ?? 0, portfolio.base_currency)}
+                  </Badge>
+                  {portfolio.target_notional != null && (
+                    <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
+                      {formatMoney(portfolio.target_notional, portfolio.base_currency)}
+                    </Badge>
+                  )}
+                </Group>
+                <Text size="xs" c="dimmed">
+                  {`Creato ${formatDate(portfolio.created_at)} · TZ ${portfolio.timezone}`}
+                </Text>
+              </Box>
+              {isActive && <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />}
+            </Group>
+          </UnstyledButton>
+        );
+              })}
+            </Stack>
+          </Box>
+        </>
+      ) : (
+        <Paper radius="lg" p="md" withBorder bg={isDark ? theme.colors.dark[6] : '#f8fafc'}>
+          <Text size="sm" c="dimmed">Nessun portafoglio trovato</Text>
+        </Paper>
+      )}
+    </Stack>
+  );
+
   const list = (
     <Stack gap="sm">
       <TextInput
@@ -149,126 +272,11 @@ export function PortfolioSwitcher({
         leftSection={<IconSearch size={16} />}
       />
 
-      <ScrollArea.Autosize mah={isMobile ? '45dvh' : 360} offsetScrollbars>
-        <Stack gap="xs">
-          {selectedPortfolio && orderedPortfolios.length > 0 && (
-            <Box>
-              <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
-                Attivo
-              </Text>
-              <UnstyledButton
-                onClick={() => {
-                  onChange(String(selectedPortfolio.id));
-                  setOpened(false);
-                  setQuery('');
-                }}
-                style={{
-                  width: '100%',
-                  borderRadius: 18,
-                  border: `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`,
-                  background: isDark ? 'rgba(20,184,166,0.12)' : 'linear-gradient(135deg, rgba(15,118,110,0.13), rgba(15,118,110,0.05))',
-                  padding: '16px',
-                  textAlign: 'left',
-                  boxShadow: isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)',
-                }}
-              >
-                <Group justify="space-between" align="flex-start" wrap="nowrap">
-                  <Box style={{ minWidth: 0 }}>
-                    <Group gap={8} mb={8} wrap="wrap">
-                      <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'}>{selectedPortfolio.name}</Text>
-                      <Badge variant="light" color="teal" radius="xl">{selectedPortfolio.base_currency}</Badge>
-                      <Badge variant="outline" color="gray" radius="xl">{`#${selectedPortfolio.id}`}</Badge>
-                    </Group>
-                    <Group gap={8} wrap="wrap" mb={8}>
-                      <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
-                        {`Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`}
-                      </Badge>
-                      {selectedPortfolio.target_notional != null && (
-                        <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
-                          {`Target ${formatMoney(selectedPortfolio.target_notional, selectedPortfolio.base_currency)}`}
-                        </Badge>
-                      )}
-                    </Group>
-                    <Text size="xs" c="dimmed">
-                      {`Creato ${formatDate(selectedPortfolio.created_at)} · TZ ${selectedPortfolio.timezone}`}
-                    </Text>
-                  </Box>
-                  <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />
-                </Group>
-              </UnstyledButton>
-            </Box>
-          )}
-
-          {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).length ? (
-            <>
-              <Box>
-                <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} mb={8} style={{ letterSpacing: 0.8 }}>
-                  {selectedPortfolio ? 'Tutti i portafogli' : 'Portafogli'}
-                </Text>
-                <Stack gap="xs">
-                  {(selectedPortfolio ? inactivePortfolios : orderedPortfolios).map((portfolio) => {
-            const isActive = String(portfolio.id) === value;
-            return (
-              <UnstyledButton
-                key={portfolio.id}
-                onClick={() => {
-                  onChange(String(portfolio.id));
-                  setOpened(false);
-                  setQuery('');
-                }}
-                style={{
-                  width: '100%',
-                  borderRadius: 16,
-                  border: isActive
-                    ? `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`
-                    : `1px solid ${isDark ? theme.colors.dark[4] : '#d6d9de'}`,
-                  background: isActive
-                    ? (isDark ? 'rgba(20,184,166,0.10)' : 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(15,118,110,0.04))')
-                    : (isDark ? theme.colors.dark[6] : '#ffffff'),
-                  padding: '14px 16px',
-                  textAlign: 'left',
-                  transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
-                  boxShadow: isActive
-                    ? (isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)')
-                    : (isDark ? '0 8px 20px rgba(0, 0, 0, 0.18)' : '0 8px 20px rgba(15, 23, 42, 0.05)'),
-                }}
-              >
-                <Group justify="space-between" align="flex-start" wrap="nowrap">
-                  <Box style={{ minWidth: 0 }}>
-                    <Group gap={8} mb={6} wrap="wrap">
-                      <Text fw={700} size="sm" c={isDark ? theme.white : '#0f172a'} lineClamp={1}>{portfolio.name}</Text>
-                      <Badge variant="light" color="teal" radius="xl">{portfolio.base_currency}</Badge>
-                      <Badge variant="outline" color="gray" radius="xl">{`#${portfolio.id}`}</Badge>
-                    </Group>
-                    <Group gap={8} wrap="wrap" mb={6}>
-                      <Badge variant="light" color="teal" leftSection={<IconWallet size={12} />}>
-                        {formatMoney(portfolio.current_cash_balance ?? portfolio.cash_balance ?? 0, portfolio.base_currency)}
-                      </Badge>
-                      {portfolio.target_notional != null && (
-                        <Badge variant="light" color="gray" leftSection={<IconTarget size={12} />}>
-                          {formatMoney(portfolio.target_notional, portfolio.base_currency)}
-                        </Badge>
-                      )}
-                    </Group>
-                    <Text size="xs" c="dimmed">
-                      {`Creato ${formatDate(portfolio.created_at)} · TZ ${portfolio.timezone}`}
-                    </Text>
-                  </Box>
-                  {isActive && <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />}
-                </Group>
-              </UnstyledButton>
-            );
-                  })}
-                </Stack>
-              </Box>
-            </>
-          ) : (
-            <Paper radius="lg" p="md" withBorder bg={isDark ? theme.colors.dark[6] : '#f8fafc'}>
-              <Text size="sm" c="dimmed">Nessun portafoglio trovato</Text>
-            </Paper>
-          )}
-        </Stack>
-      </ScrollArea.Autosize>
+      {isMobile ? portfolioItems : (
+        <ScrollArea.Autosize mah={360} offsetScrollbars>
+          {portfolioItems}
+        </ScrollArea.Autosize>
+      )}
 
       {quickActions.length > 0 && selectedPortfolio && (
         <>
