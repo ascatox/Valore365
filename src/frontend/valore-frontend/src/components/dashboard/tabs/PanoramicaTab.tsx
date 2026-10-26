@@ -28,10 +28,9 @@ interface PanoramicaTabProps {
   setChartWindow: (w: string) => void;
   /** Mobile hero: last update or refresh progress. */
   statusText?: string | null;
-  refreshing?: boolean;
 }
 
-export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, statusText = null, refreshing = false }: PanoramicaTabProps) {
+export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, statusText = null }: PanoramicaTabProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const theme = useMantineTheme();
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -282,7 +281,7 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, status
       )}
 
       {isMobile
-        ? <DashboardMobileHero summary={portfolioSummary} statusText={statusText} refreshing={refreshing} />
+        ? <DashboardMobileHero summary={portfolioSummary} statusText={statusText} />
         : <KpiStatsGrid items={kpiItems} />}
 
       <div style={{ marginTop: 16 }}>

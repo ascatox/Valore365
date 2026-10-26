@@ -93,6 +93,13 @@ export function useDashboardRefresh(portfolioId: number | null) {
     return () => { window.removeEventListener('valore365:refresh-dashboard', onRefresh); };
   }, [doRefresh]);
 
+  // Lets the app header show progress without a status line in the page.
+  useEffect(() => {
+    if (!refreshing) return;
+    window.dispatchEvent(new CustomEvent('valore365:refresh-state', { detail: true }));
+    return () => { window.dispatchEvent(new CustomEvent('valore365:refresh-state', { detail: false })); };
+  }, [refreshing]);
+
   useEffect(() => {
     if (!refreshMessage) return;
     const timer = window.setTimeout(() => setRefreshMessage(null), 5000);

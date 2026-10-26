@@ -115,8 +115,9 @@ export function DashboardPage() {
 
   const error = refreshError || (portfoliosError instanceof Error ? portfoliosError.message : null);
   const lastUpdatedAt = !error ? (targetPerformance?.last_updated_at ?? null) : null;
+  // While refreshing, the spinning header icon is the progress signal.
   const mobileStatusText = refreshing
-    ? 'Aggiornamento in corso...'
+    ? null
     : refreshMessage ?? (lastUpdatedAt ? `Aggiornato ${formatDateTime(lastUpdatedAt)}` : null);
   // Mobile: text tabs at the top of the sticky header; the bottom bar is the
   // app navigation. A second Tabs instance drives the same activeTab.
@@ -174,10 +175,7 @@ export function DashboardPage() {
       {/* The Panoramica hero carries this line; the other tabs need it too,
           since pull-to-refresh and auto-refresh work from any of them. */}
       {isMobile && activeTab !== 'panoramica' && mobileStatusText && (
-        <Group gap={6} mb="sm" wrap="nowrap">
-          {refreshing && <Loader size={10} />}
-          <Text size="xs" c="dimmed">{mobileStatusText}</Text>
-        </Group>
+        <Text size="xs" c="dimmed" mb="sm">{mobileStatusText}</Text>
       )}
 
       {!isMobile && (
@@ -258,7 +256,6 @@ export function DashboardPage() {
               chartWindow={chartWindow}
               setChartWindow={setChartWindow}
               statusText={mobileStatusText}
-              refreshing={refreshing}
             />
           </Tabs.Panel>
 

@@ -1,4 +1,4 @@
-import { Badge, Box, Group, Loader, Stack, Text } from '@mantine/core';
+import { Badge, Group, Stack, Text } from '@mantine/core';
 import { IconArrowDownRight, IconArrowUpRight } from '@tabler/icons-react';
 import type { PortfolioSummary } from '../../services/api';
 import { formatMoney, formatPct, getVariationColor } from '../dashboard/formatters';
@@ -6,11 +6,10 @@ import { formatMoney, formatPct, getVariationColor } from '../dashboard/formatte
 interface DashboardMobileHeroProps {
   summary: PortfolioSummary | null | undefined;
   statusText?: string | null;
-  refreshing?: boolean;
 }
 
 // First thing on the mobile home: total wealth, today's move and total P/L.
-export function DashboardMobileHero({ summary, statusText, refreshing = false }: DashboardMobileHeroProps) {
+export function DashboardMobileHero({ summary, statusText }: DashboardMobileHeroProps) {
   const currency = summary?.base_currency ?? 'EUR';
   const total = summary ? summary.market_value + summary.cash_balance : null;
   const dayColor = getVariationColor(summary?.day_change ?? 0);
@@ -48,14 +47,7 @@ export function DashboardMobileHero({ summary, statusText, refreshing = false }:
           {` · ${formatPct(summary.unrealized_pl_pct)}`}
         </Text>
       )}
-      {statusText && (
-        <Box>
-          <Group gap={6} wrap="nowrap">
-            {refreshing && <Loader size={10} />}
-            <Text size="xs" c="dimmed">{statusText}</Text>
-          </Group>
-        </Box>
-      )}
+      {statusText && <Text size="xs" c="dimmed">{statusText}</Text>}
     </Stack>
   );
 }

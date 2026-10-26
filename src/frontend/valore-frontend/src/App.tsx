@@ -199,6 +199,14 @@ function ProtectedApp() {
     window.dispatchEvent(new CustomEvent('valore365:refresh-dashboard'));
   }, []);
 
+  // Spins the mobile header refresh icon while the dashboard refresh runs.
+  const [dashboardRefreshing, setDashboardRefreshing] = useState(false);
+  useEffect(() => {
+    const onState = (event: Event) => setDashboardRefreshing(Boolean((event as CustomEvent<boolean>).detail));
+    window.addEventListener('valore365:refresh-state', onState);
+    return () => window.removeEventListener('valore365:refresh-state', onState);
+  }, []);
+
   const AUTO_REFRESH_INTERVAL = 60_000;
   const [autoRefresh, setAutoRefresh] = useState(false);
   const [countdown, setCountdown] = useState(AUTO_REFRESH_INTERVAL);
@@ -312,13 +320,22 @@ function ProtectedApp() {
               <Box hiddenFrom="sm">
                 <BrandMark compact />
               </Box>
-            </Group>
-            <Group gap="xs" wrap="nowrap">
               {isMobile && (
-                <ActionIcon onClick={handleGlobalRefresh} variant="default" size={42} aria-label="Aggiorna ora">
-                  <IconRefresh size={22} />
+                <ActionIcon
+                  onClick={handleGlobalRefresh}
+                  variant="subtle"
+                  color="gray"
+                  size={42}
+                  aria-label={dashboardRefreshing ? 'Aggiornamento in corso' : 'Aggiorna ora'}
+                >
+                  <IconRefresh
+                    size={22}
+                    style={dashboardRefreshing ? { animation: 'spin 1s linear infinite' } : undefined}
+                  />
                 </ActionIcon>
               )}
+            </Group>
+            <Group gap="xs" wrap="nowrap">
               <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
                 <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'teal' : undefined}>
                   {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
