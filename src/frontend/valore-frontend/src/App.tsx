@@ -314,14 +314,19 @@ function ProtectedApp() {
               </Box>
             </Group>
             <Group gap="xs" wrap="nowrap">
+              {isMobile && (
+                <ActionIcon onClick={handleGlobalRefresh} variant="default" size={42} aria-label="Aggiorna ora">
+                  <IconRefresh size={22} />
+                </ActionIcon>
+              )}
               <Tooltip label={privacyMode ? 'Disattiva modalità privacy' : 'Attiva modalità privacy'} withArrow>
                 <ActionIcon onClick={togglePrivacyMode} variant="default" size={isMobile ? 42 : 'lg'} aria-label="Modalità privacy" color={privacyMode ? 'teal' : undefined}>
                   {privacyMode ? <IconEyeOff size={isMobile ? 22 : 18} /> : <IconEye size={isMobile ? 22 : 18} />}
                 </ActionIcon>
               </Tooltip>
               {isMobile ? (
-                // Pull-to-refresh covers the everyday update on mobile; the
-                // explicit refresh and the 60s auto-refresh live in a menu.
+                // The explicit refresh sits in the header next to
+                // pull-to-refresh; the 60s auto-refresh lives in a menu.
                 <Menu position="bottom-end" withinPortal>
                   <Menu.Target>
                     <ActionIcon
@@ -334,9 +339,6 @@ function ProtectedApp() {
                     </ActionIcon>
                   </Menu.Target>
                   <Menu.Dropdown>
-                    <Menu.Item leftSection={<IconRefresh size={16} />} onClick={handleGlobalRefresh}>
-                      Aggiorna ora
-                    </Menu.Item>
                     <Menu.Item
                       leftSection={autoRefresh ? <IconPlayerStop size={16} /> : <IconPlayerPlay size={16} />}
                       onClick={toggleAutoRefresh}
