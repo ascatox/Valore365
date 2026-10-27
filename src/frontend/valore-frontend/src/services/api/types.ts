@@ -1103,6 +1103,27 @@ export interface CsvImportPreviewRow {
   asset_name: string | null;
 }
 
+export type CsvDateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD' | 'DD-MM-YYYY' | 'DD.MM.YYYY' | 'YYYY/MM/DD';
+
+// File column (by name) feeding each transaction field, for files without a dedicated parser.
+export interface CsvColumnMapping {
+  trade_at: string;
+  isin: string;
+  side: string;
+  quantity: string;
+  price: string;
+  trade_currency: string | null;
+  fees: string | null;
+  name: string | null;
+  date_format: CsvDateFormat;
+}
+
+export interface CsvImportMappingInfo {
+  source: 'ai' | 'user';
+  mapping: CsvColumnMapping;
+  columns: string[];
+}
+
 export interface CsvImportPreviewResponse {
   batch_id: number;
   filename: string | null;
@@ -1110,6 +1131,7 @@ export interface CsvImportPreviewResponse {
   valid_rows: number;
   error_rows: number;
   rows: CsvImportPreviewRow[];
+  column_mapping: CsvImportMappingInfo | null;
 }
 
 export interface CsvImportCommitResponse {

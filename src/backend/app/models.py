@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 TransactionSide = Literal['buy', 'sell', 'deposit', 'withdrawal', 'dividend', 'fee', 'interest']
@@ -786,6 +786,31 @@ class CsvImportPreviewRow(BaseModel):
     asset_name: str | None = None
 
 
+CsvDateFormat = Literal['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD', 'DD-MM-YYYY', 'DD.MM.YYYY', 'YYYY/MM/DD']
+
+
+class CsvColumnMapping(BaseModel):
+    """Which file column feeds each transaction field (values are column names as they appear in the file)."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    trade_at: str = Field(min_length=1)
+    isin: str = Field(min_length=1)
+    side: str = Field(min_length=1)
+    quantity: str = Field(min_length=1)
+    price: str = Field(min_length=1)
+    trade_currency: str | None = None
+    fees: str | None = None
+    name: str | None = None
+    date_format: CsvDateFormat = 'DD/MM/YYYY'
+
+
+class CsvImportMappingInfo(BaseModel):
+    source: Literal['ai', 'user']
+    mapping: CsvColumnMapping
+    columns: list[str]
+
+
 class CsvImportPreviewResponse(BaseModel):
     batch_id: int
     filename: str | None = None
@@ -793,6 +818,7 @@ class CsvImportPreviewResponse(BaseModel):
     valid_rows: int
     error_rows: int
     rows: list[CsvImportPreviewRow]
+    column_mapping: CsvImportMappingInfo | None = None
 
 
 class CsvImportCommitResponse(BaseModel):
