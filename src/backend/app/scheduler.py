@@ -1,4 +1,5 @@
 import logging
+from datetime import UTC, datetime
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
@@ -89,11 +90,16 @@ class PriceRefreshScheduler:
         try:
             # When target allocation feature is disabled, scheduler refreshes transaction assets instead.
             asset_scope = 'target' if self.settings.enable_target_allocation else 'transactions'
+            # Solo il job in background salta le borse chiuse: di notte e nel
+            # weekend le quotazioni non cambiano e ogni richiesta a Yahoo pesa
+            # sul rate limit. I refresh manuali dalle API non passano di qui.
+            market_hours_at = datetime.now(UTC) if self.settings.price_scheduler_market_hours_only else None
             response = self.pricing_service.refresh_prices(
                 portfolio_id=self.settings.price_scheduler_portfolio_id,
                 asset_scope=asset_scope,
                 # Scheduler policy requested: use asset symbol, fallback to ISIN.
                 prefer_symbol_then_isin=True,
+                market_hours_at=market_hours_at,
             )
             logger.info(
                 'Scheduled refresh completed scope=%s requested=%s refreshed=%s failed=%s',
