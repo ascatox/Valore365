@@ -875,12 +875,20 @@ def clean_explanation_text(value: str) -> str:
     return " ".join(sentences[:5]).strip()
 
 
-def call_provider_for_text(config: CopilotConfig, system_prompt: str, user_prompt: str) -> str:
+def call_provider_for_text(
+    config: CopilotConfig,
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 220,
+    timeout: float | None = None,
+) -> str:
     provider = config.provider
+    timeout_kwargs = {"timeout": timeout} if timeout is not None else {}
     if provider in {"openai", "openrouter", "local"}:
         import openai
 
-        kwargs = {"api_key": config.api_key}
+        kwargs = {"api_key": config.api_key, **timeout_kwargs}
         if provider == "openrouter":
             kwargs["base_url"] = "https://openrouter.ai/api/v1"
         elif provider == "local":
@@ -889,7 +897,7 @@ def call_provider_for_text(config: CopilotConfig, system_prompt: str, user_promp
         client = openai.OpenAI(**kwargs)
         response = client.chat.completions.create(
             model=config.model,
-            max_tokens=220,
+            max_tokens=max_tokens,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -900,10 +908,10 @@ def call_provider_for_text(config: CopilotConfig, system_prompt: str, user_promp
     if provider == "anthropic":
         import anthropic
 
-        client = anthropic.Anthropic(api_key=config.api_key)
+        client = anthropic.Anthropic(api_key=config.api_key, **timeout_kwargs)
         response = client.messages.create(
             model=config.model,
-            max_tokens=220,
+            max_tokens=max_tokens,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
@@ -912,7 +920,10 @@ def call_provider_for_text(config: CopilotConfig, system_prompt: str, user_promp
     if provider == "gemini":
         from google import genai
 
-        client = genai.Client(api_key=config.api_key)
+        client = genai.Client(
+            api_key=config.api_key,
+            http_options={"timeout": int(timeout * 1000)} if timeout is not None else None,
+        )
         response = client.models.generate_content(
             model=config.model,
             contents=[
@@ -920,7 +931,7 @@ def call_provider_for_text(config: CopilotConfig, system_prompt: str, user_promp
                 {"role": "model", "parts": [{"text": "Capito, resto educativo e semplice."}]},
                 {"role": "user", "parts": [{"text": user_prompt}]},
             ],
-            config={"max_output_tokens": 220},
+            config={"max_output_tokens": max_tokens},
         )
         return response.text or ""
 

@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, FastAPI
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
@@ -29,7 +31,7 @@ from app.schemas.instant_portfolio_analyzer import (
     PortfolioTopInsight,
     ResolvedPosition,
 )
-from app.models import AdminUsageSummary
+from app.models import AdminUsageSummary, CsvImportMappingInfo, CsvImportPreviewResponse
 
 
 class _FakeRepo:
@@ -881,6 +883,61 @@ def test_csv_import_preview_rejects_unsupported_extension():
     payload = response.json()
     assert payload['error']['code'] == 'bad_request'
     assert 'Formato file non supportato' in payload['error']['message']
+
+
+def test_csv_import_preview_rejects_malformed_column_mapping():
+    client = TestClient(api_main.app)
+
+    response = client.post(
+        '/api/portfolios/1/csv-import/preview',
+        files={'file': ('import.csv', b'a;b\n1;2', 'text/csv')},
+        data={'broker': 'generic', 'column_mapping': '{"trade_at": "Data", "controvalore": "Importo"}'},
+    )
+
+    assert response.status_code == 400
+    assert response.json()['error']['message'] == 'Mappatura delle colonne non valida.'
+
+
+def test_csv_import_preview_forwards_the_column_mapping_chosen_by_the_user(monkeypatch):
+    calls = []
+
+    def fake_parse_and_validate(**kwargs):
+        calls.append(kwargs)
+        mapping = kwargs['column_mapping']
+        return CsvImportPreviewResponse(
+            batch_id=7,
+            filename=kwargs['filename'],
+            total_rows=0,
+            valid_rows=0,
+            error_rows=0,
+            rows=[],
+            column_mapping=CsvImportMappingInfo(source='user', mapping=mapping, columns=['Data', 'Importo']) if mapping else None,
+        )
+
+    monkeypatch.setattr(api_main.csv_import_service, 'parse_and_validate', fake_parse_and_validate)
+    client = TestClient(api_main.app)
+    mapping = {
+        'trade_at': 'Data', 'isin': 'ISIN', 'side': 'Tipo', 'quantity': 'Qta', 'price': 'Importo',
+        'trade_currency': None, 'fees': None, 'name': None, 'date_format': 'DD/MM/YYYY',
+    }
+
+    with_mapping = client.post(
+        '/api/portfolios/1/csv-import/preview',
+        files={'file': ('import.csv', b'a;b\n1;2', 'text/csv')},
+        data={'broker': 'generic', 'column_mapping': json.dumps(mapping)},
+    )
+    without_mapping = client.post(
+        '/api/portfolios/1/csv-import/preview',
+        files={'file': ('import.csv', b'a;b\n1;2', 'text/csv')},
+        data={'broker': 'generic'},
+    )
+
+    assert with_mapping.status_code == 200
+    assert with_mapping.json()['column_mapping']['source'] == 'user'
+    assert calls[0]['column_mapping'].price == 'Importo'
+    assert without_mapping.status_code == 200
+    assert without_mapping.json()['column_mapping'] is None
+    assert calls[1]['column_mapping'] is None
 
 
 def test_app_refuses_to_start_without_auth_outside_dev(monkeypatch):

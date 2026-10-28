@@ -1,6 +1,7 @@
 import { API_URL, getAuthToken, apiFetch } from './client';
 import type { ApiErrorPayload } from './client';
 import type {
+  CsvColumnMapping,
   CsvImportPreviewResponse,
   CsvImportCommitResponse,
 } from './types';
@@ -9,12 +10,14 @@ export const uploadCsvImportPreview = async (
   portfolioId: number,
   file: File,
   broker = 'generic',
+  columnMapping?: CsvColumnMapping,
 ): Promise<CsvImportPreviewResponse> => {
   const token = await getAuthToken();
   const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   const formData = new FormData();
   formData.append('file', file);
   formData.append('broker', broker);
+  if (columnMapping) formData.append('column_mapping', JSON.stringify(columnMapping));
   const response = await fetch(`${API_URL}/portfolios/${portfolioId}/csv-import/preview`, {
     method: 'POST',
     headers: { ...authHeaders },

@@ -24,9 +24,11 @@ import {
   commitCsvImport,
   cancelCsvImport,
   createPortfolio,
+  type CsvColumnMapping,
   type CsvImportPreviewResponse,
   type CsvImportCommitResponse,
 } from '../../../services/api';
+import { CsvColumnMappingEditor } from './CsvColumnMappingEditor';
 
 const BROKER_OPTIONS = [
   { value: 'fineco', label: 'Fineco', logo: '/logos/fineco.svg' },
@@ -44,6 +46,10 @@ const GENERIC_OPTIONAL_COLUMNS = [
   'spese fondi sgr',
   'commissioni amministrato',
 ];
+
+function isSameMapping(a: CsvColumnMapping, b: CsvColumnMapping): boolean {
+  return (Object.keys(a) as (keyof CsvColumnMapping)[]).every((key) => a[key] === b[key]);
+}
 
 interface CsvImportModalProps {
   opened: boolean;
@@ -75,7 +81,11 @@ export function CsvImportModal({
   const navigate = useNavigate();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [broker, setBroker] = useState<string>('fineco');
+  const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<CsvImportPreviewResponse | null>(null);
+  const [mappingDraft, setMappingDraft] = useState<CsvColumnMapping | null>(null);
+  const [applyingMapping, setApplyingMapping] = useState(false);
+  const [mappingError, setMappingError] = useState<string | null>(null);
   const [result, setResult] = useState<CsvImportCommitResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -89,6 +99,8 @@ export function CsvImportModal({
   const [creatingPortfolio, setCreatingPortfolio] = useState(false);
 
   const selectedBroker = BROKER_OPTIONS.find((b) => b.value === broker);
+  const mappingInfo = preview?.column_mapping ?? null;
+  const mappingDirty = !!mappingInfo && !!mappingDraft && !isSameMapping(mappingDraft, mappingInfo.mapping);
 
   useEffect(() => {
     if (!opened) {
@@ -102,7 +114,10 @@ export function CsvImportModal({
       cancelCsvImport(preview.batch_id).catch(() => {});
     }
     setStep('upload');
+    setFile(null);
     setPreview(null);
+    setMappingDraft(null);
+    setMappingError(null);
     setResult(null);
     setError(null);
     setResolvedPortfolioId(portfolioId);
@@ -145,7 +160,7 @@ export function CsvImportModal({
     }
   };
 
-  const handleFileUpload = async (file: File) => {
+  const handleFileUpload = async (selectedFile: File) => {
     if (!resolvedPortfolioId) {
       setError('Crea prima un portfolio per continuare con l’importazione');
       return;
@@ -153,13 +168,33 @@ export function CsvImportModal({
     try {
       setLoading(true);
       setError(null);
-      const data = await uploadCsvImportPreview(resolvedPortfolioId, file, broker);
+      const data = await uploadCsvImportPreview(resolvedPortfolioId, selectedFile, broker);
+      setFile(selectedFile);
       setPreview(data);
+      setMappingDraft(data.column_mapping?.mapping ?? null);
+      setMappingError(null);
       setStep('preview');
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Rebuilds the preview with the mapping corrected by the user; the previous pending batch is dropped.
+  const handleApplyMapping = async () => {
+    if (!file || !preview || !mappingDraft || !resolvedPortfolioId) return;
+    try {
+      setApplyingMapping(true);
+      setMappingError(null);
+      const data = await uploadCsvImportPreview(resolvedPortfolioId, file, broker, mappingDraft);
+      cancelCsvImport(preview.batch_id).catch(() => {});
+      setPreview(data);
+      setMappingDraft(data.column_mapping?.mapping ?? null);
+    } catch (err) {
+      setMappingError(err instanceof Error ? err.message : 'Impossibile applicare l’associazione');
+    } finally {
+      setApplyingMapping(false);
     }
   };
 
@@ -236,6 +271,8 @@ export function CsvImportModal({
 
             <Text size="sm" c="dimmed">
               Seleziona il file esportato dal tuo broker. Sono supportati i formati CSV e Excel (XLSX).
+              Se il formato non è tra quelli noti e l’AI è configurata, le colonne vengono associate automaticamente:
+              potrai controllare e correggere l’associazione prima di importare.
             </Text>
 
             {!resolvedPortfolioId && (
@@ -343,7 +380,9 @@ export function CsvImportModal({
         {step === 'preview' && preview && (
           <>
             <Group>
-              {selectedBroker && (
+              {mappingInfo ? (
+                <Badge size="lg" variant="light" color="yellow">Formato non riconosciuto</Badge>
+              ) : selectedBroker && (
                 <Badge
                   size="lg"
                   variant="light"
@@ -358,6 +397,18 @@ export function CsvImportModal({
                 <Badge color="red" size="lg">Errori: {preview.error_rows}</Badge>
               )}
             </Group>
+
+            {mappingInfo && mappingDraft && (
+              <CsvColumnMappingEditor
+                info={mappingInfo}
+                draft={mappingDraft}
+                dirty={mappingDirty}
+                applying={applyingMapping}
+                error={mappingError}
+                onChange={setMappingDraft}
+                onApply={handleApplyMapping}
+              />
+            )}
 
             <Table.ScrollContainer minWidth={600}>
               <Table striped highlightOnHover>
@@ -408,7 +459,7 @@ export function CsvImportModal({
               <Button
                 onClick={handleCommit}
                 loading={loading}
-                disabled={preview.valid_rows === 0}
+                disabled={preview.valid_rows === 0 || mappingDirty || applyingMapping}
                 leftSection={<IconFileImport size={16} />}
               >
                 Importa {preview.valid_rows} transazioni

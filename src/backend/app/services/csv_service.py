@@ -2,6 +2,7 @@ import csv
 import io
 import logging
 import re
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,12 +12,15 @@ from ..models import (
     AssetCreate,
     AssetEnsureRequest,
     AssetProviderSymbolCreate,
+    CsvColumnMapping,
     CsvImportCommitResponse,
+    CsvImportMappingInfo,
     CsvImportPreviewResponse,
     CsvImportPreviewRow,
     TransactionCreate,
 )
 from ..config import get_settings
+from ..copilot.config import CopilotConfig, resolve_copilot_config
 from ..finance_client import make_finance_client
 from ..repository import PortfolioRepository
 from ..schemas.instant_portfolio_analyzer import (
@@ -24,6 +28,7 @@ from ..schemas.instant_portfolio_analyzer import (
     InstantImportedPosition,
     InstantPortfolioImportResponse,
 )
+from .csv_ai_mapping import MAX_SAMPLE_ROWS, propose_column_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +235,201 @@ def _parse_italian_number(s: str) -> float | None:
     return result
 
 
+# --- Column mapping for files without a dedicated parser (proposed by the AI or corrected by the user) ---
+
+MAPPED_DATE_FORMATS = {
+    "DD/MM/YYYY": "%d/%m/%Y",
+    "MM/DD/YYYY": "%m/%d/%Y",
+    "YYYY-MM-DD": "%Y-%m-%d",
+    "DD-MM-YYYY": "%d-%m-%Y",
+    "DD.MM.YYYY": "%d.%m.%Y",
+    "YYYY/MM/DD": "%Y/%m/%d",
+}
+MAPPING_FIELD_LABELS = {
+    "trade_at": "data operazione",
+    "isin": "ISIN",
+    "side": "acquisto/vendita",
+    "quantity": "quantita",
+    "price": "prezzo",
+    "trade_currency": "valuta",
+    "fees": "commissioni",
+    "name": "titolo",
+}
+MAPPING_REQUIRED_FIELDS = ("trade_at", "isin", "side", "quantity", "price")
+ISIN_PATTERN = re.compile(r"[A-Z]{2}[A-Z0-9]{9}[0-9]")
+CURRENCY_PATTERN = re.compile(r"[A-Za-z]{3}")
+BUY_TOKENS = ("acquist", "compr", "buy", "bought")
+SELL_TOKENS = ("vend", "sell", "sold")
+
+
+class ColumnMappingError(ValueError):
+    """A column mapping that does not fit the file. The message never contains cell values."""
+
+
+def _parse_mapped_datetime(value: str, date_format: str) -> datetime | None:
+    """Parse a date, optionally followed by a time, with the declared pattern or ISO (year first)."""
+    text = value.strip().replace("T", " ")
+    if ":" in text:
+        # Drop fractional seconds and UTC offset: like the other formats, times are stored as naive UTC.
+        text = re.sub(r"(\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?$", "", text)
+    for pattern in (MAPPED_DATE_FORMATS[date_format], "%Y-%m-%d"):
+        for time_suffix in ("", " %H:%M:%S", " %H:%M"):
+            try:
+                return datetime.strptime(text, pattern + time_suffix)
+            except ValueError:
+                continue
+    return None
+
+
+def _side_from_value(value: str) -> str | None:
+    """Translate a buy/sell label of any broker into the A/V code the row parser reads."""
+    text = value.strip().lower()
+    if text in ("a", "b"):
+        return "A"
+    if text in ("v", "s"):
+        return "V"
+    is_buy = any(token in text for token in BUY_TOKENS)
+    is_sell = any(token in text for token in SELL_TOKENS)
+    if is_buy != is_sell:
+        return "A" if is_buy else "V"
+    return None
+
+
+def _is_number(value: str) -> bool:
+    try:
+        return _parse_italian_number(value) is not None
+    except ValueError:
+        return False
+
+
+def _read_table_rows(file_content: str | None, filename: str | None, file_bytes: bytes | None) -> list[list[str]]:
+    """Read a CSV/XLSX file as a plain grid of stripped strings, independently of any broker profile."""
+    if filename and filename.lower().endswith((".xlsx", ".xls")) and file_bytes:
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+        ws = wb.active
+        if ws is None:
+            raise ValueError("Il file Excel non contiene fogli")
+        grid = [[_xlsx_cell_to_str(cell).strip() for cell in row] for row in ws.iter_rows(values_only=True)]
+        wb.close()
+        return grid
+
+    if file_content:
+        # The delimiter is the one that splits the sample into the widest rows (a preamble may have none).
+        sample = file_content[:8192]
+        delimiter = max(
+            (";", ",", "\t"),
+            key=lambda d: max((len(r) for r in csv.reader(io.StringIO(sample), delimiter=d)), default=0),
+        )
+        return [[cell.strip() for cell in row] for row in csv.reader(io.StringIO(file_content), delimiter=delimiter)]
+
+    raise ValueError("Nessun contenuto file fornito")
+
+
+def _read_mapping_table(
+    file_content: str | None,
+    filename: str | None,
+    file_bytes: bytes | None,
+    max_scan_rows: int = 15,
+) -> tuple[list[str], list[dict[str, str]]]:
+    """Return the column names and the data rows (keyed by column name) of an unrecognised file."""
+    grid = [row for row in _read_table_rows(file_content, filename, file_bytes) if any(row)]
+    if not grid:
+        raise ValueError("File vuoto")
+
+    # The header is the widest of the first rows: titles and account details above it are narrower.
+    filled = [sum(1 for cell in row if cell) for row in grid[:max_scan_rows]]
+    header_index = filled.index(max(filled))
+
+    column_index: dict[str, int] = {}
+    for index, name in enumerate(grid[header_index]):
+        if name and name not in column_index:
+            column_index[name] = index
+
+    rows = [
+        {name: (row[index] if index < len(row) else "") for name, index in column_index.items()}
+        for row in grid[header_index + 1:]
+    ]
+    if not rows:
+        raise ValueError("Il file non contiene righe dati")
+    return list(column_index), rows
+
+
+def _validate_column_mapping(mapping: CsvColumnMapping, columns: list[str], sample_rows: list[dict[str, str]]) -> None:
+    """Check a mapping against the file: columns exist and the sample values are readable.
+
+    Raises ColumnMappingError. Dates, amounts, ISIN and currency are checked on the sample rows only;
+    the remaining rows are validated one by one by the row parser and shown in the preview.
+    """
+    assigned = {
+        field: column
+        for field, column in mapping.model_dump(exclude={"date_format"}).items()
+        if column
+    }
+    for field, column in assigned.items():
+        if column not in columns:
+            raise ColumnMappingError(f"La colonna '{column}' ({MAPPING_FIELD_LABELS[field]}) non e' presente nel file")
+    for column in assigned.values():
+        if list(assigned.values()).count(column) > 1:
+            raise ColumnMappingError(f"La colonna '{column}' non puo' essere assegnata a piu' campi")
+    if not sample_rows:
+        raise ColumnMappingError("Il file non contiene righe dati")
+
+    checks: dict[str, Callable[[str], bool]] = {
+        "trade_at": lambda v: _parse_mapped_datetime(v, mapping.date_format) is not None,
+        "isin": lambda v: ISIN_PATTERN.fullmatch(v.upper()) is not None,
+        "quantity": _is_number,
+        "price": _is_number,
+        "fees": _is_number,
+        "trade_currency": lambda v: CURRENCY_PATTERN.fullmatch(v) is not None,
+    }
+    for field, column in assigned.items():
+        values = [row[column] for row in sample_rows if row.get(column)]
+        if field in MAPPING_REQUIRED_FIELDS and not values:
+            raise ColumnMappingError(f"La colonna '{column}' ({MAPPING_FIELD_LABELS[field]}) e' vuota")
+        if field == "side":
+            # Exports also hold dividends, fees and transfers: one readable buy/sell value is enough here.
+            valid = any(_side_from_value(value) for value in values)
+        else:
+            valid = all(checks[field](value) for value in values) if field in checks else True
+        if not valid:
+            raise ColumnMappingError(
+                f"La colonna '{column}' non contiene valori validi per il campo {MAPPING_FIELD_LABELS[field]}"
+            )
+
+
+def _mapped_cell(row: dict[str, str], column: str | None) -> str:
+    return row.get(column, "") if column else ""
+
+
+def _apply_column_mapping(mapping: CsvColumnMapping, rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Rewrite the rows with the keys the row parser reads, normalising dates and buy/sell labels.
+
+    Values that cannot be normalised are passed through in a form the row parser rejects, so the
+    row shows up in the preview with an error instead of being silently reinterpreted.
+    """
+    mapped_rows: list[dict[str, str]] = []
+    for row in rows:
+        trade_at = _mapped_cell(row, mapping.trade_at)
+        parsed_date = _parse_mapped_datetime(trade_at, mapping.date_format) if trade_at else None
+        side = _mapped_cell(row, mapping.side)
+        mapped_rows.append({
+            "operazione": (
+                parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+                if parsed_date
+                else (f"{trade_at} (atteso {mapping.date_format})" if trade_at else "")
+            ),
+            "isin": _mapped_cell(row, mapping.isin),
+            "segno": _side_from_value(side) or side,
+            "quantita": _mapped_cell(row, mapping.quantity),
+            "prezzo": _mapped_cell(row, mapping.price),
+            "divisa": _mapped_cell(row, mapping.trade_currency),
+            "titolo": _mapped_cell(row, mapping.name),
+            # The row parser sums its fee columns: the single mapped column feeds one of them.
+            "commissioni amministrato": _mapped_cell(row, mapping.fees),
+        })
+    return mapped_rows
+
+
 class CsvImportService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
@@ -338,6 +538,69 @@ class CsvImportService:
 
         raise ValueError("Nessun contenuto file fornito")
 
+    def _resolve_ai_config(self, user_id: str) -> CopilotConfig | None:
+        """Same resolution as the copilot: the user's own key first, then the server key."""
+        try:
+            user_settings = self.repo.get_user_settings(user_id)
+            return resolve_copilot_config(
+                self.settings,
+                user_provider=user_settings.copilot_provider,
+                user_model=user_settings.copilot_model,
+                user_api_key_enc=self.repo.get_user_copilot_api_key_enc(user_id),
+            )
+        except Exception as exc:
+            logger.warning("Could not resolve the AI configuration for the CSV column mapping: %s", type(exc).__name__)
+            return None
+
+    def _rows_from_user_mapping(
+        self,
+        mapping: CsvColumnMapping,
+        *,
+        file_content: str | None,
+        filename: str | None,
+        file_bytes: bytes | None,
+    ) -> tuple[list[dict[str, str]], CsvImportMappingInfo]:
+        """Apply the mapping chosen by the user. Raises ValueError if it does not fit the file."""
+        columns, rows = _read_mapping_table(file_content, filename, file_bytes)
+        _validate_column_mapping(mapping, columns, rows[:MAX_SAMPLE_ROWS])
+        return (
+            _apply_column_mapping(mapping, rows),
+            CsvImportMappingInfo(source="user", mapping=mapping, columns=columns),
+        )
+
+    def _rows_from_ai_mapping(
+        self,
+        user_id: str,
+        *,
+        file_content: str | None,
+        filename: str | None,
+        file_bytes: bytes | None,
+    ) -> tuple[list[dict[str, str]], CsvImportMappingInfo] | None:
+        """Let the AI propose a column mapping for an unrecognised file.
+
+        Returns None whenever the AI is not configured, fails, or proposes a mapping that does not
+        validate against the file, so the caller can keep its original error.
+        """
+        config = self._resolve_ai_config(user_id)
+        if config is None:
+            return None
+        try:
+            columns, rows = _read_mapping_table(file_content, filename, file_bytes)
+            sample_rows = rows[:MAX_SAMPLE_ROWS]
+            mapping = propose_column_mapping(config, columns, sample_rows)
+            if mapping is None:
+                return None
+            _validate_column_mapping(mapping, columns, sample_rows)
+            return (
+                _apply_column_mapping(mapping, rows),
+                CsvImportMappingInfo(source="ai", mapping=mapping, columns=columns),
+            )
+        except ColumnMappingError as exc:
+            logger.warning("CSV column mapping proposed by the AI rejected: %s", exc)
+        except Exception as exc:
+            logger.warning("CSV column mapping via AI not possible: %s", type(exc).__name__)
+        return None
+
     def parse_and_validate(
         self,
         portfolio_id: int,
@@ -346,17 +609,41 @@ class CsvImportService:
         filename: str | None = None,
         file_bytes: bytes | None = None,
         broker: str = "generic",
+        column_mapping: CsvColumnMapping | None = None,
     ) -> CsvImportPreviewResponse:
-        raw_rows, normalized_fields = self._load_raw_rows(
-            file_content=file_content,
-            filename=filename,
-            file_bytes=file_bytes,
-            broker=broker,
-        )
+        mapping_info: CsvImportMappingInfo | None = None
+        if column_mapping is not None:
+            # The user chose (or corrected) the mapping: no format detection, no AI.
+            raw_rows, mapping_info = self._rows_from_user_mapping(
+                column_mapping,
+                file_content=file_content,
+                filename=filename,
+                file_bytes=file_bytes,
+            )
+        else:
+            try:
+                raw_rows, normalized_fields = self._load_raw_rows(
+                    file_content=file_content,
+                    filename=filename,
+                    file_bytes=file_bytes,
+                    broker=broker,
+                )
 
-        missing = [c for c in REQUIRED_COLUMNS if c not in normalized_fields]
-        if missing:
-            raise ValueError(f"Colonne obbligatorie mancanti: {', '.join(missing)}")
+                missing = [c for c in REQUIRED_COLUMNS if c not in normalized_fields]
+                if missing:
+                    raise ValueError(f"Colonne obbligatorie mancanti: {', '.join(missing)}")
+            except ValueError:
+                # Not a supported format: the AI may propose a column mapping, to be confirmed by
+                # the user in the preview. Without one the original error stands.
+                proposal = self._rows_from_ai_mapping(
+                    user_id,
+                    file_content=file_content,
+                    filename=filename,
+                    file_bytes=file_bytes,
+                )
+                if proposal is None:
+                    raise
+                raw_rows, mapping_info = proposal
 
         rows: list[CsvImportPreviewRow] = []
         valid_count = 0
@@ -568,6 +855,7 @@ class CsvImportService:
             valid_rows=valid_count,
             error_rows=error_count,
             rows=rows,
+            column_mapping=mapping_info,
         )
 
     def parse_public_portfolio_file(

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
 from ..models import (
+    CsvColumnMapping,
     CsvImportCommitResponse,
     CsvImportPreviewResponse,
     ErrorResponse,
@@ -30,6 +32,15 @@ def _format_file_size_limit(byte_count: int) -> str:
     return f"{byte_count} bytes"
 
 
+def _parse_column_mapping(raw_mapping: str | None) -> CsvColumnMapping | None:
+    if not raw_mapping:
+        return None
+    try:
+        return CsvColumnMapping.model_validate_json(raw_mapping)
+    except ValueError as exc:
+        raise AppError(code="bad_request", message="Mappatura delle colonne non valida.", status_code=400) from exc
+
+
 def register_csv_routes(
     router: APIRouter,
     repo: PortfolioRepository,
@@ -46,6 +57,7 @@ def register_csv_routes(
         portfolio_id: int,
         file: UploadFile = File(...),
         broker: str = Form("generic"),
+        column_mapping: str | None = Form(None),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> CsvImportPreviewResponse:
         try:
@@ -69,22 +81,28 @@ def register_csv_routes(
                     message=f"File troppo grande. Limite massimo {_format_file_size_limit(settings.csv_import_max_upload_bytes)}",
                     status_code=400,
                 )
+            mapping = _parse_column_mapping(column_mapping)
             is_xlsx = filename.lower().endswith((".xlsx", ".xls"))
+            # Threadpool: for an unrecognised file the service may call the AI provider, which is slow.
             if is_xlsx:
-                return csv_import_service.parse_and_validate(
+                return await run_in_threadpool(
+                    csv_import_service.parse_and_validate,
                     portfolio_id=portfolio_id,
                     user_id=_auth.user_id,
                     file_bytes=content,
                     filename=filename,
                     broker=broker,
+                    column_mapping=mapping,
                 )
             file_content = content.decode("utf-8-sig")
-            return csv_import_service.parse_and_validate(
+            return await run_in_threadpool(
+                csv_import_service.parse_and_validate,
                 portfolio_id=portfolio_id,
                 user_id=_auth.user_id,
                 file_content=file_content,
                 filename=filename,
                 broker=broker,
+                column_mapping=mapping,
             )
         except ValueError as exc:
             message = str(exc)
