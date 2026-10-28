@@ -1,10 +1,14 @@
+import calendar
 import logging
 import math
 import re
+import threading
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta, timezone, tzinfo
 from typing import TYPE_CHECKING
+from urllib.parse import quote as url_quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import httpx
 
@@ -619,8 +623,219 @@ def resolve_provider_symbol_candidates(symbol: str, isin: str | None) -> list[st
     return ordered
 
 
+YAHOO_CHART_URL = 'https://query1.finance.yahoo.com/v8/finance/chart'
+# Senza un User-Agent da browser Yahoo risponde 429 a prescindere dal traffico.
+_YAHOO_HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+        '(KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36'
+    ),
+    'Accept': 'application/json,text/plain,*/*',
+    'Accept-Language': 'en-US,en;q=0.9',
+}
+# Un Retry-After più lungo di così non vale un thread fermo (scheduler o
+# threadpool delle route): si rinuncia subito e si riprova al giro successivo.
+_YAHOO_MAX_RETRY_DELAY_SECONDS = 10.0
+# Stessa regex di yfinance.utils.is_isin: yf.Ticker accettava un ISIN e lo
+# risolveva con la ricerca Yahoo prima di chiedere i prezzi.
+_YF_ISIN_RE = re.compile(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$')
+_INTRADAY_INTERVAL_RE = re.compile(r'^(\d+)(m|h)$')
+
+# make_finance_client crea un client per richiesta (pricing_service,
+# historical_service, ...): il pool di connessioni sta a livello di modulo così
+# sopravvive tra un refresh e l'altro. httpx.Client è thread-safe.
+_yahoo_http_client: httpx.Client | None = None
+_yahoo_http_client_lock = threading.Lock()
+_isin_ticker_cache: dict[str, str] = {}
+_isin_ticker_cache_lock = threading.Lock()
+
+
+def _shared_yahoo_http_client() -> httpx.Client:
+    global _yahoo_http_client
+    with _yahoo_http_client_lock:
+        if _yahoo_http_client is None:
+            _yahoo_http_client = httpx.Client(follow_redirects=True)
+        return _yahoo_http_client
+
+
+@dataclass
+class _ChartRow:
+    """Una riga di chart.result[0], con il timestamp nel fuso della borsa."""
+
+    ts: datetime
+    open: float | None
+    high: float | None
+    low: float | None
+    close: float | None
+    adjclose: float | None
+    volume: float | None
+
+
+@dataclass
+class _QuoteSnapshot:
+    price: float | None
+    market_ts: datetime | None
+    last_close: float | None
+    last_close_ts: datetime | None
+    previous_close: float | None
+
+
+def _finite_float(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _exchange_timezone(meta: dict) -> tzinfo:
+    name = meta.get('exchangeTimezoneName')
+    if isinstance(name, str) and name:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    offset = meta.get('gmtoffset')
+    if isinstance(offset, int) and not isinstance(offset, bool):
+        return timezone(timedelta(seconds=offset))
+    return UTC
+
+
+def _chart_rows(result: dict) -> list[_ChartRow]:
+    """Righe del chart ordinate per timestamp; i null di Yahoo diventano None."""
+    tz = _exchange_timezone(result.get('meta') or {})
+    timestamps = result.get('timestamp') or []
+    indicators = result.get('indicators') or {}
+    quotes = indicators.get('quote')
+    quote = quotes[0] if isinstance(quotes, list) and quotes and isinstance(quotes[0], dict) else {}
+    adjclose_list = indicators.get('adjclose')
+    adjcloses = None
+    if isinstance(adjclose_list, list) and adjclose_list and isinstance(adjclose_list[0], dict):
+        adjcloses = adjclose_list[0].get('adjclose')
+
+    def _value(values: object, index: int) -> float | None:
+        if not isinstance(values, list) or index >= len(values):
+            return None
+        return _finite_float(values[index])
+
+    rows: list[_ChartRow] = []
+    for index, raw_ts in enumerate(timestamps):
+        if isinstance(raw_ts, bool) or not isinstance(raw_ts, (int, float)):
+            continue
+        close = _value(quote.get('close'), index)
+        rows.append(_ChartRow(
+            ts=datetime.fromtimestamp(int(raw_ts), tz=tz),
+            open=_value(quote.get('open'), index),
+            high=_value(quote.get('high'), index),
+            low=_value(quote.get('low'), index),
+            close=close,
+            # Come yfinance: senza la serie adjclose si usano i valori grezzi.
+            adjclose=_value(adjcloses, index) if adjcloses is not None else close,
+            volume=_value(quote.get('volume'), index),
+        ))
+    rows.sort(key=lambda row: row.ts)
+    return rows
+
+
+def _bar_day(ts: datetime) -> date:
+    """Data di una barra giornaliera nel fuso della borsa (come yfinance).
+
+    Yahoo a volte stampa la mezzanotte locale come 22:00/23:00 del giorno prima
+    (problema di ora legale): yfinance (fix_Yahoo_dst_issue) la riporta al giorno dopo.
+    """
+    if ts.minute == 0 and ts.hour in (22, 23):
+        return (ts + timedelta(hours=24 - ts.hour)).date()
+    return ts.date()
+
+
+def _utc_midnight_epoch(day: date) -> int:
+    return int(datetime(day.year, day.month, day.day, tzinfo=UTC).timestamp())
+
+
+def _one_month_before(day: date) -> date:
+    year, month = (day.year, day.month - 1) if day.month > 1 else (day.year - 1, 12)
+    return date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
+
+
+def _parse_bound_date(value: str | None, *, symbol: str, operation: str) -> date | None:
+    if not value:
+        return None
+    parsed = _parse_date(value)
+    if parsed is None:
+        raise ProviderError(
+            provider='yfinance',
+            operation=operation,
+            symbol=symbol,
+            reason='provider_error',
+            message=f"Data non valida per {symbol}: {value}",
+        )
+    return parsed
+
+
+def _chart_result(response: httpx.Response, *, symbol: str, operation: str, no_data_message: str) -> dict:
+    """chart.result[0] di una risposta Yahoo, oppure ProviderError."""
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    chart = payload.get('chart') if isinstance(payload, dict) else None
+    error = chart.get('error') if isinstance(chart, dict) else None
+    error_code = error.get('code') if isinstance(error, dict) else None
+    if response.status_code in (401, 403) or error_code in ('Unauthorized', 'Forbidden'):
+        # Yahoo ha rifiutato il client (crumb, blocco IP): non è "nessun dato".
+        raise ProviderError(
+            provider='yfinance',
+            operation=operation,
+            symbol=symbol,
+            reason='provider_error',
+            message=f"yfinance {operation} failed for {symbol}: HTTP {response.status_code} {error_code or ''}".rstrip(),
+        )
+    if error or response.status_code == 404:
+        # {"chart":{"result":null,"error":{"code":"Not Found",...}}}: simbolo
+        # sconosciuto/delistato o nessun dato nel periodo. yfinance lo trattava
+        # come serie vuota, cioè no_data.
+        logger.debug('Yahoo chart error symbol=%s status=%s error=%s', symbol, response.status_code, error)
+        raise ProviderError(
+            provider='yfinance',
+            operation=operation,
+            symbol=symbol,
+            reason='no_data',
+            message=no_data_message,
+        )
+    if response.status_code >= 400:
+        raise ProviderError(
+            provider='yfinance',
+            operation=operation,
+            symbol=symbol,
+            reason='provider_error',
+            message=f"yfinance {operation} failed for {symbol}: HTTP {response.status_code}",
+        )
+    if not isinstance(chart, dict):
+        raise ProviderError(
+            provider='yfinance',
+            operation=operation,
+            symbol=symbol,
+            reason='invalid_payload',
+            message=f"Payload non valido per {symbol}",
+        )
+    results = chart.get('result')
+    if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+        raise ProviderError(
+            provider='yfinance',
+            operation=operation,
+            symbol=symbol,
+            reason='no_data',
+            message=no_data_message,
+        )
+    return results[0]
+
+
 class YahooFinanceClient:
-    """Client Yahoo Finance tramite la libreria yfinance (gratuito, no API key)."""
+    """Client Yahoo Finance (gratuito, no API key).
+
+    Prezzi e storico (le chiamate frequenti) passano da una sola GET
+    all'endpoint chart v8 via httpx; yfinance resta solo per ricerca simboli,
+    .info e top holdings ETF, chiamate rare.
+    """
 
     def __init__(
         self,
@@ -628,10 +843,14 @@ class YahooFinanceClient:
         timeout_seconds: float = 10.0,
         max_retries: int = 1,
         retry_backoff_seconds: float = 0.5,
+        http_client: httpx.Client | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
+        # Tentativi totali per richiesta (non retry aggiuntivi, a differenza di TwelveDataClient).
         self.max_retries = max(1, int(max_retries))
         self.retry_backoff_seconds = max(0.0, float(retry_backoff_seconds))
+        # Iniettabile nei test (httpx.MockTransport); altrimenti il client condiviso.
+        self._http_client = http_client
 
     def search_symbols(self, query: str) -> list[ProviderSymbol]:
         q = query.strip().upper()
@@ -657,23 +876,11 @@ class YahooFinanceClient:
             return []
 
     def get_quote(self, symbol: str) -> ProviderQuote:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        warning: str | None = None
-        previous_close: float | None = None
-        try:
-            price = ticker.fast_info.last_price
-            previous_close = ticker.fast_info.previous_close
-        except Exception as exc:
-            price = None
-            warning = f"fast_info unavailable: {exc.__class__.__name__}"
-
-        if previous_close is not None and not math.isfinite(float(previous_close)):
-            previous_close = None
-
-        if price is None or not math.isfinite(float(price)):
-            hist = self._ticker_history(ticker, symbol, period='5d')
-            if hist.empty:
+        snapshot = self._quote_snapshot(symbol)
+        # 'fast_info' / 'history_close' sono le etichette storiche dell'epoca
+        # yfinance: il frontend (dataQuality.ts) le traduce, quindi restano.
+        if snapshot.price is None:
+            if snapshot.last_close is None:
                 raise ProviderError(
                     provider='yfinance',
                     operation='quote',
@@ -681,107 +888,81 @@ class YahooFinanceClient:
                     reason='no_data',
                     message=f"Nessuna quotazione disponibile per {symbol}",
                 )
-            close_col = hist['Close'].dropna()
-            if close_col.empty:
-                raise ProviderError(
-                    provider='yfinance',
-                    operation='quote',
-                    symbol=symbol,
-                    reason='no_data',
-                    message=f"Nessuna quotazione disponibile per {symbol}",
-                )
-            price = float(close_col.iloc[-1])
-            if previous_close is None and len(close_col) >= 2:
-                previous_close = float(close_col.iloc[-2])
-            quote_ts = datetime.now(UTC)
-            last_idx = close_col.index[-1]
-            if hasattr(last_idx, 'to_pydatetime'):
-                quote_ts = last_idx.to_pydatetime()
             return ProviderQuote(
                 symbol=symbol,
-                price=float(price),
+                price=snapshot.last_close,
                 bid=None,
                 ask=None,
                 volume=None,
-                ts=quote_ts,
+                ts=snapshot.last_close_ts or datetime.now(UTC),
                 source='history_close',
                 is_realtime=False,
                 is_fallback=True,
                 stale=True,
                 warning='realtime quote unavailable; using last close',
-                previous_close=previous_close,
+                previous_close=snapshot.previous_close,
             )
 
         return ProviderQuote(
             symbol=symbol,
-            price=float(price),
+            price=snapshot.price,
             bid=None,
             ask=None,
             volume=None,
+            # Ora del refresh, come con fast_info: price_ticks e il day change
+            # (ts::date) si basano su questo valore.
             ts=datetime.now(UTC),
             source='fast_info',
             is_realtime=True,
             is_fallback=False,
             stale=False,
-            warning=warning,
-            previous_close=previous_close,
+            warning=None,
+            previous_close=snapshot.previous_close,
         )
 
     def get_market_quote(self, symbol: str) -> ProviderMarketQuote:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        price: float | None = None
-        previous_close: float | None = None
-        market_ts: datetime | None = None
-        source = "fast_info"
-        warning: str | None = None
         try:
-            price = ticker.fast_info.last_price
-            previous_close = ticker.fast_info.previous_close
+            snapshot = self._quote_snapshot(symbol)
         except Exception as exc:
-            source = "history_close"
-            warning = f"fast_info unavailable: {exc.__class__.__name__}"
+            # Come prima: la quotazione mercati non solleva mai, segnala solo.
+            logger.debug('Market quote unavailable symbol=%s error=%s', symbol, exc)
+            snapshot = None
 
-        # Time of the last trade, from the chart metadata fast_info has just
-        # loaded. Not from ticker.info: quoteSummary needs a Yahoo crumb, and one
-        # call per instrument every minute is what gets the crumb rate-limited.
-        try:
-            market_ts = _to_utc_datetime(ticker.get_history_metadata().get('regularMarketTime'))
-        except Exception:
-            pass
-
-        if price is None or not math.isfinite(float(price)):
-            try:
-                hist = self._ticker_history(ticker, symbol, period='5d')
-                if not hist.empty:
-                    close_col = hist['Close'].dropna()
-                    if not close_col.empty:
-                        price = float(close_col.iloc[-1])
-                        if len(close_col) >= 2:
-                            previous_close = float(close_col.iloc[-2])
-                        # Use the last bar's timestamp if we don't have market_ts
-                        if market_ts is None:
-                            last_idx = close_col.index[-1]
-                            if hasattr(last_idx, 'to_pydatetime'):
-                                market_ts = last_idx.to_pydatetime()
-            except Exception:
-                pass
-
-        if price is not None and not math.isfinite(float(price)):
-            price = None
-        if previous_close is not None and not math.isfinite(float(previous_close)):
-            previous_close = None
-
+        if snapshot is not None and snapshot.price is not None:
+            return ProviderMarketQuote(
+                symbol=symbol,
+                price=snapshot.price,
+                previous_close=snapshot.previous_close,
+                # Ora dell'ultimo scambio (meta.regularMarketTime), non del refresh.
+                ts=snapshot.market_ts or datetime.now(UTC),
+                source='fast_info',
+                is_realtime=True,
+                is_fallback=False,
+                stale=False,
+                warning=None,
+            )
+        if snapshot is not None and snapshot.last_close is not None:
+            return ProviderMarketQuote(
+                symbol=symbol,
+                price=snapshot.last_close,
+                previous_close=snapshot.previous_close,
+                ts=snapshot.market_ts or snapshot.last_close_ts or datetime.now(UTC),
+                source='history_close',
+                is_realtime=False,
+                is_fallback=True,
+                stale=True,
+                warning='realtime quote unavailable; using last close',
+            )
         return ProviderMarketQuote(
             symbol=symbol,
-            price=float(price) if price is not None else None,
-            previous_close=float(previous_close) if previous_close is not None else None,
-            ts=market_ts or datetime.now(UTC),
-            source=source,
-            is_realtime=source == "fast_info" and price is not None,
-            is_fallback=source != "fast_info",
-            stale=source != "fast_info",
-            warning=warning if price is not None else "market quote unavailable",
+            price=None,
+            previous_close=None,
+            ts=datetime.now(UTC),
+            source='history_close',
+            is_realtime=False,
+            is_fallback=True,
+            stale=True,
+            warning='market quote unavailable',
         )
 
     def get_daily_bars(
@@ -794,18 +975,37 @@ class YahooFinanceClient:
         timezone: str = DEFAULT_TIMEZONE,
         order: str = DEFAULT_ORDER,
     ) -> list[ProviderDailyBar]:
-        import pandas as pd
-        import yfinance as yf
-
-        ticker = yf.Ticker(symbol)
-        df = self._ticker_history(
-            ticker,
+        # outputsize e timezone ignorati, come con yfinance: contano start/end.
+        rows = self._daily_rows(
             symbol,
-            start=start_date,
-            end=end_date,
-            auto_adjust=True,
+            start_date=start_date,
+            end_date=end_date,
+            operation='daily_bars',
+            no_data_message=f"Nessun dato storico per {symbol}",
         )
-        if df.empty:
+        bars_by_day: dict[date, ProviderDailyBar] = {}
+        for day, row in rows:
+            o, h, l, c, adj = row.open, row.high, row.low, row.close, row.adjclose
+            if o is None or h is None or l is None or c is None or adj is None or c == 0:
+                continue
+            # auto_adjust=True di yfinance: OHLC rettificati per split e
+            # dividendi con il rapporto adjclose/close, volume invariato.
+            ratio = adj / c
+            o, h, l = o * ratio, h * ratio, l * ratio
+            if not (math.isfinite(o) and math.isfinite(h) and math.isfinite(l)):
+                continue
+            # Riga successiva con la stessa data (riga "live" che Yahoo aggiunge
+            # a mercato aperto) sostituisce la precedente, come fa yfinance.
+            bars_by_day[day] = ProviderDailyBar(
+                day=day,
+                open=o,
+                high=h,
+                low=l,
+                close=adj,
+                # yfinance: Volume.fillna(0).astype(int64).
+                volume=float(int(row.volume)) if row.volume is not None else 0.0,
+            )
+        if not bars_by_day:
             raise ProviderError(
                 provider='yfinance',
                 operation='daily_bars',
@@ -814,24 +1014,7 @@ class YahooFinanceClient:
                 message=f"Nessun dato storico per {symbol}",
             )
 
-        bars: list[ProviderDailyBar] = []
-        for ts, row in df.iterrows():
-            try:
-                o, h, l, c = float(row['Open']), float(row['High']), float(row['Low']), float(row['Close'])
-                if not (math.isfinite(o) and math.isfinite(h) and math.isfinite(l) and math.isfinite(c)):
-                    continue
-                bars.append(ProviderDailyBar(
-                    day=ts.date() if hasattr(ts, 'date') else _parse_date(str(ts)),
-                    open=o,
-                    high=h,
-                    low=l,
-                    close=c,
-                    volume=float(row['Volume']) if 'Volume' in row and pd.notna(row['Volume']) else None,
-                ))
-            except Exception:
-                continue
-
-        bars.sort(key=lambda x: x.day)
+        bars = sorted(bars_by_day.values(), key=lambda x: x.day)
         if order == 'desc':
             bars.reverse()
         return bars
@@ -941,21 +1124,38 @@ class YahooFinanceClient:
             return []
 
     def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        df = self._ticker_history(ticker, symbol, period=period, interval=interval)
-        if df.empty:
-            return []
+        try:
+            result = self._fetch_chart(
+                symbol,
+                {'range': period, 'interval': interval, 'includePrePost': 'false'},
+                operation='intraday_bars',
+                no_data_message=f"Nessun dato intraday per {symbol}",
+            )
+        except ProviderError as exc:
+            if exc.reason == 'no_data':
+                # Come yfinance: simbolo senza dati = serie vuota, non errore.
+                return []
+            raise
+
+        # Timestamp nel fuso della borsa (tz-aware), come l'indice di yfinance:
+        # routes_markets e _summary li formattano in ora locale.
         bars: list[ProviderIntradayBar] = []
-        for ts, row in df.iterrows():
-            try:
-                close = float(row['Close'])
-                if not math.isfinite(close):
-                    continue
-                dt = ts.to_pydatetime() if hasattr(ts, 'to_pydatetime') else ts
-                bars.append(ProviderIntradayBar(ts=dt, close=close))
-            except Exception:
+        for row in _chart_rows(result):
+            if row.close is None:
                 continue
+            if bars and bars[-1].ts == row.ts:
+                continue
+            bars.append(ProviderIntradayBar(ts=row.ts, close=row.close))
+
+        # A mercato aperto Yahoo aggiunge l'ultimo prezzo come riga separata
+        # dentro l'intervallo in corso: yfinance la fonde nella barra di quell'intervallo.
+        match = _INTRADAY_INTERVAL_RE.match(interval.strip().lower())
+        if match and len(bars) >= 2:
+            amount, unit = int(match.group(1)), match.group(2)
+            step = timedelta(minutes=amount) if unit == 'm' else timedelta(hours=amount)
+            if bars[-1].ts - bars[-2].ts < step:
+                bars[-2] = ProviderIntradayBar(ts=bars[-2].ts, close=bars[-1].close)
+                bars.pop()
         return bars
 
     def get_daily_fx_rates(
@@ -969,21 +1169,22 @@ class YahooFinanceClient:
         timezone: str = DEFAULT_TIMEZONE,
         order: str = DEFAULT_ORDER,
     ) -> list[ProviderFxRate]:
-        import pandas as pd
-        import yfinance as yf
-
         # Yahoo: EURUSD=X = quanti USD per 1 EUR
         pair = f"{from_currency}{to_currency}=X"
-        df = yf.download(
+        rows = self._daily_rows(
             pair,
-            start=start_date,
-            end=end_date,
-            auto_adjust=True,
-            progress=False,
-            multi_level_index=False,
-            timeout=self.timeout_seconds,
+            start_date=start_date,
+            end_date=end_date,
+            operation='daily_fx_rates',
+            no_data_message=f"Nessun dato FX per {pair}",
         )
-        if df.empty:
+        rates_by_day: dict[date, ProviderFxRate] = {}
+        for day, row in rows:
+            # Chiusura rettificata, come yf.download(auto_adjust=True); per i cambi coincide con close.
+            if row.adjclose is None:
+                continue
+            rates_by_day[day] = ProviderFxRate(day=day, rate=row.adjclose)
+        if not rates_by_day:
             raise ProviderError(
                 provider='yfinance',
                 operation='daily_fx_rates',
@@ -992,35 +1193,157 @@ class YahooFinanceClient:
                 message=f"Nessun dato FX per {pair}",
             )
 
-        rates: list[ProviderFxRate] = []
-        for ts, row in df.iterrows():
-            try:
-                close = row['Close']
-                if not pd.notna(close):
-                    continue
-                rates.append(ProviderFxRate(
-                    day=ts.date() if hasattr(ts, 'date') else _parse_date(str(ts)),
-                    rate=float(close),
-                ))
-            except Exception:
-                continue
-
-        rates.sort(key=lambda x: x.day)
+        rates = sorted(rates_by_day.values(), key=lambda x: x.day)
         if order == 'desc':
             rates.reverse()
         return rates
 
-    def _ticker_history(self, ticker, symbol: str, **kwargs):
+    def _quote_snapshot(self, symbol: str) -> _QuoteSnapshot:
+        """Prezzo, ora dell'ultimo scambio e chiusure da una sola richiesta (5 giorni, barre giornaliere)."""
+        result = self._fetch_chart(
+            symbol,
+            {'range': '5d', 'interval': '1d', 'includePrePost': 'false'},
+            operation='quote',
+            no_data_message=f"Nessuna quotazione disponibile per {symbol}",
+        )
+        meta = result.get('meta') or {}
+        tz = _exchange_timezone(meta)
+        # Chiusure grezze (non rettificate) per giorno di borsa; la riga "live"
+        # dello stesso giorno sostituisce la precedente.
+        closes: dict[date, float] = {}
+        for row in _chart_rows(result):
+            if row.close is not None:
+                closes[_bar_day(row.ts)] = row.close
+        days = sorted(closes)
+
+        # previous_close = penultima chiusura giornaliera, come fast_info;
+        # chartPreviousClose (chiusura prima del primo giorno del grafico) solo
+        # se le barre non bastano.
+        if len(days) >= 2:
+            previous_close = closes[days[-2]]
+        else:
+            previous_close = _finite_float(meta.get('chartPreviousClose'))
+        last_day = days[-1] if days else None
+        return _QuoteSnapshot(
+            price=_finite_float(meta.get('regularMarketPrice')),
+            market_ts=_to_utc_datetime(_finite_float(meta.get('regularMarketTime'))),
+            last_close=closes[last_day] if last_day else None,
+            # Mezzanotte locale del giorno della barra, come l'indice di yfinance.
+            last_close_ts=datetime(last_day.year, last_day.month, last_day.day, tzinfo=tz) if last_day else None,
+            previous_close=previous_close,
+        )
+
+    def _daily_rows(
+        self,
+        symbol: str,
+        *,
+        start_date: str | None,
+        end_date: str | None,
+        operation: str,
+        no_data_message: str,
+    ) -> list[tuple[date, _ChartRow]]:
+        """Barre giornaliere di [start_date, end_date) datate nel fuso della borsa.
+
+        Stessa semantica di yfinance history(start, end): start incluso, end
+        escluso, date di borsa; solo end = un mese prima di end; nessuna data = 1 mese.
+        yfinance calcolava la mezzanotte locale con una richiesta in più per il
+        fuso: qui si chiede un giorno in più per lato e si filtra dopo.
+        """
+        start = _parse_bound_date(start_date, symbol=symbol, operation=operation)
+        end = _parse_bound_date(end_date, symbol=symbol, operation=operation)
+        params: dict[str, object] = {
+            'interval': '1d',
+            'includePrePost': 'false',
+            'events': 'div,splits,capitalGains',
+        }
+        if start is None and end is None:
+            params['range'] = '1mo'
+        else:
+            if start is None:
+                start = _one_month_before(end)
+            params['period1'] = _utc_midnight_epoch(start) - 86400
+            params['period2'] = _utc_midnight_epoch(end) + 86400 if end is not None else int(time.time())
+
+        result = self._fetch_chart(symbol, params, operation=operation, no_data_message=no_data_message)
+        rows: list[tuple[date, _ChartRow]] = []
+        for row in _chart_rows(result):
+            day = _bar_day(row.ts)
+            if start is not None and day < start:
+                continue
+            if end is not None and day >= end:
+                continue
+            rows.append((day, row))
+        return rows
+
+    def _fetch_chart(self, symbol: str, params: dict[str, object], *, operation: str, no_data_message: str) -> dict:
+        """Una GET a v8/finance/chart con retry su 429/5xx e rete; restituisce chart.result[0]."""
+        yahoo_symbol = self._resolve_yahoo_symbol(symbol, operation=operation)
+        url = f"{YAHOO_CHART_URL}/{url_quote(yahoo_symbol, safe='=')}"
+        client = self._http_client or _shared_yahoo_http_client()
         last_error: Exception | None = None
         for attempt in range(1, self.max_retries + 1):
             try:
-                return ticker.history(**kwargs)
-            except Exception as exc:
+                response = client.get(url, params=params, headers=_YAHOO_HEADERS, timeout=self.timeout_seconds)
+                if response.status_code in RETRYABLE_STATUS_CODES:
+                    raise httpx.HTTPStatusError(
+                        f"Retryable status code {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                return _chart_result(response, symbol=symbol, operation=operation, no_data_message=no_data_message)
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
                 last_error = exc
-                if attempt < self.max_retries:
-                    time.sleep(self.retry_backoff_seconds * attempt)
+                if attempt >= self.max_retries:
+                    break
+                delay = _compute_retry_delay(exc, attempt=attempt, backoff_seconds=self.retry_backoff_seconds)
+                if delay > _YAHOO_MAX_RETRY_DELAY_SECONDS:
+                    logger.warning(
+                        'Yahoo chart request not retried symbol=%s retry_after=%.0fs reason=%s',
+                        symbol,
+                        delay,
+                        exc,
+                    )
+                    break
+                logger.warning(
+                    'Retry Yahoo chart request symbol=%s attempt=%s/%s delay=%.2fs reason=%s',
+                    symbol,
+                    attempt,
+                    self.max_retries,
+                    delay,
+                    exc,
+                )
+                if delay > 0:
+                    time.sleep(delay)
+
         assert last_error is not None
-        raise _provider_error('yfinance', 'history', symbol, last_error)
+        raise _provider_error('yfinance', operation, symbol, last_error) from last_error
+
+    def _resolve_yahoo_symbol(self, symbol: str, *, operation: str) -> str:
+        """Simbolo per l'URL del chart: maiuscolo, e un ISIN risolto con la ricerca Yahoo come faceva yf.Ticker."""
+        normalized = symbol.strip().upper()
+        if not _YF_ISIN_RE.match(normalized):
+            return normalized
+        with _isin_ticker_cache_lock:
+            cached = _isin_ticker_cache.get(normalized)
+        if cached:
+            return cached
+        try:
+            import yfinance as yf
+            quotes = yf.Search(normalized, max_results=1).quotes
+        except Exception:
+            quotes = []
+        ticker = str((quotes[0] or {}).get('symbol') or '').strip().upper() if quotes else ''
+        if not ticker:
+            raise ProviderError(
+                provider='yfinance',
+                operation=operation,
+                symbol=symbol,
+                reason='no_data',
+                message=f"Invalid ISIN number: {normalized}",
+            )
+        with _isin_ticker_cache_lock:
+            _isin_ticker_cache[normalized] = ticker
+        return ticker
 
     def _ticker_info(self, ticker, symbol: str) -> dict:
         last_error: Exception | None = None

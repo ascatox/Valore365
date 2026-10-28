@@ -1,5 +1,8 @@
 import logging
 import time
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 import httpx
 
@@ -8,6 +11,7 @@ from ..finance_client import is_unpriceable_on_yahoo, make_finance_client
 from ..models import PriceRefreshItem, PriceRefreshResponse
 from ..price_validation import validate_quote_price
 from ..repository import PortfolioRepository
+from .market_hours import is_market_open
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,13 @@ class PriceIngestionService:
         asset_scope: str = 'target',
         user_id: str | None = None,
         prefer_symbol_then_isin: bool = False,
+        market_hours_at: datetime | None = None,
     ) -> PriceRefreshResponse:
+        """Scarica le quotazioni e le salva come price tick.
+
+        ``market_hours_at`` lo passa solo lo scheduler: salta gli asset la cui
+        borsa è chiusa in quell'istante. I refresh manuali aggiornano tutto.
+        """
         provider = self.settings.finance_provider.strip().lower()
         client = make_finance_client(self.settings)
 
@@ -55,6 +65,23 @@ class PriceIngestionService:
                 provider, ','.join(a.provider_symbol for a in skipped),
             )
 
+        if market_hours_at is not None:
+            grace_minutes = self.settings.price_scheduler_after_close_grace_minutes
+            open_assets = []
+            closed = []
+            for asset in pricing_assets:
+                # Lo scheduler chiede il simbolo nudo (VWCE): la borsa si legge
+                # dal simbolo mappato (VWCE.MI), altrimenti finirebbe sugli orari USA.
+                market_symbol = getattr(asset, 'market_symbol', None) or asset.provider_symbol
+                is_open = is_market_open(market_symbol, market_hours_at, after_close_grace_minutes=grace_minutes)
+                (open_assets if is_open else closed).append(asset)
+            if closed:
+                pricing_assets = open_assets
+                logger.info(
+                    'Price refresh skipped assets with closed market provider=%s count=%s symbols=%s',
+                    provider, len(closed), ','.join(a.provider_symbol for a in closed),
+                )
+
         logger.info(
             'Start price refresh provider=%s portfolio_id=%s asset_scope=%s assets=%s',
             provider,
@@ -68,11 +95,11 @@ class PriceIngestionService:
         # finish, so the refresh holds a connection for a single short
         # transaction rather than once per asset across the whole network run.
         pending_ticks: list[dict] = []
-        delay_seconds = max(0.0, float(self.settings.finance_symbol_request_delay_seconds))
 
-        for index, asset in enumerate(pricing_assets):
+        for asset, (quote, fetch_error) in zip(pricing_assets, self._fetch_quotes(client, pricing_assets)):
             try:
-                quote = client.get_quote(asset.provider_symbol)
+                if fetch_error is not None:
+                    raise fetch_error
                 vr = validate_quote_price(
                     asset_id=asset.asset_id,
                     symbol=asset.provider_symbol,
@@ -111,9 +138,6 @@ class PriceIngestionService:
                 errors.append(error_message)
                 logger.error('Price refresh failure provider=%s asset=%s error=%s', provider, asset.provider_symbol, exc)
 
-            if delay_seconds > 0 and index < len(pricing_assets) - 1:
-                time.sleep(delay_seconds)
-
         self.repository.save_price_ticks(pending_ticks)
 
         logger.info(
@@ -132,3 +156,29 @@ class PriceIngestionService:
             items=items,
             errors=errors,
         )
+
+    def _fetch_quotes(self, client, pricing_assets: list) -> Iterator[tuple[object | None, Exception | None]]:
+        """(quote, errore) per ogni asset, nello stesso ordine di pricing_assets.
+
+        In parallelo su finance_quote_concurrency thread; in sequenza, con la
+        pausa tra un simbolo e l'altro, se finance_symbol_request_delay_seconds > 0.
+        """
+        delay_seconds = max(0.0, float(self.settings.finance_symbol_request_delay_seconds))
+        concurrency = max(1, int(self.settings.finance_quote_concurrency))
+
+        def fetch(asset) -> tuple[object | None, Exception | None]:
+            try:
+                return client.get_quote(asset.provider_symbol), None
+            except (ValueError, httpx.HTTPError) as exc:
+                return None, exc
+
+        if delay_seconds > 0 or concurrency == 1 or len(pricing_assets) <= 1:
+            for index, asset in enumerate(pricing_assets):
+                yield fetch(asset)
+                if delay_seconds > 0 and index < len(pricing_assets) - 1:
+                    time.sleep(delay_seconds)
+            return
+
+        with ThreadPoolExecutor(max_workers=min(concurrency, len(pricing_assets))) as executor:
+            results = list(executor.map(fetch, pricing_assets))
+        yield from results

@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     finance_max_retries: int = 3
     finance_retry_backoff_seconds: float = 0.5
     finance_symbol_request_delay_seconds: float = 0.0
+    # Quotazioni scaricate in parallelo da un refresh prezzi (sequenziale se
+    # finance_symbol_request_delay_seconds > 0).
+    finance_quote_concurrency: int = 4
     justetf_enabled: bool = True
     justetf_blocked_cooldown_seconds: float = 900.0
     fmt_api_key: str = ""
@@ -56,6 +59,11 @@ class Settings(BaseSettings):
     price_scheduler_enabled: bool = False
     price_scheduler_interval_seconds: int = 60
     price_scheduler_portfolio_id: int | None = None
+    # Lo scheduler salta gli asset la cui borsa è chiusa (orari dal suffisso del
+    # simbolo Yahoo, vedi services/market_hours.py); i refresh manuali no.
+    price_scheduler_market_hours_only: bool = True
+    # Minuti dopo la chiusura in cui l'asset si aggiorna ancora (prezzo d'asta).
+    price_scheduler_after_close_grace_minutes: int = 30
 
     clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""

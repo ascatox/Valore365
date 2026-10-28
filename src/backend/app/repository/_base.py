@@ -34,6 +34,9 @@ class PricingAsset:
     asset_id: int
     symbol: str
     provider_symbol: str
+    # Mapped provider symbol (e.g. VWCE.MI) even when provider_symbol is the bare
+    # asset symbol (prefer_symbol_then_isin): its suffix tells the exchange.
+    market_symbol: str | None = None
 
 
 @dataclass
