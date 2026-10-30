@@ -10,8 +10,8 @@ import { formatPriceSourceLabel, formatProviderWarning } from '../../../services
 import { getExchangeStatus, type ExchangeStatus } from '../exchangeSchedules';
 import { AssetInfoModal } from '../holdings/AssetInfoModal';
 import { MarketCalendarCard } from './MarketCalendarCard';
+import { MarketNewsCard } from './MarketNewsCard';
 import { MarketTicker } from './MarketTicker';
-import { NewsTicker } from './NewsTicker';
 import { useChartColors } from '../chartColors';
 
 const formatMarketPrice = (value: number | null) => {
@@ -229,8 +229,8 @@ export function MercatiTab() {
   return (
     <Stack gap="md">
       <MarketTicker />
-      <NewsTicker />
       <MarketCalendarCard onSymbolClick={setSelectedSymbol} />
+      <MarketNewsCard />
 
       <Text size="xs" c="dimmed">
         Ultimo aggiornamento: {lastUpdatedAt ? formatDateTime(lastUpdatedAt) : 'N/D'}

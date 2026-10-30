@@ -957,6 +957,8 @@ export interface MarketNewsItem {
   link: string | null;
   published: string | null;
   related_symbol: string | null;
+  region: string | null;
+  summary: string | null;
 }
 
 export interface MarketNewsResponse {
