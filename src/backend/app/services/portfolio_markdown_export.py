@@ -47,6 +47,7 @@ def _collect_performance_rows(
             _num(ps.mwr.mwr_pct, suffix="%"),
             _num(ps.twr.twr_annualized_pct, suffix="%"),
             _num(ps.mwr.mwr_annualized_pct, suffix="%"),
+            _num(ps.initial_value),
             _num(ps.net_invested),
             _num(ps.absolute_gain),
         ])
@@ -78,7 +79,7 @@ def render_snapshot_markdown(
     lines.append("")
     lines.append(
         f"Snapshot generato da Valore365 il {date.today().isoformat()}."
-        + (f" Valori monetari in {currency}." if currency else "")
+        + (f" Valori monetari in {currency}, salvo dove indicato diversamente." if currency else "")
     )
 
     # --- Riepilogo ---
@@ -104,8 +105,14 @@ def render_snapshot_markdown(
         lines.append("")
         lines.append("## Posizioni principali")
         lines.append("")
+        lines.append(
+            "P/L su costo medio: variazione del valore attuale rispetto al prezzo medio di carico "
+            "(commissioni incluse, convertito in valuta del portafoglio). Non include dividendi o "
+            "altre distribuzioni incassate, quindi non è il rendimento totale dello strumento."
+        )
+        lines.append("")
         lines.extend(_md_table(
-            ["Simbolo", "Nome", "Peso", "Valore", "P/L", "Var. giorno"],
+            ["Simbolo", "Nome", "Peso", "Valore", "P/L su costo medio", "Var. giorno"],
             [
                 [
                     str(p.get("symbol", "")),
@@ -129,8 +136,16 @@ def render_snapshot_markdown(
             "sono valorizzate solo per periodi di almeno un anno."
         )
         lines.append("")
+        lines.append(
+            "N/D = dato non calcolabile (ad esempio valore iniziale o quotazioni assenti, oppure MWR "
+            "non convergente), non zero. "
+            "Guadagno assoluto = valore finale (liquidità inclusa) - valore iniziale - netto investito "
+            "(versamenti meno prelievi del periodo). Il valore iniziale è quello a fine giornata "
+            "precedente all'inizio del periodo: 0 se il periodo parte dal primo movimento."
+        )
+        lines.append("")
         lines.extend(_md_table(
-            ["Periodo", "TWR", "MWR", "TWR ann.", "MWR ann.", "Netto investito", "Guadagno assoluto"],
+            ["Periodo", "TWR", "MWR", "TWR ann.", "MWR ann.", "Valore iniziale", "Netto investito", "Guadagno assoluto"],
             performance_rows,
         ))
     elif snapshot.get("performance"):
@@ -154,8 +169,13 @@ def render_snapshot_markdown(
             ["Diversificazione", str(doctor.get("diversification", "N/D"))],
             ["Sovrapposizione", str(doctor.get("overlap", "N/D"))],
             ["Efficienza dei costi", str(doctor.get("cost_efficiency", "N/D"))],
-            ["Peso massimo posizione", _num(doctor.get("max_position_weight"), suffix="%")],
-            ["Volatilità stimata", _num(doctor.get("portfolio_volatility"), suffix="%")],
+            ["Peso massimo posizione (fondi/ETF inclusi)", _num(doctor.get("max_position_weight"), suffix="%")],
+            ["Peso massimo titolo singolo (esclusi fondi/ETF)", _num(doctor.get("max_single_security_weight"), suffix="%")],
+            ["Sovrapposizione stimata (euristica per tipo, indici e regione)", _num(doctor.get("overlap_score"), suffix="%")],
+            [
+                "Volatilità stimata (media ponderata delle volatilità storiche dei singoli strumenti, ~12 mesi, senza correlazioni)",
+                _num(doctor.get("portfolio_volatility"), suffix="%"),
+            ],
             ["TER medio ponderato", _num(doctor.get("weighted_ter"), suffix="%")],
         ]
         lines.extend(_md_table(["Metrica", "Valore"], doctor_rows))
@@ -178,13 +198,20 @@ def render_snapshot_markdown(
         lines.append("")
         lines.append(
             f"Rendimento atteso di lungo periodo (ipotesi per classe di attivo): {_num(monte_carlo.get('annualized_mean_return_pct'), suffix='%')}, "
-            f"volatilità annualizzata: {_num(monte_carlo.get('annualized_volatility_pct'), suffix='%')}."
+            f"volatilità annualizzata: {_num(monte_carlo.get('annualized_volatility_pct'), suffix='%')} "
+            "(la maggiore tra la volatilità realizzata del portafoglio negli ultimi ~12 mesi e quella di lungo periodo "
+            "ipotizzata per la sua composizione per classi di attivo: non è la stessa stima della volatilità della salute del portafoglio)."
+        )
+        lines.append("")
+        lines.append(
+            "I valori di percentile sono indici base 100 (valore di partenza = 100), non importi in valuta: "
+            "es. 106 = +6% rispetto al valore di partenza, al netto di versamenti e prelievi (assenti nella simulazione)."
         )
         projections = monte_carlo.get("projections") or []
         if projections:
             lines.append("")
             lines.extend(_md_table(
-                ["Anno", "P25", "Mediana (P50)", "P75"],
+                ["Anno", "P25 (indice)", "Mediana P50 (indice)", "P75 (indice)"],
                 [
                     [str(pr.get("year")), _num(pr.get("p25"), 0), _num(pr.get("p50"), 0), _num(pr.get("p75"), 0)]
                     for pr in projections

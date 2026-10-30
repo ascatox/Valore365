@@ -113,14 +113,23 @@ def test_inception_falls_back_to_creation_without_transactions():
     assert abs(result.twr_pct - 10.0) < 0.01
 
 
-def test_twr_and_mwr_zero_on_empty_portfolio():
+def test_twr_is_not_calculable_without_a_starting_value():
+    # Zero would read as "no return"; with no starting value there is none to measure.
     day = date(2026, 1, 1)
     service = PerformanceService(_FakeRepo(created=day, values={day: 0.0}))
 
     twr = service.calculate_twr(1, 'u', day, day)
+
+    assert twr.twr_pct is None
+    assert twr.twr_annualized_pct is None
+
+
+def test_twr_and_mwr_zero_on_empty_portfolio():
+    day = date(2026, 1, 1)
+    service = PerformanceService(_FakeRepo(created=day, values={day: 0.0}))
+
     mwr = service.calculate_mwr(1, 'u', day, day)
 
-    assert twr.twr_pct == 0.0
     assert mwr.mwr_pct == 0.0
     assert mwr.converged is True
 
@@ -505,6 +514,58 @@ def test_summary_resolves_inception_and_cashflows_once():
     # One fetch; the deposit is found straight away, so no trade fallback.
     assert repo.cashflow_calls == 1
     assert repo.batch_calls == 1
+
+
+def test_summary_gain_subtracts_the_value_at_window_start():
+    # 100k at the start of the window, +10k deposited inside it, 125k at the end:
+    # the period gain is 15k, not the 115k a "final value - net invested" gives.
+    inception = date(2024, 1, 1)
+    today = date.today()
+    start = today - timedelta(days=30)
+    repo = _FakeRepo(
+        created=inception,
+        values={start - timedelta(days=1): 100000.0, start: 100000.0, today: 125000.0},
+        cashflows=[CashFlowEntry(date=(start + timedelta(days=5)).isoformat(), side='deposit', amount=10000.0)],
+    )
+    service = PerformanceService(repo)
+
+    summary = service.get_performance_summary(1, 'u', '1m')
+
+    assert summary.initial_value == 100000.0
+    assert summary.net_invested == 10000.0
+    assert summary.current_value == 125000.0
+    assert summary.absolute_gain == 15000.0
+
+
+def test_summary_gain_since_inception_has_no_initial_value():
+    inception = date.today() - timedelta(days=100)
+    today = date.today()
+    repo = _FakeRepo(
+        created=inception,
+        values={inception: 1000.0, today: 1200.0},
+        cashflows=[CashFlowEntry(date=inception.isoformat(), side='deposit', amount=1000.0)],
+    )
+    service = PerformanceService(repo)
+
+    summary = service.get_performance_summary(1, 'u', 'all')
+
+    assert summary.initial_value == 0.0
+    assert summary.absolute_gain == 200.0
+
+
+def test_summary_gain_is_unavailable_when_the_window_start_has_no_value():
+    # Portfolio existed before the window but is valued 0 at its start (missing
+    # prices): reporting the whole balance as gain would be wrong.
+    inception = date(2024, 1, 1)
+    today = date.today()
+    repo = _FakeRepo(created=inception, values={today: 125000.0})
+    service = PerformanceService(repo)
+
+    summary = service.get_performance_summary(1, 'u', '1m')
+
+    assert summary.initial_value is None
+    assert summary.absolute_gain is None
+    assert summary.current_value == 125000.0
 
 
 def test_drawdown_resolves_inception_once_despite_nested_range_resolution():

@@ -510,6 +510,7 @@ def build_portfolio_snapshot(
             "overlap": doctor.summary.overlap,
             "cost_efficiency": doctor.summary.cost_efficiency,
             "max_position_weight": round(doctor.metrics.max_position_weight, 2),
+            "max_single_security_weight": round(doctor.metrics.max_single_security_weight, 2) if doctor.metrics.max_single_security_weight is not None else None,
             "overlap_score": round(doctor.metrics.overlap_score, 2),
             "portfolio_volatility": round(doctor.metrics.portfolio_volatility, 2) if doctor.metrics.portfolio_volatility is not None else None,
             "weighted_ter": round(doctor.metrics.weighted_ter, 2) if doctor.metrics.weighted_ter is not None else None,

@@ -44,6 +44,7 @@ def analyze_portfolio_health(
     geographic_exposure = compute_geographic_exposure(holdings, repo=repo)
     sector_exposure = compute_sector_exposure(holdings, repo=repo)
     max_position_weight = compute_max_position_weight(holdings)
+    max_single_security_weight = compute_max_single_security_weight(holdings)
     overlap_score = compute_overlap_score(holdings)
     portfolio_volatility = compute_portfolio_volatility(repo, holdings)
     weighted_ter = compute_weighted_ter(holdings, repo=repo)
@@ -54,6 +55,7 @@ def analyze_portfolio_health(
         geographic_exposure=geographic_exposure,
         sector_exposure=sector_exposure,
         max_position_weight=max_position_weight,
+        max_single_security_weight=max_single_security_weight,
         overlap_score=overlap_score,
         portfolio_volatility=portfolio_volatility,
         weighted_ter=weighted_ter,
@@ -275,6 +277,16 @@ def compute_max_position_weight(holdings: list[AnalyzedHolding]) -> float:
     return round(max(holding.weight_pct for holding in holdings), 1)
 
 
+# Fondi/ETF sono veicoli diversificati: il loro peso non e' il peso di un
+# singolo emittente, quindi non misura il rischio di concentrazione su un titolo.
+_DIVERSIFIED_VEHICLE_TYPES = {"etf", "fund"}
+
+
+def compute_max_single_security_weight(holdings: list[AnalyzedHolding]) -> float:
+    weights = [h.weight_pct for h in holdings if h.asset_type not in _DIVERSIFIED_VEHICLE_TYPES]
+    return round(max(weights), 1) if weights else 0.0
+
+
 def compute_overlap_score(holdings: list[AnalyzedHolding]) -> float:
     pair_weight_total = 0.0
     weighted_overlap = 0.0
@@ -289,6 +301,9 @@ def compute_overlap_score(holdings: list[AnalyzedHolding]) -> float:
     if pair_weight_total == 0:
         return 0.0
     return round(max(0.0, min(100.0, weighted_overlap / pair_weight_total)), 1)
+
+
+_GENERIC_OVERLAP_TAGS = {"equity_like"}
 
 
 def estimate_overlap_between_assets(asset_a: AnalyzedHolding, asset_b: AnalyzedHolding) -> float:
@@ -307,8 +322,11 @@ def estimate_overlap_between_assets(asset_a: AnalyzedHolding, asset_b: AnalyzedH
     tags_b = extract_overlap_tags(asset_b)
     if asset_a.symbol.upper() == asset_b.symbol.upper():
         return 100.0
-    if tags_a & tags_b:
-        if "broad_us_equity" in tags_a & tags_b or "global_equity" in tags_a & tags_b:
+    # "equity_like" e' solo la categoria generica: due strumenti azionari lo
+    # condividono sempre, quindi non e' prova di sovrapposizione.
+    shared_tags = (tags_a & tags_b) - _GENERIC_OVERLAP_TAGS
+    if shared_tags:
+        if "broad_us_equity" in shared_tags or "global_equity" in shared_tags:
             return 85.0
         return 75.0
     if {"global_equity", "broad_us_equity"} <= (tags_a | tags_b):
@@ -361,6 +379,9 @@ def extract_overlap_tags(holding: AnalyzedHolding) -> set[str]:
 
 def dominant_region(holding: AnalyzedHolding) -> str:
     profile = infer_region_profile(holding)
+    if not profile:
+        # ETF/fondi di cui non si riconosce la regione: nessuna regione dominante.
+        return "unknown"
     return max(profile.items(), key=lambda item: item[1])[0]
 
 
@@ -492,7 +513,7 @@ def compute_category_scores(
     diversification = 25
     if usa > 60:
         diversification -= 6
-    if metrics.max_position_weight > 40:
+    if metrics.concentration_weight > 40:
         diversification -= 4
     if metrics.overlap_score > 50:
         diversification -= 4
@@ -505,13 +526,13 @@ def compute_category_scores(
             risk -= 10
         elif metrics.portfolio_volatility >= 12:
             risk -= 5
-    if metrics.max_position_weight > 40:
+    if metrics.concentration_weight > 40:
         risk -= 5
 
     concentration = 20
-    if metrics.max_position_weight > 60:
+    if metrics.concentration_weight > 60:
         concentration -= 10
-    elif metrics.max_position_weight > 40:
+    elif metrics.concentration_weight > 40:
         concentration -= 6
     if top3_weight > 75:
         concentration -= 4
@@ -545,6 +566,11 @@ def compute_category_scores(
 def build_alerts(metrics: PortfolioHealthMetrics, holdings: list[AnalyzedHolding]) -> list[PortfolioHealthAlert]:
     alerts: list[PortfolioHealthAlert] = []
     usa = metrics.geographic_exposure.get("usa", 0.0)
+    concentration_holdings = (
+        [h for h in holdings if h.asset_type not in _DIVERSIFIED_VEHICLE_TYPES]
+        if metrics.max_single_security_weight is not None
+        else holdings
+    )
     if usa > 60:
         alerts.append(
             PortfolioHealthAlert(
@@ -553,22 +579,22 @@ def build_alerts(metrics: PortfolioHealthMetrics, holdings: list[AnalyzedHolding
                 message=f"Il portafoglio \u00e8 fortemente esposto al mercato statunitense ({usa:.1f}%).",
             )
         )
-    if metrics.max_position_weight > 60:
+    if metrics.concentration_weight > 60:
         alerts.append(
             PortfolioHealthAlert(
                 severity="critical",
                 type="position_concentration",
-                message=f"Una singola posizione domina il portafoglio ({metrics.max_position_weight:.1f}%).",
-                details=build_position_concentration_details(holdings),
+                message=f"Una singola posizione domina il portafoglio ({metrics.concentration_weight:.1f}%).",
+                details=build_position_concentration_details(concentration_holdings),
             )
         )
-    elif metrics.max_position_weight > 40:
+    elif metrics.concentration_weight > 40:
         alerts.append(
             PortfolioHealthAlert(
                 severity="warning",
                 type="position_concentration",
-                message=f"Una posizione ha un peso elevato nel portafoglio ({metrics.max_position_weight:.1f}%).",
-                details=build_position_concentration_details(holdings),
+                message=f"Una posizione ha un peso elevato nel portafoglio ({metrics.concentration_weight:.1f}%).",
+                details=build_position_concentration_details(concentration_holdings),
             )
         )
     if metrics.overlap_score > 70:
@@ -705,11 +731,11 @@ def build_suggestions(metrics: PortfolioHealthMetrics, *, equity_weight: float) 
                 message="Rivedi gli ETF azionari ampi con mandati simili e consolida le posizioni sovrapposte dove possibile.",
             )
         )
-    if metrics.max_position_weight > 40:
+    if metrics.concentration_weight > 40:
         suggestions.append(
             PortfolioHealthSuggestion(
-                priority="high" if metrics.max_position_weight > 60 else "medium",
-                message="Ridurre la posizione pi\u00f9 grande potrebbe migliorare il rischio di concentrazione e la stabilit\u00e0 del punteggio.",
+                priority="high" if metrics.concentration_weight > 60 else "medium",
+                message="Un singolo strumento pesa molto sul totale: valuta se questa concentrazione \u00e8 voluta.",
             )
         )
     if metrics.weighted_ter is not None and metrics.weighted_ter > 0.3:

@@ -342,7 +342,7 @@ class CashFlowEntry(BaseModel):
 
 
 class TWRResult(BaseModel):
-    twr_pct: float
+    twr_pct: float | None  # None = non calcolabile (valore iniziale assente)
     twr_annualized_pct: float | None
     period_days: int
     start_date: str
@@ -369,8 +369,13 @@ class PerformanceSummary(BaseModel):
     total_deposits: float
     total_withdrawals: float
     net_invested: float
+    # Valore del portafoglio (liquidita' inclusa) a fine giornata precedente
+    # all'inizio della finestra; 0 se la finestra parte dal primo movimento.
+    # None = non affidabile (nessuna quotazione): absolute_gain e' allora None.
+    initial_value: float | None = None
     current_value: float
-    absolute_gain: float
+    # current_value - initial_value - net_invested, stessa finestra e perimetro.
+    absolute_gain: float | None
 
 
 class TWRTimeseriesPoint(BaseModel):

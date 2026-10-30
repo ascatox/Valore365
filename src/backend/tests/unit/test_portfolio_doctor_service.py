@@ -27,7 +27,9 @@ from app.services.portfolio_doctor import (
     build_summary,
     compute_category_scores,
     compute_geographic_exposure,
+    compute_max_single_security_weight,
     compute_overlap_score,
+    build_suggestions,
     compute_weighted_ter,
     empty_health_response,
 )
@@ -461,3 +463,59 @@ def test_rebalance_holdings_by_market_value_reweights_across_portfolios():
     assert round(rebalanced[0].weight_pct, 1) == 30.0
     assert round(rebalanced[1].weight_pct, 1) == 20.0
     assert round(rebalanced[2].weight_pct, 1) == 50.0
+
+
+def test_overlap_is_not_a_flat_75_for_equity_funds_with_nothing_specific_in_common():
+    # Two equity ETFs always share the generic "equity_like" tag; that alone
+    # must not be read as 75% overlap.
+    holdings = [
+        _holding(1, "EXSA", "Some Europe Value ETF", "etf", 50, "EUR"),
+        _holding(2, "XXXX", "Some Japan Small Cap ETF", "etf", 50, "EUR"),
+    ]
+
+    assert compute_overlap_score(holdings) < 40
+
+
+def test_overlap_still_flags_funds_that_track_the_same_index():
+    holdings = [
+        _holding(1, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 50, "USD"),
+        _holding(2, "VUAA", "Vanguard S&P 500 UCITS ETF", "etf", 50, "USD"),
+    ]
+
+    assert compute_overlap_score(holdings) >= 85
+
+
+def test_a_dominant_global_fund_is_not_flagged_as_concentration():
+    holdings = [
+        _holding(1, "VWRA", "Vanguard FTSE All-World UCITS ETF", "etf", 57.5, "USD"),
+        _holding(2, "AAPL", "Apple Inc", "stock", 20.0, "USD"),
+        _holding(3, "BND", "Some Bond ETF", "etf", 22.5, "USD"),
+    ]
+    metrics = PortfolioHealthMetrics(
+        max_position_weight=57.5,
+        max_single_security_weight=compute_max_single_security_weight(holdings),
+    )
+
+    alert_types = {alert.type for alert in build_alerts(metrics, holdings)}
+    suggestions = build_suggestions(metrics, equity_weight=77.5)
+
+    assert metrics.max_single_security_weight == 20.0
+    assert "position_concentration" not in alert_types
+    assert not any("singolo strumento" in suggestion.message for suggestion in suggestions)
+    assert compute_category_scores(metrics, top3_weight=100.0, equity_weight=77.5).concentration == 20 - 4
+
+
+def test_a_dominant_single_stock_is_still_flagged_as_concentration():
+    holdings = [
+        _holding(1, "AAPL", "Apple Inc", "stock", 57.5, "USD"),
+        _holding(2, "VWRA", "Vanguard FTSE All-World UCITS ETF", "etf", 42.5, "USD"),
+    ]
+    metrics = PortfolioHealthMetrics(
+        max_position_weight=57.5,
+        max_single_security_weight=compute_max_single_security_weight(holdings),
+    )
+
+    alerts = build_alerts(metrics, holdings)
+
+    alert = next(a for a in alerts if a.type == "position_concentration")
+    assert alert.details["dominant_position"]["symbol"] == "AAPL"

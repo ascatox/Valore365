@@ -250,9 +250,11 @@ class PerformanceService:
                 start_value = values[start]
 
         if start_value <= 0:
+            # Nessun valore da cui partire (es. quotazioni assenti all'inizio
+            # dello storico): il rendimento non e' calcolabile, non e' zero.
             return TWRResult(
-                twr_pct=0.0,
-                twr_annualized_pct=0.0 if period_days >= 365 else None,
+                twr_pct=None,
+                twr_annualized_pct=None,
                 period_days=period_days,
                 start_date=start.isoformat(),
                 end_date=end.isoformat(),
@@ -384,11 +386,23 @@ class PerformanceService:
         cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_period_range(portfolio_id, user_id, period, cache=cache)
 
-        twr = self.calculate_twr(portfolio_id, user_id, start, end, cache=cache)
-        mwr = self.calculate_mwr(portfolio_id, user_id, start, end, cache=cache)
         cashflows, use_trade_flows = self._get_cashflows_with_fallback(
             portfolio_id, user_id, start, end, cache=cache
         )
+        # Un'unica lettura dei valori per tutto il riepilogo: TWR e MWR li
+        # trovano gia' in cache. Il valore iniziale e' quello di fine giornata
+        # precedente a `start`, perche' i flussi della finestra includono il
+        # giorno `start` (get_external_cashflows e' inclusivo).
+        before_start = start - timedelta(days=1)
+        values = self._values(
+            portfolio_id,
+            user_id,
+            {before_start, start, end} | {date.fromisoformat(cf.date) for cf in cashflows},
+            cache,
+        )
+
+        twr = self.calculate_twr(portfolio_id, user_id, start, end, cache=cache)
+        mwr = self.calculate_mwr(portfolio_id, user_id, start, end, cache=cache)
 
         if use_trade_flows:
             # Treat buy cost as "deposits" and sell proceeds as "withdrawals"
@@ -398,7 +412,18 @@ class PerformanceService:
             total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'deposit')
             total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'withdrawal')
         net_invested = total_deposits - total_withdrawals
-        current_value = self._values(portfolio_id, user_id, {end}, cache)[end]
+        current_value = values[end]
+
+        # Prima del primo movimento il portafoglio vale 0. In una finestra che
+        # parte dopo, un valore iniziale <= 0 indica quotazioni mancanti (o un
+        # portafoglio azzerato): meglio N/D che quasi tutto il patrimonio
+        # presentato come guadagno.
+        initial_value: float | None = values[before_start]
+        if initial_value <= 0 and start > self._inception_date(portfolio_id, user_id, cache):
+            initial_value = None
+        absolute_gain = (
+            round(current_value - initial_value - net_invested, 2) if initial_value is not None else None
+        )
 
         period_days = max((end - start).days, 1)
         return PerformanceSummary(
@@ -412,8 +437,9 @@ class PerformanceService:
             total_deposits=round(total_deposits, 2),
             total_withdrawals=round(total_withdrawals, 2),
             net_invested=round(net_invested, 2),
+            initial_value=round(initial_value, 2) if initial_value is not None else None,
             current_value=round(current_value, 2),
-            absolute_gain=round(current_value - net_invested, 2),
+            absolute_gain=absolute_gain,
         )
 
     def get_twr_timeseries(

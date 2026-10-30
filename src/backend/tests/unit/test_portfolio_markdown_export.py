@@ -56,7 +56,7 @@ def _full_snapshot() -> dict:
 
 
 def test_render_full_snapshot_contains_all_sections():
-    performance_rows = [['1 anno', '5.00%', '4.80%', '5.00%', '4.80%', '9 000.00', '500.00']]
+    performance_rows = [['1 anno', '5.00%', '4.80%', '5.00%', '4.80%', '8 500.00', '9 000.00', '500.00']]
 
     markdown = render_snapshot_markdown(_full_snapshot(), 1, performance_rows)
 
@@ -105,3 +105,18 @@ def test_render_minimal_snapshot_omits_optional_sections():
         '## Piani di accumulo (PAC) attivi',
     ):
         assert heading not in markdown
+
+
+def test_export_labels_state_units_and_definitions():
+    performance_rows = [['1 mese', 'N/D', 'N/D', 'N/D', 'N/D', 'N/D', '-12 000.00', 'N/D']]
+
+    markdown = render_snapshot_markdown(_full_snapshot(), 1, performance_rows)
+
+    assert 'indici base 100' in markdown
+    assert 'P25 (indice)' in markdown
+    assert 'Valore iniziale' in markdown
+    assert 'valore finale (liquidità inclusa) - valore iniziale - netto investito' in markdown
+    assert 'N/D = dato non calcolabile' in markdown
+    assert 'media ponderata delle volatilità storiche dei singoli strumenti' in markdown
+    assert 'la maggiore tra la volatilità realizzata' in markdown
+    assert 'Non include dividendi' in markdown
