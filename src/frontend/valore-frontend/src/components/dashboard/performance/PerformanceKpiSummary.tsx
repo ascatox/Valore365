@@ -59,12 +59,12 @@ export function PerformanceKpiSummary({ summary, loading, error, currency, perio
 
         <Card withBorder radius="md" p="sm">
           <Text size="sm" c="dimmed">Guadagno Assoluto</Text>
-          {summary ? (
+          {summary?.absolute_gain != null ? (
             <Text fw={700} style={{ color: kpiColor(summary.absolute_gain) }}>
               {formatMoney(summary.absolute_gain, currency)}
             </Text>
           ) : (
-            <NdTooltip label="Dati insufficienti per calcolare il guadagno assoluto">N/D</NdTooltip>
+            <NdTooltip label="Valore iniziale del periodo non disponibile (quotazioni assenti): il guadagno non è calcolabile">N/D</NdTooltip>
           )}
         </Card>
 

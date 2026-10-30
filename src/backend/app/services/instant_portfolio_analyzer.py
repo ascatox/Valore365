@@ -33,6 +33,7 @@ from .portfolio_doctor import (
     compute_category_scores,
     compute_geographic_exposure,
     compute_max_position_weight,
+    compute_max_single_security_weight,
     compute_overlap_score,
     compute_total_score,
 )
@@ -347,6 +348,7 @@ def compute_public_metrics(
         geographic_exposure=geographic_exposure,
         asset_allocation=asset_allocation,
         max_position_weight=max_position_weight,
+        max_single_security_weight=compute_max_single_security_weight(holdings),
         overlap_score=overlap_score,
         portfolio_volatility=portfolio_volatility,
         weighted_ter=weighted_ter,

@@ -14,9 +14,19 @@ class PortfolioHealthMetrics(BaseModel):
     geographic_exposure: dict[str, float] = Field(default_factory=dict)
     sector_exposure: dict[str, float] = Field(default_factory=dict)
     max_position_weight: float = Field(default=0, ge=0, le=100)
+    # Peso maggiore tra gli strumenti che non sono fondi/ETF (titoli singoli,
+    # obbligazioni singole...). None = non calcolato: vale max_position_weight.
+    max_single_security_weight: float | None = Field(default=None, ge=0, le=100)
     overlap_score: float = Field(default=0, ge=0, le=100)
     portfolio_volatility: float | None = Field(default=None, ge=0)
     weighted_ter: float | None = Field(default=None, ge=0)
+
+    @property
+    def concentration_weight(self) -> float:
+        """Peso usato per alert, suggerimenti e punteggi di concentrazione."""
+        if self.max_single_security_weight is not None:
+            return self.max_single_security_weight
+        return self.max_position_weight
 
 
 class PortfolioHealthCategoryScores(BaseModel):

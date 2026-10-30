@@ -82,7 +82,7 @@ def _build_position_concentration_education(
             )
     else:
         how_to_read_it = (
-            f"La posizione piu' grande pesa circa {metrics.max_position_weight:.1f}% del portafoglio. "
+            f"La posizione piu' grande pesa circa {metrics.concentration_weight:.1f}% del portafoglio. "
             "Confronta questo dato con le altre posizioni per vedere se una sola domina davvero il risultato finale."
         )
 

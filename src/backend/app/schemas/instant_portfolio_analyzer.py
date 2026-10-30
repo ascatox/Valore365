@@ -55,11 +55,19 @@ class PortfolioAnalyzeMetrics(BaseModel):
     geographic_exposure: dict[str, float] = Field(default_factory=dict)
     asset_allocation: dict[str, float] = Field(default_factory=dict)
     max_position_weight: float = Field(default=0, ge=0, le=100)
+    # Vedi PortfolioHealthMetrics: peso massimo escludendo fondi/ETF.
+    max_single_security_weight: float | None = Field(default=None, ge=0, le=100)
     overlap_score: float = Field(default=0, ge=0, le=100)
     portfolio_volatility: float | None = Field(default=None, ge=0)
     weighted_ter: float | None = Field(default=None, ge=0)
     risk_score: float = Field(default=0, ge=0)
     estimated_drawdown: float = Field(default=0, ge=0, le=100)
+
+    @property
+    def concentration_weight(self) -> float:
+        if self.max_single_security_weight is not None:
+            return self.max_single_security_weight
+        return self.max_position_weight
 
 
 class ResolvedPosition(BaseModel):

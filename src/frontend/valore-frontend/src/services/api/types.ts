@@ -393,7 +393,7 @@ export interface PortfolioSummary {
 }
 
 export interface TWRResult {
-  twr_pct: number;
+  twr_pct: number | null;
   twr_annualized_pct: number | null;
   period_days: number;
   start_date: string;
@@ -420,8 +420,9 @@ export interface PerformanceSummary {
   total_deposits: number;
   total_withdrawals: number;
   net_invested: number;
+  initial_value: number | null;
   current_value: number;
-  absolute_gain: number;
+  absolute_gain: number | null;
 }
 
 export interface TWRTimeseriesPoint {
