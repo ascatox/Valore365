@@ -1,27 +1,10 @@
 import { Anchor, Box, Group, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { IconExternalLink, IconNews } from '@tabler/icons-react';
+import { formatTimeAgo } from '../formatters';
 import { useMarketNews } from '../hooks/queries';
 import type { MarketNewsItem } from '../../../services/api';
 
 const ANIMATION_DURATION_PER_ITEM = 5; // seconds per item (news needs more time to read)
-
-function timeAgo(published: string | null): string {
-  if (!published) return '';
-  try {
-    const date = new Date(published);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return 'ora';
-    if (diffMin < 60) return `${diffMin}m fa`;
-    const diffHours = Math.floor(diffMin / 60);
-    if (diffHours < 24) return `${diffHours}h fa`;
-    const diffDays = Math.floor(diffHours / 24);
-    return `${diffDays}g fa`;
-  } catch {
-    return '';
-  }
-}
 
 function NewsItem({ item, isDark }: { item: MarketNewsItem; isDark: boolean }) {
   const theme = useMantineTheme();
@@ -64,7 +47,7 @@ function NewsItem({ item, isDark }: { item: MarketNewsItem; isDark: boolean }) {
       )}
       {item.published && (
         <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap', opacity: 0.7 }}>
-          {timeAgo(item.published)}
+          {formatTimeAgo(item.published)}
         </Text>
       )}
     </Group>

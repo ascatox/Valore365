@@ -114,3 +114,16 @@ export const formatDateTime = (value?: string | null) => {
     minute: '2-digit',
   });
 };
+
+// Compact Italian relative time for news ("5m fa", "3h fa", "2g fa").
+export const formatTimeAgo = (value: string | null | undefined, now: Date = new Date()) => {
+  if (!value) return '';
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  const diffMin = Math.floor((now.getTime() - dt.getTime()) / 60000);
+  if (diffMin < 1) return 'ora';
+  if (diffMin < 60) return `${diffMin}m fa`;
+  const diffHours = Math.floor(diffMin / 60);
+  if (diffHours < 24) return `${diffHours}h fa`;
+  return `${Math.floor(diffHours / 24)}g fa`;
+};

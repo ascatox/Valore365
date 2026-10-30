@@ -1,7 +1,8 @@
 import threading
 import time as _time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -24,6 +25,7 @@ from ..models import (
 )
 from ..repository import PortfolioRepository
 from ..services.market_calendar_service import MAX_TRADING_DAYS, MarketCalendarService
+from ..services.market_news import fetch_yahoo_news, select_relevant_news
 
 
 def register_markets_routes(
@@ -31,6 +33,7 @@ def register_markets_routes(
     repo: PortfolioRepository,
     finance_client: object,
     market_calendar_service: MarketCalendarService | None = None,
+    news_fetcher: Callable[[str, str | None], list[MarketNewsItem]] = fetch_yahoo_news,
 ) -> None:
     calendar_service = market_calendar_service or MarketCalendarService()
 
@@ -122,56 +125,10 @@ def register_markets_routes(
             if cached_payload is not None and cached_expires > now:
                 return cached_payload
 
-        import yfinance as yf
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(lambda item: news_fetcher(item[0], item[1]), NEWS_SYMBOLS))
 
-        seen_titles: set[str] = set()
-        news_items: list[MarketNewsItem] = []
-
-        def fetch_news(symbol: str) -> list[MarketNewsItem]:
-            items: list[MarketNewsItem] = []
-            try:
-                ticker = yf.Ticker(symbol)
-                raw_news = ticker.news or []
-                for article in raw_news[:5]:
-                    title = article.get("title") or article.get("content", {}).get("title", "")
-                    if not title:
-                        continue
-                    publisher = article.get("publisher") or article.get("content", {}).get("provider", {}).get("displayName")
-                    link = article.get("link") or article.get("content", {}).get("canonicalUrl", {}).get("url")
-                    pub_date = article.get("providerPublishTime") or article.get("content", {}).get("pubDate")
-                    pub_str = None
-                    if pub_date is not None:
-                        try:
-                            if isinstance(pub_date, (int, float)):
-                                pub_str = datetime.fromtimestamp(int(pub_date)).isoformat()
-                            else:
-                                pub_str = str(pub_date)
-                        except Exception:
-                            pass
-                    items.append(MarketNewsItem(
-                        title=title,
-                        publisher=publisher,
-                        link=link,
-                        published=pub_str,
-                        related_symbol=symbol,
-                    ))
-            except Exception:
-                pass
-            return items
-
-        with ThreadPoolExecutor(max_workers=min(4, len(NEWS_SYMBOLS))) as executor:
-            results = list(executor.map(fetch_news, NEWS_SYMBOLS))
-
-        for result in results:
-            for item in result:
-                title_key = item.title.strip().lower()
-                if title_key not in seen_titles:
-                    seen_titles.add(title_key)
-                    news_items.append(item)
-
-        # Sort by publish date descending (newest first)
-        news_items.sort(key=lambda x: x.published or "", reverse=True)
-        news_items = news_items[:20]
+        news_items = select_relevant_news(item for result in results for item in result)
 
         response = MarketNewsResponse(items=news_items)
         with _market_news_cache_lock:

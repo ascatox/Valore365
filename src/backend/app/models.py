@@ -677,6 +677,8 @@ class MarketNewsItem(BaseModel):
     link: str | None = None
     published: str | None = None
     related_symbol: str | None = None
+    region: str | None = None
+    summary: str | None = None
 
 
 class MarketNewsResponse(BaseModel):

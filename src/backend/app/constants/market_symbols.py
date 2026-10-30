@@ -33,4 +33,16 @@ MARKET_SYMBOLS: dict[str, dict[str, list[tuple[str, str]]]] = {
     },
 }
 
-NEWS_SYMBOLS = ["^GSPC", "^IXIC", "FTSEMIB.MI", "BTC-USD", "GC=F"]
+# Symbols whose Yahoo news feed the headlines, with the market they are shown
+# under: the main exchanges of each region, plus gold, oil and bitcoin.
+NEWS_SYMBOLS: list[tuple[str, str]] = [
+    ("^GSPC", "USA"),
+    ("^IXIC", "USA"),
+    ("^STOXX50E", "Europa"),
+    ("^GDAXI", "Europa"),
+    ("FTSEMIB.MI", "Italia"),
+    ("^N225", "Asia"),
+    ("GC=F", "Materie prime"),
+    ("CL=F", "Materie prime"),
+    ("BTC-USD", "Crypto"),
+]
