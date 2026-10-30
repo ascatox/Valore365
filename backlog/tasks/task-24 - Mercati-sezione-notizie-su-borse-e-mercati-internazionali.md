@@ -21,7 +21,7 @@ La tab Mercati mostra le notizie solo nel ticker scorrevole, difficile da legger
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 Card "Notizie dai mercati" nella tab Mercati, sotto il calendario: le prime 6 notizie, il resto dietro "Mostra altre N"; stato di caricamento, errore e lista vuota
+- [x] #1 Card "Notizie dai mercati" nella tab Mercati, sotto la striscia delle quotazioni e prima del calendario: le prime 6 notizie, il resto dietro "Mostra altre N"; stato di caricamento, errore e lista vuota
 - [x] #2 Ogni notizia mostra badge del mercato (USA, Europa, Italia, Asia, Materie prime, Crypto), titolo con link esterno, sommario breve, fonte e "x fa"
 - [x] #3 Le notizie arrivano da Google News RSS in italiano (una ricerca per mercato: USA, Europa, Italia, Asia, materie prime, crypto); se sono meno di 6 si aggiungono quelle della ricerca Yahoo per gli indici dei vari mercati, oro, petrolio e bitcoin
 - [x] #4 Rilevanza: notizie più recenti, senza titoli duplicati, al massimo 4 per mercato finché gli altri mercati hanno notizie

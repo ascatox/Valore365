@@ -229,8 +229,8 @@ export function MercatiTab() {
   return (
     <Stack gap="md">
       <MarketTicker />
-      <MarketCalendarCard onSymbolClick={setSelectedSymbol} />
       <MarketNewsCard />
+      <MarketCalendarCard onSymbolClick={setSelectedSymbol} />
 
       <Text size="xs" c="dimmed">
         Ultimo aggiornamento: {lastUpdatedAt ? formatDateTime(lastUpdatedAt) : 'N/D'}
