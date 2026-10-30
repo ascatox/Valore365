@@ -33,8 +33,18 @@ MARKET_SYMBOLS: dict[str, dict[str, list[tuple[str, str]]]] = {
     },
 }
 
-# Symbols whose Yahoo news feed the headlines, with the market they are shown
-# under: the main exchanges of each region, plus gold, oil and bitcoin.
+# Google News searches (Italian) for the headlines, with the market they are
+# shown under: the main exchanges of each region, commodities and crypto.
+NEWS_QUERIES: list[tuple[str, str]] = [
+    ("Wall Street", "USA"),
+    ("borse europee", "Europa"),
+    ("Piazza Affari", "Italia"),
+    ("borse asiatiche OR Nikkei", "Asia"),
+    ("prezzo petrolio OR prezzo oro", "Materie prime"),
+    ("bitcoin", "Crypto"),
+]
+
+# Symbols whose Yahoo news are added when Google News returns too few headlines.
 NEWS_SYMBOLS: list[tuple[str, str]] = [
     ("^GSPC", "USA"),
     ("^IXIC", "USA"),

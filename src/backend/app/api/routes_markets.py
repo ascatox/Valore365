@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
-from ..constants.market_symbols import MARKET_SYMBOLS, NEWS_SYMBOLS
+from ..constants.market_symbols import MARKET_SYMBOLS
 from ..models import (
     AssetInfoPricePoint,
     AssetInfoResponse,
@@ -25,7 +25,7 @@ from ..models import (
 )
 from ..repository import PortfolioRepository
 from ..services.market_calendar_service import MAX_TRADING_DAYS, MarketCalendarService
-from ..services.market_news import fetch_yahoo_news, select_relevant_news
+from ..services.market_news import fetch_market_news
 
 
 def register_markets_routes(
@@ -33,7 +33,7 @@ def register_markets_routes(
     repo: PortfolioRepository,
     finance_client: object,
     market_calendar_service: MarketCalendarService | None = None,
-    news_fetcher: Callable[[str, str | None], list[MarketNewsItem]] = fetch_yahoo_news,
+    news_fetcher: Callable[[], list[MarketNewsItem]] = fetch_market_news,
 ) -> None:
     calendar_service = market_calendar_service or MarketCalendarService()
 
@@ -42,6 +42,8 @@ def register_markets_routes(
     _market_quotes_cache_lock = threading.Lock()
 
     MARKET_NEWS_CACHE_TTL_SECONDS = 300.0  # 5 minutes
+    # An empty list is usually a provider hiccup: retry sooner.
+    MARKET_NEWS_EMPTY_CACHE_TTL_SECONDS = 60.0
     _market_news_cache: dict[str, Any] = {"payload": None, "expires_at": 0.0}
     _market_news_cache_lock = threading.Lock()
 
@@ -125,15 +127,11 @@ def register_markets_routes(
             if cached_payload is not None and cached_expires > now:
                 return cached_payload
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            results = list(executor.map(lambda item: news_fetcher(item[0], item[1]), NEWS_SYMBOLS))
-
-        news_items = select_relevant_news(item for result in results for item in result)
-
-        response = MarketNewsResponse(items=news_items)
+        response = MarketNewsResponse(items=news_fetcher())
         with _market_news_cache_lock:
             _market_news_cache["payload"] = response
-            _market_news_cache["expires_at"] = _time.monotonic() + MARKET_NEWS_CACHE_TTL_SECONDS
+            ttl = MARKET_NEWS_CACHE_TTL_SECONDS if response.items else MARKET_NEWS_EMPTY_CACHE_TTL_SECONDS
+            _market_news_cache["expires_at"] = _time.monotonic() + ttl
         return response
 
     @router.get("/markets/calendar", response_model=MarketCalendarResponse)
