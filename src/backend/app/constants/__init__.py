@@ -1,6 +1,6 @@
 """Application constants — re-exported for convenience."""
 
-from .market_symbols import MARKET_SYMBOLS, NEWS_SYMBOLS
+from .market_symbols import MARKET_SYMBOLS, NEWS_QUERIES, NEWS_SYMBOLS
 from .stress_scenarios import HISTORICAL_SCENARIOS, SHOCK_SCENARIOS
 from .geo_classification import (
     REGIONS,
@@ -13,6 +13,7 @@ from .geo_classification import (
 
 __all__ = [
     "MARKET_SYMBOLS",
+    "NEWS_QUERIES",
     "NEWS_SYMBOLS",
     "HISTORICAL_SCENARIOS",
     "SHOCK_SCENARIOS",
