@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Badge, Card, Group, Text } from '@mantine/core';
+import { Card, Group, Text } from '@mantine/core';
 import { useComputedColorScheme } from '@mantine/core';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
@@ -83,16 +83,35 @@ export function AllocationDoughnut({ title, data, height = 240, centerLabel, hea
           </div>
         )}
       </div>
-      <Group justify="center" mt="xs" gap="xs" wrap="wrap">
-        {data.slice(0, 6).map((item, index) => (
-          <Badge
+      <Group justify="center" mt="xs" gap={6} wrap="wrap">
+        {data.map((item, index) => (
+          <Group
             key={item.name}
-            size="sm"
-            variant="dot"
-            styles={{ root: { '--badge-dot-color': ALLOCATION_COLORS[index % ALLOCATION_COLORS.length] } }}
+            gap={6}
+            wrap="nowrap"
+            px={8}
+            py={2}
+            style={{
+              borderRadius: 999,
+              border: `1px solid ${isDark ? 'var(--mantine-color-dark-4)' : 'var(--mantine-color-gray-3)'}`,
+            }}
           >
-            {item.name}
-          </Badge>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                flexShrink: 0,
+                backgroundColor: ALLOCATION_COLORS[index % ALLOCATION_COLORS.length],
+              }}
+            />
+            <Text size="xs" fw={600} style={{ whiteSpace: 'nowrap' }}>
+              {item.name}
+            </Text>
+            <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+              {formatNum(Number(item.value))}%
+            </Text>
+          </Group>
         ))}
       </Group>
     </Card>
