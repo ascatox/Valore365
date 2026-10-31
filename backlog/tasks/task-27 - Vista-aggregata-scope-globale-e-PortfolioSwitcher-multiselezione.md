@@ -1,7 +1,7 @@
 ---
 id: TASK-27
 title: 'Vista aggregata: scope globale e PortfolioSwitcher con multiselezione'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-31T10:00:00Z'
