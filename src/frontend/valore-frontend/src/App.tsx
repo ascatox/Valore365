@@ -14,7 +14,7 @@ import {
   Container,
   Transition,
   Tooltip,
-  useMantineColorScheme,
+  useComputedColorScheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
@@ -102,7 +102,7 @@ function ProtectedApp() {
   const navigate = useNavigate();
   const mainRef = useRef<HTMLElement | null>(null);
   const [navbarExpanded, setNavbarExpanded] = useState(true);
-  const { colorScheme } = useMantineColorScheme();
+  const colorScheme = useComputedColorScheme('light');
   const isMobile = useMediaQuery('(max-width: 48em)');
   const portfolioScope = useOptionalPortfolioScope();
   const isLandscape = useMediaQuery('(max-width: 48em) and (orientation: landscape)');
