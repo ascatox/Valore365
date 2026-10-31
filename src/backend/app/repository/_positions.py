@@ -10,6 +10,7 @@ from sqlalchemy import text
 from ..price_validation import check_staleness
 from ..models import PeriodPerformer, Position
 from ._base import _finite
+from ._scope import EMPTY_SCOPE_MESSAGE, load_scope_portfolios, normalize_portfolio_ids, row_portfolio_id
 
 
 # Per-scope memo for get_positions, active only inside memoize_positions().
@@ -40,6 +41,28 @@ class PositionsMixin:
             memo[key] = self._compute_positions(portfolio_id, user_id, stale_days)
         return [p.model_copy() for p in memo[key]]
 
+    def get_positions_multi(self, portfolio_ids: list[int], user_id: str, stale_days: int = 5) -> list[Position]:
+        """Positions of several portfolios read as one.
+
+        The same asset held in more portfolios becomes one row: quantities and
+        cost bases add up (so avg_cost is the quantity-weighted average),
+        market value is the combined holding at the shared market price, and
+        weights are recomputed over the combined total. A one-portfolio scope
+        is exactly get_positions.
+        """
+        ids = normalize_portfolio_ids(portfolio_ids)
+        if not ids:
+            raise ValueError(EMPTY_SCOPE_MESSAGE)
+        if len(ids) == 1:
+            return self.get_positions(ids[0], user_id, stale_days)
+        memo = _positions_memo.get()
+        if memo is None:
+            return self._compute_positions_multi(ids, user_id, stale_days)
+        key = (tuple(sorted(ids)), user_id, stale_days)
+        if key not in memo:
+            memo[key] = self._compute_positions_multi(ids, user_id, stale_days)
+        return [p.model_copy() for p in memo[key]]
+
     def get_period_performers(
         self, portfolio_id: int, user_id: str, days: int, today: date | None = None,
     ) -> list[PeriodPerformer]:
@@ -50,7 +73,18 @@ class PositionsMixin:
         positions' day_change_pct is reused so values match the "Oggi" KPI.
         Returns are in quote currency, like day_change_pct.
         """
-        positions = [p for p in self.get_positions(portfolio_id, user_id) if p.quantity > 0]
+        return self._performers_from_positions(self.get_positions(portfolio_id, user_id), days, today)
+
+    def get_period_performers_multi(
+        self, portfolio_ids: list[int], user_id: str, days: int, today: date | None = None,
+    ) -> list[PeriodPerformer]:
+        """get_period_performers over the merged positions of several portfolios."""
+        return self._performers_from_positions(self.get_positions_multi(portfolio_ids, user_id), days, today)
+
+    def _performers_from_positions(
+        self, all_positions: list[Position], days: int, today: date | None,
+    ) -> list[PeriodPerformer]:
+        positions = [p for p in all_positions if p.quantity > 0]
         if not positions:
             return []
         if days <= 1:
@@ -140,15 +174,17 @@ class PositionsMixin:
         return {aid: (start_by_asset.get(aid), end_by_asset.get(aid)) for aid in asset_ids}
 
     def _compute_positions(self, portfolio_id: int, user_id: str, stale_days: int) -> list[Position]:
+        return self._compute_positions_multi([portfolio_id], user_id, stale_days)
+
+    def _compute_positions_multi(self, portfolio_ids: list[int], user_id: str, stale_days: int) -> list[Position]:
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
-            if portfolio is None:
-                raise ValueError("Portfolio non trovato")
+            scope_ids, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
 
             tx_rows = conn.execute(
                 text(
                     """
-                    select asset_id,
+                    select portfolio_id,
+                           asset_id,
                            side,
                            trade_at,
                            trade_at::date as trade_date,
@@ -158,13 +194,13 @@ class PositionsMixin:
                            taxes::float8 as taxes,
                            trade_currency
                     from transactions
-                    where portfolio_id = :portfolio_id
+                    where portfolio_id = any(:portfolio_ids)
                       and side in ('buy', 'sell')
                       and asset_id is not null
                     order by trade_at asc, id asc
                     """
                 ),
-                {"portfolio_id": portfolio_id},
+                {"portfolio_ids": scope_ids},
             ).mappings().all()
 
             if not tx_rows:
@@ -190,7 +226,8 @@ class PositionsMixin:
             inv_focus_by_asset: dict[int, str] = {
                 int(r["asset_id"]): str(r["investment_focus"]) for r in inv_focus_rows
             }
-            base_ccy = portfolio.base_currency
+            # The scope guarantees one base currency for every portfolio.
+            base_ccy = portfolios[0].base_currency
 
             # Fetch the latest tick snapshot per asset. When available, use tick last/previous_close
             # for day-change so the percentage is computed from a coherent quote source.
@@ -275,7 +312,9 @@ class PositionsMixin:
                     {"from_ccy": fx_currencies, "to_ccy": base_ccy},
                 ).mappings().all()
 
-            grouped: dict[int, dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0})
+            # Lots are folded per (portfolio, asset): average cost and sell
+            # clamping are per portfolio, exactly as for a single portfolio.
+            grouped: dict[tuple[int, int], dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0})
             first_trade_at_by_asset: dict[int, datetime] = {}
             fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
             for row in fx_rows:
@@ -299,7 +338,7 @@ class PositionsMixin:
 
             for tx in tx_rows:
                 aid = int(tx["asset_id"])
-                lot = grouped[aid]
+                lot = grouped[(row_portfolio_id(tx, scope_ids), aid)]
                 trade_at_ts = tx.get("trade_at")
                 if isinstance(trade_at_ts, datetime):
                     prev_first = first_trade_at_by_asset.get(aid)
@@ -327,8 +366,18 @@ class PositionsMixin:
                     lot["cost"] -= avg_cost * sold_qty
                     lot["cost"] = max(lot["cost"], 0.0)
 
+            # Then merged per asset: summed quantity and cost basis, so the
+            # avg cost is the quantity-weighted average across portfolios.
+            merged: dict[int, dict[str, float]] = {}
+            for (_, aid), lot in grouped.items():
+                if lot["quantity"] <= 0:
+                    continue
+                total = merged.setdefault(aid, {"quantity": 0.0, "cost": 0.0})
+                total["quantity"] += lot["quantity"]
+                total["cost"] += lot["cost"]
+
             positions: list[Position] = []
-            for aid, lot in grouped.items():
+            for aid, lot in merged.items():
                 qty = lot["quantity"]
                 if qty <= 0:
                     continue

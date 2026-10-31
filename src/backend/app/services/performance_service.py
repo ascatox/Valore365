@@ -4,6 +4,7 @@ import logging
 import statistics
 import threading
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from math import isfinite, sqrt
@@ -29,6 +30,7 @@ from ..models import (
 )
 from ..config import get_settings
 from ..repository import PortfolioRepository
+from ..repository._scope import EMPTY_SCOPE_MESSAGE, normalize_portfolio_ids
 
 try:
     from scipy.optimize import brentq as scipy_brentq  # type: ignore
@@ -38,6 +40,9 @@ except Exception:  # pragma: no cover - optional dependency in runtime
     scipy_newton = None
 
 logger = logging.getLogger(__name__)
+
+# A portfolio id, or several ids read as one aggregate (vista aggregata).
+PortfolioRef = int | Sequence[int]
 
 
 _PERIOD_TO_DAYS: dict[str, int] = {
@@ -58,14 +63,16 @@ class _LookupCache:
     cashflows, and the same daily valuation series — the last of which re-reads
     the entire price and FX history every time.
 
-    Entries are per (user, portfolio) and expire, so a portfolio is never
+    Entries are per (user, scope) and expire, so a portfolio is never
     reported from prices older than the TTL. `lock` is held while filling the
     cache so a burst of simultaneous requests computes once instead of all at
     once; it is reentrant because the fill helpers call each other.
     """
 
     inception: date | None = None
-    cashflows: dict[tuple[date, date, bool], list] = field(default_factory=dict)
+    # list[CashFlowEntry] for one portfolio; dict[portfolio_id, list] for an
+    # aggregate, so the trade fallback can be decided per portfolio.
+    cashflows: dict[tuple[date, date, bool], list | dict] = field(default_factory=dict)
     values: dict[date, float] = field(default_factory=dict)
     lock: threading.RLock = field(default_factory=threading.RLock)
     created_at: float = field(default_factory=time.monotonic)
@@ -75,16 +82,21 @@ class _LookupCache:
 
 
 class _LookupCacheStore:
-    """Bounded, expiring store of per-(user, portfolio) lookup caches."""
+    """Bounded, expiring store of per-(user, scope) lookup caches.
+
+    The scope is the sorted tuple of portfolio ids, so a single portfolio is
+    keyed by (id,) and an aggregate by every id it covers, in any order.
+    """
 
     def __init__(self, ttl_seconds: float, max_entries: int) -> None:
         self.ttl = ttl_seconds
         self.max_entries = max_entries
-        self._entries: dict[tuple[str, int], _LookupCache] = {}
+        self._entries: dict[tuple[str, tuple[int, ...]], _LookupCache] = {}
         self._lock = threading.Lock()
 
-    def get(self, user_id: str, portfolio_id: int) -> _LookupCache:
-        key = (user_id, portfolio_id)
+    def get(self, user_id: str, portfolio_ids: int | tuple[int, ...]) -> _LookupCache:
+        scope = (portfolio_ids,) if isinstance(portfolio_ids, int) else tuple(sorted(portfolio_ids))
+        key = (user_id, scope)
         now = time.monotonic()
         with self._lock:
             entry = self._entries.get(key)
@@ -124,35 +136,82 @@ class PerformanceService:
         )
         self._cache_store = _LookupCacheStore(ttl_seconds=ttl, max_entries=cache_max_entries)
 
-    def _cache_for(self, portfolio_id: int, user_id: str) -> _LookupCache:
-        return self._cache_store.get(user_id, portfolio_id)
+    @staticmethod
+    def _scope_key(portfolio_id: PortfolioRef) -> int | tuple[int, ...]:
+        """An int for one portfolio, the sorted tuple of ids for an aggregate.
 
-    def _inception_date(self, portfolio_id: int, user_id: str, cache: _LookupCache) -> date:
+        A list holding a single id (after dropping duplicates and ids <= 0) is
+        that portfolio, so it runs the exact single-portfolio path.
+        """
+        if isinstance(portfolio_id, int):
+            return portfolio_id
+        ids = normalize_portfolio_ids(portfolio_id)
+        if not ids:
+            raise ValueError(EMPTY_SCOPE_MESSAGE)
+        if len(ids) == 1:
+            return ids[0]
+        return tuple(sorted(ids))
+
+    @staticmethod
+    def _response_portfolio_id(portfolio_id: PortfolioRef) -> int:
+        """Id reported in responses that carry a single portfolio_id.
+
+        For an aggregate it is the first selected id, as in get_summary_multi.
+        """
+        if isinstance(portfolio_id, int):
+            return portfolio_id
+        ids = normalize_portfolio_ids(portfolio_id)
+        if not ids:
+            raise ValueError(EMPTY_SCOPE_MESSAGE)
+        return ids[0]
+
+    def _cache_for(self, portfolio_id: PortfolioRef, user_id: str) -> _LookupCache:
+        scope = self._scope_key(portfolio_id)
+        if isinstance(scope, tuple):
+            # Ownership and a shared base currency are checked up front, so a
+            # mixed-currency selection fails with a clear message instead of
+            # summing values in different currencies.
+            self.repo.resolve_portfolio_scope(list(scope), user_id)
+        return self._cache_store.get(user_id, scope)
+
+    def _inception_date(self, portfolio_id: PortfolioRef, user_id: str, cache: _LookupCache) -> date:
+        scope = self._scope_key(portfolio_id)
         with cache.lock:
             if cache.inception is None:
-                cache.inception = self.repo.get_portfolio_inception_date(portfolio_id, user_id)
+                if isinstance(scope, tuple):
+                    cache.inception = self.repo.get_portfolio_inception_date_multi(list(scope), user_id)
+                else:
+                    cache.inception = self.repo.get_portfolio_inception_date(scope, user_id)
             return cache.inception
 
     def _cashflows(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start: date,
         end: date,
         include_trades: bool,
         cache: _LookupCache,
-    ) -> list:
+    ) -> list | dict:
+        """Cashflows of the window: a list, or {portfolio_id: list} for an aggregate."""
+        scope = self._scope_key(portfolio_id)
         key = (start, end, include_trades)
         with cache.lock:
             if key not in cache.cashflows:
-                cache.cashflows[key] = self.repo.get_external_cashflows(
-                    portfolio_id, user_id, start_date=start, end_date=end, include_trades=include_trades,
-                )
+                if isinstance(scope, tuple):
+                    cache.cashflows[key] = self.repo.get_external_cashflows_by_portfolio(
+                        list(scope), user_id, start_date=start, end_date=end, include_trades=include_trades,
+                    )
+                else:
+                    cache.cashflows[key] = self.repo.get_external_cashflows(
+                        scope, user_id, start_date=start, end_date=end, include_trades=include_trades,
+                    )
             return cache.cashflows[key]
 
     def _values(
-        self, portfolio_id: int, user_id: str, dates, cache: _LookupCache
+        self, portfolio_id: PortfolioRef, user_id: str, dates, cache: _LookupCache
     ) -> dict[date, float]:
+        scope = self._scope_key(portfolio_id)
         wanted = set(dates)
         # The lock spans the repository call, so simultaneous requests for the
         # same portfolio wait for the first to fill rather than each running the
@@ -160,9 +219,14 @@ class PerformanceService:
         with cache.lock:
             missing = wanted - cache.values.keys()
             if missing:
-                cache.values.update(
-                    self.repo.get_portfolio_values_in_range(portfolio_id, user_id, missing)
-                )
+                if isinstance(scope, tuple):
+                    cache.values.update(
+                        self.repo.get_portfolio_values_in_range_multi(list(scope), user_id, missing)
+                    )
+                else:
+                    cache.values.update(
+                        self.repo.get_portfolio_values_in_range(scope, user_id, missing)
+                    )
             return {d: cache.values[d] for d in wanted}
 
     @staticmethod
@@ -176,7 +240,7 @@ class PerformanceService:
 
     def _get_cashflows_with_fallback(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date,
         end_date: date,
@@ -193,7 +257,13 @@ class PerformanceService:
         sell = withdrawal of the proceeds).
         """
         cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
+        scope = self._scope_key(portfolio_id)
         cashflows = self._cashflows(portfolio_id, user_id, start_date, end_date, False, cache)
+        if isinstance(scope, tuple):
+            return self._aggregate_cashflows_with_fallback(
+                portfolio_id, user_id, start_date, end_date, scope, cashflows, cache
+            )
+
         investor_flows = [cf for cf in cashflows if cf.side in ("deposit", "withdrawal")]
         if investor_flows:
             return investor_flows, False
@@ -205,9 +275,47 @@ class PerformanceService:
 
         return [], False
 
+    def _aggregate_cashflows_with_fallback(
+        self,
+        portfolio_id: PortfolioRef,
+        user_id: str,
+        start_date: date,
+        end_date: date,
+        scope: tuple[int, ...],
+        cashflows_by_portfolio: dict,
+        cache: _LookupCache,
+    ) -> tuple[list, bool]:
+        """Combined investor flows of an aggregate, choosing the source per portfolio.
+
+        Each portfolio contributes the flows it would use on its own
+        (deposit/withdrawal, or buy/sell when it has none), so mixing a
+        portfolio funded by deposits with one tracked only by trades does not
+        turn the latter's purchases into performance. A transfer between two
+        selected portfolios is a withdrawal in one and a deposit in the other:
+        both enter the list and cancel out once flows are summed per day.
+        """
+        combined: list = []
+        used_trade_fallback = False
+        trades_by_portfolio: dict | None = None
+        for pid in scope:
+            investor_flows = [
+                cf for cf in cashflows_by_portfolio.get(pid, []) if cf.side in ("deposit", "withdrawal")
+            ]
+            if investor_flows:
+                combined.extend(investor_flows)
+                continue
+            if trades_by_portfolio is None:
+                trades_by_portfolio = self._cashflows(portfolio_id, user_id, start_date, end_date, True, cache)
+            buy_sell_flows = [cf for cf in trades_by_portfolio.get(pid, []) if cf.side in ("buy", "sell")]
+            if buy_sell_flows:
+                combined.extend(buy_sell_flows)
+                used_trade_fallback = True
+        combined.sort(key=lambda cf: cf.date)
+        return combined, used_trade_fallback
+
     def calculate_twr(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -287,7 +395,7 @@ class PerformanceService:
 
     def calculate_mwr(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -376,7 +484,7 @@ class PerformanceService:
 
     def get_performance_summary(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         period: str = '1y',
     ) -> PerformanceSummary:
@@ -444,7 +552,7 @@ class PerformanceService:
 
     def get_twr_timeseries(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -493,7 +601,7 @@ class PerformanceService:
 
     def get_gain_timeseries(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -531,7 +639,7 @@ class PerformanceService:
 
     def get_mwr_timeseries(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -626,7 +734,7 @@ class PerformanceService:
 
     def _build_monthly_returns(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -744,7 +852,7 @@ class PerformanceService:
 
     def get_monthly_returns(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -759,7 +867,7 @@ class PerformanceService:
         ]
 
         return MonthlyReturnsResponse(
-            portfolio_id=portfolio_id,
+            portfolio_id=self._response_portfolio_id(portfolio_id),
             cells=[MonthlyReturnCell(**m) for m in monthly],
             yearly_returns=yearly_returns,
             start_date=start.isoformat(),
@@ -768,7 +876,7 @@ class PerformanceService:
 
     def get_yearly_returns(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         *,
         cache: _LookupCache | None = None,
@@ -796,7 +904,7 @@ class PerformanceService:
             # _resolve_date_range solleverebbe ValueError('Intervallo date non
             # valido') per l'intera tabella. Nessun anno da mostrare, non un 400.
             return YearlyPerformanceResponse(
-                portfolio_id=portfolio_id,
+                portfolio_id=self._response_portfolio_id(portfolio_id),
                 rows=[],
                 start_date=today.isoformat(),
                 end_date=today.isoformat(),
@@ -895,7 +1003,7 @@ class PerformanceService:
             ))
 
         return YearlyPerformanceResponse(
-            portfolio_id=portfolio_id,
+            portfolio_id=self._response_portfolio_id(portfolio_id),
             rows=rows,
             start_date=inception.isoformat(),
             end_date=today.isoformat(),
@@ -904,7 +1012,7 @@ class PerformanceService:
 
     def get_drawdown(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None = None,
         end_date: date | None = None,
@@ -945,7 +1053,7 @@ class PerformanceService:
         current_dd = points[-1].drawdown_pct if points else 0.0
 
         return DrawdownResponse(
-            portfolio_id=portfolio_id,
+            portfolio_id=self._response_portfolio_id(portfolio_id),
             points=points,
             max_drawdown_pct=round(max_dd, 4),
             max_drawdown_start=max_dd_start.isoformat() if max_dd_start else None,
@@ -957,7 +1065,7 @@ class PerformanceService:
 
     def get_rolling_windows(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         window_months: int = 12,
         risk_free_rate: float = 2.0,
@@ -1008,7 +1116,7 @@ class PerformanceService:
             ))
 
         return RollingWindowsResponse(
-            portfolio_id=portfolio_id,
+            portfolio_id=self._response_portfolio_id(portfolio_id),
             window_months=window_months,
             risk_free_rate_pct=risk_free_rate,
             points=points,
@@ -1016,7 +1124,7 @@ class PerformanceService:
 
     def get_hall_of_fame(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         top_n: int = 5,
         start_date: date | None = None,
@@ -1056,7 +1164,7 @@ class PerformanceService:
         worst_years = list(reversed(sorted_years[-top_n:]))
 
         return HallOfFameResponse(
-            portfolio_id=portfolio_id,
+            portfolio_id=self._response_portfolio_id(portfolio_id),
             best_months=best_months,
             worst_months=worst_months,
             best_years=best_years,
@@ -1065,7 +1173,7 @@ class PerformanceService:
 
     def _resolve_date_range(
         self,
-        portfolio_id: int,
+        portfolio_id: PortfolioRef,
         user_id: str,
         start_date: date | None,
         end_date: date | None,
@@ -1086,7 +1194,7 @@ class PerformanceService:
         return start, end
 
     def _resolve_period_range(
-        self, portfolio_id: int, user_id: str, period: str, *, cache: _LookupCache | None = None,
+        self, portfolio_id: PortfolioRef, user_id: str, period: str, *, cache: _LookupCache | None = None,
     ) -> tuple[date, date]:
         cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         period_key = (period or '').lower().strip()

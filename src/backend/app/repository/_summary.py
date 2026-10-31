@@ -13,6 +13,7 @@ from ..models import (
     TimeSeriesPoint,
 )
 from ._base import PositionDelta, _finite
+from ._scope import load_scope_portfolios, row_portfolio_id
 
 
 # How old the latest price may be and still carry a meaningful day change.
@@ -30,6 +31,27 @@ class SummaryMixin:
 
         current_cash_balance = self.get_current_cash_balance_value(portfolio_id, user_id)
         positions = self.get_positions(portfolio_id, user_id)
+        return self._summary_from_positions(portfolio_id, portfolio.base_currency, positions, current_cash_balance)
+
+    def get_summary_multi(self, portfolio_ids: list[int], user_id: str) -> PortfolioSummary:
+        """Summary of several portfolios read as one.
+
+        Market value, cost basis, P/L, day change and cash add up across the
+        portfolios. ``portfolio_id`` in the result is the first id of the scope
+        (the model has room for one id only). A one-portfolio scope is exactly
+        get_summary.
+        """
+        scope = self.resolve_portfolio_scope(portfolio_ids, user_id)
+        ids = list(scope.portfolio_ids)
+        if not scope.is_aggregate:
+            return self.get_summary(ids[0], user_id)
+        current_cash_balance = self.get_current_cash_balance_value_multi(ids, user_id)
+        positions = self.get_positions_multi(ids, user_id)
+        return self._summary_from_positions(ids[0], scope.base_currency, positions, current_cash_balance)
+
+    def _summary_from_positions(
+        self, portfolio_id: int, base_currency: str, positions, current_cash_balance: float,
+    ) -> PortfolioSummary:
         market_value = sum(p.market_value for p in positions)
         cost_basis = sum(p.quantity * p.avg_cost for p in positions)
         pl = market_value - cost_basis
@@ -72,7 +94,7 @@ class SummaryMixin:
                     {
                         meta.quote_currency
                         for meta in asset_meta.values()
-                        if meta.quote_currency != portfolio.base_currency
+                        if meta.quote_currency != base_currency
                     }
                 )
                 fx_rows = []
@@ -87,7 +109,7 @@ class SummaryMixin:
                             order by from_ccy asc, price_date asc
                             """
                         ),
-                        {"from_ccy": fx_currencies, "to_ccy": portfolio.base_currency},
+                        {"from_ccy": fx_currencies, "to_ccy": base_currency},
                     ).mappings().all()
 
             fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
@@ -96,7 +118,7 @@ class SummaryMixin:
             fx_dates = {ccy: [d for d, _ in series] for ccy, series in fx_series.items()}
 
             def fx_rate_on_or_before(currency: str, day: date | None) -> float | None:
-                if currency == portfolio.base_currency:
+                if currency == base_currency:
                     return 1.0
                 if day is None:
                     return None
@@ -228,7 +250,7 @@ class SummaryMixin:
 
         return PortfolioSummary(
             portfolio_id=portfolio_id,
-            base_currency=portfolio.base_currency,
+            base_currency=base_currency,
             market_value=round(_finite(market_value), 2),
             cost_basis=round(_finite(cost_basis), 2),
             unrealized_pl=round(_finite(pl), 2),
@@ -240,41 +262,52 @@ class SummaryMixin:
 
     def get_intraday_timeseries(self, portfolio_id: int, user_id: str, finance_client) -> list[IntradayTimeseriesPoint]:
         """Compute portfolio market value at hourly intervals using yFinance intraday bars."""
+        return self.get_intraday_timeseries_multi([portfolio_id], user_id, finance_client)
+
+    def get_intraday_timeseries_multi(
+        self, portfolio_ids: list[int], user_id: str, finance_client,
+    ) -> list[IntradayTimeseriesPoint]:
+        """Intraday market value of several portfolios read as one (cash included)."""
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
-            if portfolio is None:
-                raise ValueError("Portfolio non trovato")
+            scope_ids, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            portfolio = portfolios[0]
 
             tx_rows = conn.execute(
                 text(
                     """
-                    select asset_id, side, quantity::float8 as quantity
+                    select portfolio_id, asset_id, side, quantity::float8 as quantity
                     from transactions
-                    where portfolio_id = :portfolio_id
+                    where portfolio_id = any(:portfolio_ids)
                       and side in ('buy', 'sell')
                       and asset_id is not null
                     order by trade_at asc, id asc
                     """
                 ),
-                {"portfolio_id": portfolio_id},
+                {"portfolio_ids": scope_ids},
             ).mappings().all()
 
             if not tx_rows:
                 return []
 
-            holdings: dict[int, float] = defaultdict(float)
+            # Holdings per (portfolio, asset) first, so each portfolio's sold-out
+            # positions drop out on their own, then combined per asset.
+            lots: dict[tuple[int, int], float] = defaultdict(float)
             for row in tx_rows:
-                aid = int(row["asset_id"])
+                key = (row_portfolio_id(row, scope_ids), int(row["asset_id"]))
                 qty = float(row["quantity"])
                 if str(row["side"]) == "buy":
-                    holdings[aid] += qty
+                    lots[key] += qty
                 else:
-                    holdings[aid] -= qty
+                    lots[key] -= qty
 
             # Only keep assets with positive holdings
-            holdings = {aid: qty for aid, qty in holdings.items() if qty > 1e-9}
+            holdings: dict[int, float] = defaultdict(float)
+            for (_, aid), qty in lots.items():
+                if qty > 1e-9:
+                    holdings[aid] += qty
+            holdings = dict(holdings)
             if not holdings:
                 return []
 
@@ -322,7 +355,7 @@ class SummaryMixin:
         # connection after ~60s of blocking yfinance calls meant competing for
         # the pool at the worst possible moment, and that checkout is what used
         # to burn the full pool timeout and fail the request.
-        cash = self.get_current_cash_balance_value(portfolio_id, user_id)
+        cash = self._scope_cash_balance(scope_ids, user_id)
 
         # Fetch intraday bars in parallel
         _log = logging.getLogger(__name__)
@@ -390,6 +423,12 @@ class SummaryMixin:
         return points
 
     def get_timeseries(self, portfolio_id: int, range_value: str, interval: str, user_id: str) -> list[TimeSeriesPoint]:
+        return self.get_timeseries_multi([portfolio_id], range_value, interval, user_id)
+
+    def get_timeseries_multi(
+        self, portfolio_ids: list[int], range_value: str, interval: str, user_id: str,
+    ) -> list[TimeSeriesPoint]:
+        """Daily market value of several portfolios read as one (sum of each)."""
         if range_value != "1y" or interval != "1d":
             raise ValueError("Solo range=1y e interval=1d supportati in V1")
 
@@ -397,23 +436,21 @@ class SummaryMixin:
         start_date = end_date - timedelta(days=364)
 
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
-            if portfolio is None:
-                raise ValueError("Portfolio non trovato")
-            base_ccy = portfolio.base_currency
+            scope_ids, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            base_ccy = portfolios[0].base_currency
 
             tx_rows = conn.execute(
                 text(
                     """
-                    select trade_at::date as trade_date, asset_id, side, quantity::float8 as quantity
+                    select portfolio_id, trade_at::date as trade_date, asset_id, side, quantity::float8 as quantity
                     from transactions
-                    where portfolio_id = :portfolio_id and trade_at::date <= :end_date
+                    where portfolio_id = any(:portfolio_ids) and trade_at::date <= :end_date
                       and side in ('buy', 'sell')
                       and asset_id is not null
                     order by trade_at asc, id asc
                     """
                 ),
-                {"portfolio_id": portfolio_id, "end_date": end_date},
+                {"portfolio_ids": scope_ids, "end_date": end_date},
             ).mappings().all()
 
             if not tx_rows:
@@ -454,13 +491,16 @@ class SummaryMixin:
                     {"from_ccy": fx_needed, "to_ccy": base_ccy, "end_date": end_date},
                 ).mappings().all()
 
-        deltas_by_day: dict[date, list[PositionDelta]] = defaultdict(list)
+        deltas_by_day: dict[date, list[tuple[int, PositionDelta]]] = defaultdict(list)
         for row in tx_rows:
             trade_day = row["trade_date"]
             if trade_day is None:
                 continue
             deltas_by_day[trade_day].append(
-                PositionDelta(asset_id=int(row["asset_id"]), side=str(row["side"]), quantity=float(row["quantity"]))
+                (
+                    row_portfolio_id(row, scope_ids),
+                    PositionDelta(asset_id=int(row["asset_id"]), side=str(row["side"]), quantity=float(row["quantity"])),
+                )
             )
 
         price_series: dict[int, list[tuple[date, float]]] = defaultdict(list)
@@ -471,17 +511,19 @@ class SummaryMixin:
         for row in fx_rows:
             fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
 
-        holdings: dict[int, float] = defaultdict(float)
+        # Holdings per (portfolio, asset): an aggregate is the sum of its
+        # portfolios, each valued exactly as on its own.
+        holdings: dict[tuple[int, int], float] = defaultdict(float)
 
         # Pre-compute holdings for transactions before start_date
         for day in sorted(deltas_by_day.keys()):
             if day >= start_date:
                 break
-            for delta in deltas_by_day[day]:
+            for pid, delta in deltas_by_day[day]:
                 if delta.side == "buy":
-                    holdings[delta.asset_id] += delta.quantity
+                    holdings[(pid, delta.asset_id)] += delta.quantity
                 else:
-                    holdings[delta.asset_id] -= delta.quantity
+                    holdings[(pid, delta.asset_id)] -= delta.quantity
 
         price_index: dict[int, int] = {aid: -1 for aid in asset_ids}
         current_price: dict[int, float | None] = {aid: None for aid in asset_ids}
@@ -492,11 +534,11 @@ class SummaryMixin:
         points: list[TimeSeriesPoint] = []
         cursor = start_date
         while cursor <= end_date:
-            for delta in deltas_by_day.get(cursor, []):
+            for pid, delta in deltas_by_day.get(cursor, []):
                 if delta.side == "buy":
-                    holdings[delta.asset_id] += delta.quantity
+                    holdings[(pid, delta.asset_id)] += delta.quantity
                 else:
-                    holdings[delta.asset_id] -= delta.quantity
+                    holdings[(pid, delta.asset_id)] -= delta.quantity
 
             for asset_id, series in price_series.items():
                 idx = price_index[asset_id]
@@ -513,7 +555,7 @@ class SummaryMixin:
                 current_fx[from_ccy] = series[idx][1] if idx >= 0 else None
 
             total_value = 0.0
-            for asset_id, qty in holdings.items():
+            for (_, asset_id), qty in holdings.items():
                 if qty <= 0:
                     continue
                 meta = assets.get(asset_id)
@@ -538,7 +580,18 @@ class SummaryMixin:
         return points
 
     def get_allocation(self, portfolio_id: int, user_id: str) -> list[AllocationItem]:
-        positions = self.get_positions(portfolio_id, user_id)
+        return self._allocation_from_positions(self.get_positions(portfolio_id, user_id))
+
+    def get_allocation_multi(self, portfolio_ids: list[int], user_id: str) -> list[AllocationItem]:
+        """Allocation over the merged positions of several portfolios."""
+        return self._allocation_from_positions(self.get_positions_multi(portfolio_ids, user_id))
+
+    def _scope_cash_balance(self, scope_ids: list[int], user_id: str) -> float:
+        if len(scope_ids) == 1:
+            return self.get_current_cash_balance_value(scope_ids[0], user_id)
+        return self.get_current_cash_balance_value_multi(scope_ids, user_id)
+
+    def _allocation_from_positions(self, positions) -> list[AllocationItem]:
         total = sum(p.market_value for p in positions)
         if total == 0:
             return []
