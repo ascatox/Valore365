@@ -190,24 +190,43 @@ class UtilitiesMixin:
                 {"portfolio_id": portfolio_id, "days": days},
             ).mappings().all()
 
-        # ~252 trading days per 365 calendar days
-        expected_bars = int(days * 252 / 365)
+        return _coverage_items(rows, days)
 
-        result = []
-        for r in rows:
-            bar_count = int(r["bar_count"])
-            coverage_pct = round(bar_count / expected_bars * 100, 1) if expected_bars > 0 else 0.0
-            result.append({
-                "asset_id": int(r["asset_id"]),
-                "symbol": str(r["symbol"]),
-                "name": str(r["name"]),
-                "bar_count": bar_count,
-                "first_bar": r["first_bar"],
-                "last_bar": r["last_bar"],
-                "expected_bars": expected_bars,
-                "coverage_pct": min(coverage_pct, 100.0),
-            })
-        return result
+    def get_price_coverage_multi(self, portfolio_ids: list[int], user_id: str, days: int = 365) -> list[dict]:
+        """Price coverage of every asset in the target allocations of several portfolios.
+
+        An asset targeted by more portfolios is listed once. Requires user_id
+        (the scope is always validated: empty, not owned, mixed currency).
+        """
+        with self.engine.begin() as conn:
+            scope_ids, _ = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            rows = conn.execute(
+                text(
+                    """
+                    with targeted as (
+                        select distinct asset_id
+                        from portfolio_target_allocations
+                        where portfolio_id = any(:portfolio_ids)
+                    )
+                    select
+                        t.asset_id,
+                        a.symbol,
+                        coalesce(a.name, a.symbol) as name,
+                        count(pb.price_date) as bar_count,
+                        min(pb.price_date) as first_bar,
+                        max(pb.price_date) as last_bar
+                    from targeted t
+                    join assets a on a.id = t.asset_id
+                    left join price_bars_1d pb
+                        on pb.asset_id = t.asset_id
+                        and pb.price_date >= current_date - :days
+                    group by t.asset_id, a.symbol, a.name
+                    order by a.symbol
+                    """
+                ),
+                {"portfolio_ids": scope_ids, "days": days},
+            ).mappings().all()
+        return _coverage_items(rows, days)
 
     # ---- Feature 2: Cash Movements ----
 
@@ -570,3 +589,24 @@ class UtilitiesMixin:
                 ),
                 {"batch_id": batch_id, "user_id": user_id},
             )
+
+
+def _coverage_items(rows, days: int) -> list[dict]:
+    # ~252 trading days per 365 calendar days
+    expected_bars = int(days * 252 / 365)
+
+    result = []
+    for r in rows:
+        bar_count = int(r["bar_count"])
+        coverage_pct = round(bar_count / expected_bars * 100, 1) if expected_bars > 0 else 0.0
+        result.append({
+            "asset_id": int(r["asset_id"]),
+            "symbol": str(r["symbol"]),
+            "name": str(r["name"]),
+            "bar_count": bar_count,
+            "first_bar": r["first_bar"],
+            "last_bar": r["last_bar"],
+            "expected_bars": expected_bars,
+            "coverage_pct": min(coverage_pct, 100.0),
+        })
+    return result

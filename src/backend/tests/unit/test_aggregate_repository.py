@@ -294,7 +294,11 @@ def test_one_portfolio_scope_is_exactly_the_single_portfolio_path():
     repo = _repo()
 
     assert repo.get_positions_multi([2, 2, 0], USER) == repo.get_positions(2, USER)
-    assert repo.get_summary_multi([2], USER) == repo.get_summary(2, USER)
+    one = repo.get_summary_multi([2], USER)
+    identity = {"portfolio_id", "portfolio_ids"}
+    assert one.model_dump(exclude=identity) == repo.get_summary(2, USER).model_dump(exclude=identity)
+    # A list is always reported as an aggregate view, even of one portfolio.
+    assert (one.portfolio_id, one.portfolio_ids) == (0, [2])
     assert repo.get_allocation_multi([1], USER) == repo.get_allocation(1, USER)
 
 
@@ -332,7 +336,8 @@ def test_aggregated_summary_is_the_sum_of_the_single_summaries():
     agg = repo.get_summary_multi([1, 2], USER)
 
     assert agg.base_currency == "EUR"
-    assert agg.portfolio_id == 1
+    assert agg.portfolio_id == 0
+    assert agg.portfolio_ids == [1, 2]
     for field in ("market_value", "cost_basis", "unrealized_pl", "day_change", "cash_balance"):
         assert getattr(agg, field) == pytest.approx(getattr(s1, field) + getattr(s2, field), abs=0.02), field
 

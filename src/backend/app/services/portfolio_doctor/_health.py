@@ -23,7 +23,7 @@ from ...constants.geo_classification import (
     EUROPE_CURRENCIES,
 )
 from ...finance_client import normalize_expense_ratio_pct
-from ._holdings import AnalyzedHolding, _load_holdings, _is_equity_like
+from ._holdings import AnalyzedHolding, PortfolioRef, _load_holdings, _is_equity_like, resolve_doctor_scope
 from .education_templates import enrich_alerts_with_education
 
 logger = logging.getLogger(__name__)
@@ -31,15 +31,17 @@ logger = logging.getLogger(__name__)
 
 def analyze_portfolio_health(
     repo: PortfolioRepository,
-    portfolio_id: int,
+    portfolio_id: PortfolioRef,
     user_id: str | None = None,
 ) -> PortfolioHealthResponse:
+    """Health check of one portfolio (int) or of several read as one (list)."""
     if not user_id:
         raise ValueError("Utente non valido")
 
-    holdings = _load_holdings(repo, portfolio_id, user_id)
+    scope_ref, identity = resolve_doctor_scope(repo, portfolio_id, user_id)
+    holdings = _load_holdings(repo, scope_ref, user_id)
     if not holdings:
-        return empty_health_response(portfolio_id)
+        return empty_health_response(identity["portfolio_id"], portfolio_ids=identity["portfolio_ids"])
 
     geographic_exposure = compute_geographic_exposure(holdings, repo=repo)
     sector_exposure = compute_sector_exposure(holdings, repo=repo)
@@ -68,7 +70,7 @@ def analyze_portfolio_health(
     suggestions = build_suggestions(metrics, equity_weight=equity_weight)
 
     return PortfolioHealthResponse(
-        portfolio_id=portfolio_id,
+        **identity,
         score=score,
         summary=summary,
         metrics=metrics,
@@ -78,9 +80,10 @@ def analyze_portfolio_health(
     )
 
 
-def empty_health_response(portfolio_id: int) -> PortfolioHealthResponse:
+def empty_health_response(portfolio_id: int, portfolio_ids: list[int] | None = None) -> PortfolioHealthResponse:
     return PortfolioHealthResponse(
         portfolio_id=portfolio_id,
+        portfolio_ids=portfolio_ids,
         score=0,
         summary=PortfolioHealthSummary(
             risk_level="unknown",

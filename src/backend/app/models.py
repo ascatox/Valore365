@@ -142,6 +142,8 @@ class TransactionUpdate(BaseModel):
 class TransactionListItem(TransactionRead):
     symbol: str | None = None
     asset_name: str | None = None
+    # Valorizzato solo nelle liste aggregate (piu' portafogli insieme).
+    portfolio_name: str | None = None
 
 
 class AssetLatestQuoteResponse(BaseModel):
@@ -320,6 +322,8 @@ class PeriodPerformer(BaseModel):
 
 class PortfolioSummary(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     base_currency: str
     market_value: float
     cost_basis: float
@@ -559,6 +563,8 @@ class AssetCoverageItem(BaseModel):
 
 class DataCoverageResponse(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     days: int
     sufficient: bool
     threshold_pct: float
@@ -929,6 +935,8 @@ class YearlyReturnItem(BaseModel):
 
 class MonthlyReturnsResponse(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     cells: list[MonthlyReturnCell]
     yearly_returns: list[YearlyReturnItem]
     start_date: str
@@ -950,6 +958,8 @@ class YearlyPerformanceRow(BaseModel):
 
 class YearlyPerformanceResponse(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     rows: list[YearlyPerformanceRow]          # crescente, come yearly_returns
     start_date: str
     end_date: str
@@ -963,6 +973,8 @@ class DrawdownPoint(BaseModel):
 
 class DrawdownResponse(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     points: list[DrawdownPoint]
     max_drawdown_pct: float
     max_drawdown_start: str | None = None
@@ -981,6 +993,8 @@ class RollingWindowPoint(BaseModel):
 
 class RollingWindowsResponse(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     window_months: int
     risk_free_rate_pct: float
     points: list[RollingWindowPoint]
@@ -995,6 +1009,8 @@ class RankedPeriod(BaseModel):
 
 class HallOfFameResponse(BaseModel):
     portfolio_id: int
+    # Vista aggregata: portfolio_id = 0 e qui gli id selezionati; None per un solo portafoglio.
+    portfolio_ids: list[int] | None = None
     best_months: list[RankedPeriod]
     worst_months: list[RankedPeriod]
     best_years: list[RankedPeriod]

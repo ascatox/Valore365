@@ -30,7 +30,7 @@ from ..models import (
 )
 from ..config import get_settings
 from ..repository import PortfolioRepository
-from ..repository._scope import EMPTY_SCOPE_MESSAGE, normalize_portfolio_ids
+from ..repository._scope import EMPTY_SCOPE_MESSAGE, aggregate_identity, normalize_portfolio_ids
 
 try:
     from scipy.optimize import brentq as scipy_brentq  # type: ignore
@@ -153,17 +153,20 @@ class PerformanceService:
         return tuple(sorted(ids))
 
     @staticmethod
-    def _response_portfolio_id(portfolio_id: PortfolioRef) -> int:
-        """Id reported in responses that carry a single portfolio_id.
+    def _response_identity(portfolio_id: PortfolioRef) -> dict:
+        """portfolio_id / portfolio_ids reported in responses.
 
-        For an aggregate it is the first selected id, as in get_summary_multi.
+        One portfolio (an int) reports its id and portfolio_ids=None. A list of
+        ids is an aggregate view: portfolio_id is 0 and portfolio_ids holds the
+        normalized ids, also when the list names a single portfolio (the
+        numbers are then exactly that portfolio's).
         """
         if isinstance(portfolio_id, int):
-            return portfolio_id
+            return {"portfolio_id": portfolio_id, "portfolio_ids": None}
         ids = normalize_portfolio_ids(portfolio_id)
         if not ids:
             raise ValueError(EMPTY_SCOPE_MESSAGE)
-        return ids[0]
+        return aggregate_identity(ids)
 
     def _cache_for(self, portfolio_id: PortfolioRef, user_id: str) -> _LookupCache:
         scope = self._scope_key(portfolio_id)
@@ -867,7 +870,7 @@ class PerformanceService:
         ]
 
         return MonthlyReturnsResponse(
-            portfolio_id=self._response_portfolio_id(portfolio_id),
+            **self._response_identity(portfolio_id),
             cells=[MonthlyReturnCell(**m) for m in monthly],
             yearly_returns=yearly_returns,
             start_date=start.isoformat(),
@@ -904,7 +907,7 @@ class PerformanceService:
             # _resolve_date_range solleverebbe ValueError('Intervallo date non
             # valido') per l'intera tabella. Nessun anno da mostrare, non un 400.
             return YearlyPerformanceResponse(
-                portfolio_id=self._response_portfolio_id(portfolio_id),
+                **self._response_identity(portfolio_id),
                 rows=[],
                 start_date=today.isoformat(),
                 end_date=today.isoformat(),
@@ -1003,7 +1006,7 @@ class PerformanceService:
             ))
 
         return YearlyPerformanceResponse(
-            portfolio_id=self._response_portfolio_id(portfolio_id),
+            **self._response_identity(portfolio_id),
             rows=rows,
             start_date=inception.isoformat(),
             end_date=today.isoformat(),
@@ -1053,7 +1056,7 @@ class PerformanceService:
         current_dd = points[-1].drawdown_pct if points else 0.0
 
         return DrawdownResponse(
-            portfolio_id=self._response_portfolio_id(portfolio_id),
+            **self._response_identity(portfolio_id),
             points=points,
             max_drawdown_pct=round(max_dd, 4),
             max_drawdown_start=max_dd_start.isoformat() if max_dd_start else None,
@@ -1116,7 +1119,7 @@ class PerformanceService:
             ))
 
         return RollingWindowsResponse(
-            portfolio_id=self._response_portfolio_id(portfolio_id),
+            **self._response_identity(portfolio_id),
             window_months=window_months,
             risk_free_rate_pct=risk_free_rate,
             points=points,
@@ -1164,7 +1167,7 @@ class PerformanceService:
         worst_years = list(reversed(sorted_years[-top_n:]))
 
         return HallOfFameResponse(
-            portfolio_id=self._response_portfolio_id(portfolio_id),
+            **self._response_identity(portfolio_id),
             best_months=best_months,
             worst_months=worst_months,
             best_years=best_years,

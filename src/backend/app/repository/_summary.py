@@ -13,7 +13,7 @@ from ..models import (
     TimeSeriesPoint,
 )
 from ._base import PositionDelta, _finite
-from ._scope import load_scope_portfolios, row_portfolio_id
+from ._scope import aggregate_identity, load_scope_portfolios, row_portfolio_id
 
 
 # How old the latest price may be and still carry a meaningful day change.
@@ -37,17 +37,19 @@ class SummaryMixin:
         """Summary of several portfolios read as one.
 
         Market value, cost basis, P/L, day change and cash add up across the
-        portfolios. ``portfolio_id`` in the result is the first id of the scope
-        (the model has room for one id only). A one-portfolio scope is exactly
-        get_summary.
+        portfolios. The result is marked as an aggregate (``portfolio_id`` 0,
+        ``portfolio_ids`` the selected ids); a one-portfolio scope computes
+        exactly get_summary.
         """
         scope = self.resolve_portfolio_scope(portfolio_ids, user_id)
         ids = list(scope.portfolio_ids)
         if not scope.is_aggregate:
-            return self.get_summary(ids[0], user_id)
-        current_cash_balance = self.get_current_cash_balance_value_multi(ids, user_id)
-        positions = self.get_positions_multi(ids, user_id)
-        return self._summary_from_positions(ids[0], scope.base_currency, positions, current_cash_balance)
+            summary = self.get_summary(ids[0], user_id)
+        else:
+            current_cash_balance = self.get_current_cash_balance_value_multi(ids, user_id)
+            positions = self.get_positions_multi(ids, user_id)
+            summary = self._summary_from_positions(ids[0], scope.base_currency, positions, current_cash_balance)
+        return summary.model_copy(update=aggregate_identity(ids))
 
     def _summary_from_positions(
         self, portfolio_id: int, base_currency: str, positions, current_cash_balance: float,

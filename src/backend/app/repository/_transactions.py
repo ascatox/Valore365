@@ -21,6 +21,25 @@ from ..models import (
 )
 
 
+def _transaction_list_item(row) -> TransactionListItem:
+    return TransactionListItem(
+        id=int(row["id"]),
+        portfolio_id=int(row["portfolio_id"]),
+        asset_id=int(row["asset_id"]) if row["asset_id"] is not None else None,
+        side=str(row["side"]),
+        trade_at=row["trade_at"],
+        quantity=float(row["quantity"]),
+        price=float(row["price"]),
+        fees=float(row["fees"]),
+        taxes=float(row["taxes"]),
+        trade_currency=str(row["trade_currency"]),
+        notes=row["notes"],
+        symbol=row["symbol"],
+        asset_name=row["asset_name"],
+        portfolio_name=row.get("portfolio_name"),
+    )
+
+
 class TransactionsMixin:
     def create_transaction(self, payload: TransactionCreate, user_id: str) -> TransactionRead:
         side = payload.side.lower().strip()
@@ -137,24 +156,46 @@ class TransactionsMixin:
                 {"portfolio_id": portfolio_id},
             ).mappings().all()
 
-        return [
-            TransactionListItem(
-                id=int(row["id"]),
-                portfolio_id=int(row["portfolio_id"]),
-                asset_id=int(row["asset_id"]) if row["asset_id"] is not None else None,
-                side=str(row["side"]),
-                trade_at=row["trade_at"],
-                quantity=float(row["quantity"]),
-                price=float(row["price"]),
-                fees=float(row["fees"]),
-                taxes=float(row["taxes"]),
-                trade_currency=str(row["trade_currency"]),
-                notes=row["notes"],
-                symbol=row["symbol"],
-                asset_name=row["asset_name"],
-            )
-            for row in rows
-        ]
+        return [_transaction_list_item(row) for row in rows]
+
+    def list_transactions_multi(self, portfolio_ids: list[int], user_id: str) -> list[TransactionListItem]:
+        """Transactions of several portfolios, newest first, as one list.
+
+        Same columns and order as list_transactions (trade_at desc, id desc,
+        across all the portfolios); every row also names its portfolio
+        (portfolio_id and portfolio_name). The scope is validated like every
+        aggregate read (empty, not owned, mixed base currency).
+        """
+        with self.engine.begin() as conn:
+            scope_ids, _ = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            rows = conn.execute(
+                text(
+                    """
+                    select t.id,
+                           t.portfolio_id,
+                           p.name as portfolio_name,
+                           t.asset_id,
+                           t.side,
+                           t.trade_at,
+                           t.quantity::float8 as quantity,
+                           t.price::float8 as price,
+                           t.fees::float8 as fees,
+                           t.taxes::float8 as taxes,
+                           t.trade_currency,
+                           t.notes,
+                           a.symbol,
+                           a.name as asset_name
+                    from transactions t
+                    join portfolios p on p.id = t.portfolio_id
+                    left join assets a on a.id = t.asset_id
+                    where t.portfolio_id = any(:portfolio_ids)
+                    order by t.trade_at desc, t.id desc
+                    """
+                ),
+                {"portfolio_ids": scope_ids},
+            ).mappings().all()
+
+        return [_transaction_list_item(row) for row in rows]
 
     def get_portfolio_created_date(self, portfolio_id: int, user_id: str) -> date:
         with self.engine.begin() as conn:

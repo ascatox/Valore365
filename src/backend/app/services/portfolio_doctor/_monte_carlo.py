@@ -12,10 +12,12 @@ from ...schemas.portfolio_doctor import (
     MonteCarloYearProjection,
 )
 from ._holdings import (
+    PortfolioRef,
     _compute_portfolio_return_params,
     _load_aggregate_holdings,
     _load_holdings,
     _percentile,
+    resolve_doctor_scope,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,24 +29,26 @@ PROJECTION_HORIZONS = [5, 10, 20]
 
 def run_monte_carlo_projection(
     repo: PortfolioRepository,
-    portfolio_id: int,
+    portfolio_id: PortfolioRef,
     user_id: str | None = None,
 ) -> MonteCarloProjectionResponse:
+    """Monte Carlo of one portfolio (int) or of several read as one (list)."""
     if not user_id:
         raise ValueError("Utente non valido")
 
-    holdings = _load_holdings(repo, portfolio_id, user_id)
+    scope_ref, identity = resolve_doctor_scope(repo, portfolio_id, user_id)
+    holdings = _load_holdings(repo, scope_ref, user_id)
     if not holdings:
-        return _empty_monte_carlo_response(portfolio_id)
+        return _empty_monte_carlo_response(**identity)
 
     mu_annual, sigma_annual, df_t = _compute_portfolio_return_params(repo, holdings)
     if sigma_annual == 0.0:
-        return _empty_monte_carlo_response(portfolio_id)
+        return _empty_monte_carlo_response(**identity)
 
     projections = _simulate_paths(mu_annual, sigma_annual, df_t)
 
     return MonteCarloProjectionResponse(
-        portfolio_id=portfolio_id,
+        **identity,
         num_simulations=NUM_SIMULATIONS,
         horizons=PROJECTION_HORIZONS,
         projections=projections,
@@ -641,9 +645,10 @@ def _solve_gross_sale_for_net_need(net_needed_from_portfolio: float, embedded_ga
     return net_needed_from_portfolio / keep_rate
 
 
-def _empty_monte_carlo_response(portfolio_id: int) -> MonteCarloProjectionResponse:
+def _empty_monte_carlo_response(portfolio_id: int, portfolio_ids: list[int] | None = None) -> MonteCarloProjectionResponse:
     return MonteCarloProjectionResponse(
         portfolio_id=portfolio_id,
+        portfolio_ids=portfolio_ids,
         num_simulations=0,
         horizons=PROJECTION_HORIZONS,
         projections=[],

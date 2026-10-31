@@ -93,6 +93,19 @@ def load_scope_portfolios(repo, conn, portfolio_ids: Iterable[int], user_id: str
     return ids, portfolios
 
 
+AGGREGATE_PORTFOLIO_ID = 0
+
+
+def aggregate_identity(portfolio_ids: Iterable[int]) -> dict:
+    """Fields that mark a response as an aggregate view.
+
+    Responses keep their single-portfolio model: ``portfolio_id`` is 0 (the
+    id the frontend already uses for its client-side aggregate) and
+    ``portfolio_ids`` lists the normalized selected ids.
+    """
+    return {"portfolio_id": AGGREGATE_PORTFOLIO_ID, "portfolio_ids": normalize_portfolio_ids(portfolio_ids)}
+
+
 def row_portfolio_id(row, scope_ids: list[int]) -> int:
     """Portfolio a transaction row belongs to within a scope.
 

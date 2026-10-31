@@ -19,8 +19,10 @@ from ._search_pricing import SearchPricingMixin
 from ._utilities import UtilitiesMixin
 from ._pac import PacMixin
 from ._scope import (
+    AGGREGATE_PORTFOLIO_ID,
     PortfolioScope,
     ScopeMixin,
+    aggregate_identity,
     normalize_portfolio_ids,
     resolve_portfolio_scope,
 )
@@ -51,6 +53,8 @@ __all__ = [
     "AssetMeta",
     "PositionDelta",
     "PortfolioScope",
+    "AGGREGATE_PORTFOLIO_ID",
+    "aggregate_identity",
     "normalize_portfolio_ids",
     "resolve_portfolio_scope",
     "_finite",
