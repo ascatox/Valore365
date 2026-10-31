@@ -1,8 +1,9 @@
 ---
 id: TASK-29
 title: 'Vista aggregata: export markdown e rifiniture'
-status: To Do
-assignee: []
+status: In Progress
+assignee:
+  - '@claude'
 created_date: '2026-10-31T10:00:00Z'
 labels:
   - backend
