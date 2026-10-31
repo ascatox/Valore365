@@ -1,7 +1,7 @@
 ---
 id: TASK-25
 title: 'Vista aggregata: repository multi-portafoglio'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-31T10:00:00Z'
