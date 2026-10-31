@@ -241,7 +241,10 @@ export interface PortfolioHealthSuggestion {
 }
 
 export interface PortfolioHealthResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   score: number;
   summary: PortfolioHealthSummary;
   metrics: PortfolioHealthMetrics;
@@ -260,7 +263,10 @@ export interface MonteCarloYearProjection {
 }
 
 export interface MonteCarloProjectionResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   num_simulations: number;
   horizons: number[];
   projections: MonteCarloYearProjection[];
@@ -381,7 +387,10 @@ export interface PortfolioCloneResponse {
 }
 
 export interface PortfolioSummary {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   base_currency: string;
   market_value: number;
   cost_basis: number;
@@ -741,6 +750,8 @@ export interface TransactionRead extends TransactionCreateInput {
 export interface TransactionListItem extends TransactionRead {
   symbol?: string | null;
   asset_name?: string | null;
+  /** Only in aggregate views. */
+  portfolio_name?: string | null;
 }
 
 export interface TransactionUpdateInput {
@@ -764,7 +775,10 @@ export interface AssetCoverageItem {
 }
 
 export interface DataCoverageResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   days: number;
   sufficient: boolean;
   threshold_pct: number;
@@ -911,7 +925,10 @@ export interface XRayCoverageIssue {
 }
 
 export interface XRayResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   aggregated_holdings: XRayHolding[];
   etf_details: XRayEtfDetail[];
   etf_count: number;
@@ -944,7 +961,10 @@ export interface StressTestScenarioResult {
 }
 
 export interface StressTestResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   scenarios: StressTestScenarioResult[];
   portfolio_volatility_pct: number | null;
   analysis_date: string;
@@ -1239,7 +1259,10 @@ export interface YearlyReturnItem {
 }
 
 export interface MonthlyReturnsResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   cells: MonthlyReturnCell[];
   yearly_returns: YearlyReturnItem[];
   start_date: string;
@@ -1260,7 +1283,10 @@ export interface YearlyPerformanceRow {
 }
 
 export interface YearlyPerformanceResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   rows: YearlyPerformanceRow[];
   start_date: string;
   end_date: string;
@@ -1273,7 +1299,10 @@ export interface DrawdownPoint {
 }
 
 export interface DrawdownResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   points: DrawdownPoint[];
   max_drawdown_pct: number;
   max_drawdown_start: string | null;
@@ -1291,7 +1320,10 @@ export interface RollingWindowPoint {
 }
 
 export interface RollingWindowsResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   window_months: number;
   risk_free_rate_pct: number;
   points: RollingWindowPoint[];
@@ -1305,7 +1337,10 @@ export interface RankedPeriod {
 }
 
 export interface HallOfFameResponse {
+  /** 0 for an aggregate view (see portfolio_ids). */
   portfolio_id: number;
+  /** Ids of an aggregate view; null/absent for a single portfolio. */
+  portfolio_ids?: number[] | null;
   best_months: RankedPeriod[];
   worst_months: RankedPeriod[];
   best_years: RankedPeriod[];
