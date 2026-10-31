@@ -10,6 +10,7 @@ import {
   portfoliosAvailableForAggregate,
   resolveScopeBaseCurrency,
   sanitizeScope,
+  scopePortfolioIds,
   scopePortfolios,
   singleScope,
   toggleScopePortfolio,
@@ -100,12 +101,12 @@ const PortfolioScopeContext = createContext<PortfolioScopeContextValue | null>(n
 const NO_PORTFOLIOS: Portfolio[] = [];
 
 /**
- * Holds the portfolio scope shared by the pages, persisted in localStorage.
+ * Holds the portfolio scope shared by the pages (Dashboard, Portfolio, Doctor,
+ * FIRE), persisted in localStorage. The pages read only this scope.
  *
- * Compatibility until the pages adopt it (TASK-28): explicit changes that end
- * in a single scope also write `STORAGE_KEYS.selectedPortfolioId`, which the
- * pages still read. Sanitizing never writes that key, so the pages' own
- * selection is not touched.
+ * Explicit changes that end in a single scope still write
+ * `STORAGE_KEYS.selectedPortfolioId` (no page reads it any more): it keeps a
+ * downgrade to an older build on the same portfolio.
  */
 export function PortfolioScopeProvider({ children }: { children: ReactNode }) {
   const { data } = usePortfolios();
@@ -135,7 +136,13 @@ export function PortfolioScopeProvider({ children }: { children: ReactNode }) {
 
   const setScope = useCallback((next: PortfolioScope) => {
     const normalized = normalizeScope(next);
-    apply(isReady && normalized ? sanitizeScope(normalized, portfolios) : normalized);
+    // An id missing from the loaded list is most likely a portfolio just
+    // created whose list refetch has not landed yet: keep the scope as asked
+    // (the derived `scope` is sanitized against the list anyway) instead of
+    // falling back to the first portfolio.
+    const allKnown = normalized != null
+      && scopePortfolioIds(normalized).every((id) => portfolios.some((portfolio) => portfolio.id === id));
+    apply(isReady && normalized && allKnown ? sanitizeScope(normalized, portfolios) : normalized);
   }, [apply, isReady, portfolios]);
 
   const setSingle = useCallback((portfolioId: number) => {

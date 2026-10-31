@@ -11,6 +11,7 @@ import {
   getTransactionSideColor,
 } from '../dashboard/formatters';
 import { BottomSheet } from '../mobile/BottomSheet';
+import { AGGREGATE_READ_ONLY_HINT } from '../../scope/aggregateLabels';
 
 interface TransactionMobileListProps {
   transactions: TransactionListItem[];
@@ -20,6 +21,8 @@ interface TransactionMobileListProps {
   deletingId?: number | null;
   onEdit: (tx: TransactionListItem) => void;
   onDelete: (tx: TransactionListItem) => void;
+  /** Aggregate view: no edit/delete (disabled, with the reason) and the portfolio name on each row. */
+  readOnly?: boolean;
 }
 
 // Money flowing into the portfolio's positions or cash vs out of it.
@@ -45,6 +48,7 @@ export function TransactionMobileList({
   deletingId,
   onEdit,
   onDelete,
+  readOnly = false,
 }: TransactionMobileListProps) {
   const [selected, setSelected] = useState<TransactionListItem | null>(null);
 
@@ -108,7 +112,10 @@ export function TransactionMobileList({
                       {`${formatTransactionSideLabel(tx.side)} ${tx.symbol ?? ''}`.trim()}
                     </Text>
                     <Text size="xs" c="dimmed" truncate="end">
-                      {`${formatNum(tx.quantity, 4)} × ${formatMoneyOrNA(tx.price, tx.trade_currency)}`}
+                      {[
+                        tx.portfolio_name,
+                        `${formatNum(tx.quantity, 4)} × ${formatMoneyOrNA(tx.price, tx.trade_currency)}`,
+                      ].filter(Boolean).join(' · ')}
                     </Text>
                   </Box>
                   <Text fw={700} size="sm" style={{ flexShrink: 0 }}>
@@ -136,7 +143,7 @@ export function TransactionMobileList({
         {selected && (
           <Stack gap="md">
             <Text size="sm" c="dimmed">
-              {[selected.asset_name, formatDateTime(selected.trade_at)].filter(Boolean).join(' · ')}
+              {[selected.portfolio_name, selected.asset_name, formatDateTime(selected.trade_at)].filter(Boolean).join(' · ')}
             </Text>
             <SimpleGrid cols={2} spacing="md" verticalSpacing="sm">
               <Detail label="Quantità" value={formatNum(selected.quantity, 4)} />
@@ -152,6 +159,10 @@ export function TransactionMobileList({
                 <Text size="sm">{selected.notes}</Text>
               </Box>
             )}
+            {readOnly ? (
+              <Text size="sm" c="dimmed" ta="center">{AGGREGATE_READ_ONLY_HINT}</Text>
+            ) : (
+            <>
             <Button
               leftSection={<IconEdit size={16} />}
               onClick={() => {
@@ -176,6 +187,8 @@ export function TransactionMobileList({
             >
               Elimina transazione
             </Button>
+            </>
+            )}
           </Stack>
         )}
       </BottomSheet>

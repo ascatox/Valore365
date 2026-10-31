@@ -17,6 +17,8 @@ interface TransactionsSectionProps {
   hasRows: boolean;
   selectedPortfolioId: string | null;
   showActions?: boolean;
+  /** Aggregate view: a "Portafoglio" column after the date (rows must render it). */
+  showPortfolioColumn?: boolean;
 }
 
 function SortIcon({ active, dir }: { active: boolean; dir: string }) {
@@ -39,7 +41,9 @@ export function TransactionsSection({
   hasRows,
   selectedPortfolioId,
   showActions = true,
+  showPortfolioColumn = false,
 }: TransactionsSectionProps) {
+  const columnCount = 7 + (showActions ? 1 : 0) + (showPortfolioColumn ? 1 : 0);
   const valueSortActive = sortKey === 'value';
   const handleValueSortToggle = () => {
     if (!valueSortActive) {
@@ -136,6 +140,7 @@ export function TransactionsSection({
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Data</Table.Th>
+              {showPortfolioColumn && <Table.Th>Portafoglio</Table.Th>}
               <Table.Th>Tipo</Table.Th>
               <Table.Th>Asset</Table.Th>
               <Table.Th style={{ textAlign: 'right' }} visibleFrom="sm">Qta</Table.Th>
@@ -159,14 +164,14 @@ export function TransactionsSection({
             ) : loading ? (
               [0, 1, 2, 3, 4].map((i) => (
                 <Table.Tr key={`skeleton-${i}`}>
-                  <Table.Td colSpan={showActions ? 8 : 7}>
+                  <Table.Td colSpan={columnCount}>
                     <Skeleton height={14} />
                   </Table.Td>
                 </Table.Tr>
               ))
             ) : (
               <Table.Tr>
-                <Table.Td colSpan={showActions ? 8 : 7}>
+                <Table.Td colSpan={columnCount}>
                   <Text c="dimmed" ta="center">
                     {selectedPortfolioId ? 'Nessuna transazione presente' : 'Seleziona un portafoglio'}
                   </Text>

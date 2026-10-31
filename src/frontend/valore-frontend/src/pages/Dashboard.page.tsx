@@ -24,6 +24,8 @@ import { formatDateTime } from '../components/dashboard/formatters';
 import { DASHBOARD_WINDOWS, SHOW_ANALISI_TAB, STORAGE_KEYS } from '../components/dashboard/constants';
 
 import { getCopilotStatus } from '../services/api';
+import { usePortfolioScope } from '../scope/PortfolioScopeContext';
+import { scopePortfolioIds, singlePortfolioId } from '../scope/portfolioScope';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -41,10 +43,9 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const isMobile = useMediaQuery('(max-width: 48em)');
 
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
-  });
+  // Shared scope: one portfolio or the aggregate of several, the same on every page.
+  const { scope, scopeKey, isAggregate, setSingle, setScope } = usePortfolioScope();
+  const singleId = singlePortfolioId(scope);
 
   const [chartWindow, setChartWindow] = useState<string>(() => {
     // Default to 30 days: the 1-day window is a flat line until intraday prices arrive.
@@ -68,10 +69,12 @@ export function DashboardPage() {
   }, []);
 
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
-  const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
-  const { data: summary } = usePortfolioSummary(portfolioId);
-  const { data: targetPerformance } = useTargetPerformance(portfolioId);
-  const { refreshing, refreshMessage, refreshError, refreshVersion } = useDashboardRefresh(portfolioId);
+  const { data: summary } = usePortfolioSummary(scope);
+  // Target performance is per portfolio (disabled in the aggregate view): it
+  // only provides the "last updated" badge here.
+  const { data: targetPerformance } = useTargetPerformance(scope);
+  const { refreshing, refreshMessage, refreshError, refreshVersion } = useDashboardRefresh(scope);
+  const scopeIds = scopePortfolioIds(scope);
 
   // Load the Mercati tab's data with the dashboard, once the portfolio summary
   // is in (so it doesn't compete with what's on screen): the tab then opens
@@ -81,23 +84,6 @@ export function DashboardPage() {
   useEffect(() => {
     if (summaryLoaded) void prefetchMarketData(queryClient);
   }, [summaryLoaded, queryClient]);
-
-  useEffect(() => {
-    if (!portfolios.length) return;
-    setSelectedPortfolioId((prev) => {
-      const prevExists = prev ? portfolios.some((p) => String(p.id) === prev) : false;
-      return prevExists ? prev : String(portfolios[0].id);
-    });
-  }, [portfolios]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (selectedPortfolioId) {
-      window.localStorage.setItem(STORAGE_KEYS.selectedPortfolioId, selectedPortfolioId);
-    } else {
-      window.localStorage.removeItem(STORAGE_KEYS.selectedPortfolioId);
-    }
-  }, [selectedPortfolioId]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -133,6 +119,19 @@ export function DashboardPage() {
     </Tabs>
   );
 
+  const switcherProps = {
+    portfolios,
+    value: singleId != null ? String(singleId) : null,
+    selectedPortfolioCashBalance: summary?.cash_balance ?? null,
+    onChange: (nextValue: string) => setSingle(Number(nextValue)),
+    loading: portfoliosLoading,
+    onOpenPortfolio: () => navigate('/portfolio'),
+    allowAggregate: true,
+    scope,
+    onScopeChange: setScope,
+    aggregateTotalValue: isAggregate && summary ? summary.market_value + summary.cash_balance : null,
+  };
+
   return (
     <PageLayout>
       {isMobile ? (
@@ -142,12 +141,7 @@ export function DashboardPage() {
           mobileBelow={mobileTabs}
           actions={(
             <PortfolioSwitcher
-              portfolios={portfolios}
-              value={selectedPortfolioId}
-              selectedPortfolioCashBalance={summary?.cash_balance ?? null}
-              onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-              loading={portfoliosLoading}
-              onOpenPortfolio={() => navigate('/portfolio')}
+              {...switcherProps}
             />
           )}
         />
@@ -158,12 +152,7 @@ export function DashboardPage() {
           description="Monitoraggio quotidiano, performance e mercati in un unico punto."
           actions={(
             <PortfolioSwitcher
-              portfolios={portfolios}
-              value={selectedPortfolioId}
-              selectedPortfolioCashBalance={summary?.cash_balance ?? null}
-              onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
-              loading={portfoliosLoading}
-              onOpenPortfolio={() => navigate('/portfolio')}
+              {...switcherProps}
               style={{ width: '100%', maxWidth: 360 }}
             />
           )}
@@ -204,7 +193,7 @@ export function DashboardPage() {
       )}
 
       <Tabs
-        key={`dashboard-refresh-${portfolioId ?? 'none'}-${refreshVersion}`}
+        key={`dashboard-refresh-${scopeKey ?? 'none'}-${refreshVersion}`}
         value={activeTab}
         onChange={handleTabChange}
         variant="default"
@@ -252,7 +241,7 @@ export function DashboardPage() {
         <div ref={swipeRef}>
           <Tabs.Panel value="panoramica">
             <PanoramicaTab
-              portfolioId={portfolioId}
+              scope={scope}
               chartWindow={chartWindow}
               setChartWindow={setChartWindow}
               statusText={mobileStatusText}
@@ -260,12 +249,12 @@ export function DashboardPage() {
           </Tabs.Panel>
 
           <Tabs.Panel value="posizioni">
-            <PosizioniTab portfolioId={portfolioId} />
+            <PosizioniTab scope={scope} />
           </Tabs.Panel>
 
           {SHOW_ANALISI_TAB && (
             <Tabs.Panel value="analisi">
-              <AnalisiTab portfolioId={portfolioId} chartWindow={chartWindow} setChartWindow={setChartWindow} />
+              <AnalisiTab scope={scope} chartWindow={chartWindow} setChartWindow={setChartWindow} />
             </Tabs.Panel>
           )}
 
@@ -274,7 +263,7 @@ export function DashboardPage() {
           </Tabs.Panel>
 
           <Tabs.Panel value="performance">
-            <PerformanceMetrics portfolioId={portfolioId} />
+            <PerformanceMetrics scope={scope} />
           </Tabs.Panel>
         </div>
       </Tabs>
@@ -302,7 +291,8 @@ export function DashboardPage() {
       <CopilotChat
         opened={copilotOpened}
         onClose={closeCopilot}
-        portfolioId={portfolioId}
+        portfolioId={scopeIds[0] ?? null}
+        portfolioIds={isAggregate ? scopeIds : undefined}
         pageContext="dashboard"
       />
     </PageLayout>

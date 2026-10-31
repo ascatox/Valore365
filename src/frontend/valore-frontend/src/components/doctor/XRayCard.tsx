@@ -26,6 +26,7 @@ import { STORAGE_KEYS } from '../dashboard/constants';
 import { AssetInfoModal } from '../dashboard/holdings/AssetInfoModal';
 import type { XRayEtfDetail, XRayHolding } from '../../services/api';
 import { formatXrayFailureReason } from '../../services/dataQuality';
+import type { PortfolioScopeInput } from '../../scope/portfolioScope';
 
 const PRIVACY_MASK = '******';
 
@@ -41,7 +42,8 @@ function getHoldingsSourceTone(detail: XRayEtfDetail): { color: string; label: s
 }
 
 interface Props {
-  portfolioId: number | null;
+  /** Portfolio or aggregate scope (aggregate: merged holdings). */
+  scope: PortfolioScopeInput;
 }
 
 /* ---- Clickable ETF badge ---- */
@@ -121,8 +123,8 @@ function HoldingCard({
   );
 }
 
-export function XRayCard({ portfolioId }: Props) {
-  const { data: xray, isLoading, error } = usePortfolioXray(portfolioId);
+export function XRayCard({ scope }: Props) {
+  const { data: xray, isLoading, error } = usePortfolioXray(scope);
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';

@@ -19,15 +19,33 @@ import {
   usePortfolios,
 } from '../hooks/queries';
 import type { AllocationDoughnutItem, ChartPoint, IntradayChartPoint, PerformerItem } from '../types';
+import { isAggregateScope, singlePortfolioId, toPortfolioScope, type PortfolioScopeInput } from '../../../scope/portfolioScope';
+import { AggregateUnavailableNotice } from '../../../scope/AggregateReadOnly';
 
 
 interface AnalisiTabProps {
+  /** Portfolio or aggregate scope; the tab is built on target allocation, so single only. */
+  scope: PortfolioScopeInput;
+  chartWindow: string;
+  setChartWindow: (w: string) => void;
+}
+
+interface AnalisiTabContentProps {
   portfolioId: number | null;
   chartWindow: string;
   setChartWindow: (w: string) => void;
 }
 
-export function AnalisiTab({ portfolioId, chartWindow, setChartWindow }: AnalisiTabProps) {
+export function AnalisiTab({ scope, chartWindow, setChartWindow }: AnalisiTabProps) {
+  if (isAggregateScope(toPortfolioScope(scope))) {
+    return (
+      <AggregateUnavailableNotice description="L'analisi usa l'allocazione target, che è definita per singolo portafoglio. Seleziona un solo portafoglio per vederla." />
+    );
+  }
+  return <AnalisiTabContent portfolioId={singlePortfolioId(scope)} chartWindow={chartWindow} setChartWindow={setChartWindow} />;
+}
+
+function AnalisiTabContent({ portfolioId, chartWindow, setChartWindow }: AnalisiTabContentProps) {
   const [intradayOpen, setIntradayOpen] = useState(false);
   const [intradayDate, setIntradayDate] = useState<string | null>(null);
   const [intradayDateLabel, setIntradayDateLabel] = useState<string | null>(null);

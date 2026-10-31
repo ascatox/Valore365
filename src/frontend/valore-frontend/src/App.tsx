@@ -52,7 +52,8 @@ import { MobileBottomNav } from './components/mobile/MobileBottomNav';
 import { BottomSheet } from './components/mobile/BottomSheet';
 import { STORAGE_KEYS } from './components/dashboard/constants';
 import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
-import { PortfolioScopeProvider } from './scope/PortfolioScopeContext';
+import { PortfolioScopeProvider, useOptionalPortfolioScope } from './scope/PortfolioScopeContext';
+import { AGGREGATE_READ_ONLY_HINT } from './scope/aggregateLabels';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
 const LandingPage = lazy(() => import('./pages/LandingPage.tsx').then((module) => ({ default: module.LandingPage })));
@@ -103,6 +104,7 @@ function ProtectedApp() {
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const { colorScheme } = useMantineColorScheme();
   const isMobile = useMediaQuery('(max-width: 48em)');
+  const portfolioScope = useOptionalPortfolioScope();
   const isLandscape = useMediaQuery('(max-width: 48em) and (orientation: landscape)');
   const headerHeight = isLandscape ? 44 : 60;
   const [hasPortfolios, setHasPortfolios] = useState<boolean | null>(null);
@@ -274,10 +276,13 @@ function ProtectedApp() {
 
   // The "+" sheet hands its action to the Portfolio page through ?azione=,
   // which opens the matching drawer or modal there.
+  // The aggregate view is read-only: the actions that write to one portfolio
+  // are off there, with the reason in place of their description.
+  const aggregateReadOnly = portfolioScope?.isAggregate ?? false;
   const quickActions = [
-    { action: 'nuova-transazione', label: 'Nuova transazione', description: 'Acquisto, vendita, dividendo o movimento di cassa', icon: IconArrowsExchange, disabled: lockNonPortfolioNavigation },
-    { action: 'importa', label: 'Importa movimenti', description: 'Da file CSV o XLSX del broker', icon: IconFileImport },
-    { action: 'nuova-regola-pac', label: 'Nuova regola PAC', description: 'Versamento ricorrente su un asset', icon: IconCoins, disabled: lockNonPortfolioNavigation },
+    { action: 'nuova-transazione', label: 'Nuova transazione', description: aggregateReadOnly ? AGGREGATE_READ_ONLY_HINT : 'Acquisto, vendita, dividendo o movimento di cassa', icon: IconArrowsExchange, disabled: lockNonPortfolioNavigation || aggregateReadOnly },
+    { action: 'importa', label: 'Importa movimenti', description: aggregateReadOnly ? AGGREGATE_READ_ONLY_HINT : 'Da file CSV o XLSX del broker', icon: IconFileImport, disabled: aggregateReadOnly },
+    { action: 'nuova-regola-pac', label: 'Nuova regola PAC', description: aggregateReadOnly ? AGGREGATE_READ_ONLY_HINT : 'Versamento ricorrente su un asset', icon: IconCoins, disabled: lockNonPortfolioNavigation || aggregateReadOnly },
     { action: 'nuovo-portafoglio', label: 'Nuovo portafoglio', description: 'Con valuta base e liquidità dedicate', icon: IconFolderPlus },
   ];
 

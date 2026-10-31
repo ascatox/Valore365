@@ -21,16 +21,18 @@ import {
   useBenchmarkPrices,
 } from '../hooks/queries';
 import type { PerformerItem } from '../types';
+import { type PortfolioScopeInput } from '../../../scope/portfolioScope';
 
 interface PanoramicaTabProps {
-  portfolioId: number | null;
+  /** Portfolio or aggregate scope. */
+  scope: PortfolioScopeInput;
   chartWindow: string;
   setChartWindow: (w: string) => void;
   /** Mobile hero: last update or refresh progress. */
   statusText?: string | null;
 }
 
-export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, statusText = null }: PanoramicaTabProps) {
+export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText = null }: PanoramicaTabProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const theme = useMantineTheme();
   const isDark = useComputedColorScheme('light') === 'dark';
@@ -40,10 +42,10 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, status
   const [staleAlertDismissed, setStaleAlertDismissed] = useState(false);
 
   // --- Queries ---
-  const { data: portfolioSummary } = usePortfolioSummary(portfolioId);
-  const { data: portfolioPositions = [] } = usePortfolioPositions(portfolioId);
-  const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(portfolioId);
-  const { data: dataCoverage } = usePortfolioDataCoverage(portfolioId);
+  const { data: portfolioSummary } = usePortfolioSummary(scope);
+  const { data: portfolioPositions = [] } = usePortfolioPositions(scope);
+  const { data: portfolioTimeseries = [] } = usePortfolioTimeseries(scope);
+  const { data: dataCoverage } = usePortfolioDataCoverage(scope);
   const { data: benchmarkList = [] } = useBenchmarks();
 
   const isIntradayWindow = chartWindow === '1';
@@ -61,10 +63,10 @@ export function PanoramicaTab({ portfolioId, chartWindow, setChartWindow, status
   const periodLabel = DASHBOARD_WINDOWS.find((w) => w.value === chartWindow)?.periodLabel ?? `ultimi ${chartWindowDays} giorni`;
   // 1g uses the positions' day change (same source as the "Oggi" KPI); longer
   // windows ask the backend for each asset's return over the chart window.
-  const { data: periodPerformers = [] } = usePortfolioPerformers(portfolioId, chartWindowDays, !isIntradayWindow);
+  const { data: periodPerformers = [] } = usePortfolioPerformers(scope, chartWindowDays, !isIntradayWindow);
 
-  const { data: portfolioIntradayRaw = [] } = usePortfolioIntradayTimeseries(portfolioId, isIntradayWindow);
-  const { data: benchmarkPrices = [], isLoading: benchmarkLoading } = useBenchmarkPrices(selectedBenchmarkId, portfolioId, benchmarkStartDate);
+  const { data: portfolioIntradayRaw = [] } = usePortfolioIntradayTimeseries(scope, isIntradayWindow);
+  const { data: benchmarkPrices = [], isLoading: benchmarkLoading } = useBenchmarkPrices(selectedBenchmarkId, scope, benchmarkStartDate);
 
   // --- Computed values ---
   const mvpCurrency = portfolioSummary?.base_currency ?? 'EUR';

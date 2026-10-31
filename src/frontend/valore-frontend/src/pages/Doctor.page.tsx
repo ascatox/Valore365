@@ -32,6 +32,8 @@ import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
+import { usePortfolioScope } from '../scope/PortfolioScopeContext';
+import { scopePortfolioIds, singlePortfolioId } from '../scope/portfolioScope';
 import { DoctorAlertDetailsModal } from '../components/doctor/DoctorAlertDetailsModal';
 import { DOCTOR_GLOSSARY, GlossaryTooltip, type GlossaryEntry } from '../components/doctor/GlossaryTooltip';
 import { DoctorScoreCard, type DoctorFactor } from '../components/doctor/DoctorScoreCard';
@@ -259,10 +261,11 @@ function shareImageFilter(node: HTMLElement): boolean {
 export function DoctorPage() {
   type PendingCopilotPrompt = { id: number; text: string } | null;
   const isMobile = useMediaQuery('(max-width: 48em)');
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
-  });
+  // Shared scope: one portfolio or the aggregate of several (every Doctor
+  // analysis has an aggregate route on merged holdings).
+  const { scope, isAggregate, selectedPortfolios, setSingle, setScope } = usePortfolioScope();
+  const singleId = singlePortfolioId(scope);
+  const scopeIds = scopePortfolioIds(scope);
   const [detailsAlert, setDetailsAlert] = useState<PortfolioHealthAlert | null>(null);
   const [copyImageState, setCopyImageState] = useState<'idle' | 'copying' | 'copied' | 'error'>('idle');
   const [copilotAvailable, setCopilotAvailable] = useState(false);
@@ -274,24 +277,8 @@ export function DoctorPage() {
   const [copilotOpened, { open: openCopilot, close: closeCopilot }] = useDisclosure(false);
 
   const { data: portfolios = [], isLoading: portfoliosLoading, error: portfoliosError } = usePortfolios();
-  const portfolioId = selectedPortfolioId ? Number(selectedPortfolioId) : null;
-  const { data: health, isLoading: healthLoading, error: healthError } = usePortfolioHealth(portfolioId);
-  const { data: summary } = usePortfolioSummary(portfolioId);
-
-  useEffect(() => {
-    if (!portfolios.length) return;
-    setSelectedPortfolioId((previous) => {
-      const exists = previous ? portfolios.some((portfolio) => String(portfolio.id) === previous) : false;
-      return exists ? previous : String(portfolios[0].id);
-    });
-  }, [portfolios]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (selectedPortfolioId) {
-      window.localStorage.setItem(STORAGE_KEYS.selectedPortfolioId, selectedPortfolioId);
-    }
-  }, [selectedPortfolioId]);
+  const { data: health, isLoading: healthLoading, error: healthError } = usePortfolioHealth(scope);
+  const { data: summary } = usePortfolioSummary(scope);
 
   useEffect(() => {
     getCopilotStatus().then((status) => setCopilotAvailable(status.available)).catch(() => {});
@@ -312,10 +299,16 @@ export function DoctorPage() {
     setEducationStats(nextStats);
   }, []);
 
-  const selectedPortfolio = useMemo(
-    () => portfolios.find((portfolio) => String(portfolio.id) === selectedPortfolioId) ?? null,
-    [portfolios, selectedPortfolioId],
-  );
+  // The scope as the report names it: the portfolio, or the aggregate as a
+  // whole (name = the portfolios' names, currency shared by all of them).
+  const selectedPortfolio = useMemo(() => {
+    if (!selectedPortfolios.length) return null;
+    if (!isAggregate) return selectedPortfolios[0];
+    return {
+      ...selectedPortfolios[0],
+      name: `Vista aggregata (${selectedPortfolios.map((portfolio) => portfolio.name).join(', ')})`,
+    };
+  }, [isAggregate, selectedPortfolios]);
 
   const shareSummary = useMemo(() => {
     if (!health || !selectedPortfolio) return '';
@@ -487,10 +480,14 @@ export function DoctorPage() {
             actions={(
               <PortfolioSwitcher
                 portfolios={portfolios}
-                value={selectedPortfolioId}
+                value={singleId != null ? String(singleId) : null}
                 selectedPortfolioCashBalance={summary?.cash_balance ?? null}
-                onChange={(nextValue) => setSelectedPortfolioId(nextValue)}
+                onChange={(nextValue) => setSingle(Number(nextValue))}
                 loading={portfoliosLoading}
+                allowAggregate
+                scope={scope}
+                onScopeChange={setScope}
+                aggregateTotalValue={isAggregate && summary ? summary.market_value + summary.cash_balance : null}
                 style={{ width: '100%', maxWidth: 360 }}
               />
             )}
@@ -504,7 +501,7 @@ export function DoctorPage() {
             </Alert>
           )}
 
-          {healthLoading && portfolioId != null && (
+          {healthLoading && scope != null && (
             <Card withBorder radius="xl" padding="xl">
               <Group justify="center" py="xl">
                 <Loader />
@@ -723,15 +720,15 @@ export function DoctorPage() {
                 </Grid.Col>
               </Grid>
 
-              <XRayCard portfolioId={portfolioId} />
+              <XRayCard scope={scope} />
 
               <MonteCarloCard
-                portfolioId={portfolioId}
+                scope={scope}
                 marketValue={summary?.market_value ?? null}
                 currency={summary?.base_currency ?? 'EUR'}
               />
 
-              <StressTestCard portfolioId={portfolioId} />
+              <StressTestCard scope={scope} />
 
               {isMobile ? (
                 <BottomSheet opened={glossaryEntry != null} onClose={() => setGlossaryEntry(null)} title={glossaryEntry?.title}>
@@ -778,7 +775,8 @@ export function DoctorPage() {
       <CopilotChat
         opened={copilotOpened}
         onClose={closeCopilot}
-        portfolioId={portfolioId}
+        portfolioId={scopeIds[0] ?? null}
+        portfolioIds={isAggregate ? scopeIds : undefined}
         title="Doctor Copilot"
         quickPrompts={doctorQuickPrompts}
         emptyStateDescription="Interpreto il referto Doctor, spiego rischi e priorita operative del portafoglio."
