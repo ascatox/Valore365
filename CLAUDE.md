@@ -27,3 +27,7 @@ You MUST read the overview resource to understand the complete workflow. The inf
 </CRITICAL_INSTRUCTION>
 
 <!-- BACKLOG.MD MCP GUIDELINES END -->
+
+## DEVELOPMENT WORKFLOW
+
+- Per lo sviluppo usa sempre sub agenti (Agent tool): delega implementazione, fix e refactoring a un sub agente, poi verifica il risultato prima di riportarlo all'utente.
