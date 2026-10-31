@@ -36,19 +36,23 @@ interface Message {
   content: string;
 }
 
+// Conversations are kept per scope: the portfolio id, or `aggregate_1_2`
+// for an aggregate of portfolios (so it never mixes with a single one).
+type ConversationScopeKey = number | string;
+
 interface StoredConversation {
   id: string;
-  portfolioId: number;
+  portfolioId: ConversationScopeKey;
   messages: Message[];
   updatedAt: number; // timestamp
   preview: string;   // first user message as preview
 }
 
-function getStorageKey(portfolioId: number): string {
+function getStorageKey(portfolioId: ConversationScopeKey): string {
   return `${STORAGE_PREFIX}${portfolioId}`;
 }
 
-function loadConversations(portfolioId: number): StoredConversation[] {
+function loadConversations(portfolioId: ConversationScopeKey): StoredConversation[] {
   try {
     const raw = localStorage.getItem(getStorageKey(portfolioId));
     if (!raw) return [];
@@ -59,7 +63,7 @@ function loadConversations(portfolioId: number): StoredConversation[] {
   }
 }
 
-function saveConversations(portfolioId: number, convs: StoredConversation[]): void {
+function saveConversations(portfolioId: ConversationScopeKey, convs: StoredConversation[]): void {
   try {
     // Keep only the latest N conversations
     const trimmed = convs
@@ -72,7 +76,7 @@ function saveConversations(portfolioId: number, convs: StoredConversation[]): vo
 }
 
 function saveCurrentConversation(
-  portfolioId: number,
+  portfolioId: ConversationScopeKey,
   conversationId: string,
   messages: Message[],
 ): void {
@@ -99,7 +103,7 @@ function saveCurrentConversation(
   saveConversations(portfolioId, convs);
 }
 
-function deleteConversation(portfolioId: number, conversationId: string): void {
+function deleteConversation(portfolioId: ConversationScopeKey, conversationId: string): void {
   const convs = loadConversations(portfolioId).filter((c) => c.id !== conversationId);
   saveConversations(portfolioId, convs);
 }
@@ -115,7 +119,9 @@ function generateId(): string {
 interface CopilotChatProps {
   opened: boolean;
   onClose: () => void;
+  /** Portfolio sent as `portfolio_id` (for an aggregate: its first portfolio). */
   portfolioId: number | null;
+  /** Portfolios of an aggregate scope, sent as `portfolio_ids` (more than one id). */
   portfolioIds?: number[];
   title?: string;
   quickPrompts?: string[];
@@ -195,6 +201,12 @@ export function CopilotChat({
   pageContext,
   pendingPrompt = null,
 }: CopilotChatProps) {
+  const aggregateIds = portfolioIds && portfolioIds.length > 1
+    ? [...new Set(portfolioIds)].sort((left, right) => left - right)
+    : null;
+  const conversationKey: ConversationScopeKey | null = aggregateIds && aggregateIds.length > 1
+    ? `aggregate_${aggregateIds.join('_')}`
+    : portfolioId;
   const resolvedQuickPrompts = quickPrompts ?? (pageContext && PAGE_QUICK_PROMPTS[pageContext]) ?? QUICK_PROMPTS;
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
@@ -220,16 +232,16 @@ export function CopilotChat({
   const [savedConversations, setSavedConversations] = useState<StoredConversation[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const prevPortfolioRef = useRef<number | null>(portfolioId);
+  const prevPortfolioRef = useRef<ConversationScopeKey | null>(conversationKey);
   const consumedPromptIdRef = useRef<number | null>(null);
 
   // Load conversations when portfolio changes
   useEffect(() => {
-    if (prevPortfolioRef.current !== portfolioId) {
-      prevPortfolioRef.current = portfolioId;
+    if (prevPortfolioRef.current !== conversationKey) {
+      prevPortfolioRef.current = conversationKey;
       setError(null);
-      if (portfolioId) {
-        const convs = loadConversations(portfolioId);
+      if (conversationKey) {
+        const convs = loadConversations(conversationKey);
         setSavedConversations(convs);
         // Resume the most recent conversation if it exists
         if (convs.length > 0) {
@@ -246,20 +258,20 @@ export function CopilotChat({
         setConversationId(generateId());
       }
     }
-  }, [portfolioId]);
+  }, [conversationKey]);
 
   // Refresh history list when drawer opens
   useEffect(() => {
-    if (opened && portfolioId) {
-      setSavedConversations(loadConversations(portfolioId));
+    if (opened && conversationKey) {
+      setSavedConversations(loadConversations(conversationKey));
     }
-  }, [opened, portfolioId]);
+  }, [opened, conversationKey]);
 
   // Save conversation to localStorage after each completed exchange
   useEffect(() => {
-    if (!streaming && portfolioId && messages.length > 0) {
-      saveCurrentConversation(portfolioId, conversationId, messages);
-      setSavedConversations(loadConversations(portfolioId));
+    if (!streaming && conversationKey && messages.length > 0) {
+      saveCurrentConversation(conversationKey, conversationId, messages);
+      setSavedConversations(loadConversations(conversationKey));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streaming]);
@@ -406,9 +418,9 @@ export function CopilotChat({
   };
 
   const handleDeleteConversation = (conv: StoredConversation) => {
-    if (!portfolioId) return;
-    deleteConversation(portfolioId, conv.id);
-    const updated = loadConversations(portfolioId);
+    if (!conversationKey) return;
+    deleteConversation(conversationKey, conv.id);
+    const updated = loadConversations(conversationKey);
     setSavedConversations(updated);
     // If we deleted the active conversation, start fresh
     if (conv.id === conversationId) {
@@ -417,9 +429,9 @@ export function CopilotChat({
   };
 
   const clearChat = () => {
-    if (portfolioId) {
-      deleteConversation(portfolioId, conversationId);
-      setSavedConversations(loadConversations(portfolioId));
+    if (conversationKey) {
+      deleteConversation(conversationKey, conversationId);
+      setSavedConversations(loadConversations(conversationKey));
     }
     startNewChat();
   };

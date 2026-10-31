@@ -22,9 +22,11 @@ import {
 import { IconChevronDown, IconChevronUp, IconFlame } from '@tabler/icons-react';
 import { useStressTest } from '../dashboard/hooks/queries';
 import type { StressTestScenarioResult } from '../../services/api';
+import type { PortfolioScopeInput } from '../../scope/portfolioScope';
 
 interface Props {
-  portfolioId: number | null;
+  /** Portfolio or aggregate scope (aggregate: merged holdings). */
+  scope: PortfolioScopeInput;
 }
 
 function riskColor(level: string): string {
@@ -161,13 +163,13 @@ function ScenarioCard({ scenario, isDark }: { scenario: StressTestScenarioResult
   );
 }
 
-export function StressTestCard({ portfolioId }: Props) {
-  const { data, isLoading, error } = useStressTest(portfolioId);
+export function StressTestCard({ scope }: Props) {
+  const { data, isLoading, error } = useStressTest(scope);
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const [filter, setFilter] = useState<string>('all');
 
-  if (isLoading && portfolioId != null) {
+  if (isLoading && scope != null) {
     return (
       <Card withBorder radius="xl" padding="xl">
         <Group justify="center" py="xl">

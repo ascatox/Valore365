@@ -6,6 +6,14 @@ import { AllocationDoughnut } from '../summary/AllocationDoughnut';
 import { usePortfolioSummary, usePortfolioPositions, usePortfolioXray, useTargetAllocation } from '../hooks/queries';
 import { reclassifyPortfolioAssets, refreshPortfolioPrices } from '../../../services/api';
 import type { AllocationDoughnutItem } from '../types';
+import {
+  isAggregateScope,
+  scopePortfolioIds,
+  singlePortfolioId,
+  toPortfolioScope,
+  type PortfolioScopeInput,
+} from '../../../scope/portfolioScope';
+import { AggregateReadOnlyTooltip } from '../../../scope/AggregateReadOnly';
 
 const ASSET_TYPE_LABELS: Record<string, string> = {
   stock: 'Azioni',
@@ -17,14 +25,19 @@ const ASSET_TYPE_LABELS: Record<string, string> = {
 };
 
 interface PosizioniTabProps {
-  portfolioId: number | null;
+  /** Portfolio or aggregate scope (aggregate: merged positions, no target weights). */
+  scope: PortfolioScopeInput;
 }
 
-export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
-  const { data: summary } = usePortfolioSummary(portfolioId);
-  const { data: positions = [], isLoading, refetch } = usePortfolioPositions(portfolioId);
-  const { data: xrayData } = usePortfolioXray(portfolioId);
-  const { data: targetAllocation = [] } = useTargetAllocation(portfolioId);
+export function PosizioniTab({ scope: scopeInput }: PosizioniTabProps) {
+  const scope = toPortfolioScope(scopeInput);
+  const isAggregate = isAggregateScope(scope);
+  const portfolioId = singlePortfolioId(scope);
+  const { data: summary } = usePortfolioSummary(scope);
+  const { data: positions = [], isLoading, refetch } = usePortfolioPositions(scope);
+  const { data: xrayData } = usePortfolioXray(scope);
+  // Target weights are per portfolio: disabled (empty) in the aggregate view.
+  const { data: targetAllocation = [] } = useTargetAllocation(scope);
   const currency = summary?.base_currency ?? 'EUR';
   const [reclassifying, setReclassifying] = useState(false);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
@@ -93,10 +106,13 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
   };
 
   const handleRefreshPrices = async () => {
-    if (!portfolioId || refreshingPrices) return;
+    const portfolioIds = scopePortfolioIds(scope);
+    if (!portfolioIds.length || refreshingPrices) return;
     setRefreshingPrices(true);
     try {
-      await refreshPortfolioPrices(portfolioId, 'all');
+      for (const id of portfolioIds) {
+        await refreshPortfolioPrices(id, 'all');
+      }
       await refetch();
     } finally {
       setRefreshingPrices(false);
@@ -129,16 +145,25 @@ export function PosizioniTab({ portfolioId }: PosizioniTabProps) {
             data={allocationByType}
             centerLabel={`${positions.length}`}
             headerRight={
+              isAggregate ? (
+                <AggregateReadOnlyTooltip active>
+                  <ActionIcon variant="subtle" size="sm" disabled aria-label="Reclassifica tipi">
+                    <IconRefresh size={14} />
+                  </ActionIcon>
+                </AggregateReadOnlyTooltip>
+              ) : (
               <Tooltip label="Reclassifica tipi da yFinance" withArrow>
                 <ActionIcon
                   variant="subtle"
                   size="sm"
                   loading={reclassifying}
                   onClick={handleReclassify}
+                  aria-label="Reclassifica tipi"
                 >
                   <IconRefresh size={14} />
                 </ActionIcon>
               </Tooltip>
+              )
             }
           />
           <AllocationDoughnut

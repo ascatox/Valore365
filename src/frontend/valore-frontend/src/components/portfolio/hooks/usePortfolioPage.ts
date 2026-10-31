@@ -9,6 +9,7 @@ import {
   getAdminPortfolios,
   getPortfolioTargetAllocation,
   getPortfolioTransactions,
+  getPortfolioTransactionsForScope,
   updateTransaction,
   updatePortfolio,
   getCopilotStatus,
@@ -18,7 +19,10 @@ import type {
   PortfolioTargetAllocationItem,
   TransactionListItem,
 } from '../../../services/api';
-import { STORAGE_KEYS } from '../../dashboard/constants';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidatePortfolioQueries } from '../../dashboard/hooks/invalidation';
+import { usePortfolioScope } from '../../../scope/PortfolioScopeContext';
+import { portfolioScopeKey, singlePortfolioId } from '../../../scope/portfolioScope';
 import { formatNum, formatTransactionSideLabel, getTransactionNetTotal } from '../../dashboard/formatters';
 
 import { useRebalance } from './useRebalance';
@@ -38,10 +42,19 @@ export function usePortfolioPage() {
 
   // --- Portfolio state ---
   const [portfolios, setPortfolios] = useState<import('../../../services/api').Portfolio[]>([]);
-  const [selectedPortfolioId, setSelectedPortfolioId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId);
-  });
+  // Selection = the shared scope. In the aggregate view the page is read-only:
+  // `selectedPortfolioId` is null, so every write path (which needs one
+  // portfolio) is off, and `isAggregate` guards the handlers as well.
+  const queryClient = useQueryClient();
+  const { scope, isAggregate, setSingle, setScope } = usePortfolioScope();
+  const singleId = singlePortfolioId(scope);
+  const selectedPortfolioId = singleId != null ? String(singleId) : null;
+  const setSelectedPortfolioId = (value: string | null) => {
+    if (value) setSingle(Number(value));
+  };
+  const scopeKey = portfolioScopeKey(scope);
+  /** The one portfolio writes go to; null in the aggregate view. */
+  const writablePortfolioId = !isAggregate ? singleId : null;
   const [allocations, setAllocations] = useState<PortfolioTargetAllocationItem[]>([]);
   const [loadingPortfolios, setLoadingPortfolios] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
@@ -134,32 +147,28 @@ export function usePortfolioPage() {
     return rows;
   };
 
+  /**
+   * Reload after a write to `portfolioId`: its transactions, and every cached
+   * query of that portfolio or of an aggregate including it (Dashboard,
+   * Doctor, FIRE) is marked stale.
+   */
   const loadTransactions = async (portfolioId: number) => {
     const rows = await getPortfolioTransactions(portfolioId);
     setTransactions(rows);
+    void invalidatePortfolioQueries(queryClient, [portfolioId]);
     return rows;
   };
 
   const loadPortfolios = async (preferredSelectedId?: string | null) => {
     const items = await getAdminPortfolios();
     setPortfolios(items);
+    // Share the fresh list: the scope context sanitizes against it (a deleted
+    // portfolio leaves the scope) and the other pages' switchers show it.
+    queryClient.setQueryData(['portfolios'], items);
     window.dispatchEvent(new CustomEvent('valore365:portfolios-changed', { detail: { count: items.length } }));
-    setSelectedPortfolioId((prev) => {
-      const storedSelectedId = typeof window !== 'undefined'
-        ? window.localStorage.getItem(STORAGE_KEYS.selectedPortfolioId)
-        : null;
-      const candidate = preferredSelectedId ?? prev ?? storedSelectedId;
-      const exists = candidate ? items.some((p) => String(p.id) === candidate) : false;
-      const nextSelected = exists ? candidate : (items[0] ? String(items[0].id) : null);
-      if (typeof window !== 'undefined') {
-        if (nextSelected) {
-          window.localStorage.setItem(STORAGE_KEYS.selectedPortfolioId, nextSelected);
-        } else {
-          window.localStorage.removeItem(STORAGE_KEYS.selectedPortfolioId);
-        }
-      }
-      return nextSelected;
-    });
+    if (preferredSelectedId && items.some((p) => String(p.id) === preferredSelectedId)) {
+      setScope({ mode: 'single', id: Number(preferredSelectedId) });
+    }
     return items;
   };
 
@@ -184,6 +193,8 @@ export function usePortfolioPage() {
       });
 
     return () => { active = false; };
+    // Load once on mount; loadPortfolios is rebuilt on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -193,6 +204,7 @@ export function usePortfolioPage() {
   }, [isMobile, previewOpened, setPreviewOpened]);
 
   useEffect(() => {
+    // Target allocation is per portfolio: none in the aggregate view.
     if (!selectedPortfolioId) {
       setAllocations([]);
       return;
@@ -217,20 +229,22 @@ export function usePortfolioPage() {
   }, [selectedPortfolioId]);
 
   useEffect(() => {
-    if (!selectedPortfolioId) {
+    // Single portfolio or aggregate (rows carry `portfolio_name`).
+    if (!scope) {
       setTransactions([]);
       setTransactionsError(null);
       setLoadingTransactions(false);
       return;
     }
-    const portfolioId = Number(selectedPortfolioId);
-    if (!Number.isFinite(portfolioId)) return;
 
     let active = true;
     setLoadingTransactions(true);
     setTransactionsError(null);
 
-    loadTransactions(portfolioId)
+    getPortfolioTransactionsForScope(scope)
+      .then((rows) => {
+        if (active) setTransactions(rows);
+      })
       .catch((err) => {
         if (!active) return;
         setTransactionsError(err instanceof Error ? err.message : 'Errore nel caricamento transazioni');
@@ -240,7 +254,9 @@ export function usePortfolioPage() {
       });
 
     return () => { active = false; };
-  }, [selectedPortfolioId]);
+    // scopeKey identifies the scope (the object may be rebuilt with the same ids).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeKey]);
 
   // --- Filtered & sorted transactions ---
 
@@ -253,6 +269,7 @@ export function usePortfolioPage() {
       return (
         tx.symbol.toLowerCase().includes(q) ||
         (tx.asset_name ?? '').toLowerCase().includes(q) ||
+        (tx.portfolio_name ?? '').toLowerCase().includes(q) ||
         (tx.notes ?? '').toLowerCase().includes(q)
       );
     });
@@ -318,7 +335,7 @@ export function usePortfolioPage() {
   };
 
   const openEditPortfolioModal = () => {
-    if (!selectedPortfolio) return;
+    if (!selectedPortfolio || writablePortfolioId == null) return;
     setPortfolioModalMode('edit');
     setPortfolioFormName(selectedPortfolio.name);
     setPortfolioFormBaseCurrency(selectedPortfolio.base_currency);
@@ -329,19 +346,21 @@ export function usePortfolioPage() {
   };
 
   const openClonePortfolioModal = () => {
-    if (!selectedPortfolio) return;
+    if (!selectedPortfolio || writablePortfolioId == null) return;
     setPortfolioCloneName(`${selectedPortfolio.name} (Copia)`);
     setPortfolioCloneError(null);
     setPortfolioCloneOpened(true);
   };
 
   const openDeleteTransactionModal = (tx: TransactionListItem) => {
+    if (writablePortfolioId == null) return;
     setTransactionIdToDelete(tx.id);
     setTransactionLabelToDelete(`${formatTransactionSideLabel(tx.side)} ${tx.symbol} (${formatNum(tx.quantity, 4)})`);
     setTransactionDeleteOpened(true);
   };
 
   const openEditTransactionModal = (tx: TransactionListItem) => {
+    if (writablePortfolioId == null) return;
     setEditTransactionError(null);
     setEditingTransactionId(tx.id);
     setEditTransactionLabel(`${tx.symbol} (${formatTransactionSideLabel(tx.side)})`);
@@ -380,8 +399,8 @@ export function usePortfolioPage() {
         await loadPortfolios(String(created.id));
         setFormSuccess(`Portfolio "${created.name}" creato`);
       } else {
-        const portfolioId = Number(selectedPortfolioId);
-        if (!Number.isFinite(portfolioId)) { setPortfolioFormError('Seleziona un portfolio valido'); return; }
+        const portfolioId = writablePortfolioId;
+        if (portfolioId == null) { setPortfolioFormError('Seleziona un portfolio valido'); return; }
         const updated = await updatePortfolio(portfolioId, { name, base_currency: baseCurrency, timezone, target_notional: normalizedTargetNotional });
         await loadPortfolios(String(updated.id));
         setFormSuccess(`Portfolio "${updated.name}" aggiornato`);
@@ -395,8 +414,8 @@ export function usePortfolioPage() {
   };
 
   const handleDeletePortfolio = async () => {
-    const portfolioId = Number(selectedPortfolioId);
-    if (!Number.isFinite(portfolioId)) return;
+    const portfolioId = writablePortfolioId;
+    if (portfolioId == null) return;
     try {
       setPortfolioDeleting(true);
       await deletePortfolio(portfolioId);
@@ -411,8 +430,8 @@ export function usePortfolioPage() {
   };
 
   const handleClonePortfolio = async () => {
-    const portfolioId = Number(selectedPortfolioId);
-    if (!Number.isFinite(portfolioId)) return;
+    const portfolioId = writablePortfolioId;
+    if (portfolioId == null) return;
     const cloneName = portfolioCloneName.trim();
     if (!cloneName) { setPortfolioCloneError('Nome portfolio clone obbligatorio'); return; }
     try {
@@ -430,8 +449,8 @@ export function usePortfolioPage() {
   };
 
   const handleDeleteAllocation = async (assetIdToDelete: number) => {
-    const portfolioId = Number(selectedPortfolioId);
-    if (!portfolioId) return;
+    const portfolioId = writablePortfolioId;
+    if (portfolioId == null) return;
     setError(null);
     try {
       await deletePortfolioTargetAllocation(portfolioId, assetIdToDelete);
@@ -442,8 +461,8 @@ export function usePortfolioPage() {
   };
 
   const handleDeleteTransaction = async (transactionId: number) => {
-    const portfolioId = Number(selectedPortfolioId);
-    if (!Number.isFinite(portfolioId)) return;
+    const portfolioId = writablePortfolioId;
+    if (portfolioId == null) return;
     setTransactionsError(null);
     try {
       setDeletingTransactionId(transactionId);
@@ -466,7 +485,7 @@ export function usePortfolioPage() {
   };
 
   const handleUpdateTransaction = async () => {
-    const portfolioId = Number(selectedPortfolioId);
+    const portfolioId = writablePortfolioId ?? NaN;
     const quantity = typeof editQuantity === 'number' ? editQuantity : Number(editQuantity);
     const price = typeof editPrice === 'number' ? editPrice : Number(editPrice);
     const fees = typeof editFees === 'number' ? editFees : Number(editFees || 0);
@@ -498,6 +517,8 @@ export function usePortfolioPage() {
   return {
     isMobile,
     portfolios, selectedPortfolioId, setSelectedPortfolioId, selectedPortfolio,
+    // Shared scope (aggregate view = read-only page)
+    scope, isAggregate, setScope, writablePortfolioId,
     loadingPortfolios, loadingData, error, transactionsError, formSuccess, setFormSuccess,
     portfolioView, setPortfolioView,
     // Portfolio modal

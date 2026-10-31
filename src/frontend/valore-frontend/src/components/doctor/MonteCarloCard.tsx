@@ -28,6 +28,7 @@ import {
 import { useMonteCarloProjection } from '../dashboard/hooks/queries';
 import { STORAGE_KEYS } from '../dashboard/constants';
 import type { MonteCarloYearProjection } from '../../services/api';
+import type { PortfolioScopeInput } from '../../scope/portfolioScope';
 
 const PRIVACY_MASK = '******';
 
@@ -37,7 +38,8 @@ function isPrivacyModeEnabled(): boolean {
 }
 
 interface Props {
-  portfolioId: number | null;
+  /** Portfolio or aggregate scope (aggregate: merged holdings). */
+  scope: PortfolioScopeInput;
   marketValue: number | null;
   currency: string;
 }
@@ -72,8 +74,8 @@ function indexToValue(index: number, marketValue: number): number {
   return (index / 100) * marketValue;
 }
 
-export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
-  const { data, isLoading, error } = useMonteCarloProjection(portfolioId);
+export function MonteCarloCard({ scope, marketValue, currency }: Props) {
+  const { data, isLoading, error } = useMonteCarloProjection(scope);
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -81,7 +83,7 @@ export function MonteCarloCard({ portfolioId, marketValue, currency }: Props) {
   const isMobile = useMediaQuery('(max-width: 48em)');
   const hasValue = marketValue != null && marketValue > 0;
 
-  if (isLoading && portfolioId != null) {
+  if (isLoading && scope != null) {
     return (
       <Card withBorder radius="xl" padding="xl">
         <Group justify="center" py="xl">

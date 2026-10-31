@@ -12,7 +12,9 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconFileImport, IconCoins, IconRobot, IconInfoCircle, IconWallet } from '@tabler/icons-react';
+import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconFileImport, IconCoins, IconRobot, IconInfoCircle, IconStack2, IconWallet } from '@tabler/icons-react';
+import { AggregateReadOnlyTooltip, AggregateUnavailableNotice } from '../scope/AggregateReadOnly';
+import { scopePortfolioIds } from '../scope/portfolioScope';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/modals/CsvImportModal.tsx';
 import { TargetAllocationCsvImportModal } from '../components/portfolio/modals/TargetAllocationCsvImportModal.tsx';
@@ -45,8 +47,11 @@ const PORTFOLIO_VIEWS = ['transactions', 'cash', 'pac'] as const;
 
 export function PortfolioPage() {
   const s = usePortfolioPage();
+  // Null in the aggregate view: everything below that writes needs it.
   const portfolioId = s.selectedPortfolioId ? Number(s.selectedPortfolioId) : null;
-  const { data: summary } = usePortfolioSummary(portfolioId);
+  const readOnly = s.isAggregate;
+  const scopeIds = scopePortfolioIds(s.scope);
+  const { data: summary } = usePortfolioSummary(s.scope);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
   const aiExport = usePortfolioAiExport(portfolioId);
   const swipeRef = useSwipeTabs({
@@ -61,18 +66,19 @@ export function PortfolioPage() {
   const requestedAction = searchParams.get('azione');
   useEffect(() => {
     if (!requestedAction || s.loadingPortfolios) return;
+    // Aggregate view: read-only, the write actions only open their tab.
     switch (requestedAction) {
       case 'nuova-transazione':
         s.setPortfolioView('transactions');
-        if (s.selectedPortfolioId) s.setTransactionDrawerOpened(true);
+        if (s.selectedPortfolioId && !readOnly) s.setTransactionDrawerOpened(true);
         break;
       case 'importa':
         s.setPortfolioView('transactions');
-        s.setCsvImportOpened(true);
+        if (!readOnly) s.setCsvImportOpened(true);
         break;
       case 'nuova-regola-pac':
         s.setPortfolioView('pac');
-        if (s.selectedPortfolioId) {
+        if (s.selectedPortfolioId && !readOnly) {
           s.setEditingPacRule(null);
           s.setPacDrawerOpened(true);
         }
@@ -87,7 +93,7 @@ export function PortfolioPage() {
       params.delete('azione');
       return params;
     }, { replace: true });
-  }, [requestedAction, s, setSearchParams]);
+  }, [requestedAction, readOnly, s, setSearchParams]);
 
   // --- Transaction table rows ---
   const transactionRows = s.sortedTransactions.map((tx) => {
@@ -95,6 +101,7 @@ export function PortfolioPage() {
     return (
       <Table.Tr key={tx.id}>
         <Table.Td>{formatDateTime(tx.trade_at)}</Table.Td>
+        {readOnly && <Table.Td>{tx.portfolio_name ?? '—'}</Table.Td>}
         <Table.Td>
           <Text fw={600} c={getTransactionSideColor(tx.side)}>
             {formatTransactionSideLabel(tx.side)}
@@ -121,14 +128,27 @@ export function PortfolioPage() {
         <Table.Td style={{ textAlign: 'right' }}>{formatMoneyOrNA(total, tx.trade_currency)}</Table.Td>
         {!s.isMobile && (
           <Table.Td style={{ textAlign: 'right' }}>
-            <Group gap={6} justify="flex-end" wrap="nowrap" style={{ minWidth: 74 }}>
-              <ActionIcon color="teal" variant="light" onClick={() => s.openEditTransactionModal(tx)} aria-label={`Modifica transazione ${tx.id}`}>
-                <IconEdit size={16} />
-              </ActionIcon>
-              <ActionIcon color="red" variant="light" onClick={() => s.openDeleteTransactionModal(tx)} loading={s.deletingTransactionId === tx.id} aria-label={`Elimina transazione ${tx.id}`}>
-                <IconTrash size={16} />
-              </ActionIcon>
-            </Group>
+            {readOnly ? (
+              <AggregateReadOnlyTooltip active>
+                <Group gap={6} justify="flex-end" wrap="nowrap" style={{ minWidth: 74 }}>
+                  <ActionIcon color="teal" variant="light" disabled aria-label={`Modifica transazione ${tx.id}`}>
+                    <IconEdit size={16} />
+                  </ActionIcon>
+                  <ActionIcon color="red" variant="light" disabled aria-label={`Elimina transazione ${tx.id}`}>
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Group>
+              </AggregateReadOnlyTooltip>
+            ) : (
+              <Group gap={6} justify="flex-end" wrap="nowrap" style={{ minWidth: 74 }}>
+                <ActionIcon color="teal" variant="light" onClick={() => s.openEditTransactionModal(tx)} aria-label={`Modifica transazione ${tx.id}`}>
+                  <IconEdit size={16} />
+                </ActionIcon>
+                <ActionIcon color="red" variant="light" onClick={() => s.openDeleteTransactionModal(tx)} loading={s.deletingTransactionId === tx.id} aria-label={`Elimina transazione ${tx.id}`}>
+                  <IconTrash size={16} />
+                </ActionIcon>
+              </Group>
+            )}
           </Table.Td>
         )}
       </Table.Tr>
@@ -140,6 +160,7 @@ export function PortfolioPage() {
     transactionRows.push(
       <Table.Tr key="transactions-total" style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
         <Table.Td><Text fw={700} size="sm">TOTALE</Text></Table.Td>
+        {readOnly && <Table.Td />}
         <Table.Td /><Table.Td />
         <Table.Td visibleFrom="sm" /><Table.Td visibleFrom="sm" />
         <Table.Td visibleFrom="md" style={{ textAlign: 'right' }}>
@@ -183,14 +204,22 @@ export function PortfolioPage() {
               onChange={(nextValue) => s.setSelectedPortfolioId(nextValue)}
               loading={s.loadingPortfolios}
               style={s.isMobile ? { minWidth: 0 } : { width: '100%', maxWidth: 360 }}
+              allowAggregate
+              scope={s.scope}
+              onScopeChange={s.setScope}
+              aggregateTotalValue={readOnly && summary ? summary.market_value + summary.cash_balance : null}
               onCreatePortfolio={s.openCreatePortfolioModal}
-              onEditPortfolio={s.selectedPortfolioId ? s.openEditPortfolioModal : null}
-              onClonePortfolio={s.selectedPortfolioId ? s.openClonePortfolioModal : null}
-              onDeletePortfolio={s.selectedPortfolioId ? () => s.setPortfolioDeleteOpened(true) : null}
-              onCopyForAi={portfolioId != null ? aiExport.copyForAi : null}
-              onDownloadMarkdown={portfolioId != null ? aiExport.downloadMarkdown : null}
+              onEditPortfolio={s.writablePortfolioId != null ? s.openEditPortfolioModal : null}
+              onClonePortfolio={s.writablePortfolioId != null ? s.openClonePortfolioModal : null}
+              onDeletePortfolio={s.writablePortfolioId != null ? () => s.setPortfolioDeleteOpened(true) : null}
+              onCopyForAi={s.writablePortfolioId != null ? aiExport.copyForAi : null}
+              onDownloadMarkdown={s.writablePortfolioId != null ? aiExport.downloadMarkdown : null}
             />
-            {!s.isMobile && <PortfolioAiExportMenu portfolioId={portfolioId} />}
+            {!s.isMobile && (
+              <AggregateReadOnlyTooltip active={readOnly} label="Seleziona un solo portafoglio per esportarlo">
+                <PortfolioAiExportMenu portfolioId={s.writablePortfolioId} />
+              </AggregateReadOnlyTooltip>
+            )}
           </Group>
         )}
       />
@@ -203,6 +232,12 @@ export function PortfolioPage() {
           </Group>
         )}
       </Group>
+
+      {readOnly && (
+        <Alert color="blue" variant="light" mb="md" icon={<IconStack2 size={18} />} title="Vista aggregata in sola lettura">
+          Transazioni di {scopeIds.length} portafogli, con la colonna Portafoglio. Per aggiungere o modificare movimenti, liquidità, PAC o il portafoglio stesso seleziona un solo portafoglio.
+        </Alert>
+      )}
 
       <Group mb={s.isMobile ? 'xs' : 'md'} justify="space-between" wrap="wrap" gap="xs">
         <Tabs
@@ -228,18 +263,24 @@ export function PortfolioPage() {
         </Tabs>
         {s.portfolioView === 'transactions' && !s.isMobile && (
           <Group gap="xs">
-            <Button leftSection={<IconPlus size={16} />} onClick={() => s.setTransactionDrawerOpened(true)} disabled={!s.selectedPortfolioId}>
-              Nuova Transazione
-            </Button>
-            <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => s.setCsvImportOpened(true)}>
-              Importa
-            </Button>
+            <AggregateReadOnlyTooltip active={readOnly}>
+              <Button leftSection={<IconPlus size={16} />} onClick={() => s.setTransactionDrawerOpened(true)} disabled={!s.selectedPortfolioId || readOnly}>
+                Nuova Transazione
+              </Button>
+            </AggregateReadOnlyTooltip>
+            <AggregateReadOnlyTooltip active={readOnly}>
+              <Button variant="light" leftSection={<IconFileImport size={16} />} onClick={() => s.setCsvImportOpened(true)} disabled={readOnly}>
+                Importa
+              </Button>
+            </AggregateReadOnlyTooltip>
           </Group>
         )}
         {s.portfolioView === 'pac' && !s.isMobile && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); }} disabled={!s.selectedPortfolioId}>
-            Nuova regola PAC
-          </Button>
+          <AggregateReadOnlyTooltip active={readOnly}>
+            <Button leftSection={<IconPlus size={16} />} onClick={() => { s.setEditingPacRule(null); s.setPacDrawerOpened(true); }} disabled={!s.selectedPortfolioId || readOnly}>
+              Nuova regola PAC
+            </Button>
+          </AggregateReadOnlyTooltip>
         )}
       </Group>
 
@@ -281,19 +322,29 @@ export function PortfolioPage() {
               deletingId={s.deletingTransactionId}
               onEdit={s.openEditTransactionModal}
               onDelete={s.openDeleteTransactionModal}
+              readOnly={readOnly}
             />
           )}
           hasRows={s.sortedTransactions.length > 0}
-          selectedPortfolioId={s.selectedPortfolioId}
+          selectedPortfolioId={s.selectedPortfolioId ?? (readOnly ? 'aggregate' : null)}
           showActions={!s.isMobile}
+          showPortfolioColumn={readOnly}
         />
       )}
 
-      {s.portfolioView === 'cash' && s.selectedPortfolioId && (
+      {readOnly && (s.portfolioView === 'cash' || s.portfolioView === 'pac') && (
+        <AggregateUnavailableNotice
+          description={s.portfolioView === 'cash'
+            ? 'La liquidità e i suoi movimenti sono gestiti per singolo portafoglio. Seleziona un solo portafoglio per vederli e modificarli.'
+            : 'Le regole PAC sono definite per singolo portafoglio. Seleziona un solo portafoglio per vederle e modificarle.'}
+        />
+      )}
+
+      {s.portfolioView === 'cash' && s.selectedPortfolioId && !readOnly && (
         <CashSection selectedPortfolioId={s.selectedPortfolioId} baseCurrency={s.selectedPortfolio?.base_currency ?? 'EUR'} />
       )}
 
-      {s.portfolioView === 'pac' && s.selectedPortfolioId && (
+      {s.portfolioView === 'pac' && s.selectedPortfolioId && !readOnly && (
         <PacSection
           selectedPortfolioId={s.selectedPortfolioId}
           baseCurrency={s.selectedPortfolio?.base_currency ?? 'EUR'}
@@ -421,7 +472,13 @@ export function PortfolioPage() {
         </ActionIcon>
       )}
 
-      <CopilotChat opened={s.copilotOpened} onClose={s.closeCopilot} portfolioId={portfolioId} pageContext="portfolio" />
+      <CopilotChat
+        opened={s.copilotOpened}
+        onClose={s.closeCopilot}
+        portfolioId={scopeIds[0] ?? null}
+        portfolioIds={readOnly ? scopeIds : undefined}
+        pageContext="portfolio"
+      />
 
       {assetInfoModal && (
         <AssetInfoModal

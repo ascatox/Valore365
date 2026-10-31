@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { refreshPortfolioPrices, backfillPortfolioDailyPrices } from '../../../services/api';
 import { prefetchMarketData } from './queries';
+import { scopeKeyCoversAny } from './invalidation';
+import { scopePortfolioIds, toPortfolioScope, type PortfolioScopeInput } from '../../../scope/portfolioScope';
 
 // Queries whose data depends on prices. Static lists (portfolios, benchmark
 // catalogue) are left out: a price refresh doesn't change them.
@@ -35,7 +37,26 @@ const DASHBOARD_QUERY_PREFIXES = new Set([
   'market-news',
 ]);
 
-export function useDashboardRefresh(portfolioId: number | null) {
+/**
+ * Whether a query must be refreshed after the prices of `portfolioIds` were
+ * downloaded: a price-dependent prefix whose key has no portfolio (market
+ * data, per-portfolio hooks disabled in aggregate) or covers one of them,
+ * single entry or aggregate (see `portfolioScopeKeyIncludes`).
+ */
+export function matchesRefreshedPortfolios(queryKey: readonly unknown[], portfolioIds: readonly number[]): boolean {
+  const [prefix, keySegment] = queryKey as [string | undefined, unknown];
+  if (!prefix || !DASHBOARD_QUERY_PREFIXES.has(prefix)) return false;
+  if (keySegment == null) return true;
+  return scopeKeyCoversAny(keySegment, portfolioIds);
+}
+
+/**
+ * Price refresh for the Dashboard scope. With an aggregate scope the prices
+ * of every portfolio of the aggregate are refreshed (one at a time) and the
+ * aggregate queries are invalidated with the single ones.
+ */
+export function useDashboardRefresh(portfolio: PortfolioScopeInput) {
+  const scopeIdsKey = scopePortfolioIds(toPortfolioScope(portfolio)).join(',');
   const queryClient = useQueryClient();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
@@ -46,7 +67,8 @@ export function useDashboardRefresh(portfolioId: number | null) {
   const inFlightRef = useRef(false);
 
   const doRefresh = useCallback(async () => {
-    if (!portfolioId || !Number.isFinite(portfolioId)) {
+    const portfolioIds = scopeIdsKey ? scopeIdsKey.split(',').map(Number) : [];
+    if (!portfolioIds.length) {
       setRefreshMessage('Seleziona un portfolio prima di aggiornare');
       return;
     }
@@ -58,15 +80,19 @@ export function useDashboardRefresh(portfolioId: number | null) {
     setRefreshing(true);
 
     try {
-      const refreshResult = await refreshPortfolioPrices(portfolioId, 'all');
-      const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'all');
+      const totals = { refreshed: 0, requested: 0, backfilled: 0, backfillRequested: 0 };
+      for (const portfolioId of portfolioIds) {
+        const refreshResult = await refreshPortfolioPrices(portfolioId, 'all');
+        const backfillResult = await backfillPortfolioDailyPrices(portfolioId, 365, 'all');
+        totals.refreshed += refreshResult.refreshed_assets;
+        totals.requested += refreshResult.requested_assets;
+        totals.backfilled += backfillResult.assets_refreshed;
+        totals.backfillRequested += backfillResult.assets_requested;
+      }
 
-      const matchesPortfolio = (query: { queryKey: readonly unknown[] }) => {
-        const [prefix, queryPortfolioId] = query.queryKey as [string | undefined, unknown];
-        if (!prefix || !DASHBOARD_QUERY_PREFIXES.has(prefix)) return false;
-        if (queryPortfolioId == null) return true;
-        return queryPortfolioId === portfolioId;
-      };
+      const matchesPortfolio = (query: { queryKey: readonly unknown[] }) => (
+        matchesRefreshedPortfolios(query.queryKey, portfolioIds)
+      );
 
       // invalidateQueries refetches active queries once and marks the others
       // stale. resetQueries + refetchQueries fetched every active query twice.
@@ -77,7 +103,7 @@ export function useDashboardRefresh(portfolioId: number | null) {
 
       setRefreshVersion((current) => current + 1);
       setRefreshMessage(
-        `Aggiornati prezzi: ${refreshResult.refreshed_assets}/${refreshResult.requested_assets}, storico: ${backfillResult.assets_refreshed}/${backfillResult.assets_requested}`,
+        `Aggiornati prezzi: ${totals.refreshed}/${totals.requested}, storico: ${totals.backfilled}/${totals.backfillRequested}`,
       );
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : 'Errore durante aggiornamento prezzi');
@@ -85,7 +111,7 @@ export function useDashboardRefresh(portfolioId: number | null) {
       inFlightRef.current = false;
       setRefreshing(false);
     }
-  }, [portfolioId, queryClient]);
+  }, [scopeIdsKey, queryClient]);
 
   useEffect(() => {
     const onRefresh = () => { doRefresh(); };

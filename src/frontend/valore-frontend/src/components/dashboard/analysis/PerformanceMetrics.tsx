@@ -24,26 +24,28 @@ import { HallOfFameSection } from '../performance/HallOfFameSection';
 import { formatChartDate, formatYearMonth, periodToStartDate } from '../performance/utils';
 import type { PeriodKey, RollingWindowKey } from '../performance/utils';
 import { useChartColors } from '../chartColors';
+import { type PortfolioScopeInput } from '../../../scope/portfolioScope';
 
 interface PerformanceMetricsProps {
-  portfolioId: number | null;
+  /** Portfolio or aggregate scope: every performance endpoint has an aggregate route. */
+  scope: PortfolioScopeInput;
 }
 
-export function PerformanceMetrics({ portfolioId }: PerformanceMetricsProps) {
+export function PerformanceMetrics({ scope }: PerformanceMetricsProps) {
   const [period, setPeriod] = useState<PeriodKey>('1y');
   const [rollingWindow, setRollingWindow] = useState<RollingWindowKey>('12');
   const startDate = periodToStartDate(period);
 
-  const { data: portfolioSummary } = usePortfolioSummary(portfolioId);
-  const { data: summary, isLoading: summaryLoading, error: summaryError } = usePerformanceSummary(portfolioId, period);
-  const { data: twrPoints = [], isLoading: twrLoading } = useTWRTimeseries(portfolioId, startDate);
-  const { data: gainPoints = [], isLoading: gainLoading } = useGainTimeseries(portfolioId, startDate);
-  const { data: mwrPoints = [], isLoading: mwrLoading } = useMWRTimeseries(portfolioId, startDate);
-  const { data: monthlyReturns, isLoading: monthlyLoading } = useMonthlyReturns(portfolioId, startDate);
-  const { data: yearly, isLoading: yearlyLoading } = useYearlyReturns(portfolioId);
-  const { data: drawdown, isLoading: drawdownLoading } = usePortfolioDrawdown(portfolioId, startDate);
-  const { data: rolling, isLoading: rollingLoading } = useRollingWindows(portfolioId, Number(rollingWindow), 2, startDate);
-  const { data: hallOfFame, isLoading: hallLoading } = useHallOfFame(portfolioId, 5, startDate);
+  const { data: portfolioSummary } = usePortfolioSummary(scope);
+  const { data: summary, isLoading: summaryLoading, error: summaryError } = usePerformanceSummary(scope, period);
+  const { data: twrPoints = [], isLoading: twrLoading } = useTWRTimeseries(scope, startDate);
+  const { data: gainPoints = [], isLoading: gainLoading } = useGainTimeseries(scope, startDate);
+  const { data: mwrPoints = [], isLoading: mwrLoading } = useMWRTimeseries(scope, startDate);
+  const { data: monthlyReturns, isLoading: monthlyLoading } = useMonthlyReturns(scope, startDate);
+  const { data: yearly, isLoading: yearlyLoading } = useYearlyReturns(scope);
+  const { data: drawdown, isLoading: drawdownLoading } = usePortfolioDrawdown(scope, startDate);
+  const { data: rolling, isLoading: rollingLoading } = useRollingWindows(scope, Number(rollingWindow), 2, startDate);
+  const { data: hallOfFame, isLoading: hallLoading } = useHallOfFame(scope, 5, startDate);
 
   const chartsLoading = twrLoading || gainLoading || mwrLoading;
   const error = summaryError instanceof Error ? summaryError.message : null;
