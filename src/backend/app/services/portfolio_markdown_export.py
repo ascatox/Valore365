@@ -5,9 +5,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from ..copilot.snapshot import build_portfolio_snapshot
-from ..repository import PortfolioRepository
+from collections.abc import Sequence
+
+from ..copilot.snapshot import build_portfolio_snapshot, doctor_snapshot, monte_carlo_snapshot
+from ..repository import PortfolioRepository, normalize_portfolio_ids
 from .performance_service import PerformanceService
+from .portfolio_doctor import analyze_portfolio_health, compute_weighted_ter, run_monte_carlo_projection
+from .portfolio_doctor._holdings import _load_holdings
 
 _PERF_PERIODS = ("1m", "3m", "6m", "ytd", "1y", "all")
 
@@ -32,7 +36,7 @@ def _md_table(headers: list[str], rows: list[list[str]]) -> list[str]:
 
 def _collect_performance_rows(
     perf_service: PerformanceService,
-    portfolio_id: int,
+    portfolio_id: int | Sequence[int],
     user_id: str,
 ) -> list[list[str]]:
     rows: list[list[str]] = []
@@ -65,6 +69,108 @@ def build_portfolio_markdown(
     return render_snapshot_markdown(snapshot, portfolio_id, performance_rows)
 
 
+# Sections of the single export that depend on per-portfolio settings and have
+# no aggregate equivalent: listed in the aggregate document instead of shown.
+AGGREGATE_OMITTED_SECTIONS = (
+    "scostamento dai target di allocazione (i target sono definiti per singolo portafoglio)",
+    "piani di accumulo (PAC) ed esecuzioni in attesa (gestiti per singolo portafoglio)",
+)
+
+
+def build_aggregate_portfolio_snapshot(
+    repo: PortfolioRepository,
+    perf_service: PerformanceService,
+    portfolio_ids: Sequence[int],
+    user_id: str,
+) -> dict:
+    """Snapshot of several portfolios read as one (vista aggregata).
+
+    Same shape as ``build_portfolio_snapshot`` over the merged data of the
+    aggregate repository/Doctor reads, plus an ``aggregate`` entry with the
+    included portfolio names. Target drift and PAC plans are per portfolio and
+    are left out. Scope errors (empty, not owned, mixed currencies) propagate
+    as ValueError from the first read.
+    """
+    ids = normalize_portfolio_ids(portfolio_ids)
+    summary = repo.get_summary_multi(ids, user_id)
+    positions = repo.get_positions_multi(ids, user_id)
+
+    try:
+        name_map = {p.id: p.name for p in repo.list_portfolios(user_id)}
+    except Exception:
+        name_map = {}
+    names = [name_map.get(pid, f"Portfolio #{pid}") for pid in ids]
+
+    portfolio: dict = {
+        "name": "Vista aggregata",
+        "base_currency": summary.base_currency,
+        "market_value": round(summary.market_value, 2),
+        "cost_basis": round(summary.cost_basis, 2),
+        "unrealized_pl": round(summary.unrealized_pl, 2),
+        "unrealized_pl_pct": round(summary.unrealized_pl_pct, 2),
+        "day_change": round(summary.day_change, 2),
+        "day_change_pct": round(summary.day_change_pct, 2),
+        "cash_balance": round(summary.cash_balance, 2),
+        "total_positions": len(positions),
+    }
+    try:
+        wter = compute_weighted_ter(_load_holdings(repo, ids, user_id), repo)
+        if wter is not None:
+            portfolio["weighted_ter_pct"] = round(wter, 3)
+    except Exception:
+        pass
+
+    sorted_positions = sorted(positions, key=lambda p: p.weight, reverse=True)[:30]
+    snapshot: dict = {
+        "portfolio": portfolio,
+        "aggregate": {"portfolio_ids": ids, "portfolios": names},
+        "positions": [
+            {
+                "symbol": p.symbol,
+                "name": p.name,
+                "weight": round(p.weight, 2),
+                "market_value": round(p.market_value, 2),
+                "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
+                "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
+            }
+            for p in sorted_positions
+        ],
+    }
+
+    try:
+        snapshot["doctor"] = doctor_snapshot(analyze_portfolio_health(repo, ids, user_id))
+    except Exception:
+        pass
+    try:
+        snapshot["doctor_monte_carlo"] = monte_carlo_snapshot(run_monte_carlo_projection(repo, ids, user_id))
+    except Exception:
+        pass
+
+    # Best/worst of the day from the merged positions (the single export reads
+    # them from the per-portfolio target performance).
+    movers = [p for p in positions if p.day_change_pct is not None]
+    if movers:
+        best = max(movers, key=lambda p: p.day_change_pct)
+        worst = min(movers, key=lambda p: p.day_change_pct)
+        snapshot["best_performer"] = {"symbol": best.symbol, "day_change_pct": round(best.day_change_pct, 2)}
+        if worst.asset_id != best.asset_id:
+            snapshot["worst_performer"] = {"symbol": worst.symbol, "day_change_pct": round(worst.day_change_pct, 2)}
+
+    return snapshot
+
+
+def build_aggregate_portfolio_markdown(
+    repo: PortfolioRepository,
+    perf_service: PerformanceService,
+    portfolio_ids: Sequence[int],
+    user_id: str,
+) -> str:
+    snapshot = build_aggregate_portfolio_snapshot(repo, perf_service, portfolio_ids, user_id)
+    ids = snapshot["aggregate"]["portfolio_ids"]
+    performance_rows = _collect_performance_rows(perf_service, ids, user_id)
+    return render_snapshot_markdown(snapshot, 0, performance_rows)
+
+
 def render_snapshot_markdown(
     snapshot: dict,
     portfolio_id: int,
@@ -74,9 +180,22 @@ def render_snapshot_markdown(
     name = portfolio.get("name", f"Portfolio #{portfolio_id}")
     currency = portfolio.get("base_currency", "")
 
+    aggregate = snapshot.get("aggregate")
+
     lines: list[str] = []
-    lines.append(f"# {name} — Snapshot portafoglio")
-    lines.append("")
+    if aggregate:
+        lines.append("# Vista aggregata — Snapshot portafogli")
+        lines.append("")
+        lines.append(f"Vista aggregata: {', '.join(aggregate.get('portfolios') or [])}")
+        lines.append("")
+        lines.append(
+            "I portafogli elencati sono letti come uno solo: posizioni sullo stesso strumento sommate, "
+            "pesi ricalcolati sul totale, performance calcolate sui flussi combinati."
+        )
+        lines.append("")
+    else:
+        lines.append(f"# {name} — Snapshot portafoglio")
+        lines.append("")
     lines.append(
         f"Snapshot generato da Valore365 il {date.today().isoformat()}."
         + (f" Valori monetari in {currency}, salvo dove indicato diversamente." if currency else "")
@@ -273,6 +392,12 @@ def render_snapshot_markdown(
         ))
         lines.append("")
         lines.append(f"Esecuzioni PAC in attesa: {pac.get('pending_executions_count', 0)}")
+
+    if aggregate:
+        lines.append("")
+        lines.append("## Non inclusi nella vista aggregata")
+        lines.append("")
+        lines.extend(f"- {section}" for section in AGGREGATE_OMITTED_SECTIONS)
 
     lines.append("")
     return "\n".join(lines)

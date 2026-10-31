@@ -102,6 +102,45 @@ def _fire_planner_extras(user_settings) -> dict:
         extras["terminal_capital_max_today_eur"] = terminal_target_max
     return extras
 
+
+def doctor_snapshot(doctor) -> dict:
+    """Compact Doctor section of a snapshot (single or aggregate health response)."""
+    return {
+        "score": doctor.score,
+        "risk_level": doctor.summary.risk_level,
+        "diversification": doctor.summary.diversification,
+        "overlap": doctor.summary.overlap,
+        "cost_efficiency": doctor.summary.cost_efficiency,
+        "max_position_weight": round(doctor.metrics.max_position_weight, 2),
+        "max_single_security_weight": round(doctor.metrics.max_single_security_weight, 2) if doctor.metrics.max_single_security_weight is not None else None,
+        "overlap_score": round(doctor.metrics.overlap_score, 2),
+        "portfolio_volatility": round(doctor.metrics.portfolio_volatility, 2) if doctor.metrics.portfolio_volatility is not None else None,
+        "weighted_ter": round(doctor.metrics.weighted_ter, 2) if doctor.metrics.weighted_ter is not None else None,
+        "top_alerts": [alert.message for alert in doctor.alerts[:5]],
+        "top_suggestions": [suggestion.message for suggestion in doctor.suggestions[:5]],
+    }
+
+
+def monte_carlo_snapshot(monte_carlo) -> dict:
+    """Compact Monte Carlo section of a snapshot (single or aggregate projection)."""
+    return {
+        "annualized_mean_return_pct": round(monte_carlo.annualized_mean_return_pct, 2),
+        "annualized_volatility_pct": round(monte_carlo.annualized_volatility_pct, 2),
+        "return_assumption": "rendimento atteso di lungo periodo per classe di attivo (ipotesi prudenziale, non derivato dalla performance recente)",
+        "horizons": monte_carlo.horizons,
+        "projections": [
+            {
+                "year": projection.year,
+                "p25": projection.p25,
+                "p50": projection.p50,
+                "p75": projection.p75,
+            }
+            for projection in monte_carlo.projections[:10]
+            if projection.year > 0
+        ],
+    }
+
+
 def _resolve_light_snapshot_scope(page_context: str | None) -> dict[str, object]:
     scope = dict(_DEFAULT_LIGHT_SNAPSHOT_SCOPE)
     if page_context and page_context in _LIGHT_SNAPSHOT_SCOPE_BY_PAGE:
@@ -502,42 +541,12 @@ def build_portfolio_snapshot(
     }
 
     try:
-        doctor = analyze_portfolio_health(repo, portfolio_id, user_id)
-        snapshot["doctor"] = {
-            "score": doctor.score,
-            "risk_level": doctor.summary.risk_level,
-            "diversification": doctor.summary.diversification,
-            "overlap": doctor.summary.overlap,
-            "cost_efficiency": doctor.summary.cost_efficiency,
-            "max_position_weight": round(doctor.metrics.max_position_weight, 2),
-            "max_single_security_weight": round(doctor.metrics.max_single_security_weight, 2) if doctor.metrics.max_single_security_weight is not None else None,
-            "overlap_score": round(doctor.metrics.overlap_score, 2),
-            "portfolio_volatility": round(doctor.metrics.portfolio_volatility, 2) if doctor.metrics.portfolio_volatility is not None else None,
-            "weighted_ter": round(doctor.metrics.weighted_ter, 2) if doctor.metrics.weighted_ter is not None else None,
-            "top_alerts": [alert.message for alert in doctor.alerts[:5]],
-            "top_suggestions": [suggestion.message for suggestion in doctor.suggestions[:5]],
-        }
+        snapshot["doctor"] = doctor_snapshot(analyze_portfolio_health(repo, portfolio_id, user_id))
     except Exception:
         pass
 
     try:
-        monte_carlo = run_monte_carlo_projection(repo, portfolio_id, user_id)
-        snapshot["doctor_monte_carlo"] = {
-            "annualized_mean_return_pct": round(monte_carlo.annualized_mean_return_pct, 2),
-            "annualized_volatility_pct": round(monte_carlo.annualized_volatility_pct, 2),
-            "return_assumption": "rendimento atteso di lungo periodo per classe di attivo (ipotesi prudenziale, non derivato dalla performance recente)",
-            "horizons": monte_carlo.horizons,
-            "projections": [
-                {
-                    "year": projection.year,
-                    "p25": projection.p25,
-                    "p50": projection.p50,
-                    "p75": projection.p75,
-                }
-                for projection in monte_carlo.projections[:10]
-                if projection.year > 0
-            ],
-        }
+        snapshot["doctor_monte_carlo"] = monte_carlo_snapshot(run_monte_carlo_projection(repo, portfolio_id, user_id))
     except Exception:
         pass
 

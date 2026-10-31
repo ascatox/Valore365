@@ -23,6 +23,7 @@ from datetime import date
 from typing import TypeVar
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import PlainTextResponse
 
 from ..auth import AuthContext
 from ..config import get_settings
@@ -60,6 +61,7 @@ from ..schemas.portfolio_doctor import (
     StressTestResponse,
     XRayResponse,
 )
+from ..services.portfolio_markdown_export import build_aggregate_portfolio_markdown
 from ..services.portfolio_doctor import (
     analyze_portfolio_health,
     compute_portfolio_xray,
@@ -200,6 +202,16 @@ def register_aggregate_routes(
             sufficient=sufficient,
             threshold_pct=threshold_pct,
             assets=assets,
+        )
+
+    @router.get(f"{AGGREGATE_PREFIX}/export/markdown", response_class=PlainTextResponse, responses=_ERRORS)
+    def export_aggregate_markdown(ids: list[int] = Ids, _auth: AuthContext = Auth) -> PlainTextResponse:
+        markdown = _call(lambda: build_aggregate_portfolio_markdown(repo, performance_service, ids, _auth.user_id))
+        filename = f"valore365-aggregato-{date.today().isoformat()}.md"
+        return PlainTextResponse(
+            content=markdown,
+            media_type="text/markdown; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
     # --- Performance -------------------------------------------------------

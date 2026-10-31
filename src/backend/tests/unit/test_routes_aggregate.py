@@ -129,6 +129,11 @@ class _Repo:
             ),
         ]
 
+    def list_portfolios(self, user_id):
+        from types import SimpleNamespace
+
+        return [SimpleNamespace(id=1, name="Broker"), SimpleNamespace(id=2, name="Banca")]
+
     def get_price_coverage_multi(self, ids, user_id, days=365):
         self._record("coverage", ids, days)
         return [{
@@ -319,6 +324,43 @@ def test_aggregate_data_coverage_honours_the_target_allocation_flag():
     assert response.json()["error"]["code"] == "feature_disabled"
 
 
+def test_aggregate_markdown_export(client_and_fakes, monkeypatch):
+    client, repo, performance, _ = client_and_fakes
+    from app.services import portfolio_markdown_export as export
+
+    monkeypatch.setattr(export, "analyze_portfolio_health", lambda *a: (_ for _ in ()).throw(ValueError("skip")))
+    monkeypatch.setattr(export, "run_monte_carlo_projection", lambda *a: (_ for _ in ()).throw(ValueError("skip")))
+
+    response = client.get(f"/api/portfolios/aggregate/export/markdown?{Q}")
+
+    assert response.status_code == 200, response.text
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="valore365-aggregato-{date.today().isoformat()}.md"'
+    )
+    assert "Vista aggregata: Broker, Banca" in response.text
+    assert "## Non inclusi nella vista aggregata" in response.text
+    assert repo.calls[:2] == [("summary", [1, 2]), ("positions", [1, 2])]
+    assert [c for c in performance.calls if c[0] == "summary"][0][1] == [1, 2]
+
+
+@pytest.mark.parametrize(
+    ("query", "status", "code"),
+    [
+        ("", 400, "invalid_request"),
+        ("portfolio_ids=1&portfolio_ids=3", 400, "invalid_request"),
+        ("portfolio_ids=1&portfolio_ids=99", 404, "not_found"),
+    ],
+)
+def test_aggregate_markdown_export_scope_errors(client_and_fakes, query, status, code):
+    client, _, _, _ = client_and_fakes
+
+    response = client.get(f"/api/portfolios/aggregate/export/markdown?{query}")
+
+    assert response.status_code == status
+    assert response.json()["error"]["code"] == code
+
+
 # --- Performance -------------------------------------------------------------
 
 
@@ -485,7 +527,7 @@ def test_every_aggregate_route_is_registered_before_the_portfolio_id_routes():
 
     expected = {
         "summary", "positions", "allocation", "timeseries", "intraday-timeseries", "performers", "transactions",
-        "data-coverage", "health", "monte-carlo", "stress-test", "xray", "decumulation",
+        "data-coverage", "export/markdown", "health", "monte-carlo", "stress-test", "xray", "decumulation",
         "performance/summary", "performance/twr", "performance/twr/timeseries", "performance/mwr",
         "performance/mwr/timeseries", "performance/gain/timeseries", "performance/monthly-returns",
         "performance/yearly", "performance/drawdown", "performance/rolling-windows", "performance/hall-of-fame",
