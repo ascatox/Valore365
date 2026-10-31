@@ -4,6 +4,7 @@ import {
   Badge,
   Box,
   Button,
+  Checkbox,
   Divider,
   Group,
   Paper,
@@ -28,11 +29,23 @@ import {
   IconPlus,
   IconSearch,
   IconSparkles,
+  IconStack2,
   IconTarget,
   IconTrash,
   IconWallet,
 } from '@tabler/icons-react';
 import type { Portfolio } from '../../services/api';
+import {
+  MAX_AGGREGATE_PORTFOLIOS,
+  normalizeScope,
+  resolveScopeBaseCurrency,
+  scopePortfolioIds,
+  scopePortfolios,
+  scopesEqual,
+  singleScope,
+  toggleScopePortfolio,
+  type PortfolioScope,
+} from '../../scope/portfolioScope';
 import { BottomSheet } from '../mobile/BottomSheet';
 
 interface PortfolioSwitcherProps {
@@ -51,6 +64,17 @@ interface PortfolioSwitcherProps {
   onDeletePortfolio?: (() => void) | null;
   onCopyForAi?: (() => void) | null;
   onDownloadMarkdown?: (() => void) | null;
+  /**
+   * Opt-in "Vista aggregata": multi-select portfolios with the same base
+   * currency. Off by default, and then the component behaves as before.
+   */
+  allowAggregate?: boolean;
+  /** Current scope when allowAggregate is on (falls back to `value` as a single scope). */
+  scope?: PortfolioScope | null;
+  /** Called with the new scope (single or aggregate) when allowAggregate is on. */
+  onScopeChange?: ((scope: PortfolioScope) => void) | null;
+  /** Total value of the aggregate, shown on the trigger when available. */
+  aggregateTotalValue?: number | null;
 }
 
 const formatMoney = (value: number, currency: string) => new Intl.NumberFormat('it-IT', {
@@ -86,6 +110,10 @@ export function PortfolioSwitcher({
   onDeletePortfolio = null,
   onCopyForAi = null,
   onDownloadMarkdown = null,
+  allowAggregate = false,
+  scope = null,
+  onScopeChange = null,
+  aggregateTotalValue = null,
 }: PortfolioSwitcherProps) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
@@ -94,10 +122,37 @@ export function PortfolioSwitcher({
   const [opened, setOpened] = useState(false);
   const [query, setQuery] = useState('');
 
-  const selectedPortfolio = useMemo(
-    () => portfolios.find((portfolio) => String(portfolio.id) === value) ?? null,
-    [portfolios, value],
+  // Aggregate support: the effective scope (the `scope` prop, else `value`
+  // as a single portfolio) and whether it is an aggregate.
+  const currentScope = useMemo<PortfolioScope | null>(() => {
+    if (!allowAggregate) return null;
+    return normalizeScope(scope) ?? normalizeScope(value);
+  }, [allowAggregate, scope, value]);
+  const isAggregateMode = currentScope?.mode === 'aggregate';
+  const aggregateIds = useMemo(() => scopePortfolioIds(currentScope), [currentScope]);
+  const aggregatePortfolios = useMemo(
+    () => (isAggregateMode ? scopePortfolios(currentScope, portfolios) : []),
+    [currentScope, isAggregateMode, portfolios],
   );
+  const scopeCurrency = useMemo(
+    () => resolveScopeBaseCurrency(currentScope, portfolios),
+    [currentScope, portfolios],
+  );
+
+  const selectedPortfolio = useMemo(
+    () => (isAggregateMode ? null : portfolios.find((portfolio) => String(portfolio.id) === value) ?? null),
+    [isAggregateMode, portfolios, value],
+  );
+
+  const selectSingle = (portfolioId: number) => {
+    onChange(String(portfolioId));
+    if (allowAggregate) onScopeChange?.(singleScope(portfolioId));
+  };
+
+  const toggleAggregate = (portfolioId: number) => {
+    const next = toggleScopePortfolio(currentScope, portfolioId, portfolios);
+    if (next && !scopesEqual(next, currentScope)) onScopeChange?.(next);
+  };
 
   const filteredPortfolios = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -123,13 +178,23 @@ export function PortfolioSwitcher({
     [orderedPortfolios, value],
   );
 
+  const aggregateLabel = `Aggregato (${aggregateIds.length})`;
+
   const triggerLabel = loading
     ? 'Caricamento portafogli...'
-    : (selectedPortfolio?.name ?? (portfolios.length ? 'Seleziona portafoglio' : emptyLabel));
+    : isAggregateMode
+      ? 'Vista aggregata'
+      : (selectedPortfolio?.name ?? (portfolios.length ? 'Seleziona portafoglio' : emptyLabel));
 
-  const triggerMeta = selectedPortfolio
-    ? `${selectedPortfolio.base_currency} · Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`
-    : (portfolios.length ? `${portfolios.length} portafogli disponibili` : emptyLabel);
+  const triggerMeta = isAggregateMode
+    ? [
+      scopeCurrency,
+      aggregateTotalValue != null && scopeCurrency ? `Totale ${formatMoney(aggregateTotalValue, scopeCurrency)}` : null,
+      aggregatePortfolios.map((portfolio) => portfolio.name).join(', ') || null,
+    ].filter(Boolean).join(' · ')
+    : selectedPortfolio
+      ? `${selectedPortfolio.base_currency} · Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`
+      : (portfolios.length ? `${portfolios.length} portafogli disponibili` : emptyLabel);
 
   const quickActions = [
     { label: 'Apri portfolio', icon: IconExternalLink, onClick: onOpenPortfolio },
@@ -151,7 +216,7 @@ export function PortfolioSwitcher({
           </Text>
           <UnstyledButton
             onClick={() => {
-              onChange(String(selectedPortfolio.id));
+              selectSingle(selectedPortfolio.id);
               setOpened(false);
               setQuery('');
             }}
@@ -205,7 +270,7 @@ export function PortfolioSwitcher({
           <UnstyledButton
             key={portfolio.id}
             onClick={() => {
-              onChange(String(portfolio.id));
+              selectSingle(portfolio.id);
               setOpened(false);
               setQuery('');
             }}
@@ -263,6 +328,67 @@ export function PortfolioSwitcher({
     </Stack>
   );
 
+  const aggregateSection = (
+    <>
+      <Divider />
+      <Box>
+        <Group justify="space-between" align="center" mb={4} wrap="nowrap">
+          <Group gap={6} wrap="nowrap">
+            <IconStack2 size={14} color={isDark ? theme.colors.gray[4] : '#64748b'} />
+            <Text size="xs" fw={700} tt="uppercase" c={isDark ? theme.colors.gray[4] : '#64748b'} style={{ letterSpacing: 0.8 }}>
+              Vista aggregata
+            </Text>
+          </Group>
+          {isAggregateMode && (
+            <Badge variant="light" color="teal" radius="xl">{aggregateLabel}</Badge>
+          )}
+        </Group>
+        <Text size="xs" c="dimmed" mb={8}>
+          {`Seleziona più portafogli con la stessa valuta base${scopeCurrency ? ` (${scopeCurrency})` : ''}: la vista aggregata è in sola lettura.`}
+        </Text>
+        <Stack gap={6}>
+          {filteredPortfolios.map((portfolio) => {
+            const checked = aggregateIds.includes(portfolio.id);
+            const otherCurrency = scopeCurrency != null && portfolio.base_currency !== scopeCurrency;
+            const limitReached = !checked && aggregateIds.length >= MAX_AGGREGATE_PORTFOLIOS;
+            // The last portfolio of the scope cannot be unchecked.
+            const onlyOne = checked && aggregateIds.length === 1;
+            const description = otherCurrency
+              ? `Valuta ${portfolio.base_currency}: non aggregabile con ${scopeCurrency}`
+              : limitReached
+                ? `Massimo ${MAX_AGGREGATE_PORTFOLIOS} portafogli`
+                : undefined;
+            return (
+              <Checkbox
+                key={portfolio.id}
+                checked={checked}
+                disabled={otherCurrency || limitReached || onlyOne}
+                onChange={() => toggleAggregate(portfolio.id)}
+                label={`${portfolio.name} · ${portfolio.base_currency}`}
+                description={description}
+                aria-label={`Includi ${portfolio.name} nella vista aggregata`}
+              />
+            );
+          })}
+        </Stack>
+        {isAggregateMode && (
+          <Button
+            mt="sm"
+            variant="subtle"
+            size="xs"
+            onClick={() => {
+              setOpened(false);
+              setQuery('');
+              selectSingle(aggregateIds[0]);
+            }}
+          >
+            Torna a un solo portafoglio
+          </Button>
+        )}
+      </Box>
+    </>
+  );
+
   const list = (
     <Stack gap="sm">
       <TextInput
@@ -277,6 +403,8 @@ export function PortfolioSwitcher({
           {portfolioItems}
         </ScrollArea.Autosize>
       )}
+
+      {allowAggregate && portfolios.length > 1 && aggregateSection}
 
       {quickActions.length > 0 && selectedPortfolio && (
         <>
@@ -370,6 +498,13 @@ export function PortfolioSwitcher({
             <Text size="xs" c="dimmed" lineClamp={1}>
               {triggerMeta}
             </Text>
+            {isAggregateMode && (
+              <Group gap={6} mt={8} wrap="wrap">
+                <Badge variant="filled" color="teal" size="sm" leftSection={<IconStack2 size={11} />}>
+                  {aggregateLabel}
+                </Badge>
+              </Group>
+            )}
             {selectedPortfolio && (
               <Group gap={6} mt={8} wrap="wrap">
                 <Badge variant="light" color="teal" size="sm" leftSection={<IconWallet size={11} />}>
@@ -427,6 +562,11 @@ export function PortfolioSwitcher({
       <Text fw={700} size="sm" truncate="end" style={{ minWidth: 0 }}>
         {triggerLabel}
       </Text>
+      {isAggregateMode && (
+        <Badge variant="filled" color="teal" size="sm" style={{ flexShrink: 0 }}>
+          {aggregateLabel}
+        </Badge>
+      )}
       <IconChevronDown size={16} color="var(--mantine-color-dimmed)" style={{ flexShrink: 0 }} />
     </UnstyledButton>
   );

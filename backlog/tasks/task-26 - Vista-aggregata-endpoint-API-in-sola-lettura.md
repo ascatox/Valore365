@@ -1,7 +1,7 @@
 ---
 id: TASK-26
 title: 'Vista aggregata: endpoint API in sola lettura'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-31T10:00:00Z'

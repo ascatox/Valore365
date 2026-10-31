@@ -10,3 +10,4 @@ export * from './import';
 export * from './export';
 export * from './pac';
 export * from './settings';
+export * from './aggregate';

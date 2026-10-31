@@ -52,6 +52,7 @@ import { MobileBottomNav } from './components/mobile/MobileBottomNav';
 import { BottomSheet } from './components/mobile/BottomSheet';
 import { STORAGE_KEYS } from './components/dashboard/constants';
 import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
+import { PortfolioScopeProvider } from './scope/PortfolioScopeContext';
 
 const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
 const LandingPage = lazy(() => import('./pages/LandingPage.tsx').then((module) => ({ default: module.LandingPage })));
@@ -83,7 +84,9 @@ function App() {
             path="/*"
             element={(
               <AuthGuard>
-                <ProtectedApp />
+                <PortfolioScopeProvider>
+                  <ProtectedApp />
+                </PortfolioScopeProvider>
               </AuthGuard>
             )}
           />

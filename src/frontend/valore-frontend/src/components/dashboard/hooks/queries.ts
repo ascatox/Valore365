@@ -5,39 +5,58 @@ import {
   getAggregateDecumulationPlan,
   getAssetPriceTimeseries,
   getDecumulationPlan,
+  getDecumulationPlanForScope,
   getBenchmarks,
-  getGainTimeseries,
-  getHallOfFame,
+  getDrawdownForScope,
+  getGainTimeseriesForScope,
+  getHallOfFameForScope,
   getMarketCalendar,
   getMarketNews,
   getMarketQuotes,
-  getMonteCarloProjection,
-  getMWRTimeseries,
-  getMonthlyReturns,
-  getPerformanceSummary,
-  getYearlyReturns,
-  type DecumulationScheduleParams,
-  getPortfolioAllocation,
-  getPortfolioDataCoverage,
-  getPortfolioHealth,
-  getPortfolioIntradayTimeseries,
-  getPortfolioXray,
-  getPortfolioPerformers,
-  getPortfolioPositions,
-  getPortfolioSummary,
+  getMonteCarloProjectionForScope,
+  getMonthlyReturnsForScope,
+  getMWRTimeseriesForScope,
+  getPerformanceSummaryForScope,
+  getPortfolioAllocationForScope,
+  getPortfolioDataCoverageForScope,
+  getPortfolioHealthForScope,
+  getPortfolioIntradayTimeseriesForScope,
+  getPortfolioPerformersForScope,
+  getPortfolioPositionsForScope,
+  getPortfolioSummaryForScope,
   getPortfolioTargetAllocation,
   getPortfolioTargetAssetIntradayPerformance,
   getPortfolioTargetAssetPerformance,
   getPortfolioTargetIntradayPerformance,
   getPortfolioTargetPerformance,
-  getPortfolioTimeseries,
-  getDrawdown,
-  getRollingWindows,
-  getStressTest,
-  getTWRTimeseries,
+  getPortfolioTimeseriesForScope,
+  getPortfolioTransactionsForScope,
+  getPortfolioXrayForScope,
+  getRollingWindowsForScope,
+  getStressTestForScope,
+  getTWRTimeseriesForScope,
   getUserSettings,
+  getYearlyReturnsForScope,
+  type DecumulationScheduleParams,
+  type PerformancePeriod,
 } from '../../../services/api';
+import {
+  portfolioScopeKey,
+  scopePortfolioIds,
+  singlePortfolioId,
+  toPortfolioScope,
+  type PortfolioScopeInput,
+} from '../../../scope/portfolioScope';
 
+// Portfolio hooks take a `PortfolioScopeInput`: a bare portfolio id (as the
+// pages pass today) or a PortfolioScope. The second key segment is
+// `portfolioScopeKey(scope)`: the bare id for a single portfolio, so existing
+// keys and invalidations are unchanged, and `'aggregate:<sorted ids>'` for an
+// aggregate, which never shares a cache entry with a single portfolio.
+//
+// Target allocation / target performance / intraday detail are per portfolio
+// and have no aggregate route: with an aggregate scope those hooks stay
+// disabled.
 
 function todayLocalDate(): string {
   const now = new Date();
@@ -53,11 +72,12 @@ export function usePortfolios() {
   });
 }
 
-export function usePortfolioSummary(portfolioId: number | null) {
+export function usePortfolioSummary(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-summary', portfolioId],
-    queryFn: () => getPortfolioSummary(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-summary', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioSummaryForScope(scope!),
+    enabled: scope != null,
   });
 }
 
@@ -68,48 +88,54 @@ export function useUserSettings() {
   });
 }
 
-export function usePortfolioHealth(portfolioId: number | null) {
+export function usePortfolioHealth(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-health', portfolioId],
-    queryFn: () => getPortfolioHealth(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-health', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioHealthForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-export function usePortfolioXray(portfolioId: number | null) {
+export function usePortfolioXray(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-xray', portfolioId],
-    queryFn: () => getPortfolioXray(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-xray', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioXrayForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-export function useMonteCarloProjection(portfolioId: number | null) {
+export function useMonteCarloProjection(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['monte-carlo-projection', portfolioId],
-    queryFn: () => getMonteCarloProjection(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['monte-carlo-projection', portfolioScopeKey(scope)],
+    queryFn: () => getMonteCarloProjectionForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-export function useStressTest(portfolioId: number | null) {
+export function useStressTest(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['stress-test', portfolioId],
-    queryFn: () => getStressTest(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['stress-test', portfolioScopeKey(scope)],
+    queryFn: () => getStressTestForScope(scope!),
+    enabled: scope != null,
   });
 }
+
+type DecumulationHookParams = {
+  annualWithdrawal: number;
+  years: number;
+  inflationRatePct: number;
+  otherIncomeAnnual: number;
+  capitalGainsTaxRatePct: number;
+  currentAge: number | null;
+} & DecumulationScheduleParams;
 
 export function useDecumulationPlan(
   portfolioId: number | null,
-  params: {
-    annualWithdrawal: number;
-    years: number;
-    inflationRatePct: number;
-    otherIncomeAnnual: number;
-    capitalGainsTaxRatePct: number;
-    currentAge: number | null;
-  } & DecumulationScheduleParams,
+  params: DecumulationHookParams,
   enabled = true,
 ) {
   return useQuery({
@@ -121,14 +147,7 @@ export function useDecumulationPlan(
 
 export function useAggregateDecumulationPlan(
   portfolioIds: number[],
-  params: {
-    annualWithdrawal: number;
-    years: number;
-    inflationRatePct: number;
-    otherIncomeAnnual: number;
-    capitalGainsTaxRatePct: number;
-    currentAge: number | null;
-  } & DecumulationScheduleParams,
+  params: DecumulationHookParams,
   enabled = true,
 ) {
   return useQuery({
@@ -138,49 +157,83 @@ export function useAggregateDecumulationPlan(
   });
 }
 
-export function usePortfolioPositions(portfolioId: number | null) {
+/**
+ * Decumulation plan for a scope. The data is a `DecumulationPlanResponse`
+ * for a single portfolio and an `AggregateDecumulationPlanResponse` for an
+ * aggregate (same projection fields, `portfolio_ids` instead of `portfolio_id`).
+ */
+export function useDecumulationPlanForScope(
+  portfolio: PortfolioScopeInput,
+  params: DecumulationHookParams,
+  enabled = true,
+) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-positions', portfolioId],
-    queryFn: () => getPortfolioPositions(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['decumulation-plan', portfolioScopeKey(scope), params],
+    queryFn: () => getDecumulationPlanForScope(scope!, params),
+    enabled: scope != null && enabled,
   });
 }
 
-export function usePortfolioPerformers(portfolioId: number | null, days: number, enabled = true) {
+export function usePortfolioPositions(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-performers', portfolioId, days],
-    queryFn: () => getPortfolioPerformers(portfolioId!, days),
-    enabled: portfolioId != null && enabled,
+    queryKey: ['portfolio-positions', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioPositionsForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-export function usePortfolioAllocation(portfolioId: number | null) {
+export function usePortfolioPerformers(portfolio: PortfolioScopeInput, days: number, enabled = true) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-allocation', portfolioId],
-    queryFn: () => getPortfolioAllocation(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-performers', portfolioScopeKey(scope), days],
+    queryFn: () => getPortfolioPerformersForScope(scope!, days),
+    enabled: scope != null && enabled,
   });
 }
 
-export function usePortfolioTimeseries(portfolioId: number | null) {
+export function usePortfolioAllocation(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-timeseries', portfolioId],
-    queryFn: () => getPortfolioTimeseries(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-allocation', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioAllocationForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-export function usePortfolioDataCoverage(portfolioId: number | null) {
+export function usePortfolioTimeseries(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-data-coverage', portfolioId],
-    queryFn: () => getPortfolioDataCoverage(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-timeseries', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioTimeseriesForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-// ---- Target allocation ----
+export function usePortfolioDataCoverage(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
+  return useQuery({
+    queryKey: ['portfolio-data-coverage', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioDataCoverageForScope(scope!),
+    enabled: scope != null,
+  });
+}
 
-export function useTargetAllocation(portfolioId: number | null) {
+/** Transactions of a scope; aggregate rows carry `portfolio_name`. */
+export function usePortfolioTransactions(portfolio: PortfolioScopeInput, enabled = true) {
+  const scope = toPortfolioScope(portfolio);
+  return useQuery({
+    queryKey: ['portfolio-transactions', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioTransactionsForScope(scope!),
+    enabled: scope != null && enabled,
+  });
+}
+
+// ---- Target allocation (single portfolio only) ----
+
+export function useTargetAllocation(portfolio: PortfolioScopeInput) {
+  const portfolioId = singlePortfolioId(portfolio);
   return useQuery({
     queryKey: ['target-allocation', portfolioId],
     queryFn: () => getPortfolioTargetAllocation(portfolioId!),
@@ -191,7 +244,8 @@ export function useTargetAllocation(portfolioId: number | null) {
   });
 }
 
-export function useTargetPerformance(portfolioId: number | null) {
+export function useTargetPerformance(portfolio: PortfolioScopeInput) {
+  const portfolioId = singlePortfolioId(portfolio);
   return useQuery({
     queryKey: ['target-performance', portfolioId],
     queryFn: () => getPortfolioTargetPerformance(portfolioId!),
@@ -199,7 +253,8 @@ export function useTargetPerformance(portfolioId: number | null) {
   });
 }
 
-export function useTargetAssetPerformance(portfolioId: number | null) {
+export function useTargetAssetPerformance(portfolio: PortfolioScopeInput) {
+  const portfolioId = singlePortfolioId(portfolio);
   return useQuery({
     queryKey: ['target-asset-performance', portfolioId],
     queryFn: () => getPortfolioTargetAssetPerformance(portfolioId!),
@@ -209,7 +264,8 @@ export function useTargetAssetPerformance(portfolioId: number | null) {
 
 // ---- Intraday data ----
 
-export function useIntradayTargetPerformance(portfolioId: number | null, isIntraday: boolean) {
+export function useIntradayTargetPerformance(portfolio: PortfolioScopeInput, isIntraday: boolean) {
+  const portfolioId = singlePortfolioId(portfolio);
   const date = todayLocalDate();
   return useQuery({
     queryKey: ['intraday-target-performance', portfolioId, date],
@@ -218,7 +274,8 @@ export function useIntradayTargetPerformance(portfolioId: number | null, isIntra
   });
 }
 
-export function useAssetIntradayTargetPerformance(portfolioId: number | null, isIntraday: boolean) {
+export function useAssetIntradayTargetPerformance(portfolio: PortfolioScopeInput, isIntraday: boolean) {
+  const portfolioId = singlePortfolioId(portfolio);
   const date = todayLocalDate();
   return useQuery({
     queryKey: ['asset-intraday-target-performance', portfolioId, date],
@@ -227,15 +284,17 @@ export function useAssetIntradayTargetPerformance(portfolioId: number | null, is
   });
 }
 
-export function usePortfolioIntradayTimeseries(portfolioId: number | null, isIntraday: boolean) {
+export function usePortfolioIntradayTimeseries(portfolio: PortfolioScopeInput, isIntraday: boolean) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-intraday-timeseries', portfolioId],
-    queryFn: () => getPortfolioIntradayTimeseries(portfolioId!),
-    enabled: portfolioId != null && isIntraday,
+    queryKey: ['portfolio-intraday-timeseries', portfolioScopeKey(scope)],
+    queryFn: () => getPortfolioIntradayTimeseriesForScope(scope!),
+    enabled: scope != null && isIntraday,
   });
 }
 
-export function useIntradayDetail(portfolioId: number | null, date: string | null) {
+export function useIntradayDetail(portfolio: PortfolioScopeInput, date: string | null) {
+  const portfolioId = singlePortfolioId(portfolio);
   return useQuery({
     queryKey: ['intraday-detail', portfolioId, date],
     queryFn: () => getPortfolioTargetIntradayPerformance(portfolioId!, date!),
@@ -245,11 +304,12 @@ export function useIntradayDetail(portfolioId: number | null, date: string | nul
 
 // ---- Timeseries ----
 
-export function useGainTimeseries(portfolioId: number | null, startDate?: string) {
+export function useGainTimeseries(portfolio: PortfolioScopeInput, startDate?: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['gain-timeseries', portfolioId, startDate ?? 'all'],
-    queryFn: () => getGainTimeseries(portfolioId!, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['gain-timeseries', portfolioScopeKey(scope), startDate ?? 'all'],
+    queryFn: () => getGainTimeseriesForScope(scope!, startDate),
+    enabled: scope != null,
   });
 }
 
@@ -264,9 +324,11 @@ export function useBenchmarks() {
 
 export function useBenchmarkPrices(
   benchmarkId: number | null,
-  portfolioId: number | null,
+  portfolio: PortfolioScopeInput,
   startDate: string,
 ) {
+  // The backfill only needs a portfolio to run against: the first of the scope.
+  const portfolioId = scopePortfolioIds(toPortfolioScope(portfolio))[0] ?? null;
   return useQuery({
     queryKey: ['benchmark-prices', benchmarkId, startDate],
     queryFn: async () => {
@@ -337,71 +399,79 @@ export function prefetchMarketData(queryClient: QueryClient) {
 
 // ---- Performance metrics (TWR, MWR, Gain) ----
 
-export function usePerformanceSummary(portfolioId: number | null, period: string) {
+export function usePerformanceSummary(portfolio: PortfolioScopeInput, period: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['performance-summary', portfolioId, period],
-    queryFn: () => getPerformanceSummary(portfolioId!, period as any),
-    enabled: portfolioId != null,
+    queryKey: ['performance-summary', portfolioScopeKey(scope), period],
+    queryFn: () => getPerformanceSummaryForScope(scope!, period as PerformancePeriod),
+    enabled: scope != null,
   });
 }
 
-export function useTWRTimeseries(portfolioId: number | null, startDate?: string) {
+export function useTWRTimeseries(portfolio: PortfolioScopeInput, startDate?: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['twr-timeseries', portfolioId, startDate ?? 'all'],
-    queryFn: () => getTWRTimeseries(portfolioId!, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['twr-timeseries', portfolioScopeKey(scope), startDate ?? 'all'],
+    queryFn: () => getTWRTimeseriesForScope(scope!, startDate),
+    enabled: scope != null,
   });
 }
 
-export function useMWRTimeseries(portfolioId: number | null, startDate?: string) {
+export function useMWRTimeseries(portfolio: PortfolioScopeInput, startDate?: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['mwr-timeseries', portfolioId, startDate ?? 'all'],
-    queryFn: () => getMWRTimeseries(portfolioId!, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['mwr-timeseries', portfolioScopeKey(scope), startDate ?? 'all'],
+    queryFn: () => getMWRTimeseriesForScope(scope!, startDate),
+    enabled: scope != null,
   });
 }
 
-export function useMonthlyReturns(portfolioId: number | null, startDate?: string) {
+export function useMonthlyReturns(portfolio: PortfolioScopeInput, startDate?: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['monthly-returns', portfolioId, startDate ?? 'all'],
-    queryFn: () => getMonthlyReturns(portfolioId!, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['monthly-returns', portfolioScopeKey(scope), startDate ?? 'all'],
+    queryFn: () => getMonthlyReturnsForScope(scope!, startDate),
+    enabled: scope != null,
   });
 }
 
-export function useYearlyReturns(portfolioId: number | null) {
+export function useYearlyReturns(portfolio: PortfolioScopeInput) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['yearly-returns', portfolioId],
-    queryFn: () => getYearlyReturns(portfolioId!),
-    enabled: portfolioId != null,
+    queryKey: ['yearly-returns', portfolioScopeKey(scope)],
+    queryFn: () => getYearlyReturnsForScope(scope!),
+    enabled: scope != null,
   });
 }
 
-export function usePortfolioDrawdown(portfolioId: number | null, startDate?: string) {
+export function usePortfolioDrawdown(portfolio: PortfolioScopeInput, startDate?: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['portfolio-drawdown', portfolioId, startDate ?? 'all'],
-    queryFn: () => getDrawdown(portfolioId!, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['portfolio-drawdown', portfolioScopeKey(scope), startDate ?? 'all'],
+    queryFn: () => getDrawdownForScope(scope!, startDate),
+    enabled: scope != null,
   });
 }
 
 export function useRollingWindows(
-  portfolioId: number | null,
+  portfolio: PortfolioScopeInput,
   windowMonths: number,
   riskFreeRate = 2,
   startDate?: string,
 ) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['rolling-windows', portfolioId, windowMonths, riskFreeRate, startDate ?? 'all'],
-    queryFn: () => getRollingWindows(portfolioId!, windowMonths, riskFreeRate, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['rolling-windows', portfolioScopeKey(scope), windowMonths, riskFreeRate, startDate ?? 'all'],
+    queryFn: () => getRollingWindowsForScope(scope!, windowMonths, riskFreeRate, startDate),
+    enabled: scope != null,
   });
 }
 
-export function useHallOfFame(portfolioId: number | null, topN = 5, startDate?: string) {
+export function useHallOfFame(portfolio: PortfolioScopeInput, topN = 5, startDate?: string) {
+  const scope = toPortfolioScope(portfolio);
   return useQuery({
-    queryKey: ['hall-of-fame', portfolioId, topN, startDate ?? 'all'],
-    queryFn: () => getHallOfFame(portfolioId!, topN, startDate),
-    enabled: portfolioId != null,
+    queryKey: ['hall-of-fame', portfolioScopeKey(scope), topN, startDate ?? 'all'],
+    queryFn: () => getHallOfFameForScope(scope!, topN, startDate),
+    enabled: scope != null,
   });
 }

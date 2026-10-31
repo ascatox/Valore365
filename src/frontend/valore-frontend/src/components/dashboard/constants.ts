@@ -26,4 +26,6 @@ export const STORAGE_KEYS = {
   fireMode: 'valore365.fire.mode',
   fireScopeMode: 'valore365.fire.scopeMode',
   fireAggregatePortfolioIds: 'valore365.fire.aggregatePortfolioIds',
+  /** Shared portfolio scope (PortfolioScopeContext): JSON {mode:'single',id} | {mode:'aggregate',ids}. */
+  portfolioScope: 'valore365.portfolioScope',
 } as const;
