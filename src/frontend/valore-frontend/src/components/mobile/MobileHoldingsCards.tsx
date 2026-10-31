@@ -158,7 +158,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                   <Text size="xs" fw={600} c={getVariationColor(sortKey === 'day' ? position.day_change_pct : position.unrealized_pl)}>
                     {sortKey === 'day'
                       ? `${formatPct(position.day_change_pct)} oggi`
-                      : `${formatMoney(position.unrealized_pl, currency, true)} · ${formatPct(position.unrealized_pl_pct)}`}
+                      : `${formatMoney(position.unrealized_pl, currency, true)} (${formatPct(position.unrealized_pl_pct)})`}
                   </Text>
                 </Box>
               </Group>
@@ -222,7 +222,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
               <Detail label="Valore" value={formatMoney(selected.market_value, currency)} />
               <Detail
                 label="P/L"
-                value={`${formatMoney(selected.unrealized_pl, currency, true)} · ${formatPct(selected.unrealized_pl_pct)}`}
+                value={`${formatMoney(selected.unrealized_pl, currency, true)} (${formatPct(selected.unrealized_pl_pct)})`}
                 color={getVariationColor(selected.unrealized_pl)}
               />
               <Detail label="Oggi" value={formatPct(selected.day_change_pct)} color={getVariationColor(selected.day_change_pct)} />

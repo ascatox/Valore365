@@ -33,7 +33,7 @@ export function DashboardMobileHero({ summary, statusText }: DashboardMobileHero
             leftSection={<DayIcon size={14} />}
             styles={{ root: { textTransform: 'none', fontSize: '0.8125rem' } }}
           >
-            {`${formatMoney(summary.day_change, currency, true)} · ${formatPct(summary.day_change_pct)}`}
+            {`${formatMoney(summary.day_change, currency, true)} (${formatPct(summary.day_change_pct)})`}
           </Badge>
           <Text size="sm" c="dimmed">oggi</Text>
         </Group>
@@ -44,7 +44,7 @@ export function DashboardMobileHero({ summary, statusText }: DashboardMobileHero
           <Text span fw={700} c={getVariationColor(summary.unrealized_pl)}>
             {formatMoney(summary.unrealized_pl, currency, true)}
           </Text>
-          {` · ${formatPct(summary.unrealized_pl_pct)}`}
+          {` (${formatPct(summary.unrealized_pl_pct)})`}
         </Text>
       )}
       {statusText && <Text size="xs" c="dimmed">{statusText}</Text>}
