@@ -11,7 +11,7 @@ from ...schemas.portfolio_doctor import (
     XRayHolding,
     XRayResponse,
 )
-from ._holdings import AnalyzedHolding, _load_holdings
+from ._holdings import AnalyzedHolding, PortfolioRef, _load_holdings, resolve_doctor_scope
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +101,14 @@ def _resolve_isin_for_holding(repo: PortfolioRepository, holding: AnalyzedHoldin
 
 def compute_portfolio_xray(
     repo: PortfolioRepository,
-    portfolio_id: int,
+    portfolio_id: PortfolioRef,
     user_id: str,
     finance_client: object,
     justetf_client: object = None,
 ) -> XRayResponse:
-    holdings = _load_holdings(repo, portfolio_id, user_id)
+    """X-Ray of one portfolio (int) or of several read as one (list)."""
+    scope_ref, identity = resolve_doctor_scope(repo, portfolio_id, user_id)
+    holdings = _load_holdings(repo, scope_ref, user_id)
     if not holdings:
         raise ValueError("Portafoglio non trovato o vuoto")
 
@@ -306,7 +308,7 @@ def compute_portfolio_xray(
     agg_sectors = {k: round(v, 1) for k, v in sorted(sector_totals.items(), key=lambda x: -x[1]) if v >= 0.1}
 
     return XRayResponse(
-        portfolio_id=portfolio_id,
+        **identity,
         aggregated_holdings=aggregated_holdings,
         etf_details=sorted(etf_details, key=lambda x: x.portfolio_weight_pct, reverse=True),
         etf_count=covered_etf_count,

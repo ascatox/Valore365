@@ -131,7 +131,7 @@ def test_a_transfer_between_selected_portfolios_nets_out():
     assert mwr.mwr_pct == pytest.approx(10.0, abs=0.01)
 
     drawdown = service.get_drawdown([1, 2], "u", START, END)
-    assert drawdown.portfolio_id == 1
+    assert (drawdown.portfolio_id, drawdown.portfolio_ids) == (0, [1, 2])
     assert drawdown.max_drawdown_pct == pytest.approx(0.0, abs=1e-6)
 
 
@@ -210,6 +210,6 @@ def test_aggregate_summary_and_series_endpoints_run():
     summary = service.get_performance_summary([1, 2], "u", "1y")
     assert summary.twr is not None
     monthly = service.get_monthly_returns([2, 1], "u", START, END)
-    assert monthly.portfolio_id == 2
+    assert (monthly.portfolio_id, monthly.portfolio_ids) == (0, [2, 1])
     assert service.get_twr_timeseries([1, 2], "u", START, END)
-    assert service.get_yearly_returns([1, 2], "u").portfolio_id == 1
+    assert service.get_yearly_returns([1, 2], "u").portfolio_ids == [1, 2]

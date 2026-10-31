@@ -63,6 +63,7 @@ from .justetf_client import JustEtfClient
 
 # --- Route registrations ---
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
+from .api.routes_aggregate import register_aggregate_routes
 from .api.portfolio_health import register_portfolio_health_routes
 from .api.routes_portfolio import register_portfolio_routes
 from .api.routes_assets import register_assets_routes
@@ -252,7 +253,17 @@ def get_admin_usage_summary(_auth: AuthContext = Depends(require_admin)) -> Admi
     return repo.get_admin_usage_summary()
 
 
-# Register all route modules
+# Register all route modules.
+# Aggregate routes (/portfolios/aggregate/...) go first: routes match in
+# registration order, so they must precede every /portfolios/{portfolio_id}/...
+register_aggregate_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    performance_service=RuntimeDependencyProxy(lambda: performance_service),
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
+    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+    ensure_target_allocation_enabled=ensure_target_allocation_enabled,
+)
 register_instant_portfolio_analyzer_routes(router, repo, csv_import_service=csv_import_service)
 register_portfolio_health_routes(
     router,

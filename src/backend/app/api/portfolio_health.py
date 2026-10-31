@@ -7,7 +7,6 @@ from ..errors import AppError
 from ..models import ErrorResponse
 from ..repository import PortfolioRepository
 from ..schemas.portfolio_doctor import (
-    AggregateDecumulationPlanResponse,
     DecumulationPlanResponse,
     MonteCarloProjectionResponse,
     PortfolioHealthResponse,
@@ -17,7 +16,6 @@ from ..schemas.portfolio_doctor import (
 from ..services.portfolio_doctor import (
     analyze_portfolio_health,
     compute_portfolio_xray,
-    run_aggregate_decumulation_plan,
     run_decumulation_plan,
     run_monte_carlo_projection,
     run_stress_test,
@@ -89,52 +87,8 @@ def register_portfolio_health_routes(router: APIRouter, repo: PortfolioRepositor
         except ValueError as exc:
             raise AppError(code="not_found", message=str(exc), status_code=404) from exc
 
-    # NOTE: aggregate route MUST be registered before the {portfolio_id} route
-    # to prevent FastAPI from matching "aggregate" as a portfolio_id integer.
-    @router.get(
-        "/portfolios/aggregate/decumulation",
-        response_model=AggregateDecumulationPlanResponse,
-        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
-    )
-    def get_aggregate_decumulation_plan(
-        portfolio_ids: list[int] = Query(min_length=1),
-        annual_withdrawal: float = Query(ge=0),
-        years: int = Query(ge=1, le=80),
-        inflation_rate_pct: float = Query(default=2.0, ge=0, le=20),
-        other_income_annual: float = Query(default=0.0, ge=0),
-        capital_gains_tax_rate_pct: float = Query(default=26.0, ge=0, le=100),
-        current_age: int | None = Query(default=None, ge=18, le=100),
-        capital_floor: float = Query(default=0.0, ge=0),
-        pension_annual: float = Query(default=0.0, ge=0),
-        pension_start_age: int | None = Query(default=None, ge=18, le=100),
-        one_off_ages: list[int] = Query(default_factory=list, max_length=50),
-        one_off_amounts: list[float] = Query(default_factory=list, max_length=50),
-        terminal_target_min: float = Query(default=0.0, ge=0),
-        terminal_target_max: float = Query(default=0.0, ge=0),
-        _auth: AuthContext = Depends(require_auth_rate_limited),
-    ) -> AggregateDecumulationPlanResponse:
-        try:
-            return run_aggregate_decumulation_plan(
-                repo,
-                portfolio_ids=portfolio_ids,
-                annual_withdrawal=annual_withdrawal,
-                years=years,
-                inflation_rate_pct=inflation_rate_pct,
-                other_income_annual=other_income_annual,
-                capital_gains_tax_rate_pct=capital_gains_tax_rate_pct,
-                current_age=current_age,
-                user_id=_auth.user_id,
-                capital_floor=capital_floor,
-                pension_annual=pension_annual,
-                pension_start_age=pension_start_age,
-                one_off_expenses=_parse_one_off_expenses(one_off_ages, one_off_amounts),
-                terminal_target_min=terminal_target_min,
-                terminal_target_max=_validate_terminal_range(terminal_target_min, terminal_target_max),
-            )
-        except ValueError as exc:
-            message = str(exc)
-            status_code = 400 if "valuta base" in message or "Seleziona almeno" in message else 404
-            raise AppError(code="invalid_request" if status_code == 400 else "not_found", message=message, status_code=status_code) from exc
+    # GET /portfolios/aggregate/decumulation lives in routes_aggregate.py,
+    # registered before every /portfolios/{portfolio_id} route.
 
     @router.get(
         "/portfolios/{portfolio_id}/decumulation",

@@ -12,7 +12,13 @@ from ...schemas.portfolio_doctor import (
     StressTestScenarioResult,
 )
 from ...constants.stress_scenarios import HISTORICAL_SCENARIOS, SHOCK_SCENARIOS
-from ._holdings import AnalyzedHolding, _load_holdings, _compute_portfolio_return_params
+from ._holdings import (
+    AnalyzedHolding,
+    PortfolioRef,
+    _compute_portfolio_return_params,
+    _load_holdings,
+    resolve_doctor_scope,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -264,16 +270,18 @@ def _is_commodity_like(name: str, symbol: str) -> bool:
 
 def run_stress_test(
     repo: PortfolioRepository,
-    portfolio_id: int,
+    portfolio_id: PortfolioRef,
     user_id: str | None = None,
 ) -> StressTestResponse:
+    """Stress test of one portfolio (int) or of several read as one (list)."""
     if not user_id:
         raise ValueError("Utente non valido")
 
-    holdings = _load_holdings(repo, portfolio_id, user_id)
+    scope_ref, identity = resolve_doctor_scope(repo, portfolio_id, user_id)
+    holdings = _load_holdings(repo, scope_ref, user_id)
     if not holdings:
         return StressTestResponse(
-            portfolio_id=portfolio_id,
+            **identity,
             scenarios=[],
             portfolio_volatility_pct=None,
             analysis_date=str(date.today()),
@@ -302,7 +310,7 @@ def run_stress_test(
             logger.warning("Failed to compute shock scenario %s", scenario["id"], exc_info=True)
 
     return StressTestResponse(
-        portfolio_id=portfolio_id,
+        **identity,
         scenarios=scenarios,
         portfolio_volatility_pct=volatility_pct,
         analysis_date=str(date.today()),

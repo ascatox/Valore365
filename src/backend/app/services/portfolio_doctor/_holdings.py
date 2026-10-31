@@ -3,11 +3,12 @@ import math
 import statistics
 from collections import defaultdict
 from dataclasses import dataclass
+from collections.abc import Sequence
 from datetime import date, timedelta
 
 from sqlalchemy import text
 
-from ...repository import PortfolioRepository, normalize_portfolio_ids
+from ...repository import PortfolioRepository, aggregate_identity, normalize_portfolio_ids
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,41 @@ class AnalyzedHolding:
     weight_pct: float
 
 
-def _load_holdings(repo: PortfolioRepository, portfolio_id: int, user_id: str) -> list[AnalyzedHolding]:
-    positions = repo.get_positions(portfolio_id, user_id)
+PortfolioRef = int | Sequence[int]
+
+
+def resolve_doctor_scope(
+    repo: PortfolioRepository, portfolio_ref: PortfolioRef, user_id: str,
+) -> tuple[PortfolioRef, dict]:
+    """Validate what a Doctor feature analyzes and how its response is marked.
+
+    An int is one portfolio: it is returned unchanged with its own id. A list
+    of ids is an aggregate view: the scope is validated up front (empty list,
+    portfolio not owned, mixed base currencies raise ValueError) and the
+    response carries portfolio_id 0 plus the normalized ids.
+    """
+    if isinstance(portfolio_ref, int):
+        return portfolio_ref, {"portfolio_id": portfolio_ref, "portfolio_ids": None}
+    scope = repo.resolve_portfolio_scope(portfolio_ref, user_id)
+    ids = list(scope.portfolio_ids)
+    return ids, aggregate_identity(ids)
+
+
+def _load_holdings(repo: PortfolioRepository, portfolio_ref: PortfolioRef, user_id: str) -> list[AnalyzedHolding]:
+    """Holdings of one portfolio, or of several read as one.
+
+    For a list of ids the positions come from get_positions_multi, so an asset
+    held in more portfolios is a single holding (combined market value, weight
+    over the combined total).
+    """
+    if isinstance(portfolio_ref, int):
+        positions = repo.get_positions(portfolio_ref, user_id)
+    else:
+        positions = repo.get_positions_multi(list(portfolio_ref), user_id)
+    return _merge_holdings_by_asset(_holdings_from_positions(repo, positions))
+
+
+def _holdings_from_positions(repo: PortfolioRepository, positions) -> list[AnalyzedHolding]:
     if not positions:
         return []
 
@@ -66,6 +100,23 @@ def _load_holdings(repo: PortfolioRepository, portfolio_id: int, user_id: str) -
     return holdings
 
 
+def _merge_holdings_by_asset(holdings: list[AnalyzedHolding]) -> list[AnalyzedHolding]:
+    """One holding per asset_id: market values and weights add up.
+
+    The first occurrence keeps its position in the list and its descriptive
+    fields. Holdings that are already unique come back unchanged.
+    """
+    merged: dict[int, AnalyzedHolding] = {}
+    for holding in holdings:
+        existing = merged.get(holding.asset_id)
+        if existing is None:
+            merged[holding.asset_id] = AnalyzedHolding(**holding.__dict__)
+            continue
+        existing.market_value += holding.market_value
+        existing.weight_pct += holding.weight_pct
+    return list(merged.values())
+
+
 def _is_equity_like(holding: AnalyzedHolding) -> bool:
     return holding.asset_type.lower() in {"stock", "etf", "fund"}
 
@@ -79,10 +130,11 @@ def _load_aggregate_holdings(
     portfolio_ids: list[int],
     user_id: str,
 ) -> list[AnalyzedHolding]:
-    holdings: list[AnalyzedHolding] = []
-    for portfolio_id in portfolio_ids:
-        holdings.extend(_load_holdings(repo, portfolio_id, user_id))
-    return _rebalance_holdings_by_market_value(holdings)
+    """Holdings of several portfolios as one, weighted by market value.
+
+    The same asset held in more portfolios is merged into a single holding.
+    """
+    return _rebalance_holdings_by_market_value(_load_holdings(repo, list(portfolio_ids), user_id))
 
 
 def _rebalance_holdings_by_market_value(holdings: list[AnalyzedHolding]) -> list[AnalyzedHolding]:

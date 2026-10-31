@@ -61,7 +61,9 @@ class PortfolioHealthSuggestion(BaseModel):
 
 
 class PortfolioHealthResponse(BaseModel):
-    portfolio_id: int = Field(ge=1)
+    # 0 per la vista aggregata (gli id selezionati sono in portfolio_ids).
+    portfolio_id: int = Field(ge=0)
+    portfolio_ids: list[int] | None = None
     score: int = Field(ge=0, le=100)
     summary: PortfolioHealthSummary
     metrics: PortfolioHealthMetrics
@@ -80,7 +82,9 @@ class MonteCarloYearProjection(BaseModel):
 
 
 class MonteCarloProjectionResponse(BaseModel):
-    portfolio_id: int = Field(ge=1)
+    # 0 per la vista aggregata (gli id selezionati sono in portfolio_ids).
+    portfolio_id: int = Field(ge=0)
+    portfolio_ids: list[int] | None = None
     num_simulations: int
     horizons: list[int]
     projections: list[MonteCarloYearProjection]
@@ -196,7 +200,9 @@ class StressTestScenarioResult(BaseModel):
 
 
 class StressTestResponse(BaseModel):
-    portfolio_id: int = Field(ge=1)
+    # 0 per la vista aggregata (gli id selezionati sono in portfolio_ids).
+    portfolio_id: int = Field(ge=0)
+    portfolio_ids: list[int] | None = None
     scenarios: list[StressTestScenarioResult] = Field(default_factory=list)
     portfolio_volatility_pct: float | None = None
     analysis_date: str
@@ -229,7 +235,9 @@ class XRayCoverageIssue(BaseModel):
 
 
 class XRayResponse(BaseModel):
-    portfolio_id: int = Field(ge=1)
+    # 0 per la vista aggregata (gli id selezionati sono in portfolio_ids).
+    portfolio_id: int = Field(ge=0)
+    portfolio_ids: list[int] | None = None
     aggregated_holdings: list[XRayHolding] = Field(default_factory=list)
     etf_details: list[XRayEtfDetail] = Field(default_factory=list)
     etf_count: int = Field(ge=0)
