@@ -39,6 +39,8 @@ import {
 } from 'recharts';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
+import { AggregateScopeNotice } from '../scope/AggregateReadOnly';
+import { pageQueryError } from '../scope/aggregateErrors';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
@@ -395,12 +397,13 @@ export function FirePage() {
           )}
         />
 
-        {(summaryErrorState instanceof Error) && <Alert color="red">{summaryErrorState.message}</Alert>}
-        {(monteCarloError instanceof Error) && isAggregate && fireMode === 'accumulation' && <Alert color="red">{monteCarloError.message}</Alert>}
+        <AggregateScopeNotice mb="0" />
+        {pageQueryError(summaryErrorState) && <Alert color="red">{pageQueryError(summaryErrorState)}</Alert>}
+        {pageQueryError(monteCarloError) && isAggregate && fireMode === 'accumulation' && <Alert color="red">{pageQueryError(monteCarloError)}</Alert>}
         {saveMessage && <Alert color="teal">{saveMessage}</Alert>}
         {saveError && <Alert color="red">{saveError}</Alert>}
-        {(decumulationError instanceof Error) && fireMode === 'decumulation' && (
-          <Alert color="red">{decumulationError.message}</Alert>
+        {pageQueryError(decumulationError) && fireMode === 'decumulation' && (
+          <Alert color="red">{pageQueryError(decumulationError)}</Alert>
         )}
         {aggregateModeEnabled && incompatiblePortfolioCount > 0 && (
           <Alert color="yellow" variant="light">

@@ -39,6 +39,7 @@ import {
   getPortfolioSummary,
   getPortfolioTimeseries,
 } from './portfolio';
+import { fetchMarkdownExport, getPortfolioMarkdown, type MarkdownExport } from './export';
 import { getPortfolioTransactions } from './transactions';
 import type {
   AggregateDecumulationPlanResponse,
@@ -187,6 +188,13 @@ export const getAggregateStressTest = (ids: number[]) =>
 export const getAggregatePortfolioXray = (ids: number[]) =>
   apiFetch<XRayResponse>(aggregatePath('xray', ids));
 
+/** Markdown snapshot of the aggregate ("Vista aggregata: A, B"), for an external AI. */
+export const getAggregatePortfolioMarkdown = (ids: number[]): Promise<MarkdownExport> =>
+  fetchMarkdownExport(
+    aggregatePath('export/markdown', ids),
+    `valore365-aggregato-${new Date().toISOString().slice(0, 10)}.md`,
+  );
+
 // ---- Scope-aware wrappers: single route for a single scope, aggregate route otherwise ----
 
 export const getPortfolioSummaryForScope = (scope: PortfolioScope) =>
@@ -294,3 +302,6 @@ export const getDecumulationPlanForScope = (
   params: DecumulationPlanParams,
 ): Promise<DecumulationPlanResponse | AggregateDecumulationPlanResponse> =>
   scope.mode === 'single' ? getDecumulationPlan(scope.id, params) : getAggregateDecumulationPlan(scope.ids, params);
+
+export const getPortfolioMarkdownForScope = (scope: PortfolioScope) =>
+  scope.mode === 'single' ? getPortfolioMarkdown(scope.id) : getAggregatePortfolioMarkdown(scope.ids);

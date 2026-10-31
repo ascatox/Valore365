@@ -20,7 +20,10 @@ export interface RecordedRequest {
   path: string;
 }
 
-/** A route answer: a JSON body, or `PENDING` for a request that never resolves. */
+/**
+ * A route answer: a JSON body, a ready `Response` (errors, non-JSON bodies),
+ * or `PENDING` for a request that never resolves.
+ */
 export const PENDING = Symbol('pending');
 export type RouteHandler = (request: RecordedRequest) => unknown;
 
@@ -72,6 +75,7 @@ export function installFetchMock(portfolios: Portfolio[], handler?: RouteHandler
     requests.push(request);
     const custom = handler?.(request);
     if (custom === PENDING) return new Promise<Response>(() => {});
+    if (custom instanceof Response) return custom;
     const body = custom !== undefined ? custom : defaultAnswer(request, portfolios);
     return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
   });
@@ -82,6 +86,12 @@ export function installFetchMock(portfolios: Portfolio[], handler?: RouteHandler
     writes: () => requests.filter((request) => request.method !== 'GET'),
   };
 }
+
+/** An API error response with the backend's error body. */
+export const apiError = (status: number, code: string, message: string) => new Response(
+  JSON.stringify({ error: { code, message, details: null } }),
+  { status, headers: { 'Content-Type': 'application/json' } },
+);
 
 export function storeScope(scope: PortfolioScope) {
   window.localStorage.setItem(STORAGE_KEYS.portfolioScope, JSON.stringify(scope));
@@ -101,8 +111,14 @@ export function stubLayoutApis() {
   }
 }
 
-export function renderWithApp(ui: ReactNode, { route = '/' }: { route?: string } = {}) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+export function createTestQueryClient() {
+  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+}
+
+export function renderWithApp(
+  ui: ReactNode,
+  { route = '/', queryClient = createTestQueryClient() }: { route?: string; queryClient?: QueryClient } = {},
+) {
   const view = render(
     <MantineProvider>
       <QueryClientProvider client={queryClient}>

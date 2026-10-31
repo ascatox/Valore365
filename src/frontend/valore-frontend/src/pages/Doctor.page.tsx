@@ -30,6 +30,9 @@ import {
 import { toBlob, toPng } from 'html-to-image';
 import { CopilotChat } from '../components/copilot/CopilotChat';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
+import { AggregateScopeNotice } from '../scope/AggregateReadOnly';
+import { pageQueryError } from '../scope/aggregateErrors';
+import { AGGREGATE_EMPTY_POSITIONS } from '../scope/aggregateLabels';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolioHealth, usePortfolioSummary, usePortfolios } from '../components/dashboard/hooks/queries';
 import { usePortfolioScope } from '../scope/PortfolioScopeContext';
@@ -328,7 +331,7 @@ export function DoctorPage() {
 
   const tone = scoreTone(health?.score ?? 0);
   const pageError = (portfoliosError instanceof Error ? portfoliosError.message : null)
-    || (healthError instanceof Error ? healthError.message : null);
+    || pageQueryError(healthError);
   const baseCurrency = selectedPortfolio?.base_currency ?? summary?.base_currency ?? 'EUR';
   const doctorQuickPrompts = useMemo(() => ([
     'Spiega il punteggio Doctor in modo operativo',
@@ -493,7 +496,14 @@ export function DoctorPage() {
             )}
           />
 
+          <AggregateScopeNotice mb="0" />
           {pageError && <Alert color="red">{pageError}</Alert>}
+
+          {isAggregate && summary && summary.market_value === 0 && !healthLoading && (
+            <Alert color="gray" variant="light" data-testid="aggregate-empty">
+              {`${AGGREGATE_EMPTY_POSITIONS} Il referto si popola dopo le prime transazioni in uno dei portafogli.`}
+            </Alert>
+          )}
 
           {!selectedPortfolio && !portfoliosLoading && (
             <Alert color="yellow">

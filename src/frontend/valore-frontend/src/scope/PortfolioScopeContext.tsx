@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { usePortfolios } from '../components/dashboard/hooks/queries';
 import type { Portfolio } from '../services/api';
+import { aggregateScopeErrorKind, friendlyAggregateError, isAggregateQueryKey } from './aggregateErrors';
 import {
   aggregateScope,
   isAggregateScope,
@@ -94,6 +96,19 @@ export interface PortfolioScopeContextValue {
   toggleInAggregate: (portfolioId: number) => void;
   /** Portfolios (default: all loaded) that share the scope's base currency. */
   availableForAggregate: (portfolios?: Portfolio[]) => Portfolio[];
+  /**
+   * Friendly message after an aggregate request failed with a scope error
+   * (portfolio deleted elsewhere, mixed currencies): the portfolio list is
+   * refetched and the scope sanitized against it. Cleared on the next
+   * explicit scope change or by `dismissScopeNotice`.
+   */
+  scopeNotice: string | null;
+  dismissScopeNotice: () => void;
+  /**
+   * Report an error of an aggregate request made outside React Query (e.g. the
+   * Markdown export). Returns true when it was a scope error (and recovery started).
+   */
+  reportScopeError: (error: unknown) => boolean;
 }
 
 const PortfolioScopeContext = createContext<PortfolioScopeContextValue | null>(null);
@@ -113,6 +128,11 @@ export function PortfolioScopeProvider({ children }: { children: ReactNode }) {
   const isReady = data !== undefined;
   const portfolios = data ?? NO_PORTFOLIOS;
   const [rawScope, setRawScope] = useState<PortfolioScope | null>(readStoredPortfolioScope);
+  const queryClient = useQueryClient();
+  const [scopeNotice, setScopeNotice] = useState<string | null>(null);
+  // Aggregate keys already recovered: one portfolio-list refetch per stale
+  // aggregate, so a scope error can never loop.
+  const recoveredKeys = useRef(new Set<string>());
 
   const scope = useMemo(
     () => (isReady ? sanitizeScope(rawScope, portfolios) : rawScope),
@@ -125,8 +145,31 @@ export function PortfolioScopeProvider({ children }: { children: ReactNode }) {
     if (isReady && scope) writeStoredPortfolioScope(scope);
   }, [isReady, scope]);
 
+  const reportScopeError = useCallback((error: unknown, key?: string) => {
+    if (!aggregateScopeErrorKind(error)) return false;
+    const recoveryKey = key ?? portfolioScopeKey(scope)?.toString() ?? '';
+    if (recoveredKeys.current.has(recoveryKey)) return true;
+    recoveredKeys.current.add(recoveryKey);
+    setScopeNotice(friendlyAggregateError(error));
+    // A stale scope (portfolio deleted or changed in another tab): reload the
+    // list, the derived scope is then sanitized (one portfolio left -> single).
+    void queryClient.invalidateQueries({ queryKey: ['portfolios'] });
+    return true;
+  }, [queryClient, scope]);
+
+  // Scope errors of any aggregate query start the same recovery.
+  useEffect(() => queryClient.getQueryCache().subscribe((event) => {
+    if (event.type !== 'updated' || event.action.type !== 'error') return;
+    const { queryKey } = event.query;
+    if (!isAggregateQueryKey(queryKey)) return;
+    reportScopeError(event.action.error, String(queryKey[1]));
+  }), [queryClient, reportScopeError]);
+
+  const dismissScopeNotice = useCallback(() => setScopeNotice(null), []);
+
   const apply = useCallback((next: PortfolioScope | null) => {
     if (!next) return;
+    setScopeNotice(null);
     setRawScope(next);
     writeStoredPortfolioScope(next);
     if (next.mode === 'single') {
@@ -176,7 +219,13 @@ export function PortfolioScopeProvider({ children }: { children: ReactNode }) {
     setAggregate,
     toggleInAggregate,
     availableForAggregate,
-  }), [scope, scopeKey, isReady, portfolios, setScope, setSingle, setAggregate, toggleInAggregate, availableForAggregate]);
+    scopeNotice,
+    dismissScopeNotice,
+    reportScopeError,
+  }), [
+    scope, scopeKey, isReady, portfolios, setScope, setSingle, setAggregate, toggleInAggregate, availableForAggregate,
+    scopeNotice, dismissScopeNotice, reportScopeError,
+  ]);
 
   return <PortfolioScopeContext.Provider value={value}>{children}</PortfolioScopeContext.Provider>;
 }

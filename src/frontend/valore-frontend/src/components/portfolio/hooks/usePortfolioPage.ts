@@ -46,7 +46,7 @@ export function usePortfolioPage() {
   // `selectedPortfolioId` is null, so every write path (which needs one
   // portfolio) is off, and `isAggregate` guards the handlers as well.
   const queryClient = useQueryClient();
-  const { scope, isAggregate, setSingle, setScope } = usePortfolioScope();
+  const { scope, isAggregate, setSingle, setScope, reportScopeError } = usePortfolioScope();
   const singleId = singlePortfolioId(scope);
   const selectedPortfolioId = singleId != null ? String(singleId) : null;
   const setSelectedPortfolioId = (value: string | null) => {
@@ -247,6 +247,9 @@ export function usePortfolioPage() {
       })
       .catch((err) => {
         if (!active) return;
+        // Aggregate scope error (portfolio deleted elsewhere, mixed currencies):
+        // the context recovers the scope and shows a notice; no raw API error here.
+        if (scope.mode === 'aggregate' && reportScopeError(err)) return;
         setTransactionsError(err instanceof Error ? err.message : 'Errore nel caricamento transazioni');
       })
       .finally(() => {

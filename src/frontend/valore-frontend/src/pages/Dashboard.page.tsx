@@ -20,6 +20,7 @@ import { AnalisiTab } from '../components/dashboard/tabs/AnalisiTab';
 import { MercatiTab } from '../components/dashboard/tabs/MercatiTab';
 import { PerformanceMetrics } from '../components/dashboard/analysis/PerformanceMetrics';
 import { PortfolioSwitcher } from '../components/portfolio/PortfolioSwitcher';
+import { AggregateScopeNotice } from '../scope/AggregateReadOnly';
 import { formatDateTime } from '../components/dashboard/formatters';
 import { DASHBOARD_WINDOWS, SHOW_ANALISI_TAB, STORAGE_KEYS } from '../components/dashboard/constants';
 
@@ -159,6 +160,7 @@ export function DashboardPage() {
         />
       )}
 
+      <AggregateScopeNotice />
       {error && <Alert color="red" mb="md">{error}</Alert>}
 
       {/* The Panoramica hero carries this line; the other tabs need it too,

@@ -13,7 +13,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { IconEdit, IconPlus, IconTrash, IconArrowsExchange, IconFileImport, IconCoins, IconRobot, IconInfoCircle, IconStack2, IconWallet } from '@tabler/icons-react';
-import { AggregateReadOnlyTooltip, AggregateUnavailableNotice } from '../scope/AggregateReadOnly';
+import { AggregateReadOnlyTooltip, AggregateScopeNotice, AggregateUnavailableNotice } from '../scope/AggregateReadOnly';
 import { scopePortfolioIds } from '../scope/portfolioScope';
 import { CashSection } from '../components/portfolio/sections/CashSection.tsx';
 import { CsvImportModal } from '../components/portfolio/modals/CsvImportModal.tsx';
@@ -53,7 +53,8 @@ export function PortfolioPage() {
   const scopeIds = scopePortfolioIds(s.scope);
   const { data: summary } = usePortfolioSummary(s.scope);
   const [assetInfoModal, setAssetInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
-  const aiExport = usePortfolioAiExport(portfolioId);
+  // Single portfolio or aggregate: the export is read-only, so it stays available.
+  const aiExport = usePortfolioAiExport(s.scope);
   const swipeRef = useSwipeTabs({
     tabs: PORTFOLIO_VIEWS,
     active: s.portfolioView,
@@ -212,14 +213,10 @@ export function PortfolioPage() {
               onEditPortfolio={s.writablePortfolioId != null ? s.openEditPortfolioModal : null}
               onClonePortfolio={s.writablePortfolioId != null ? s.openClonePortfolioModal : null}
               onDeletePortfolio={s.writablePortfolioId != null ? () => s.setPortfolioDeleteOpened(true) : null}
-              onCopyForAi={s.writablePortfolioId != null ? aiExport.copyForAi : null}
-              onDownloadMarkdown={s.writablePortfolioId != null ? aiExport.downloadMarkdown : null}
+              onCopyForAi={s.scope ? aiExport.copyForAi : null}
+              onDownloadMarkdown={s.scope ? aiExport.downloadMarkdown : null}
             />
-            {!s.isMobile && (
-              <AggregateReadOnlyTooltip active={readOnly} label="Seleziona un solo portafoglio per esportarlo">
-                <PortfolioAiExportMenu portfolioId={s.writablePortfolioId} />
-              </AggregateReadOnlyTooltip>
-            )}
+            {!s.isMobile && <PortfolioAiExportMenu scope={s.scope} exportState={aiExport} />}
           </Group>
         )}
       />
@@ -233,9 +230,11 @@ export function PortfolioPage() {
         )}
       </Group>
 
+      <AggregateScopeNotice />
+
       {readOnly && (
         <Alert color="blue" variant="light" mb="md" icon={<IconStack2 size={18} />} title="Vista aggregata in sola lettura">
-          Transazioni di {scopeIds.length} portafogli, con la colonna Portafoglio. Per aggiungere o modificare movimenti, liquidità, PAC o il portafoglio stesso seleziona un solo portafoglio.
+          Transazioni di {scopeIds.length} portafogli, con la colonna Portafoglio. Per aggiungere o modificare movimenti, liquidità, PAC o il portafoglio stesso seleziona un solo portafoglio. Lo snapshot per AI (copia o .md) esporta la vista aggregata.
         </Alert>
       )}
 
@@ -288,7 +287,13 @@ export function PortfolioPage() {
       {s.error && <Alert color="red" mb="md">{s.error}</Alert>}
       {s.transactionsError && <Alert color="red" mb="md">{s.transactionsError}</Alert>}
       {s.formSuccess && <Alert color="teal" mb="md">{s.formSuccess}</Alert>}
-      {aiExport.copied && <Alert color="teal" mb="md">Snapshot del portafoglio copiato negli appunti, pronto da incollare in un'altra AI.</Alert>}
+      {aiExport.copied && (
+        <Alert color="teal" mb="md">
+          {readOnly
+            ? "Snapshot della vista aggregata copiato negli appunti, pronto da incollare in un'altra AI."
+            : "Snapshot del portafoglio copiato negli appunti, pronto da incollare in un'altra AI."}
+        </Alert>
+      )}
       {aiExport.error && <Alert color="red" mb="md">{aiExport.error}</Alert>}
 
       {!s.loadingPortfolios && s.portfolios.length === 0 && (
