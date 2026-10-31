@@ -5,6 +5,13 @@ from datetime import date, datetime
 
 from sqlalchemy import Date, bindparam, text
 
+from ._scope import (
+    EMPTY_SCOPE_MESSAGE,
+    NOT_FOUND_MESSAGE,
+    load_scope_portfolios,
+    normalize_portfolio_ids,
+    row_portfolio_id,
+)
 from ..models import (
     CashFlowEntry,
     TransactionCreate,
@@ -172,25 +179,38 @@ class TransactionsMixin:
         yet. Performance windows must not be truncated at created_at, or an
         imported multi-year history would be measured from the import day.
         """
+        return self.get_portfolio_inception_date_multi([portfolio_id], user_id)
+
+    def get_portfolio_inception_date_multi(self, portfolio_ids: list[int], user_id: str) -> date:
+        """Earliest inception date (first transaction, else creation) across portfolios."""
+        ids = normalize_portfolio_ids(portfolio_ids)
+        if not ids:
+            raise ValueError(EMPTY_SCOPE_MESSAGE)
         with self.engine.begin() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 text(
                     """
-                    select p.created_at::date as created_date,
+                    select p.id,
+                           p.created_at::date as created_date,
                            (
                                select min(t.trade_at::date)
                                from transactions t
                                where t.portfolio_id = p.id
                            ) as first_trade_date
                     from portfolios p
-                    where p.id = :portfolio_id and p.owner_user_id = :user_id
+                    where p.id = any(:portfolio_ids) and p.owner_user_id = :user_id
                     """
                 ),
-                {"portfolio_id": portfolio_id, "user_id": user_id},
-            ).mappings().fetchone()
-        if row is None or row["created_date"] is None:
-            raise ValueError("Portfolio non trovato")
-        return row["first_trade_date"] or row["created_date"]
+                {"portfolio_ids": ids, "user_id": user_id},
+            ).mappings().all()
+        by_id = {int(row["id"]): row for row in rows}
+        inceptions: list[date] = []
+        for pid in ids:
+            row = by_id.get(pid)
+            if row is None or row["created_date"] is None:
+                raise ValueError(NOT_FOUND_MESSAGE)
+            inceptions.append(row["first_trade_date"] or row["created_date"])
+        return min(inceptions)
 
     def get_transactions_in_range(
         self,
@@ -255,22 +275,97 @@ class TransactionsMixin:
         end_date: date | None = None,
         include_trades: bool = False,
     ) -> list[CashFlowEntry]:
-        txs = self.get_transactions_in_range(portfolio_id, user_id, start_date=start_date, end_date=end_date)
+        return [
+            entry
+            for _, entry in self._external_cashflow_rows(
+                [portfolio_id], user_id, start_date, end_date, include_trades
+            )
+        ]
+
+    def get_external_cashflows_multi(
+        self,
+        portfolio_ids: list[int],
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        include_trades: bool = False,
+    ) -> list[CashFlowEntry]:
+        """Cashflows of several portfolios merged in date order.
+
+        A transfer between two selected portfolios (withdrawal from one,
+        deposit into the other) shows up as two opposite entries, so it nets
+        to zero once the flows are summed per day.
+        """
+        return [
+            entry
+            for _, entry in self._external_cashflow_rows(
+                portfolio_ids, user_id, start_date, end_date, include_trades
+            )
+        ]
+
+    def get_external_cashflows_by_portfolio(
+        self,
+        portfolio_ids: list[int],
+        user_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        include_trades: bool = False,
+    ) -> dict[int, list[CashFlowEntry]]:
+        """Like get_external_cashflows_multi, but kept apart per portfolio."""
+        rows = self._external_cashflow_rows(portfolio_ids, user_id, start_date, end_date, include_trades)
+        out: dict[int, list[CashFlowEntry]] = {pid: [] for pid in normalize_portfolio_ids(portfolio_ids)}
+        for pid, entry in rows:
+            out.setdefault(pid, []).append(entry)
+        return out
+
+    def _external_cashflow_rows(
+        self,
+        portfolio_ids: list[int],
+        user_id: str,
+        start_date: date | None,
+        end_date: date | None,
+        include_trades: bool,
+    ) -> list[tuple[int, CashFlowEntry]]:
         external_sides = {"deposit", "withdrawal", "dividend", "fee", "interest"}
         if include_trades:
             external_sides |= {"buy", "sell"}
-        selected = [tx for tx in txs if tx.side in external_sides]
-        if not selected:
-            return []
 
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
-            if portfolio is None:
-                raise ValueError("Portfolio non trovato")
+            scope_ids, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            base_ccy = portfolios[0].base_currency
 
-            base_ccy = portfolio.base_currency
-            max_day = max(tx.trade_at.date() for tx in selected)
-            currencies = sorted({tx.trade_currency for tx in selected if tx.trade_currency != base_ccy})
+            rows = conn.execute(
+                text(
+                    """
+                    select t.portfolio_id,
+                           t.side,
+                           t.trade_at,
+                           t.quantity::float8 as quantity,
+                           t.price::float8 as price,
+                           t.fees::float8 as fees,
+                           t.taxes::float8 as taxes,
+                           t.trade_currency
+                    from transactions t
+                    where t.portfolio_id = any(:portfolio_ids)
+                      and (:start_date is null or t.trade_at::date >= :start_date)
+                      and (:end_date is null or t.trade_at::date <= :end_date)
+                    order by t.trade_at asc, t.id asc
+                    """
+                ).bindparams(
+                    bindparam("start_date", type_=Date()),
+                    bindparam("end_date", type_=Date()),
+                ),
+                {"portfolio_ids": scope_ids, "start_date": start_date, "end_date": end_date},
+            ).mappings().all()
+
+            selected = [row for row in rows if str(row["side"]) in external_sides]
+            if not selected:
+                return []
+
+            max_day = max(row["trade_at"].date() for row in selected)
+            currencies = sorted(
+                {str(row["trade_currency"]) for row in selected if str(row["trade_currency"]) != base_ccy}
+            )
             fx_rows = []
             if currencies:
                 fx_rows = conn.execute(
@@ -304,29 +399,34 @@ class TransactionsMixin:
                 return 1.0
             return series[idx][1]
 
-        out: list[CashFlowEntry] = []
-        for tx in selected:
-            amount = tx.quantity * tx.price
-            fx = fx_rate_on_or_before(tx.trade_currency, tx.trade_at.date())
+        out: list[tuple[int, CashFlowEntry]] = []
+        for row in selected:
+            side = str(row["side"])
+            trade_day = row["trade_at"].date()
+            amount = float(row["quantity"]) * float(row["price"])
+            fx = fx_rate_on_or_before(str(row["trade_currency"]), trade_day)
             amount_base = amount * fx
-            costs_base = (tx.fees + tx.taxes) * fx
+            costs_base = (float(row["fees"]) + float(row["taxes"])) * fx
 
-            if tx.side == "buy":
+            if side == "buy":
                 # Investor outflow: price + fees/taxes (same sign as deposit)
                 signed = amount_base + costs_base
-            elif tx.side == "sell":
+            elif side == "sell":
                 # Investor inflow: price - fees/taxes (same sign as withdrawal)
                 signed = -(amount_base - costs_base)
-            elif tx.side in {"deposit", "dividend", "interest"}:
+            elif side in {"deposit", "dividend", "interest"}:
                 signed = amount_base
             else:  # withdrawal, fee
                 signed = -amount_base
 
             out.append(
-                CashFlowEntry(
-                    date=tx.trade_at.date().isoformat(),
-                    side=tx.side,
-                    amount=round(signed, 8),
+                (
+                    row_portfolio_id(row, scope_ids),
+                    CashFlowEntry(
+                        date=trade_day.isoformat(),
+                        side=side,
+                        amount=round(signed, 8),
+                    ),
                 )
             )
         return out
@@ -337,7 +437,16 @@ class TransactionsMixin:
     def get_portfolio_values_in_range(
         self, portfolio_id: int, user_id: str, target_dates: Iterable[date]
     ) -> dict[date, float]:
-        """Value the portfolio on many dates using a single connection.
+        return self.get_portfolio_values_in_range_multi([portfolio_id], user_id, target_dates)
+
+    def get_portfolio_values_in_range_multi(
+        self, portfolio_ids: list[int], user_id: str, target_dates: Iterable[date]
+    ) -> dict[date, float]:
+        """Value one or more portfolios on many dates using a single connection.
+
+        With several portfolios each one is folded on its own (holdings, cash,
+        sell clamping) and the per-day values are summed, so the aggregate is
+        exactly the sum of the single-portfolio series.
 
         Valuing one day at a time meant one pool checkout and four queries per
         day, so a full-history timeseries drained the connection pool. The
@@ -354,15 +463,14 @@ class TransactionsMixin:
         today = date.today()
 
         with self.engine.begin() as conn:
-            portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
-            if portfolio is None:
-                raise ValueError("Portfolio non trovato")
-            base_ccy = portfolio.base_currency
+            scope_ids, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            base_ccy = portfolios[0].base_currency
 
             tx_rows = conn.execute(
                 text(
                     """
-                    select asset_id,
+                    select portfolio_id,
+                           asset_id,
                            side,
                            trade_at::date as trade_date,
                            quantity::float8 as quantity,
@@ -371,17 +479,20 @@ class TransactionsMixin:
                            taxes::float8 as taxes,
                            trade_currency
                     from transactions
-                    where portfolio_id = :portfolio_id
+                    where portfolio_id = any(:portfolio_ids)
                       and trade_at::date <= :target_date
                     order by trade_at asc, id asc
                     """
                 ),
-                {"portfolio_id": portfolio_id, "target_date": max_date},
+                {"portfolio_ids": scope_ids, "target_date": max_date},
             ).mappings().all()
 
             if not tx_rows:
-                empty_value = round(float(portfolio.cash_balance), 2)
-                return {d: (empty_value if d >= today else 0.0) for d in wanted}
+                if len(portfolios) == 1:
+                    empty_value = round(float(portfolios[0].cash_balance), 2)
+                    return {d: (empty_value if d >= today else 0.0) for d in wanted}
+                empty_total = round(sum(round(float(p.cash_balance), 2) for p in portfolios), 2)
+                return {d: (empty_total if d >= today else 0.0) for d in wanted}
 
             asset_ids = sorted({int(r["asset_id"]) for r in tx_rows if r["asset_id"] is not None})
             asset_meta = self._get_asset_meta(conn, asset_ids) if asset_ids else {}
@@ -456,68 +567,80 @@ class TransactionsMixin:
                 price_series[aid].append((row["price_date"], px))
         price_dates = {aid: [d for d, _ in series] for aid, series in price_series.items()}
 
-        holdings: dict[int, float] = defaultdict(float)
-        cash_balance = 0.0
-        applied = 0
-        values: dict[date, float] = {}
+        def fold(portfolio, rows: list) -> dict[date, float]:
+            holdings: dict[int, float] = defaultdict(float)
+            cash_balance = 0.0
+            applied = 0
+            values: dict[date, float] = {}
 
-        for target_date in wanted:
-            # Fold in every transaction up to this day; rows are ordered by
-            # (trade_at, id), so the running state matches a fresh fold over the
-            # same prefix, sell clamping included.
-            while applied < len(tx_rows) and tx_rows[applied]["trade_date"] <= target_date:
-                row = tx_rows[applied]
-                applied += 1
-                side = str(row["side"])
-                qty = float(row["quantity"])
-                price = float(row["price"])
-                trade_day = row["trade_date"]
-                trade_ccy = str(row["trade_currency"])
-                fx = fx_rate_on_or_before(trade_ccy, trade_day)
-                amount_base = qty * price * fx
+            for target_date in wanted:
+                # Fold in every transaction up to this day; rows are ordered by
+                # (trade_at, id), so the running state matches a fresh fold over the
+                # same prefix, sell clamping included.
+                while applied < len(rows) and rows[applied]["trade_date"] <= target_date:
+                    row = rows[applied]
+                    applied += 1
+                    side = str(row["side"])
+                    qty = float(row["quantity"])
+                    price = float(row["price"])
+                    trade_day = row["trade_date"]
+                    trade_ccy = str(row["trade_currency"])
+                    fx = fx_rate_on_or_before(trade_ccy, trade_day)
+                    amount_base = qty * price * fx
 
-                if side == "buy":
-                    aid = row["asset_id"]
-                    if aid is None:
+                    if side == "buy":
+                        aid = row["asset_id"]
+                        if aid is None:
+                            continue
+                        holdings[int(aid)] += qty
+                    elif side == "sell":
+                        aid = row["asset_id"]
+                        if aid is None:
+                            continue
+                        holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
+                    elif side in {"deposit", "dividend", "interest"}:
+                        cash_balance += amount_base
+                    elif side in {"withdrawal", "fee"}:
+                        cash_balance -= amount_base
+
+                if applied == 0:
+                    # No transaction on or before this day: same answer the
+                    # single-date query gives when it finds no rows at all.
+                    values[target_date] = round(float(portfolio.cash_balance), 2) if target_date >= today else 0.0
+                    continue
+
+                total_assets_value = 0.0
+                for aid, qty in holdings.items():
+                    if qty <= 0:
                         continue
-                    holdings[int(aid)] += qty
-                elif side == "sell":
-                    aid = row["asset_id"]
-                    if aid is None:
+                    series = price_series.get(aid)
+                    dates = price_dates.get(aid)
+                    if not series or not dates:
                         continue
-                    holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
-                elif side in {"deposit", "dividend", "interest"}:
-                    cash_balance += amount_base
-                elif side in {"withdrawal", "fee"}:
-                    cash_balance -= amount_base
+                    idx = bisect_right(dates, target_date) - 1
+                    if idx < 0:
+                        continue
+                    px_day, px = series[idx]
+                    meta = asset_meta.get(aid)
+                    if meta is None:
+                        continue
+                    fx = fx_rate_on_or_before(meta.quote_currency, px_day)
+                    total_assets_value += qty * px * fx
 
-            if applied == 0:
-                # No transaction on or before this day: same answer the
-                # single-date query gives when it finds no rows at all.
-                values[target_date] = round(float(portfolio.cash_balance), 2) if target_date >= today else 0.0
-                continue
+                values[target_date] = round(cash_balance + total_assets_value, 2)
 
-            total_assets_value = 0.0
-            for aid, qty in holdings.items():
-                if qty <= 0:
-                    continue
-                series = price_series.get(aid)
-                dates = price_dates.get(aid)
-                if not series or not dates:
-                    continue
-                idx = bisect_right(dates, target_date) - 1
-                if idx < 0:
-                    continue
-                px_day, px = series[idx]
-                meta = asset_meta.get(aid)
-                if meta is None:
-                    continue
-                fx = fx_rate_on_or_before(meta.quote_currency, px_day)
-                total_assets_value += qty * px * fx
+            return values
 
-            values[target_date] = round(cash_balance + total_assets_value, 2)
-
-        return values
+        rows_by_portfolio: dict[int, list] = defaultdict(list)
+        for row in tx_rows:
+            rows_by_portfolio[row_portfolio_id(row, scope_ids)].append(row)
+        per_portfolio = [
+            fold(portfolio, rows_by_portfolio.get(pid, []))
+            for pid, portfolio in zip(scope_ids, portfolios)
+        ]
+        if len(per_portfolio) == 1:
+            return per_portfolio[0]
+        return {d: round(sum(series[d] for series in per_portfolio), 2) for d in wanted}
 
     def update_transaction(self, transaction_id: int, payload: TransactionUpdate, user_id: str) -> TransactionRead:
         updates = payload.model_dump(exclude_unset=True)

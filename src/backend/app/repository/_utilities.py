@@ -16,6 +16,7 @@ from ..models import (
     TransactionRead,
 )
 from ._base import PortfolioData
+from ._scope import load_scope_portfolios
 
 
 def _build_cash_breakdown(
@@ -339,6 +340,15 @@ class UtilitiesMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
             return self._cash_balance_values(conn, [portfolio])[portfolio.id]
+
+    def get_current_cash_balance_value_multi(self, portfolio_ids: list[int], user_id: str) -> float:
+        """Combined current cash of several portfolios (sum of each balance)."""
+        with self.engine.begin() as conn:
+            _, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
+            if len(portfolios) == 1:
+                return self._cash_balance_values(conn, portfolios)[portfolios[0].id]
+            balances = self._cash_balance_values(conn, portfolios)
+        return round(sum(balances[p.id] for p in portfolios), 2)
 
     def _cash_balance_values(self, conn, portfolios: list[PortfolioData]) -> dict[int, float]:
         """Cash balance for several portfolios from one connection.

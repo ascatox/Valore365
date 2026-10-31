@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import text
 
-from ...repository import PortfolioRepository
+from ...repository import PortfolioRepository, normalize_portfolio_ids
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +71,7 @@ def _is_equity_like(holding: AnalyzedHolding) -> bool:
 
 
 def _normalize_portfolio_ids(portfolio_ids: list[int]) -> list[int]:
-    normalized: list[int] = []
-    for portfolio_id in portfolio_ids:
-        if portfolio_id <= 0 or portfolio_id in normalized:
-            continue
-        normalized.append(portfolio_id)
-    return normalized
+    return normalize_portfolio_ids(portfolio_ids)
 
 
 def _load_aggregate_holdings(

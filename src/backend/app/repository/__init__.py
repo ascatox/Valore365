@@ -18,6 +18,12 @@ from ._summary import SummaryMixin
 from ._search_pricing import SearchPricingMixin
 from ._utilities import UtilitiesMixin
 from ._pac import PacMixin
+from ._scope import (
+    PortfolioScope,
+    ScopeMixin,
+    normalize_portfolio_ids,
+    resolve_portfolio_scope,
+)
 
 
 class PortfolioRepository(
@@ -31,6 +37,7 @@ class PortfolioRepository(
     SearchPricingMixin,
     UtilitiesMixin,
     PacMixin,
+    ScopeMixin,
     BaseRepositoryMixin,
 ):
     def __init__(self, engine: Engine) -> None:
@@ -43,5 +50,8 @@ __all__ = [
     "PricingAsset",
     "AssetMeta",
     "PositionDelta",
+    "PortfolioScope",
+    "normalize_portfolio_ids",
+    "resolve_portfolio_scope",
     "_finite",
 ]

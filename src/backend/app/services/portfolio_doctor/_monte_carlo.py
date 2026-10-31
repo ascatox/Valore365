@@ -15,7 +15,6 @@ from ._holdings import (
     _compute_portfolio_return_params,
     _load_aggregate_holdings,
     _load_holdings,
-    _normalize_portfolio_ids,
     _percentile,
 )
 
@@ -181,19 +180,11 @@ def run_aggregate_decumulation_plan(
     if not user_id:
         raise ValueError("Utente non valido")
 
-    normalized_ids = _normalize_portfolio_ids(portfolio_ids)
-    if not normalized_ids:
-        raise ValueError("Seleziona almeno un portafoglio")
-
-    portfolios = {portfolio.id: portfolio for portfolio in repo.list_portfolios(user_id)}
-    missing_ids = [portfolio_id for portfolio_id in normalized_ids if portfolio_id not in portfolios]
-    if missing_ids:
-        raise ValueError("Uno o più portafogli non sono disponibili")
-
-    base_currencies = {portfolios[portfolio_id].base_currency for portfolio_id in normalized_ids}
-    if len(base_currencies) != 1:
-        raise ValueError("I portafogli aggregati devono avere la stessa valuta base")
-    base_currency = next(iter(base_currencies))
+    # Shared scope validation: empty selection or mixed base currencies -> 400,
+    # a portfolio the user does not own -> 404 ("Portfolio non trovato").
+    scope = repo.resolve_portfolio_scope(portfolio_ids, user_id)
+    normalized_ids = list(scope.portfolio_ids)
+    base_currency = scope.base_currency
 
     summaries = [repo.get_summary(portfolio_id, user_id) for portfolio_id in normalized_ids]
     initial_capital = sum(max(0.0, float(summary.market_value) + float(summary.cash_balance)) for summary in summaries)
