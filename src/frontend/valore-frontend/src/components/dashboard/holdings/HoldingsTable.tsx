@@ -16,6 +16,8 @@ interface HoldingsTableProps {
   targetMap?: Map<number, number>;
   onRefreshPrices?: () => Promise<void>;
   refreshing?: boolean;
+  /** Text when there are no positions (the aggregate view names the selected portfolios). */
+  emptyMessage?: string;
 }
 
 interface ColumnDef {
@@ -83,7 +85,7 @@ function StaleIcon({ position }: { position: Position }) {
   );
 }
 
-export function HoldingsTable({ positions, currency, summary, targetMap, onRefreshPrices, refreshing }: HoldingsTableProps) {
+export function HoldingsTable({ positions, currency, summary, targetMap, onRefreshPrices, refreshing, emptyMessage = 'Nessuna posizione disponibile' }: HoldingsTableProps) {
   const hasTargets = targetMap && targetMap.size > 0;
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -122,7 +124,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
   if (!sorted.length) {
     return (
       <Card withBorder>
-        <Text c="dimmed" ta="center" size="sm">Nessuna posizione disponibile</Text>
+        <Text c="dimmed" ta="center" size="sm">{emptyMessage}</Text>
       </Card>
     );
   }

@@ -143,4 +143,65 @@ describe('PortfolioSwitcher', () => {
     fireEvent.click(checkboxFor('Core'));
     expect(onScopeChange).toHaveBeenCalledWith({ mode: 'single', id: 2 });
   });
+
+  it('in aggregate offers only the read-only quick actions (open, AI export)', async () => {
+    const onCopyForAi = vi.fn();
+    const onDownloadMarkdown = vi.fn();
+    const onDeletePortfolio = vi.fn();
+    renderSwitcher({
+      allowAggregate: true,
+      scope: { mode: 'aggregate', ids: [1, 2] },
+      onCopyForAi,
+      onDownloadMarkdown,
+      onDeletePortfolio,
+    });
+    openSwitcher();
+
+    expect(await screen.findByText('Azioni rapide')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Modifica' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Elimina' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Scarica .md' }));
+    expect(onDownloadMarkdown).toHaveBeenCalledTimes(1);
+    openSwitcher();
+    fireEvent.click(await screen.findByRole('button', { name: 'Copia per AI' }));
+    expect(onCopyForAi).toHaveBeenCalledTimes(1);
+    expect(onDeletePortfolio).not.toHaveBeenCalled();
+  });
+
+  it('explains the read-only aggregate from the "Aggregato (N)" badge', async () => {
+    renderSwitcher({ allowAggregate: true, scope: { mode: 'aggregate', ids: [1, 2] } });
+
+    const badge = screen.getByLabelText(/Aggregato \(2\)\. Vista aggregata in sola lettura/);
+    fireEvent.mouseEnter(badge);
+    expect(await screen.findByText(/i portafogli selezionati sono letti come uno solo/)).toBeInTheDocument();
+  });
+
+  it('with a single portfolio explains that the aggregate needs at least two', async () => {
+    renderSwitcher({ allowAggregate: true, portfolios: [portfolio(1, 'Core')], scope: { mode: 'single', id: 1 } });
+    openSwitcher();
+
+    expect(await screen.findByTestId('aggregate-needs-two')).toHaveTextContent('almeno 2 portafogli');
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  });
+
+  it('explains when no other portfolio shares the base currency', async () => {
+    renderSwitcher({
+      allowAggregate: true,
+      portfolios: [portfolio(1, 'Core'), portfolio(3, 'Dollari', 'USD'), portfolio(4, 'Franchi', 'CHF')],
+      scope: { mode: 'single', id: 1 },
+    });
+    openSwitcher();
+
+    expect(await screen.findByTestId('aggregate-no-same-currency')).toHaveTextContent('Nessun altro portafoglio in EUR');
+    expect(checkboxFor('Dollari')).toBeDisabled();
+    expect(checkboxFor('Franchi')).toBeDisabled();
+  });
+
+  it('does not show the currency hint when an aggregate is possible', async () => {
+    renderSwitcher({ allowAggregate: true, scope: { mode: 'single', id: 1 } });
+    openSwitcher();
+    await screen.findByText('Vista aggregata');
+    expect(screen.queryByTestId('aggregate-no-same-currency')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('aggregate-needs-two')).not.toBeInTheDocument();
+  });
 });

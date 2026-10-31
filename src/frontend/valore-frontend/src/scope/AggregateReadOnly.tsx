@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Alert, Tooltip } from '@mantine/core';
-import { IconStack2 } from '@tabler/icons-react';
+import { IconAlertTriangle, IconStack2 } from '@tabler/icons-react';
+import { useOptionalPortfolioScope } from './PortfolioScopeContext';
 import { AGGREGATE_READ_ONLY_HINT, AGGREGATE_UNAVAILABLE } from './aggregateLabels';
 
 interface ReadOnlyTooltipProps {
@@ -37,6 +38,31 @@ export function AggregateUnavailableNotice({ description, mb }: UnavailableNotic
   return (
     <Alert color="gray" variant="light" icon={<IconStack2 size={18} />} title={AGGREGATE_UNAVAILABLE} mb={mb}>
       {description ?? AGGREGATE_READ_ONLY_HINT}
+    </Alert>
+  );
+}
+
+/**
+ * Friendly notice after an aggregate request failed with a scope error (a
+ * portfolio deleted in another tab, mixed currencies). The scope context has
+ * already started the recovery; this only tells the user what happened.
+ */
+export function AggregateScopeNotice({ mb = 'md' }: { mb?: string }) {
+  const context = useOptionalPortfolioScope();
+  if (!context?.scopeNotice) return null;
+  return (
+    <Alert
+      color="yellow"
+      variant="light"
+      mb={mb}
+      icon={<IconAlertTriangle size={18} />}
+      title="Vista aggregata aggiornata"
+      withCloseButton
+      closeButtonLabel="Chiudi avviso"
+      onClose={context.dismissScopeNotice}
+      role="status"
+    >
+      {context.scopeNotice}
     </Alert>
   );
 }

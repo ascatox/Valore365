@@ -14,6 +14,7 @@ import {
   type PortfolioScopeInput,
 } from '../../../scope/portfolioScope';
 import { AggregateReadOnlyTooltip } from '../../../scope/AggregateReadOnly';
+import { AGGREGATE_EMPTY_POSITIONS } from '../../../scope/aggregateLabels';
 
 const ASSET_TYPE_LABELS: Record<string, string> = {
   stock: 'Azioni',
@@ -135,7 +136,7 @@ export function PosizioniTab({ scope: scopeInput }: PosizioniTabProps) {
           <Text fw={600} size="sm">Posizioni correnti</Text>
           <Badge variant="light">{positions.length} posizioni</Badge>
         </Group>
-        <HoldingsTable positions={positions} currency={currency} summary={summary ?? null} targetMap={targetMap} onRefreshPrices={handleRefreshPrices} refreshing={refreshingPrices} />
+        <HoldingsTable positions={positions} currency={currency} summary={summary ?? null} targetMap={targetMap} onRefreshPrices={handleRefreshPrices} refreshing={refreshingPrices} emptyMessage={isAggregate ? AGGREGATE_EMPTY_POSITIONS : undefined} />
       </Card>
 
       {positions.length > 0 && (

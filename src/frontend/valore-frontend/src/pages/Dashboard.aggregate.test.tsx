@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
-import { PENDING, installFetchMock, portfolio, renderWithApp, storeScope, stubLayoutApis } from '../test/pageHarness';
+import { PENDING, apiError, createTestQueryClient, installFetchMock, portfolio, renderWithApp, storeScope, stubLayoutApis } from '../test/pageHarness';
 import { DashboardPage } from './Dashboard.page';
 
 const PORTFOLIOS = [portfolio(1, 'Core'), portfolio(2, 'Pensione'), portfolio(3, 'Dollari', 'USD')];
@@ -73,5 +73,39 @@ describe('DashboardPage in the aggregate view', () => {
     await waitFor(() => expect(api.paths()).toContain('/portfolios/2/summary'));
     expect(api.paths()).toContain('/portfolios/2/target-performance');
     expect(api.paths().some((path) => path.includes('/aggregate/'))).toBe(false);
+  });
+
+  it('says that the selected portfolios have no positions', async () => {
+    storeScope({ mode: 'aggregate', ids: [1, 2] });
+    window.localStorage.setItem(STORAGE_KEYS.activeTab, 'posizioni');
+    installFetchMock(PORTFOLIOS);
+    renderWithApp(<DashboardPage />);
+
+    expect(await screen.findByText('Nessuna posizione nei portafogli selezionati.')).toBeInTheDocument();
+  });
+
+  it('recovers from a mixed-currency error with a friendly notice', async () => {
+    storeScope({ mode: 'aggregate', ids: [1, 2] });
+    // The list in cache is stale: "Pensione" was moved to USD in another tab.
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(['portfolios'], PORTFOLIOS);
+    let listCalls = 0;
+    const api = installFetchMock(PORTFOLIOS, (request) => {
+      if (request.path === '/portfolios') {
+        listCalls += 1;
+        return [PORTFOLIOS[0], portfolio(2, 'Pensione', 'USD'), PORTFOLIOS[2]];
+      }
+      if (request.path.startsWith('/portfolios/aggregate/')) {
+        return apiError(400, 'invalid_request', 'I portafogli aggregati devono avere la stessa valuta base');
+      }
+      return undefined;
+    });
+    renderWithApp(<DashboardPage />, { queryClient });
+
+    expect(await screen.findByText(/hanno valute base diverse/)).toBeInTheDocument();
+    await waitFor(() => expect(api.paths()).toContain('/portfolios/1/summary'));
+    expect(screen.queryByText('I portafogli aggregati devono avere la stessa valuta base')).not.toBeInTheDocument();
+    // At most the mount refetch plus one recovery refetch: never a loop.
+    expect(listCalls).toBeLessThanOrEqual(2);
   });
 });

@@ -10,6 +10,7 @@ import {
   getPerformanceSummaryForScope,
   getPortfolioDataCoverageForScope,
   getPortfolioHealthForScope,
+  getPortfolioMarkdownForScope,
   getPortfolioPerformersForScope,
   getPortfolioSummaryForScope,
   getPortfolioTimeseriesForScope,
@@ -89,5 +90,32 @@ describe('aggregate API client', () => {
     await getDecumulationPlanForScope({ mode: 'aggregate', ids: [1, 2] }, params);
     expect(requestedPath(0)).toMatch(/^\/portfolios\/5\/decumulation\?annual_withdrawal=20000&years=30/);
     expect(requestedPath(1)).toMatch(/^\/portfolios\/aggregate\/decumulation\?.*portfolio_ids=1&portfolio_ids=2/);
+  });
+
+  it('routes the Markdown export by scope and keeps the filename of the response', async () => {
+    fetchMock.mockImplementation(async () => new Response('# md', {
+      status: 200,
+      headers: { 'Content-Disposition': 'attachment; filename="valore365-aggregato-2026-10-31.md"' },
+    }));
+
+    const aggregate = await getPortfolioMarkdownForScope({ mode: 'aggregate', ids: [2, 1] });
+    expect(requestedPath(0)).toBe('/portfolios/aggregate/export/markdown?portfolio_ids=1&portfolio_ids=2');
+    expect(aggregate).toEqual({ text: '# md', filename: 'valore365-aggregato-2026-10-31.md' });
+
+    await getPortfolioMarkdownForScope({ mode: 'single', id: 4 });
+    expect(requestedPath(1)).toBe('/portfolios/4/export/markdown');
+  });
+
+  it('falls back to a dated aggregate filename and throws API errors with status and code', async () => {
+    fetchMock.mockImplementationOnce(async () => new Response('# md', { status: 200 }));
+    const result = await getPortfolioMarkdownForScope({ mode: 'aggregate', ids: [1, 2] });
+    expect(result.filename).toMatch(/^valore365-aggregato-\d{4}-\d{2}-\d{2}\.md$/);
+
+    fetchMock.mockImplementationOnce(async () => new Response(
+      JSON.stringify({ error: { code: 'not_found', message: 'Portfolio non trovato' } }),
+      { status: 404 },
+    ));
+    await expect(getPortfolioMarkdownForScope({ mode: 'aggregate', ids: [1, 2] }))
+      .rejects.toMatchObject({ name: 'ApiRequestError', status: 404, code: 'not_found', message: 'Portfolio non trovato' });
   });
 });

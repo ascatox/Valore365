@@ -1,7 +1,7 @@
 ---
 id: TASK-28
 title: 'Vista aggregata: adattamento pagine Dashboard, Doctor, FIRE, Portfolio, Copilot'
-status: In Progress
+status: Done
 assignee:
   - '@claude'
 created_date: '2026-10-31T10:00:00Z'

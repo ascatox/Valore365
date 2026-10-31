@@ -3,7 +3,7 @@ import { Link, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import type { PortfolioHealthResponse } from '../services/api';
-import { PENDING, installFetchMock, portfolio, renderWithApp, storeScope, stubLayoutApis, summary } from '../test/pageHarness';
+import { PENDING, apiError, installFetchMock, portfolio, renderWithApp, storeScope, stubLayoutApis, summary } from '../test/pageHarness';
 import { DashboardPage } from './Dashboard.page';
 import { DoctorPage } from './Doctor.page';
 import { FirePage } from './Fire.page';
@@ -157,5 +157,63 @@ describe('shared scope across pages', () => {
     fireEvent.click(screen.getByText('vai al doctor'));
     await waitFor(() => expect(api.paths()).toContain('/portfolios/2/health'));
     expect(api.paths().some((path) => path.startsWith('/portfolios/aggregate/health'))).toBe(false);
+  });
+});
+
+describe('Aggregate errors and empty states on Doctor and FIRE', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    stubLayoutApis();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('Doctor: a deleted portfolio gives a notice, not the raw API error, and the scope recovers', async () => {
+    storeScope({ mode: 'aggregate', ids: [1, 2] });
+    let listCalls = 0;
+    const api = installFetchMock(PORTFOLIOS, (request) => {
+      if (request.path === '/portfolios') {
+        listCalls += 1;
+        return listCalls === 1 ? PORTFOLIOS : [PORTFOLIOS[0], PORTFOLIOS[2]];
+      }
+      if (request.path.startsWith('/portfolios/aggregate/')) return apiError(404, 'not_found', 'Portfolio non trovato');
+      if (request.path === '/portfolios/1/health') return health(1);
+      if (DOCTOR_CARDS.test(request.path)) return PENDING;
+      return undefined;
+    });
+    renderWithApp(<DoctorPage />);
+
+    expect(await screen.findByText(/non esiste più/)).toBeInTheDocument();
+    await waitFor(() => expect(api.paths()).toContain('/portfolios/1/health'));
+    expect(screen.queryByText('Portfolio non trovato')).not.toBeInTheDocument();
+  });
+
+  it('Doctor: an aggregate with no positions says so', async () => {
+    storeScope({ mode: 'aggregate', ids: [1, 2] });
+    installFetchMock(PORTFOLIOS, (request) => {
+      const path = request.path.split('?')[0];
+      if (path === '/portfolios/aggregate/summary') return summary(0, { market_value: 0, cost_basis: 0, unrealized_pl: 0 });
+      if (path === '/portfolios/aggregate/health') return { ...health(0), score: 0 };
+      if (DOCTOR_CARDS.test(request.path)) return PENDING;
+      return undefined;
+    });
+    renderWithApp(<DoctorPage />);
+
+    expect(await screen.findByTestId('aggregate-empty')).toHaveTextContent('Nessuna posizione nei portafogli selezionati.');
+  });
+
+  it('FIRE: a scope error shows the notice instead of the raw message', async () => {
+    storeScope({ mode: 'aggregate', ids: [1, 2] });
+    installFetchMock(PORTFOLIOS, (request) => (
+      request.path.startsWith('/portfolios/aggregate/')
+        ? apiError(400, 'invalid_request', 'I portafogli aggregati devono avere la stessa valuta base')
+        : undefined
+    ));
+    renderWithApp(<FirePage />);
+
+    expect(await screen.findByText(/hanno valute base diverse/)).toBeInTheDocument();
+    expect(screen.queryByText('I portafogli aggregati devono avere la stessa valuta base')).not.toBeInTheDocument();
   });
 });

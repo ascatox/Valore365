@@ -1,19 +1,34 @@
 import { useState } from 'react';
-import { getPortfolioMarkdown } from '../../../services/api';
+import { getPortfolioMarkdownForScope } from '../../../services/api';
+import { friendlyAggregateError } from '../../../scope/aggregateErrors';
+import { useOptionalPortfolioScope } from '../../../scope/PortfolioScopeContext';
+import { toPortfolioScope, type PortfolioScopeInput } from '../../../scope/portfolioScope';
 
-export function usePortfolioAiExport(portfolioId: number | null) {
+/**
+ * Markdown snapshot for an external AI: copy to the clipboard or download.
+ * A single portfolio uses `/portfolios/{id}/export/markdown`, an aggregate
+ * scope `/portfolios/aggregate/export/markdown` (merged data, the included
+ * portfolios listed in the header).
+ */
+export function usePortfolioAiExport(scopeInput: PortfolioScopeInput) {
+  const scope = toPortfolioScope(scopeInput);
+  const scopeContext = useOptionalPortfolioScope();
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchMarkdown = async () => {
-    if (portfolioId == null) return null;
+    if (scope == null) return null;
     setLoading(true);
     setError(null);
     try {
-      return await getPortfolioMarkdown(portfolioId);
+      return await getPortfolioMarkdownForScope(scope);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Export non riuscito');
+      // A stale aggregate (portfolio deleted elsewhere) also refreshes the scope.
+      if (scope.mode === 'aggregate') scopeContext?.reportScopeError(err);
+      setError((scope.mode === 'aggregate' ? friendlyAggregateError(err) : null)
+        ?? (err instanceof Error ? err.message : null)
+        ?? 'Export non riuscito');
       return null;
     } finally {
       setLoading(false);
@@ -45,5 +60,5 @@ export function usePortfolioAiExport(portfolioId: number | null) {
     }
   };
 
-  return { copyForAi, downloadMarkdown, loading, copied, error };
+  return { copyForAi, downloadMarkdown, loading, copied, error, isAggregate: scope?.mode === 'aggregate' };
 }

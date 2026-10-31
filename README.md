@@ -96,6 +96,27 @@ Valore365 permette anche di monitorare il portafoglio nel tempo:
 
 ---
 
+# 🧩 Vista aggregata
+
+La **vista aggregata** mostra più portafogli come se fossero uno solo (es. broker + conto di risparmio + fondo pensione), **senza creare un nuovo portafoglio** e senza toccare i dati.
+
+- **Come si seleziona**: dal selettore portafoglio (Dashboard, Portfolio, Doctor, FIRE) spunta i portafogli nella sezione "Vista aggregata". La scelta è condivisa tra le pagine e ricordata nel browser; "Torna a un solo portafoglio" ripristina la vista singola. Il badge **Aggregato (N)** indica quanti portafogli sono inclusi (al passaggio del mouse spiega la sola lettura).
+- **Stessa valuta base**: si possono aggregare solo portafogli con la stessa valuta base; gli altri compaiono disattivati con il motivo. Servono almeno 2 portafogli, al massimo **20**.
+- **Cosa si vede**: valore, P/L, posizioni fuse per strumento (costo medio ponderato, pesi ricalcolati sul totale), andamento, performance TWR/MWR sui flussi combinati, Doctor (salute, X-Ray, Monte Carlo, stress test), FIRE e decumulo, transazioni con la colonna "Portafoglio", Copilot ed export Markdown per AI ("Vista aggregata: A, B, C").
+- **Sola lettura**: nuove transazioni, import CSV, modifica/eliminazione di movimenti e le azioni sul portafoglio sono disattivate; per modificare seleziona un solo portafoglio.
+- **Non disponibile in aggregato** (dati definiti per singolo portafoglio): target allocation e scostamento dai target, target performance, dettaglio intraday per strumento, liquidità e movimenti di cassa, piani di accumulo (PAC).
+- **Errori gestiti**: se un portafoglio della selezione viene eliminato (anche in un'altra scheda) o cambia valuta, la selezione si aggiorna da sola con un avviso.
+
+**API**: ogni risorsa in lettura ha la variante aggregata
+
+```
+GET /api/portfolios/aggregate/<risorsa>?portfolio_ids=1&portfolio_ids=2
+```
+
+con gli stessi parametri e la stessa risposta della rotta `/api/portfolios/{id}/<risorsa>` (`portfolio_id = 0` e `portfolio_ids` con gli id selezionati). Risorse: `summary`, `positions`, `allocation`, `performers`, `timeseries`, `intraday-timeseries`, `transactions`, `data-coverage`, `performance/*`, `health`, `monte-carlo`, `stress-test`, `xray`, `decumulation`, `export/markdown`. Errori: selezione vuota, più di 20 id o valute diverse → `400 invalid_request`; portafoglio non trovato o di un altro utente → `404 not_found`.
+
+---
+
 # 🔁 ETF Overlap Detection
 
 Molti portafogli contengono ETF che replicano **gli stessi titoli** senza che l’investitore se ne accorga.

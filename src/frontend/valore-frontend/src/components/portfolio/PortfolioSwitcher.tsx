@@ -13,6 +13,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Tooltip,
   UnstyledButton,
   useComputedColorScheme,
   useMantineTheme,
@@ -46,6 +47,11 @@ import {
   toggleScopePortfolio,
   type PortfolioScope,
 } from '../../scope/portfolioScope';
+import {
+  AGGREGATE_NEEDS_TWO,
+  AGGREGATE_READ_ONLY_EXPLANATION,
+  aggregateNoSameCurrency,
+} from '../../scope/aggregateLabels';
 import { BottomSheet } from '../mobile/BottomSheet';
 
 interface PortfolioSwitcherProps {
@@ -196,14 +202,38 @@ export function PortfolioSwitcher({
       ? `${selectedPortfolio.base_currency} · Cash ${formatMoney(selectedPortfolioCashBalance ?? selectedPortfolio.current_cash_balance ?? selectedPortfolio.cash_balance ?? 0, selectedPortfolio.base_currency)}`
       : (portfolios.length ? `${portfolios.length} portafogli disponibili` : emptyLabel);
 
+  // In the aggregate view only the read-only actions (open, export) are offered.
   const quickActions = [
-    { label: 'Apri portfolio', icon: IconExternalLink, onClick: onOpenPortfolio },
-    { label: 'Modifica', icon: IconEdit, onClick: onEditPortfolio },
-    { label: 'Clona', icon: IconCopy, onClick: onClonePortfolio },
-    { label: 'Copia per AI', icon: IconSparkles, onClick: onCopyForAi, color: 'teal' },
-    { label: 'Scarica .md', icon: IconDownload, onClick: onDownloadMarkdown, color: 'teal' },
-    { label: 'Elimina', icon: IconTrash, onClick: onDeletePortfolio, color: 'red' },
-  ].filter((action) => action.onClick);
+    { label: 'Apri portfolio', icon: IconExternalLink, onClick: onOpenPortfolio, readOnly: true },
+    { label: 'Modifica', icon: IconEdit, onClick: onEditPortfolio, readOnly: false },
+    { label: 'Clona', icon: IconCopy, onClick: onClonePortfolio, readOnly: false },
+    { label: 'Copia per AI', icon: IconSparkles, onClick: onCopyForAi, color: 'teal', readOnly: true },
+    { label: 'Scarica .md', icon: IconDownload, onClick: onDownloadMarkdown, color: 'teal', readOnly: true },
+    { label: 'Elimina', icon: IconTrash, onClick: onDeletePortfolio, color: 'red', readOnly: false },
+  ].filter((action) => action.onClick && (!isAggregateMode || action.readOnly));
+
+  // Single mode with no other portfolio in the same currency: nothing to aggregate.
+  const noSameCurrencyPeer = allowAggregate
+    && !isAggregateMode
+    && scopeCurrency != null
+    && portfolios.length > 1
+    && !portfolios.some((portfolio) => !aggregateIds.includes(portfolio.id) && portfolio.base_currency === scopeCurrency);
+
+  const aggregateBadge = (size: 'sm' | 'md', variant: 'filled' | 'light') => (
+    <Tooltip label={AGGREGATE_READ_ONLY_EXPLANATION} multiline w={300} withArrow events={{ hover: true, focus: true, touch: true }}>
+      <Badge
+        variant={variant}
+        color="teal"
+        size={size}
+        radius="xl"
+        leftSection={size === 'sm' ? <IconStack2 size={11} /> : undefined}
+        style={{ flexShrink: 0, cursor: 'help' }}
+        aria-label={`${aggregateLabel}. ${AGGREGATE_READ_ONLY_EXPLANATION}`}
+      >
+        {aggregateLabel}
+      </Badge>
+    </Tooltip>
+  );
 
   // On mobile the bottom sheet itself scrolls with a finger drag; a nested
   // ScrollArea there could only be scrolled by grabbing its scrollbar.
@@ -339,13 +369,16 @@ export function PortfolioSwitcher({
               Vista aggregata
             </Text>
           </Group>
-          {isAggregateMode && (
-            <Badge variant="light" color="teal" radius="xl">{aggregateLabel}</Badge>
-          )}
+          {isAggregateMode && aggregateBadge('md', 'light')}
         </Group>
         <Text size="xs" c="dimmed" mb={8}>
           {`Seleziona più portafogli con la stessa valuta base${scopeCurrency ? ` (${scopeCurrency})` : ''}: la vista aggregata è in sola lettura.`}
         </Text>
+        {noSameCurrencyPeer && scopeCurrency && (
+          <Text size="xs" c="orange" mb={8} data-testid="aggregate-no-same-currency">
+            {aggregateNoSameCurrency(scopeCurrency)}
+          </Text>
+        )}
         <Stack gap={6}>
           {filteredPortfolios.map((portfolio) => {
             const checked = aggregateIds.includes(portfolio.id);
@@ -406,7 +439,17 @@ export function PortfolioSwitcher({
 
       {allowAggregate && portfolios.length > 1 && aggregateSection}
 
-      {quickActions.length > 0 && selectedPortfolio && (
+      {allowAggregate && portfolios.length === 1 && (
+        <>
+          <Divider />
+          <Group gap={6} wrap="nowrap" align="flex-start" data-testid="aggregate-needs-two">
+            <IconStack2 size={14} color={isDark ? theme.colors.gray[4] : '#64748b'} style={{ flexShrink: 0, marginTop: 2 }} />
+            <Text size="xs" c="dimmed">{AGGREGATE_NEEDS_TWO}</Text>
+          </Group>
+        </>
+      )}
+
+      {quickActions.length > 0 && (selectedPortfolio || isAggregateMode) && (
         <>
           <Divider />
           <Box>
@@ -500,9 +543,7 @@ export function PortfolioSwitcher({
             </Text>
             {isAggregateMode && (
               <Group gap={6} mt={8} wrap="wrap">
-                <Badge variant="filled" color="teal" size="sm" leftSection={<IconStack2 size={11} />}>
-                  {aggregateLabel}
-                </Badge>
+                {aggregateBadge('sm', 'filled')}
               </Group>
             )}
             {selectedPortfolio && (
@@ -562,11 +603,7 @@ export function PortfolioSwitcher({
       <Text fw={700} size="sm" truncate="end" style={{ minWidth: 0 }}>
         {triggerLabel}
       </Text>
-      {isAggregateMode && (
-        <Badge variant="filled" color="teal" size="sm" style={{ flexShrink: 0 }}>
-          {aggregateLabel}
-        </Badge>
-      )}
+      {isAggregateMode && aggregateBadge('sm', 'filled')}
       <IconChevronDown size={16} color="var(--mantine-color-dimmed)" style={{ flexShrink: 0 }} />
     </UnstyledButton>
   );
