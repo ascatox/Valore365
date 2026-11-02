@@ -11,13 +11,20 @@ from ...schemas.portfolio_doctor import (
     StressTestClassImpact,
     StressTestResponse,
     StressTestScenarioResult,
+    VolatilityInfo,
 )
-from ...constants.stress_scenarios import HISTORICAL_SCENARIOS, SHOCK_SCENARIOS
+from ...constants.stress_scenarios import (
+    HISTORICAL_CLASS_PROXIES,
+    HISTORICAL_MIN_COVERAGE_PCT,
+    HISTORICAL_SCENARIOS,
+    SHOCK_SCENARIOS,
+)
 from ._holdings import (
     AnalyzedHolding,
     PortfolioRef,
-    _compute_portfolio_return_params,
+    _historical_return_stats,
     _load_holdings,
+    _long_term_return_assumptions,
     holding_asset_class,
     resolve_doctor_scope,
 )
@@ -41,7 +48,18 @@ def _compute_historical_scenario(
     holdings: list[AnalyzedHolding],
     scenario: dict,
 ) -> StressTestScenarioResult:
-    """Compute portfolio impact during a historical scenario using price_bars_1d."""
+    """Portfolio impact during a historical scenario (TASK-38, V365-001).
+
+    - coverage_pct: weight of holdings with at least 2 price bars in the
+      window (cash included: its return is 0), over the total weight.
+    - coverage >= HISTORICAL_MIN_COVERAGE_PCT -> method "historical": real
+      window returns for the covered part, class proxies for the rest
+      (flag "uncovered_weight_filled_with_class_proxy").
+    - below it -> method "proxy": sum(weight_i x class proxy_i) for every
+      holding (flag "class_proxy_drawdowns").
+    - empty portfolio -> method "not_available".
+    The result never depends on the scenario benchmark alone.
+    """
     start_date = date.fromisoformat(scenario["start"])
     end_date = date.fromisoformat(scenario["end"])
     asset_ids = [h.asset_id for h in holdings if h.asset_type != "cash"]
@@ -69,48 +87,95 @@ def _compute_historical_scenario(
                     (row["price_date"], close)
                 )
 
-    weighted_return = 0.0
-    covered_weight = 0.0
-    asset_impacts: list[StressTestAssetImpact] = []
+    total_weight = sum(max(0.0, h.weight_pct) for h in holdings) / 100.0
+    if total_weight <= 0:
+        return _not_available_scenario(scenario)
 
+    # Real return over the window for every holding that has it. Cash is
+    # covered by definition: its return in the portfolio currency is 0.
+    real_returns: dict[int, float] = {}
     for holding in holdings:
         if holding.asset_type == "cash":
+            real_returns[holding.asset_id] = 0.0
             continue
         series = prices_by_asset.get(holding.asset_id, [])
         if len(series) < 2:
             continue
         first_price = series[0][1]
         last_price = series[-1][1]
-        asset_return = (last_price - first_price) / first_price
-        weight_fraction = holding.weight_pct / 100.0
+        real_returns[holding.asset_id] = (last_price - first_price) / first_price
+
+    covered_weight = sum(
+        max(0.0, h.weight_pct) / 100.0 for h in holdings if h.asset_id in real_returns
+    )
+    coverage_pct = round(covered_weight / total_weight * 100.0, 2)
+    method = "historical" if coverage_pct >= HISTORICAL_MIN_COVERAGE_PCT else "proxy"
+
+    proxies = HISTORICAL_CLASS_PROXIES[scenario["id"]]
+    flags: list[str] = ["class_proxy_drawdowns"] if method == "proxy" else []
+    weighted_return = 0.0
+    proxy_return = 0.0
+    asset_impacts: list[StressTestAssetImpact] = []
+    # (class, source) -> [weight_pct, contribution as fraction x weight fraction]
+    rows: dict[tuple[str, str], list[float]] = defaultdict(lambda: [0.0, 0.0])
+
+    for holding in holdings:
+        weight_fraction = max(0.0, holding.weight_pct) / 100.0
+        asset_class = holding_asset_class(holding)
+        if method == "historical" and holding.asset_id in real_returns:
+            asset_return = real_returns[holding.asset_id]
+            source = "historical"
+        else:
+            asset_return = _class_proxy(proxies, asset_class, flags) / 100.0
+            source = "proxy"
+            proxy_return += asset_return * weight_fraction
+            if method == "historical" and "uncovered_weight_filled_with_class_proxy" not in flags:
+                flags.append("uncovered_weight_filled_with_class_proxy")
         weighted_return += asset_return * weight_fraction
-        covered_weight += weight_fraction
-        asset_impacts.append(
-            StressTestAssetImpact(
-                symbol=holding.symbol,
-                name=holding.name,
-                weight_pct=round(holding.weight_pct, 2),
-                estimated_loss_pct=round(asset_return * 100, 2),
+        row = rows[(asset_class, source)]
+        row[0] += max(0.0, holding.weight_pct)
+        row[1] += asset_return * weight_fraction
+        if holding.asset_type != "cash":
+            asset_impacts.append(
+                StressTestAssetImpact(
+                    symbol=holding.symbol,
+                    name=holding.name,
+                    weight_pct=round(holding.weight_pct, 2),
+                    estimated_loss_pct=round(asset_return * 100, 2),
+                    asset_class=asset_class,
+                )
             )
+
+    # Normalized on the total weight, so contributions add up to the impact.
+    portfolio_impact = weighted_return / total_weight * 100.0
+    class_breakdown = [
+        StressTestClassImpact(
+            asset_class=cls,
+            weight_pct=round(weight_pct, 2),
+            drawdown_pct=round(contribution / (weight_pct / 100.0) * 100.0, 2) if weight_pct > 0 else 0.0,
+            source=source,
+            contribution_pct=round(contribution / total_weight * 100.0, 2),
         )
+        for (cls, source), (weight_pct, contribution) in sorted(
+            rows.items(), key=lambda item: (item[1][1], item[0])
+        )
+    ]
 
-    if covered_weight > 0:
-        # Keep uncovered weight in the portfolio with a neutral impact instead
-        # of renormalizing losses to the subset that has historical prices.
-        portfolio_impact = weighted_return * 100.0
+    if method == "historical":
+        # Path drawdown of the part with real prices (uncovered weight held
+        # flat), plus the proxy contribution of the uncovered part. Proxies
+        # are window returns, so their own path is unknown: approximation.
+        covered_prices = {aid: prices_by_asset[aid] for aid in real_returns if aid in prices_by_asset}
+        max_dd = _compute_weighted_drawdown(covered_prices, holdings)
+        max_dd = min(max_dd + proxy_return / total_weight * 100.0, portfolio_impact, 0.0)
     else:
-        # Fallback: estimate from benchmark drawdown scaled by portfolio beta
-        portfolio_impact = scenario["benchmark_drawdown"] * 0.8
-
-    # Compute max drawdown from portfolio-weighted daily series
-    max_dd = _compute_weighted_drawdown(prices_by_asset, holdings) if covered_weight > 0 else portfolio_impact
+        # The proxy windows run roughly peak -> trough.
+        max_dd = min(portfolio_impact, 0.0)
 
     # Estimate recovery months (rough heuristic based on drawdown depth)
     recovery_months = None
     if max_dd < 0:
         recovery_months = max(1, int(abs(max_dd) / 2.5))
-
-    most_impacted = _rank_most_impacted(asset_impacts)
 
     return StressTestScenarioResult(
         scenario_id=scenario["id"],
@@ -122,7 +187,47 @@ def _compute_historical_scenario(
         recovery_months=recovery_months,
         benchmark_drawdown_pct=scenario["benchmark_drawdown"],
         risk_level=_classify_risk_level(portfolio_impact),
-        most_impacted_assets=most_impacted,
+        most_impacted_assets=_rank_most_impacted(asset_impacts),
+        method=method,
+        coverage_pct=coverage_pct,
+        class_breakdown=class_breakdown,
+        flags=flags,
+    )
+
+
+CRYPTO_PRE_INCEPTION_FLAG = "crypto_pre_inception_equity_proxy"
+UNKNOWN_CLASS_PROXY_FLAG = "unknown_asset_class_equity_proxy"
+
+
+def _class_proxy(proxies: dict[str, float | None], asset_class: str, flags: list[str]) -> float:
+    """Drawdown proxy (percent) of a class in a historical scenario.
+
+    ``unknown`` and crypto before it existed take the equity proxy
+    (prudential choice) and raise a flag.
+    """
+    value = proxies.get(asset_class)
+    if value is not None:
+        return value
+    flag = CRYPTO_PRE_INCEPTION_FLAG if asset_class == "crypto" else UNKNOWN_CLASS_PROXY_FLAG
+    if flag not in flags:
+        flags.append(flag)
+    return proxies["equity"]
+
+
+def _not_available_scenario(scenario: dict) -> StressTestScenarioResult:
+    """Empty portfolio: nothing to stress."""
+    return StressTestScenarioResult(
+        scenario_id=scenario["id"],
+        scenario_name=scenario["name"],
+        scenario_type="historical",
+        period=scenario["period"],
+        estimated_portfolio_impact_pct=0.0,
+        max_drawdown_pct=None,
+        recovery_months=None,
+        benchmark_drawdown_pct=scenario["benchmark_drawdown"],
+        risk_level="low",
+        method="not_available",
+        coverage_pct=None,
     )
 
 
@@ -295,6 +400,40 @@ def _is_tech_like(name: str, symbol: str) -> bool:
     return any(kw in name for kw in tech_keywords) or "qqq" in symbol
 
 
+STRESS_VOLATILITY_METHOD = (
+    "realized_portfolio_series_floored_at_long_term_class_mix_volatility"
+)
+
+
+def stress_volatility_info(
+    repo: PortfolioRepository,
+    holdings: list[AnalyzedHolding],
+) -> tuple[float, VolatilityInfo]:
+    """Volatility shown with the stress test, with its methodology (TASK-40).
+
+    Same sigma as the Monte Carlo projections: annualized volatility of the
+    weighted portfolio series over the last year (correlations included),
+    never below the long-term volatility of the class mix (16% for equity,
+    6% bond, 15% commodity/gold, 0% cash, with long-term correlations), so a
+    calm year does not understate risk. Returns (sigma as a fraction,
+    metadata); sigma is 0 and value_pct None without enough history.
+    """
+    _mu_lt, sigma_long_term = _long_term_return_assumptions(holdings)
+    floor_pct = round(sigma_long_term * 100, 2)
+    historical = _historical_return_stats(repo, holdings)
+    sigma_hist = historical[1] if historical is not None else None
+    sigma = max(sigma_hist, sigma_long_term) if sigma_hist is not None else 0.0
+    return sigma, VolatilityInfo(
+        name="stress_portfolio_volatility",
+        value_pct=round(sigma * 100, 2) if sigma > 0 else None,
+        method=STRESS_VOLATILITY_METHOD,
+        period="last 1y of daily closes (min 20 returns), annualized x sqrt(252)",
+        is_floored=sigma_hist is not None and sigma_long_term > sigma_hist,
+        floor_pct=floor_pct,
+        unfloored_pct=round(sigma_hist * 100, 2) if sigma_hist is not None else None,
+    )
+
+
 def run_stress_test(
     repo: PortfolioRepository,
     portfolio_id: PortfolioRef,
@@ -314,9 +453,7 @@ def run_stress_test(
             analysis_date=str(date.today()),
         )
 
-    # Compute portfolio volatility
-    mu_annual, sigma_annual, _df_t = _compute_portfolio_return_params(repo, holdings)
-    volatility_pct = round(sigma_annual * 100, 2) if sigma_annual > 0 else None
+    _sigma_annual, volatility = stress_volatility_info(repo, holdings)
 
     scenarios: list[StressTestScenarioResult] = []
 
@@ -339,6 +476,7 @@ def run_stress_test(
     return StressTestResponse(
         **identity,
         scenarios=scenarios,
-        portfolio_volatility_pct=volatility_pct,
+        portfolio_volatility_pct=volatility.value_pct,
+        volatility=volatility,
         analysis_date=str(date.today()),
     )

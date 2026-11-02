@@ -18,8 +18,18 @@ from .services.portfolio_doctor import (
     run_monte_carlo_projection,
     run_stress_test,
 )
-from .services.portfolio_doctor._health import resolve_holding_ters
+from .services.portfolio_doctor._health import (
+    CATEGORY_MAX_SCORES,
+    health_volatility_info,
+    resolve_holding_ters,
+)
 from .services.asset_classification import classify_asset_class
+from .services.rebalance import (
+    DEFAULT_TOLERANCE_PP,
+    REBALANCE_MODES,
+    RebalanceHolding,
+    compute_rebalance_plan,
+)
 from .services.portfolio_doctor._holdings import _load_holdings
 
 logger = logging.getLogger(__name__)
@@ -158,8 +168,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "calculate_rebalance_orders",
         "description": (
             "Calcola gli ordini di acquisto/vendita necessari per riallineare "
-            "il portafoglio al target. Usa questo tool quando l'utente chiede "
-            "come ribilanciare o tornare in target."
+            "il portafoglio al target (le vendite finanziano gli acquisti). Usa "
+            "questo tool quando l'utente chiede come ribilanciare o tornare in target."
         ),
         "parameters": {
             "type": "object",
@@ -167,8 +177,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "available_cash": {
                     "type": "number",
                     "description": (
-                        "Cash aggiuntivo da investire in EUR (opzionale). "
-                        "Se omesso, usa il cash disponibile nel portafoglio."
+                        "Liquidita' AGGIUNTIVA in EUR (opzionale, default 0), sommata "
+                        "alla liquidita' gia' presente nel portafoglio."
+                    ),
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["rebalance", "buy_only", "sell_only"],
+                    "default": "rebalance",
+                    "description": (
+                        "rebalance (default): vendite + acquisti autofinanziati; "
+                        "buy_only: solo acquisti con la liquidita'; sell_only: solo vendite."
                     ),
                 },
             },
@@ -586,6 +605,18 @@ def _get_portfolio_health(
             round(doctor.metrics.weighted_ter, 2)
             if doctor.metrics.weighted_ter is not None else None
         ),
+        # Methodology of portfolio_volatility (TASK-40): weighted average of
+        # single-asset realized volatility, no correlations, never floored.
+        "volatility": (
+            doctor.volatility.model_dump()
+            if doctor.volatility is not None
+            else health_volatility_info(doctor.metrics.portfolio_volatility).model_dump()
+        ),
+        # Score = sum of category scores; each category starts at its max and
+        # loses the points listed in score_deductions.
+        "category_scores": doctor.category_scores.model_dump(),
+        "category_max_scores": dict(CATEGORY_MAX_SCORES),
+        "score_deductions": [d.model_dump() for d in doctor.score_deductions],
         "alerts": [
             {"severity": a.severity, "message": a.message}
             for a in doctor.alerts[:8]
@@ -693,73 +724,121 @@ def _calculate_rebalance_orders(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T10: Calculate buy/sell orders to realign portfolio to target."""
-    summary = repo.get_summary(portfolio_id, user_id)
-    positions = repo.get_positions(portfolio_id, user_id)
-    allocation = repo.get_allocation(portfolio_id, user_id)
-    alloc_map = {a.asset_id: a.weight_pct for a in allocation}
+    """T10: buy/sell orders to realign the portfolio to target (TASK-39).
 
+    Self-financing by default (mode ``rebalance``): sells first, proceeds fund
+    the buys. Portfolio cash + ``available_cash`` (extra) are part of the total
+    and of the weights. See app.services.rebalance for the algorithm.
+    """
+    mode = args.get("mode") or "rebalance"
+    if mode not in REBALANCE_MODES:
+        return {"error": f"mode non valida: {mode}. Valori ammessi: rebalance, buy_only, sell_only"}
+    extra_cash = args.get("available_cash")
+    if extra_cash is None:
+        extra_cash = 0.0
+    try:
+        extra_cash = float(extra_cash)
+    except (TypeError, ValueError):
+        return {"error": "available_cash deve essere un numero >= 0"}
+    if not math.isfinite(extra_cash) or extra_cash < 0:
+        return {"error": "available_cash deve essere un numero >= 0"}
+
+    summary = repo.get_summary(portfolio_id, user_id)
+    positions = repo.get_positions(portfolio_id, user_id) or []
     try:
         target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
     except Exception:
-        return {"orders": [], "note": "Nessun target configurato."}
-
+        target_alloc = []
     if not target_alloc:
-        return {"orders": [], "note": "Nessun target configurato."}
+        return {"mode": mode, "orders": [], "note": "Nessun target configurato."}
 
-    pos_map = {p.symbol: p for p in positions}
-    available_cash = args.get("available_cash", summary.cash_balance)
-    if available_cash is None or available_cash < 0:
-        available_cash = summary.cash_balance
+    targets = {t.asset_id: t for t in target_alloc}
+    pos_by_asset = {p.asset_id: p for p in positions}
+    holdings = [
+        RebalanceHolding(
+            key=p.asset_id, symbol=p.symbol, current_value=float(p.market_value or 0.0),
+            target_weight_pct=float(targets[p.asset_id].weight_pct) if p.asset_id in targets else None,
+        )
+        for p in positions
+    ]
+    holdings += [
+        RebalanceHolding(key=t.asset_id, symbol=t.symbol, current_value=0.0, target_weight_pct=float(t.weight_pct))
+        for t in target_alloc
+        if t.asset_id not in pos_by_asset
+    ]
+    portfolio_cash = float(summary.cash_balance or 0.0)
+    plan = compute_rebalance_plan(
+        holdings,
+        portfolio_cash=portfolio_cash,
+        extra_cash=extra_cash,
+        mode=mode,
+        tolerance_pp=DEFAULT_TOLERANCE_PP,
+    )
 
-    total_value = summary.market_value + available_cash
     orders = []
-
-    for ta in target_alloc:
-        current_w = alloc_map.get(ta.asset_id, 0.0)
-        drift = current_w - ta.weight_pct
-        pos = pos_map.get(ta.symbol)
+    for o in plan.orders:
+        pos = pos_by_asset.get(o.key)
         price = pos.market_price if pos and pos.market_price else None
+        amount = round(o.amount, 2)
+        orders.append({
+            "side": o.side,
+            "symbol": o.symbol,
+            "amount_eur": amount,
+            "shares_approx": round(amount / price, 4) if price and price > 0 else None,
+            "current_weight_pct": round(o.current_weight_pct, 2),
+            "target_weight_pct": round(o.target_weight_pct, 2),
+            "weight_after_pct": round(o.weight_after_pct, 2),
+        })
 
-        if abs(drift) < 0.5:
-            continue  # within tolerance
+    sells = round(sum(o["amount_eur"] for o in orders if o["side"] == "sell"), 2)
+    buys = round(sum(o["amount_eur"] for o in orders if o["side"] == "buy"), 2)
+    cash_before = round(plan.portfolio_cash, 2)
+    extra = round(plan.extra_cash, 2)
+    cash_after = round(cash_before + extra + sells - buys, 2)
+    invariant_ok = cash_after >= 0 and abs(cash_after - plan.cash_after) <= 0.01 * (len(orders) + 1)
 
-        if drift < 0:
-            # Under-weight -> buy
-            amount = abs(drift) / 100.0 * total_value
-            amount = min(amount, available_cash)
-            if amount < 1:
-                continue
-            available_cash -= amount
-            orders.append({
-                "symbol": ta.symbol,
-                "action": "buy",
-                "amount_eur": round(amount, 2),
-                "shares_approx": round(amount / price, 4) if price and price > 0 else None,
-                "reason": f"Sotto-pesato di {abs(drift):.1f}pp rispetto al target ({ta.weight_pct:.1f}%)",
-            })
-        else:
-            # Over-weight -> sell
-            current_value = pos.market_value if pos else 0
-            amount = drift / 100.0 * current_value
-            if amount < 1:
-                continue
-            orders.append({
-                "symbol": ta.symbol,
-                "action": "sell",
-                "amount_eur": round(amount, 2),
-                "shares_approx": round(amount / price, 4) if price and price > 0 else None,
-                "reason": f"Sovra-pesato di {drift:.1f}pp rispetto al target ({ta.weight_pct:.1f}%)",
-            })
-
-    # Sort by absolute drift (largest deviation first)
-    orders.sort(key=lambda o: o["amount_eur"], reverse=True)
+    notes = [
+        "Le commissioni e le imposte non sono modellate: importi lordi.",
+        f"Banda di tolleranza {DEFAULT_TOLERANCE_PP} pp sul peso: se nessuno strumento la supera "
+        "non ci sono ordini; altrimenti tutti gli strumenti tornano al target.",
+        "La liquidita' del portafoglio e available_cash (liquidita' aggiuntiva) entrano nel totale e nei pesi.",
+    ]
+    if portfolio_cash < 0:
+        notes.append("Saldo di liquidita' negativo considerato pari a 0.")
+    if plan.untargeted_symbols:
+        notes.append(
+            "Posizioni senza target lasciate invariate ed escluse dal totale: "
+            "i pesi target si applicano al valore restante."
+        )
+    if plan.unallocated_target_pct > 0.005:
+        notes.append(
+            f"I target sommano a {plan.target_sum_pct:.2f}%: il restante "
+            f"{plan.unallocated_target_pct:.2f}% resta in liquidita'."
+        )
+    if plan.buys_scaled:
+        notes.append("Liquidita' insufficiente: acquisti ridotti in proporzione al fabbisogno.")
+    if not orders:
+        notes.append("Nessun ordine necessario: portafoglio entro la banda di tolleranza.")
 
     return {
+        "mode": mode,
         "orders": orders,
-        "total_value": round(total_value, 2),
-        "cash_used": round(summary.cash_balance + (args.get("available_cash", 0) or 0) - available_cash, 2),
-        "cash_remaining": round(available_cash, 2),
+        "totals": {
+            "sells_eur": sells,
+            "buys_eur": buys,
+            "cash_before": cash_before,
+            "extra_cash": extra,
+            "cash_after": cash_after,
+            "invariant": "cash_after = cash_before + extra_cash + sells_eur - buys_eur",
+            "invariant_ok": invariant_ok,
+        },
+        "total_value": round(plan.base_value, 2),
+        "tolerance_pp": DEFAULT_TOLERANCE_PP,
+        "untargeted_holdings": plan.untargeted_symbols,
+        "untargeted_value": round(plan.untargeted_value, 2),
+        "target_sum_pct": round(plan.target_sum_pct, 2),
+        "unallocated_target_pct": round(plan.unallocated_target_pct, 2),
+        "notes": notes,
     }
 
 
@@ -1243,8 +1322,23 @@ def _get_stress_test(
                 }
                 for row in s.class_breakdown
             ]
-            if s.flags:
-                scenario_data["flags"] = list(s.flags)
+        else:
+            # Historical: method (historical/proxy/not_available), weight
+            # covered by real prices and per-class drawdown with its source.
+            scenario_data["method"] = s.method
+            scenario_data["coverage_pct"] = s.coverage_pct
+            scenario_data["class_breakdown"] = [
+                {
+                    "asset_class": row.asset_class,
+                    "weight_pct": row.weight_pct,
+                    "drawdown_pct": row.drawdown_pct,
+                    "contribution_pct": row.contribution_pct,
+                    "source": row.source,
+                }
+                for row in s.class_breakdown
+            ]
+        if s.flags:
+            scenario_data["flags"] = list(s.flags)
         scenarios.append(scenario_data)
 
     # Sort by impact (most negative first)
@@ -1256,6 +1350,9 @@ def _get_stress_test(
             round(result.portfolio_volatility_pct, 2)
             if result.portfolio_volatility_pct is not None else None
         ),
+        # Methodology of portfolio_volatility_pct (TASK-40): realized 1y
+        # portfolio volatility floored at the long-term class-mix volatility.
+        "volatility": result.volatility.model_dump() if result.volatility is not None else None,
         "scenarios": scenarios[:10],
     }
 

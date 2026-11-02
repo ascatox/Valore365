@@ -17,6 +17,7 @@ from ..models import (
     TransactionCreate,
 )
 from ..repository import PortfolioRepository
+from ..services.rebalance import RebalanceHolding, compute_rebalance_plan
 
 
 def register_rebalancing_routes(
@@ -100,59 +101,49 @@ def register_rebalancing_routes(
             except Exception as exc:  # noqa: BLE001 - preview should degrade gracefully
                 skipped.append(f"{target.symbol}: prezzo non disponibile ({exc})")
 
-        total_market_value = max(float(summary.market_value), 0.0)
         cash_input = float(payload.cash_to_allocate or 0.0)
         min_order = float(payload.min_order_value or 0.0)
+        base_ccy = summary.base_currency.upper()
 
-        candidate_rows: list[dict] = []
+        # Shared, order-independent algorithm (app.services.rebalance). The
+        # preview keeps its historical semantics: weights on the invested
+        # value of all holdings (cash excluded), no tolerance band, buy_only
+        # deploys all of cash_to_allocate. Buys are now funded by
+        # cash_to_allocate + sell proceeds (scaled down if short).
+        target_by_asset = {t.asset_id: t for t in target_alloc}
+        holdings: list[RebalanceHolding] = []
+        for item in allocation:
+            if item.asset_id in target_by_asset:
+                continue
+            holdings.append(RebalanceHolding(key=item.asset_id, symbol=item.symbol, current_value=float(item.market_value)))
         for target in target_alloc:
-            current_alloc = allocation_by_asset.get(target.asset_id)
-            pos = position_by_asset.get(target.asset_id)
-            current_weight = float(current_alloc.weight_pct) if current_alloc else 0.0
-            current_value = float(current_alloc.market_value) if current_alloc else 0.0
-            current_qty = float(pos.quantity) if pos else 0.0
-            drift = current_weight - float(target.weight_pct)
-            quote_price = quote_by_asset.get(target.asset_id)
-            quote_ccy = (quote_ccy_by_asset.get(target.asset_id) or summary.base_currency).upper()
-
-            if payload.mode == "buy_only" and current_weight >= float(target.weight_pct):
-                continue
-            if payload.mode == "sell_only" and current_weight <= float(target.weight_pct):
-                continue
-            if payload.mode == "rebalance" and abs(drift) <= 0:
-                continue
-
-            side = "sell" if drift > 0 else "buy"
-            if payload.mode == "buy_only":
-                side = "buy"
-            elif payload.mode == "sell_only":
-                side = "sell"
-
-            score = abs(drift) if payload.mode == "rebalance" else (
-                max(float(target.weight_pct) - current_weight, 0.0) if side == "buy" else max(current_weight - float(target.weight_pct), 0.0)
-            )
-            if score <= 0:
-                continue
-
-            candidate_rows.append(
-                {
-                    "asset_id": target.asset_id,
-                    "symbol": target.symbol,
-                    "name": target.name,
-                    "target_weight_pct": float(target.weight_pct),
-                    "current_weight_pct": current_weight,
-                    "drift_pct": round(drift, 2),
-                    "current_quantity": current_qty,
-                    "current_value": current_value,
-                    "side": side,
-                    "price": quote_price,
-                    "trade_currency": quote_ccy,
-                    "score": score,
-                }
+            aid = target.asset_id
+            current_alloc = allocation_by_asset.get(aid)
+            quote_ccy = (quote_ccy_by_asset.get(aid) or summary.base_currency).upper()
+            price = quote_by_asset.get(aid)
+            holdings.append(
+                RebalanceHolding(
+                    key=aid,
+                    symbol=target.symbol,
+                    current_value=float(current_alloc.market_value) if current_alloc else 0.0,
+                    target_weight_pct=float(target.weight_pct),
+                    tradable=price is not None and price > 0 and quote_ccy == base_ccy,
+                )
             )
 
-        candidate_rows.sort(key=lambda r: r["score"], reverse=True)
-        considered_rows = candidate_rows[: payload.max_transactions * 3]
+        plan = compute_rebalance_plan(
+            holdings,
+            portfolio_cash=0.0,
+            extra_cash=cash_input,
+            mode=payload.mode,
+            tolerance_pp=0.0,
+            include_cash_in_base=False,
+            include_untargeted_in_base=True,
+            max_orders=payload.max_transactions,
+            buy_only_deploy_all_cash=True,
+        )
+        if plan.buys_scaled:
+            warnings.append("Liquidità insufficiente: acquisti ridotti in proporzione")
 
         generated: list[RebalancePreviewItem] = []
 
@@ -162,31 +153,33 @@ def register_rebalancing_routes(
                 return qty if qty > 0 else 0.0
             return round(raw_qty, 8)
 
-        def _append_item(row: dict, order_value: float) -> None:
-            price = float(row["price"])
-            qty = _rounded_qty(order_value / price if price > 0 else 0.0)
+        for order in plan.orders:
+            target = target_by_asset[order.key]
+            pos = position_by_asset.get(order.key)
+            current_qty = float(pos.quantity) if pos else 0.0
+            price = float(quote_by_asset[order.key])
+            qty = _rounded_qty(order.amount / price if price > 0 else 0.0)
             gross_total = round(qty * price, 2)
             if qty <= 0 or gross_total <= 0:
-                skipped.append(f"{row['symbol']}: quantità non valida dopo arrotondamento")
-                return
+                skipped.append(f"{order.symbol}: quantità non valida dopo arrotondamento")
+                continue
             if min_order > 0 and gross_total < min_order:
-                skipped.append(f"{row['symbol']}: ordine sotto soglia minima ({gross_total:.2f} < {min_order:.2f})")
-                return
-            if row["side"] == "sell" and qty > float(row["current_quantity"]) + 1e-9:
-                skipped.append(f"{row['symbol']}: quantità in vendita superiore al posseduto")
-                return
-
+                skipped.append(f"{order.symbol}: ordine sotto soglia minima ({gross_total:.2f} < {min_order:.2f})")
+                continue
+            if order.side == "sell" and qty > current_qty + 1e-9:
+                skipped.append(f"{order.symbol}: quantità in vendita superiore al posseduto")
+                continue
             generated.append(
                 RebalancePreviewItem(
-                    asset_id=int(row["asset_id"]),
-                    symbol=str(row["symbol"]),
-                    name=str(row["name"]),
-                    target_weight_pct=round(float(row["target_weight_pct"]), 2),
-                    current_weight_pct=round(float(row["current_weight_pct"]), 2),
-                    drift_pct=round(float(row["drift_pct"]), 2),
-                    current_quantity=round(float(row["current_quantity"]), 8),
-                    side=row["side"],
-                    trade_currency=str(row["trade_currency"]),
+                    asset_id=int(order.key),
+                    symbol=str(order.symbol),
+                    name=str(target.name),
+                    target_weight_pct=round(order.target_weight_pct, 2),
+                    current_weight_pct=round(order.current_weight_pct, 2),
+                    drift_pct=round(order.drift_pct, 2),
+                    current_quantity=round(current_qty, 8),
+                    side=order.side,
+                    trade_currency=base_ccy,
                     price=round(price, 6),
                     quantity=qty,
                     gross_total=gross_total,
@@ -195,41 +188,8 @@ def register_rebalancing_routes(
                 )
             )
 
-        tradable_rows: list[dict] = []
-        for row in considered_rows:
-            if row["price"] is None or float(row["price"]) <= 0:
-                skipped.append(f"{row['symbol']}: prezzo non disponibile")
-                continue
-            if str(row["trade_currency"]).upper() != summary.base_currency.upper():
-                skipped.append(f"{row['symbol']}: valuta {row['trade_currency']} non supportata nel preview MVP")
-                continue
-            tradable_rows.append(row)
-
-        if payload.mode == "buy_only":
-            buy_rows = [r for r in tradable_rows if r["side"] == "buy"][: payload.max_transactions]
-            score_sum = sum(float(r["score"]) for r in buy_rows)
-            if score_sum <= 0:
-                warnings.append("Nessun asset sotto target disponibile per acquisti")
-            else:
-                for row in buy_rows:
-                    proportional_amount = cash_input * (float(row["score"]) / score_sum)
-                    _append_item(row, proportional_amount)
-        elif payload.mode == "sell_only":
-            sell_rows = [r for r in tradable_rows if r["side"] == "sell"][: payload.max_transactions]
-            for row in sell_rows:
-                if total_market_value <= 0:
-                    continue
-                overweight_pct = max(float(row["drift_pct"]), 0.0)
-                proposed_value = min(float(row["current_value"]), (overweight_pct / 100.0) * total_market_value)
-                _append_item(row, proposed_value)
-        else:  # rebalance
-            rows = tradable_rows[: payload.max_transactions]
-            for row in rows:
-                if total_market_value <= 0:
-                    continue
-                drift_abs_pct = abs(float(row["drift_pct"]))
-                proposed_value = min(float(row["current_value"]) if row["side"] == "sell" else 10**18, (drift_abs_pct / 100.0) * total_market_value)
-                _append_item(row, proposed_value)
+        if payload.mode == "buy_only" and not any(o.side == "buy" for o in plan.orders):
+            warnings.append("Nessun asset sotto target disponibile per acquisti")
 
         generated.sort(key=lambda i: abs(i.drift_pct), reverse=True)
         generated = generated[: payload.max_transactions]
@@ -237,6 +197,8 @@ def register_rebalancing_routes(
         proposed_buy_total = round(sum(i.gross_total for i in generated if i.side == "buy"), 2)
         proposed_sell_total = round(sum(i.gross_total for i in generated if i.side == "sell"), 2)
         estimated_cash_residual = round(cash_input + proposed_sell_total - proposed_buy_total, 2)
+        if estimated_cash_residual < 0:
+            warnings.append("Liquidità residua negativa dopo l'arrotondamento delle quantità")
 
         if skipped:
             warnings.append(f"Asset/proposte saltate: {len(skipped)}")

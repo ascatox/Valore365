@@ -37,6 +37,31 @@ class PortfolioHealthCategoryScores(BaseModel):
     cost_efficiency: int = Field(default=0, ge=0, le=15)
 
 
+class VolatilityInfo(BaseModel):
+    """A volatility figure with its declared methodology (TASK-40).
+
+    There is no canonical volatility: stress test and health score use two
+    different measures, each named and described here.
+    """
+    name: str
+    value_pct: float | None = None
+    method: str
+    period: str
+    is_floored: bool = False
+    # Floor applied (stress only): long-term volatility of the class mix.
+    floor_pct: float | None = None
+    # Value before the floor (stress only).
+    unfloored_pct: float | None = None
+
+
+class PortfolioHealthScoreDeduction(BaseModel):
+    """One rule that removed points from a category score."""
+    category: Literal["diversification", "risk", "concentration", "overlap", "cost_efficiency"]
+    code: str = Field(min_length=1)
+    points: int = Field(gt=0)
+    reason: str = Field(min_length=1)
+
+
 class PortfolioHealthEducation(BaseModel):
     code: str = Field(min_length=1)
     title: str = Field(min_length=1)
@@ -68,6 +93,10 @@ class PortfolioHealthResponse(BaseModel):
     summary: PortfolioHealthSummary
     metrics: PortfolioHealthMetrics
     category_scores: PortfolioHealthCategoryScores
+    # Rules that removed points (sum per category = category max - score).
+    score_deductions: list[PortfolioHealthScoreDeduction] = Field(default_factory=list)
+    # Methodology of metrics.portfolio_volatility.
+    volatility: VolatilityInfo | None = None
     alerts: list[PortfolioHealthAlert] = Field(default_factory=list)
     suggestions: list[PortfolioHealthSuggestion] = Field(default_factory=list)
 
@@ -189,12 +218,20 @@ class StressTestAssetImpact(BaseModel):
 
 
 class StressTestClassImpact(BaseModel):
-    """Per-class view of a shock scenario: shock applied and contribution."""
+    """Per-class view of a scenario.
+
+    Shock scenarios fill ``shock_pct``; historical scenarios fill
+    ``drawdown_pct`` (return of the class over the window) and ``source``
+    (one row per class and source: real prices or class proxy).
+    """
     asset_class: str
     weight_pct: float
     # Base shock of the class in the scenario (tech multiplier excluded).
-    shock_pct: float
-    # weight x applied shock, in portfolio percentage points.
+    shock_pct: float | None = None
+    # Historical scenarios: drawdown used for the class (real or proxy).
+    drawdown_pct: float | None = None
+    source: Literal["historical", "proxy"] | None = None
+    # weight x applied shock/drawdown, in portfolio percentage points.
     contribution_pct: float
 
 
@@ -209,7 +246,13 @@ class StressTestScenarioResult(BaseModel):
     benchmark_drawdown_pct: float | None = None
     risk_level: Literal["low", "medium", "high", "critical"]
     most_impacted_assets: list[StressTestAssetImpact] = Field(default_factory=list)
-    # Shock scenarios only: classes with a non-zero shock, per-class breakdown
+    # Historical scenarios only: "historical" when real prices cover at least
+    # 60% of the weight, "proxy" (class drawdown proxies) below it,
+    # "not_available" for an empty portfolio. coverage_pct = weight with real
+    # prices in the window (cash included).
+    method: Literal["historical", "proxy", "not_available"] | None = None
+    coverage_pct: float | None = None
+    # Classes with a non-zero shock (shock scenarios), per-class breakdown
     # and flags such as "unknown_asset_class_equity_shock".
     affected_classes: list[str] = Field(default_factory=list)
     class_breakdown: list[StressTestClassImpact] = Field(default_factory=list)
@@ -222,6 +265,7 @@ class StressTestResponse(BaseModel):
     portfolio_ids: list[int] | None = None
     scenarios: list[StressTestScenarioResult] = Field(default_factory=list)
     portfolio_volatility_pct: float | None = None
+    volatility: VolatilityInfo | None = None
     analysis_date: str
 
 

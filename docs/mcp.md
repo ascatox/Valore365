@@ -138,6 +138,37 @@ ETC tipizzato `stock` (es. un ETC sull'oro) è classificato gold, e un asset non
 `class_breakdown` (per classe: `weight_pct`, `shock_pct`, `contribution_pct`, che sommano all'impatto)
 e `flags` (`unknown_asset_class_equity_shock` quando a un asset `unknown` si applica in via prudenziale
 lo shock equity); `most_impacted` elenca solo perdite effettive, con `asset_class`.
+
+Negli scenari storici (GFC 2008, Dot-com, Covid, Bear market 2022) `get_stress_test` dichiara il
+metodo. `coverage_pct` è il peso delle posizioni con almeno due prezzi reali nella finestra dello
+scenario (la liquidità conta come coperta, rendimento 0). Con copertura ≥ 60% `method` è
+`"historical"`: la parte coperta usa i prezzi reali e la parte scoperta i proxy di classe (flag
+`uncovered_weight_filled_with_class_proxy`). Sotto il 60% `method` è `"proxy"` e l'impatto è
+Σ peso × drawdown proxy della classe (flag `class_proxy_drawdowns`); con portafoglio vuoto è
+`"not_available"`. I proxy (`HISTORICAL_CLASS_PROXIES` in `app/constants/stress_scenarios.py`) sono
+il rendimento approssimato nella finestra di indici noti (MSCI World, Bloomberg Global Aggregate,
+oro LBMA, Bloomberg Commodity, Bitcoin), **in USD**: l'effetto cambio per un investitore in EUR non è
+modellato (es. 2022: MSCI World circa −13% e oro circa +9% in EUR). Un asset `unknown` e le crypto
+negli scenari precedenti alla loro nascita (GFC, Dot-com) usano il proxy equity, con i flag
+`unknown_asset_class_equity_proxy` e `crypto_pre_inception_equity_proxy`. `class_breakdown` riporta
+per classe e fonte (`source`: `historical` o `proxy`) `weight_pct`, `drawdown_pct` e
+`contribution_pct` (la somma dei contributi è l'impatto). Non esiste più il ripiego
+`benchmark_drawdown × 0,8`, uguale per ogni portafoglio.
+
+Le due volatilità hanno metodologie diverse e dichiarate (nessuna è "canonica"), in un oggetto
+`volatility` con `name`, `value_pct`, `method`, `period`, `is_floored` e `floor_pct`:
+- `get_stress_test` → `stress_portfolio_volatility` (= `portfolio_volatility_pct`): volatilità
+  realizzata della serie ponderata del portafoglio nell'ultimo anno (correlazioni incluse), mai sotto
+  la volatilità di lungo periodo del mix di classi (16% equity, 6% bond, 15% commodity/oro, 0% cash).
+  `is_floored: true` indica che vale il pavimento; `unfloored_pct` è il valore realizzato.
+- `get_portfolio_health` → `health_weighted_asset_volatility` (= `portfolio_volatility`): media
+  ponderata della volatilità realizzata a 1 anno dei singoli titoli, **senza correlazioni** (sovrastima
+  il rischio di un portafoglio diversificato), mai con pavimento.
+
+`get_portfolio_health` espone anche `category_scores` (diversificazione 25, rischio 25,
+concentrazione 20, sovrapposizione 15, costi 15; i massimi in `category_max_scores`; lo `score` è la
+somma) e `score_deductions`: le regole che hanno tolto punti (`category`, `code`, `points`, `reason`),
+la cui somma per categoria è la differenza tra massimo e punteggio.
 `get_income_projection` divide il reddito lordo in `equity`, `fixed_income` e `other_or_unknown` (la
 somma è il lordo proiettato), senza crescita sul reddito fisso; elenca `unknown_class_symbols` e
 `missing_yield_symbols` e dichiara l'ipotesi fiscale in `tax_note` (aliquota uniforme, 12,5% sui titoli
