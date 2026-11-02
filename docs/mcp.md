@@ -161,6 +161,8 @@ I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma 
 | `MCP_ENABLED` | sì | `false` | Abilita `/mcp` e i documenti `.well-known` |
 | `CLERK_AUTH_ENABLED` | sì | `false` | Deve valere `true`: senza Clerk MCP non viene servito |
 | `MCP_RESOURCE_URL` | sì | — | URL pubblico dell'endpoint, es. `https://valore365.onrender.com/mcp` (https; http solo per localhost). È anche l'audience attesa e l'host accettato |
+| `MCP_WEBSITE_URL` | no | `https://valore365.vercel.app` | Sito dell'app pubblicato come `websiteUrl` in `serverInfo` (risposta a `initialize`). Solo https: altrimenti (o se vuoto) il campo è omesso |
+| `MCP_ICON_BASE_URL` | no | vuoto (= `MCP_WEBSITE_URL`) | Origine da cui servire le icone pubblicate in `serverInfo.icons` (`/icons/icon-192x192.png` e `/icons/icon-512x512.png`, file del frontend in `public/icons/`). Solo https: altrimenti le icone sono omesse |
 | `CLERK_ISSUER` | sì | — | Frontend API URL di Clerk (authorization server e `iss` atteso) |
 | `CLERK_JWKS_URL` | no | `<CLERK_ISSUER>/.well-known/jwks.json` | JWKS già usato dall'API (stessa istanza Clerk) |
 | `CLERK_SECRET_KEY` | solo con token opachi | — | Secret key Clerk (`sk_...`), per verificare i token `oat_` |
@@ -184,6 +186,16 @@ I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma 
 
 Le variabili sono elencate anche in `src/backend/.env.example` e in `render.yaml` (i segreti con
 `sync: false`, da compilare nel dashboard di Render).
+
+## Scheda dell'app nelle directory (ChatGPT / Claude)
+
+Categoria (Finance), sito web, icona, URL della privacy policy e descrizione della scheda si
+impostano nel modulo per sviluppatori/pubblicazione di ciascuna piattaforma (OpenAI per ChatGPT,
+Anthropic per la directory dei connettori di Claude), non dal server MCP. Il server si limita a
+pubblicare in `serverInfo` (risposta a `initialize`) nome (`valore365`), versione (la stessa
+dell'API, `app/version.py`), sito (`MCP_WEBSITE_URL`) e icone PNG 192×192 e 512×512
+(`MCP_ICON_BASE_URL`), che alcuni client mostrano accanto al connettore. Il campo `title` di
+`serverInfo` non viene inviato: l'SDK `mcp` 1.30.0 non permette di impostarlo.
 
 ## Collegare i client (note per chi gestisce il server)
 

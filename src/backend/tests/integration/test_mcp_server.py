@@ -13,8 +13,9 @@ import app.main as api_main
 import app.mcp_server.auth as mcp_auth
 from app.copilot_tools import TOOL_DEFINITIONS
 from app.mcp_server.config import resolve_mcp_config
-from app.mcp_server.tools import MAX_TEXT_FIELD_CHARS, MCP_TOOL_ALLOWLIST, sanitize_output
+from app.mcp_server.tools import MAX_TEXT_FIELD_CHARS, MCP_TOOL_ALLOWLIST, ServerIdentity, sanitize_output
 from app.rate_limit import SlidingWindowRateLimiter
+from app.version import APP_VERSION
 
 ISSUER = 'https://clerk.example.test'
 RESOURCE = 'https://testserver/mcp'
@@ -349,6 +350,23 @@ def test_protected_resource_metadata(mcp_on, path):
 
 # --- MCP protocol -------------------------------------------------------------
 
+def test_server_identity_from_settings():
+    def ident(**kw):
+        return ServerIdentity.from_settings(SimpleNamespace(**{'mcp_website_url': '', 'mcp_icon_base_url': '', **kw}))
+
+    i = ident(mcp_website_url='https://site.example/', mcp_icon_base_url='https://cdn.example')
+    assert i.website_url == 'https://site.example'
+    assert [ic.src for ic in i.icons] == [
+        'https://cdn.example/icons/icon-192x192.png', 'https://cdn.example/icons/icon-512x512.png',
+    ]
+    # Empty icon base -> derived from the website.
+    assert ident(mcp_website_url='https://site.example').icons[0].src == 'https://site.example/icons/icon-192x192.png'
+    # Non-https or empty values are omitted.
+    assert ident(mcp_website_url='http://site.example') == ServerIdentity()
+    assert ident() == ServerIdentity()
+    assert ident(mcp_website_url='javascript:alert(1)', mcp_icon_base_url='http://x').icons == ()
+
+
 def test_initialize_and_list_read_only_tools(mcp_on):
     client = TestClient(api_main.app)
     token = _make_token()
@@ -360,7 +378,14 @@ def test_initialize_and_list_read_only_tools(mcp_on):
     }, token=token)
     assert init.status_code == 200
     result = init.json()['result']
-    assert result['serverInfo']['name'] == 'valore365'
+    info = result['serverInfo']
+    assert info['name'] == 'valore365'
+    assert info['version'] == APP_VERSION == api_main.app.version
+    assert info['websiteUrl'] == 'https://valore365.vercel.app'
+    assert info['icons'] == [
+        {'src': 'https://valore365.vercel.app/icons/icon-192x192.png', 'mimeType': 'image/png', 'sizes': ['192x192']},
+        {'src': 'https://valore365.vercel.app/icons/icon-512x512.png', 'mimeType': 'image/png', 'sizes': ['512x512']},
+    ]
     assert 'tools' in result['capabilities']
     assert 'mcp-session-id' not in {k.lower() for k in init.headers}
 

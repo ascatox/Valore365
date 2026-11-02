@@ -40,7 +40,14 @@ from starlette.types import Message, Receive, Scope, Send
 from ..rate_limit import SlidingWindowRateLimiter, client_ip
 from .auth import MAX_TOKEN_LENGTH, McpAuthError, verify_access_token
 from .config import McpConfig, resolve_mcp_config
-from .tools import McpCallContext, ToolCallLimits, ToolDependencies, build_mcp_server, current_context
+from .tools import (
+    McpCallContext,
+    ServerIdentity,
+    ToolCallLimits,
+    ToolDependencies,
+    build_mcp_server,
+    current_context,
+)
 
 logger = logging.getLogger("valore365.mcp")
 
@@ -111,7 +118,7 @@ class McpEndpoint:
     def __init__(self, settings, deps_getter) -> None:
         self._settings = settings
         self._limits = ToolCallLimits.from_settings(settings)
-        self._server = build_mcp_server(deps_getter, self._limits)
+        self._server = build_mcp_server(deps_getter, self._limits, ServerIdentity.from_settings(settings))
         self._limiter = SlidingWindowRateLimiter(
             max_requests=settings.mcp_rate_limit_requests,
             window_seconds=settings.mcp_rate_limit_window_seconds,

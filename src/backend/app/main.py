@@ -48,6 +48,7 @@ class SafeJSONResponse(JSONResponse):
 from .auth import AuthContext, require_admin
 from .middleware import RequestLoggingMiddleware
 from .config import get_settings
+from .version import APP_VERSION
 from .db import engine
 from .errors import AppError
 from .finance_client import make_finance_client
@@ -193,7 +194,7 @@ def api_docs_kwargs(app_settings) -> dict[str, Any]:
 
 app = FastAPI(
     title="Valore365 API",
-    version="0.6.0",
+    version=APP_VERSION,
     lifespan=lifespan,
     default_response_class=SafeJSONResponse,
     **api_docs_kwargs(settings),
