@@ -1,5 +1,5 @@
 import { Anchor, Button, Card, Group, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
-import { IconBriefcase, IconRobot, IconShieldCheck, IconTargetArrow, IconWorld } from '@tabler/icons-react';
+import { IconBriefcase, IconPlugConnected, IconRobot, IconShieldCheck, IconTargetArrow, IconWorld } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -49,6 +49,11 @@ export function AboutPage() {
             icon={IconRobot}
             title="Copilot"
             description="Supporto conversazionale per leggere più rapidamente i dati del portafoglio e individuare spunti di analisi."
+          />
+          <InfoCard
+            icon={IconPlugConnected}
+            title="AI Ready (MCP)"
+            description="Collega il portafoglio a Claude o ChatGPT in sola lettura tramite MCP: trovi URL e istruzioni in Impostazioni › Copilot."
           />
           <InfoCard
             icon={IconShieldCheck}

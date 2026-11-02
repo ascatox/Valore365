@@ -1,5 +1,9 @@
 # Server MCP remoto (sola lettura)
 
+> **Riferimento tecnico** per chi gestisce o sviluppa il server. Per collegare il proprio
+> portafoglio a Claude o ChatGPT come utente finale, vedere la
+> [guida utente](mcp-guida-utente.md).
+
 Valore365 espone un server [Model Context Protocol](https://modelcontextprotocol.io) all'indirizzo
 `https://<host-backend>/mcp`. Permette a un assistente AI (Claude, ChatGPT, ecc.) di **leggere** i
 portafogli dell'utente che ha fatto login con Clerk e di usare gli stessi strumenti di analisi del
@@ -90,7 +94,7 @@ Esempio di Protected Resource Metadata:
 
 ```json
 {
-  "resource": "https://valore365-api.onrender.com/mcp",
+  "resource": "https://valore365.onrender.com/mcp",
   "authorization_servers": ["https://clerk.example.com"],
   "bearer_methods_supported": ["header"],
   "scopes_supported": ["profile", "email"],
@@ -146,7 +150,7 @@ I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma 
 |---|---|---|---|
 | `MCP_ENABLED` | sì | `false` | Abilita `/mcp` e i documenti `.well-known` |
 | `CLERK_AUTH_ENABLED` | sì | `false` | Deve valere `true`: senza Clerk MCP non viene servito |
-| `MCP_RESOURCE_URL` | sì | — | URL pubblico dell'endpoint, es. `https://valore365-api.onrender.com/mcp` (https; http solo per localhost). È anche l'audience attesa e l'host accettato |
+| `MCP_RESOURCE_URL` | sì | — | URL pubblico dell'endpoint, es. `https://valore365.onrender.com/mcp` (https; http solo per localhost). È anche l'audience attesa e l'host accettato |
 | `CLERK_ISSUER` | sì | — | Frontend API URL di Clerk (authorization server e `iss` atteso) |
 | `CLERK_JWKS_URL` | no | `<CLERK_ISSUER>/.well-known/jwks.json` | JWKS già usato dall'API (stessa istanza Clerk) |
 | `CLERK_SECRET_KEY` | solo con token opachi | — | Secret key Clerk (`sk_...`), per verificare i token `oat_` |
@@ -162,45 +166,32 @@ I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma 
 Le variabili sono elencate anche in `src/backend/.env.example` e in `render.yaml` (i segreti con
 `sync: false`, da compilare nel dashboard di Render).
 
-## Collegare Claude
+## Collegare i client (note per chi gestisce il server)
 
-URL del server: `https://<host-backend>/mcp` (lo stesso valore di `MCP_RESOURCE_URL`).
+I passaggi per l'utente finale (claude.ai, Claude Desktop, Claude Code, ChatGPT), gli esempi di
+domande, la revoca dell'accesso e la risoluzione dei problemi sono nella
+[guida utente](mcp-guida-utente.md). Qui solo quello che serve lato server:
 
-- **claude.ai** (web): *Settings* → *Connectors* → *Add custom connector*. Inserire nome
-  (`Valore365`) e URL, poi *Connect*: si apre il login Clerk e, dopo il consenso, Claude riceve
-  l'access token. Con la DCR attiva i campi OAuth avanzati restano vuoti. Nei piani Team/Enterprise
-  i connettori personalizzati li aggiunge un amministratore.
-- **Claude Desktop**: i connettori remoti si aggiungono dalla stessa voce *Settings* → *Connectors*
-  (non da `claude_desktop_config.json`) e sono condivisi con claude.ai.
-- **Claude Code**:
+- **URL da comunicare agli utenti**: `MCP_RESOURCE_URL`, cioè `https://<host-backend>/mcp`. In
+  produzione è l'host del backend su Render, non quello del frontend su Vercel (il rewrite di
+  `vercel.json` copre solo `/api/*`). Nell'app lo mostra *Impostazioni → Copilot → "Collega Claude
+  o ChatGPT (MCP)"*, ricavandolo da `VITE_API_BASE_URL` (origine + `/mcp`); se il frontend usa il
+  valore relativo `/api`, l'URL mostrato è l'origine del frontend + `/mcp`, che funziona solo se
+  quell'origine inoltra anche `/mcp` al backend. In quel caso impostare `VITE_MCP_SERVER_URL`.
+- **DCR**: con la Dynamic Client Registration attiva in Clerk, claude.ai, Claude Code, ChatGPT e
+  MCP Inspector si registrano da soli e i campi OAuth avanzati dei connettori restano vuoti. Senza
+  DCR occorre creare a mano un'OAuth application per ciascun client (redirect URI di claude.ai:
+  `https://claude.ai/api/mcp/auth_callback`) e comunicare client id e secret agli utenti.
+- **Claude Team/Enterprise**: i connettori personalizzati li aggiunge un amministratore
+  dell'organizzazione Claude; ogni utente poi fa *Connect* con il proprio login.
+- **Claude Desktop** usa i connettori remoti di claude.ai (*Settings → Connectors*), non
+  `claude_desktop_config.json`.
+- **ChatGPT** richiede la *Developer mode* (*Settings → Apps & Connectors → Advanced settings*) e
+  autenticazione OAuth; la disponibilità dipende dal piano e i nomi dei menu cambiano spesso.
+- `MCP_ALLOWED_CLIENT_IDS` permette di limitare i client ammessi dopo averne osservato i
+  `client_id` nei log (`valore365.mcp`).
 
-  ```bash
-  claude mcp add --transport http valore365 https://<host-backend>/mcp
-  ```
-
-  Poi, dentro Claude Code, eseguire `/mcp`, selezionare `valore365` e completare il login nel browser.
-
-## Collegare ChatGPT
-
-In ChatGPT (piani che supportano i connettori personalizzati): *Settings* → *Apps & Connectors* →
-*Advanced settings* → attivare **Developer mode**, poi *Create* (nuovo connettore/app). Inserire nome,
-URL `https://<host-backend>/mcp` e autenticazione **OAuth**. ChatGPT legge i metadata, si registra su
-Clerk via DCR e apre il login. In chat, attivare il connettore dal menu degli strumenti. I nomi esatti
-dei menu cambiano spesso: fa fede la documentazione OpenAI su "developer mode" e "connectors".
-
-## Esempi di prompt
-
-- «Quali portafogli ho su Valore365?»
-- «Dammi il riepilogo del portafoglio *Principale*: valore, P&L e variazione di oggi.»
-- «Quali sono le 5 posizioni più pesanti e quanto pesano?»
-- «Com'è andata la performance YTD e a 1 anno?»
-- «Il portafoglio è in linea con il target? Se no, quali ordini servirebbero per ribilanciare con 2.000 € di liquidità?»
-- «Cosa succederebbe ai pesi se comprassi 1.000 € di VWCE.DE?»
-- «Fammi l'X-Ray: esposizione geografica e settoriale e i primi titoli sottostanti.»
-- «Quanto pago di TER in totale e quanto mi costerà in 10 anni?»
-- «Simula uno stress test e la proiezione Monte Carlo a 10 anni.»
-
-## Verifica rapida
+## Verifica rapida (produzione)
 
 ```bash
 # Senza token: 401 con WWW-Authenticate e resource_metadata
@@ -210,9 +201,107 @@ curl -i -X POST https://<host-backend>/mcp \
 
 # Metadata pubblici
 curl https://<host-backend>/.well-known/oauth-protected-resource
+curl https://<host-backend>/.well-known/oauth-authorization-server
 ```
 
-Per un test completo con OAuth usare [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
-(`npx @modelcontextprotocol/inspector`), trasporto "Streamable HTTP". L'Inspector gira nel browser,
-quindi la sua origine (es. `http://localhost:6274`) va aggiunta a `MCP_ALLOWED_ORIGINS` solo per il
-tempo del test.
+Risposte attese: `401` con header `WWW-Authenticate: Bearer resource_metadata="..."` per la prima,
+JSON con `resource` = `MCP_RESOURCE_URL` per la seconda, metadata OAuth di Clerk per la terza. Un
+`404` vuol dire `MCP_ENABLED=false`; un `503` vuol dire configurazione incompleta (il motivo è nei
+log all'avvio).
+
+## Sviluppo e test in locale
+
+### Test automatici
+
+Da `src/backend`:
+
+```bash
+pytest tests/integration/test_mcp_server.py
+```
+
+I test non usano Clerk né il database: firmano JWT con una chiave RSA generata al volo (JWKS
+finto), simulano la verifica dei token opachi e usano un repository fittizio. Coprono fail closed,
+401/403, audience e scope, metadata, isolamento dei portafogli, rate limit, solo POST, origini e
+corrispondenza tra tool MCP e `TOOL_DEFINITIONS`.
+
+### Server locale con un'istanza Clerk di sviluppo
+
+Il server MCP non ha modalità "senza login": anche in locale servono Clerk e le OAuth applications
+(punti 1-2 della [configurazione del dashboard Clerk](#configurazione-del-dashboard-clerk)). In
+`src/backend/.env`:
+
+```env
+CLERK_AUTH_ENABLED=true
+CLERK_JWKS_URL=https://<nome>.clerk.accounts.dev/.well-known/jwks.json
+CLERK_ISSUER=https://<nome>.clerk.accounts.dev
+MCP_ENABLED=true
+MCP_RESOURCE_URL=http://localhost:8000/mcp
+# solo per MCP Inspector (vedi sotto), da togliere dopo il test
+MCP_ALLOWED_ORIGINS=http://localhost:6274
+```
+
+Poi `uvicorn app.main:app --reload --port 8000`. Con `CLERK_AUTH_ENABLED=true` anche le API `/api`
+richiedono il login: il frontend locale va configurato con `VITE_CLERK_PUBLISHABLE_KEY` della stessa
+istanza.
+
+`MCP_RESOURCE_URL` deve corrispondere all'host usato dal client (protezione DNS rebinding): con
+`http://localhost:8000/mcp` vanno usati `localhost:8000`, non `127.0.0.1:8000`.
+
+### MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector
+```
+
+Nell'interfaccia (di default `http://localhost:6274`): trasporto **Streamable HTTP**, URL
+`http://localhost:8000/mcp`, poi il flusso OAuth (*Open Auth Settings* / *Quick OAuth Flow* a
+seconda della versione), login Clerk, *Connect*. Da *Tools* → *List Tools* compaiono
+`list_portfolios` e i tool del Copilot; chiamare `list_portfolios` e poi un tool con un
+`portfolio_id` restituito. Se l'Inspector si collega direttamente dal browser, la sua origine deve
+essere in `MCP_ALLOWED_ORIGINS`, altrimenti la richiesta viene rifiutata.
+
+### curl
+
+```bash
+# 401 + WWW-Authenticate
+curl -i -X POST http://localhost:8000/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+# Con un access token OAuth valido (ad es. quello ottenuto dall'Inspector; mai un session token
+# della web app, che viene rifiutato): elenco dei tool e chiamata
+TOKEN='<access token OAuth>'
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+curl -s -X POST http://localhost:8000/mcp \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_portfolios","arguments":{}}}'
+```
+
+Il server è stateless: non serve una richiesta `initialize` preliminare né l'header
+`Mcp-Session-Id`.
+
+### Claude Code in locale
+
+Claude Code gira sulla macchina dello sviluppatore, quindi raggiunge `localhost`:
+
+```bash
+claude mcp add --transport http valore365-dev http://localhost:8000/mcp
+```
+
+claude.ai e ChatGPT invece si collegano dai propri server: per provarli serve un URL https pubblico
+(ad esempio un tunnel) e `MCP_RESOURCE_URL` deve essere quell'URL.
+
+## Aggiungere o modificare un tool
+
+I tool MCP sono generati da `TOOL_DEFINITIONS` di `app/copilot_tools.py` ed eseguiti con
+`execute_tool`: un tool aggiunto al Copilot (definizione in `TOOL_DEFINITIONS` + handler in
+`_TOOL_HANDLERS`) compare automaticamente anche su MCP, con `portfolio_id` obbligatorio e
+annotazione `readOnlyHint: true`. Non c'è una lista di esclusione: **ogni tool del Copilot deve
+quindi restare in sola lettura**. Un tool che scrive richiederebbe prima un filtro esplicito in
+`app/mcp_server/tools.py`. Dopo la modifica, `test_initialize_and_list_read_only_tools` verifica che
+l'elenco MCP coincida con `TOOL_DEFINITIONS` + `list_portfolios`.

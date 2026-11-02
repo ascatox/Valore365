@@ -48,10 +48,12 @@ Variabili principali:
 - `CLERK_JWKS_URL` (obbligatoria se Clerk abilitato)
 - `CLERK_AUTHORIZED_PARTIES` (CSV opzionale)
 - `CORS_ALLOWED_ORIGINS` (CSV, usata in `prod`)
+- `MCP_ENABLED`, `MCP_RESOURCE_URL`, `CLERK_ISSUER`, ... (server MCP, vedi [Server MCP](#server-mcp-sola-lettura))
 
 Note:
 - In `APP_ENV=dev` il backend abilita CORS permissivo (`*`).
 - Con `CLERK_AUTH_ENABLED=false`, tutte le route API (tranne `/health`) passano con utente fittizio `dev-user`.
+- Il fallback `dev-user` non vale per `/mcp`: senza Clerk il server MCP non viene servito.
 
 ## Database
 Prerequisito: PostgreSQL raggiungibile dal `DATABASE_URL`.
@@ -148,6 +150,56 @@ Backend:
 Comportamento:
 - tutte le route API (tranne `/api/health`) richiedono `Authorization: Bearer <token>` quando auth è attiva
 - con auth disattiva, il backend accetta richieste senza token
+
+## Server MCP (sola lettura)
+Il backend espone un server [MCP](https://modelcontextprotocol.io) remoto su `POST /mcp` (fuori dal prefisso `/api`), che permette a Claude, ChatGPT e altri client MCP di **leggere** i portafogli dell'utente autenticato con OAuth Clerk. Documentazione tecnica completa: [`docs/mcp.md`](../../docs/mcp.md); guida per gli utenti finali: [`docs/mcp-guida-utente.md`](../../docs/mcp-guida-utente.md).
+
+Struttura del modulo `app/mcp_server/`:
+- `config.py`: valida le impostazioni e ricava gli URL pubblicati; se qualcosa manca l'endpoint non viene servito (*fail closed*)
+- `auth.py`: verifica gli access token OAuth di Clerk (JWT `at+jwt` via JWKS oppure opachi `oat_` via Backend API di Clerk); rifiuta i session token della web app
+- `tools.py`: costruisce i tool MCP a partire da `TOOL_DEFINITIONS` di `app/copilot_tools.py` (più `list_portfolios`), controlla che il `portfolio_id` appartenga all'utente e li esegue con `execute_tool`
+- `routes.py`: endpoint ASGI `/mcp` (autenticazione, rate limit per utente, solo POST, body max 1 MB) e documenti `/.well-known/oauth-protected-resource` e `/.well-known/oauth-authorization-server`
+
+La registrazione avviene in `app/main.py` con `register_mcp_routes(...)`.
+
+Variabili d'ambiente (elenco completo con default in `.env.example` e in `docs/mcp.md`):
+- `MCP_ENABLED` (default `false`)
+- `CLERK_AUTH_ENABLED=true` (obbligatoria: MCP non usa mai il fallback `dev-user`)
+- `MCP_RESOURCE_URL` (URL pubblico dell'endpoint, es. `https://<host-backend>/mcp`; `http` ammesso solo per localhost)
+- `CLERK_ISSUER` (Frontend API URL di Clerk)
+- `CLERK_SECRET_KEY` (solo se Clerk emette token opachi `oat_`)
+- opzionali: `CLERK_API_URL`, `MCP_ALLOWED_CLIENT_IDS`, `MCP_SCOPES_SUPPORTED`, `MCP_REQUIRED_SCOPES`, `MCP_REQUIRE_AUDIENCE`, `MCP_ALLOWED_ORIGINS`, `MCP_RATE_LIMIT_REQUESTS`, `MCP_RATE_LIMIT_WINDOW_SECONDS`, `MCP_TOKEN_CACHE_SECONDS`
+
+Comportamento:
+- `MCP_ENABLED=false` → `/mcp` risponde `404`; abilitato ma configurazione incompleta → `503` con l'errore nei log
+- senza token o con token non valido → `401` con `WWW-Authenticate: Bearer resource_metadata="..."`
+
+Test:
+
+```bash
+pytest tests/integration/test_mcp_server.py
+```
+
+I test usano JWT firmati con chiavi generate al volo e un repository finto: non servono Clerk né il database.
+
+Prova in locale (serve un'istanza Clerk di sviluppo con le OAuth applications e la Dynamic Client Registration attive):
+
+```bash
+# in .env: CLERK_AUTH_ENABLED=true, CLERK_JWKS_URL, CLERK_ISSUER,
+#          MCP_ENABLED=true, MCP_RESOURCE_URL=http://localhost:8000/mcp
+uvicorn app.main:app --reload --port 8000
+
+# 401 atteso, con l'header WWW-Authenticate
+curl -i -X POST http://localhost:8000/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+
+# test completo con login OAuth (trasporto Streamable HTTP, URL http://localhost:8000/mcp);
+# aggiungere http://localhost:6274 a MCP_ALLOWED_ORIGINS per la durata del test
+npx @modelcontextprotocol/inspector
+```
+
+Dettagli (Inspector, curl con token, Claude Code in locale): [`docs/mcp.md`](../../docs/mcp.md#sviluppo-e-test-in-locale).
 
 ## Docker
 Da root repository:
