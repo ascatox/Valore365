@@ -131,6 +131,18 @@ al valore attuale, non 120 €. `get_day_movers` calcola migliore e peggiore dal
 delle posizioni, escludendo quelle con prezzo non aggiornato o assente; senza posizioni valide
 restituisce `best`/`worst` a `null` con un campo `reason`.
 
+Le asset class usate da stress test, salute, X-Ray e reddito vengono da un classificatore unico
+(`app/services/asset_classification.py`: equity, bond, gold, commodity, cash, crypto, `unknown`); un
+ETC tipizzato `stock` (es. un ETC sull'oro) è classificato gold, e un asset non riconosciuto resta
+`unknown`, mai equity per default. Negli scenari a shock `get_stress_test` riporta `affected_classes`,
+`class_breakdown` (per classe: `weight_pct`, `shock_pct`, `contribution_pct`, che sommano all'impatto)
+e `flags` (`unknown_asset_class_equity_shock` quando a un asset `unknown` si applica in via prudenziale
+lo shock equity); `most_impacted` elenca solo perdite effettive, con `asset_class`.
+`get_income_projection` divide il reddito lordo in `equity`, `fixed_income` e `other_or_unknown` (la
+somma è il lordo proiettato), senza crescita sul reddito fisso; elenca `unknown_class_symbols` e
+`missing_yield_symbols` e dichiara l'ipotesi fiscale in `tax_note` (aliquota uniforme, 12,5% sui titoli
+di Stato non modellato).
+
 ## Configurazione del dashboard Clerk
 
 > Le voci del dashboard Clerk cambiano nel tempo: se un nome non corrisponde, cercare la sezione

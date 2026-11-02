@@ -11,7 +11,9 @@ from ...schemas.portfolio_doctor import (
     XRayHolding,
     XRayResponse,
 )
-from ._holdings import AnalyzedHolding, PortfolioRef, _load_holdings, resolve_doctor_scope
+from ._holdings import AnalyzedHolding, PortfolioRef, _load_holdings, holding_asset_class, resolve_doctor_scope
+
+_NO_LOOK_THROUGH_CLASSES = {"gold", "commodity", "crypto"}
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +161,20 @@ def compute_portfolio_xray(
     # Skip candidates that already have justETF enrichment holdings
     etf_raw_holdings: dict[int, list] = {}
     yfinance_failures: dict[int, str] = {}
-    needs_yfinance = [h for h in candidates if h.asset_id not in enrichment_map or not enrichment_map[h.asset_id].get("top_holdings")]
+    # Gold/commodity/crypto products (shared classifier) have no basket of
+    # securities to look through: no Yahoo call, an explicit coverage reason.
+    no_look_through: dict[int, str] = {}
+    for h in candidates:
+        asset_class = holding_asset_class(h)
+        if asset_class in _NO_LOOK_THROUGH_CLASSES:
+            no_look_through[h.asset_id] = (
+                f"asset class {asset_class}: no underlying securities to look through"
+            )
+    needs_yfinance = [
+        h for h in candidates
+        if h.asset_id not in no_look_through
+        and (h.asset_id not in enrichment_map or not enrichment_map[h.asset_id].get("top_holdings"))
+    ]
 
     # Every non-cash holding is treated as a fund candidate, so without a cache
     # a portfolio of ordinary shares re-asks Yahoo about every one of them on
@@ -207,7 +222,11 @@ def compute_portfolio_xray(
             or (enrich is not None)
             or (h.asset_id in etf_raw_holdings)
         )
-        if not is_fund_candidate and h.asset_id not in yfinance_failures:
+        if (
+            not is_fund_candidate
+            and h.asset_id not in yfinance_failures
+            and h.asset_id not in no_look_through
+        ):
             continue
         detail_holdings = []
 
@@ -250,7 +269,7 @@ def compute_portfolio_xray(
                 ))
         else:
             holdings_source = "missing"
-            failure_reason = yfinance_failures.get(
+            failure_reason = no_look_through.get(h.asset_id) or yfinance_failures.get(
                 h.asset_id,
                 "justETF enrichment missing and yfinance fallback unavailable",
             )

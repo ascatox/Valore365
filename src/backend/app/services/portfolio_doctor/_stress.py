@@ -8,6 +8,7 @@ from sqlalchemy import text
 from ...repository import PortfolioRepository
 from ...schemas.portfolio_doctor import (
     StressTestAssetImpact,
+    StressTestClassImpact,
     StressTestResponse,
     StressTestScenarioResult,
 )
@@ -17,6 +18,7 @@ from ._holdings import (
     PortfolioRef,
     _compute_portfolio_return_params,
     _load_holdings,
+    holding_asset_class,
     resolve_doctor_scope,
 )
 
@@ -108,8 +110,7 @@ def _compute_historical_scenario(
     if max_dd < 0:
         recovery_months = max(1, int(abs(max_dd) / 2.5))
 
-    asset_impacts.sort(key=lambda a: a.estimated_loss_pct)
-    most_impacted = asset_impacts[:5]
+    most_impacted = _rank_most_impacted(asset_impacts)
 
     return StressTestScenarioResult(
         scenario_id=scenario["id"],
@@ -186,36 +187,60 @@ def _compute_weighted_drawdown(
     return max_dd
 
 
+def _rank_most_impacted(asset_impacts: list[StressTestAssetImpact], limit: int = 5) -> list[StressTestAssetImpact]:
+    """Only real losses, worst first; ties by larger weight, then symbol."""
+    losses = [a for a in asset_impacts if a.estimated_loss_pct < 0]
+    losses.sort(key=lambda a: (a.estimated_loss_pct, -a.weight_pct, a.symbol))
+    return losses[:limit]
+
+
+UNKNOWN_CLASS_FLAG = "unknown_asset_class_equity_shock"
+
+
 def _compute_shock_scenario(
     holdings: list[AnalyzedHolding],
     scenario: dict,
 ) -> StressTestScenarioResult:
-    """Apply synthetic shocks to asset classes and compute portfolio impact."""
+    """Apply synthetic shocks to asset classes and compute portfolio impact.
+
+    Every class of the shared classifier has its own shock in the scenario
+    table. ``unknown`` instruments get the equity shock as a prudential choice,
+    are still reported as ``unknown`` and raise ``UNKNOWN_CLASS_FLAG``.
+    """
     shocks = scenario["shocks"]
     tech_mult = scenario.get("tech_multiplier", 1.0)
-    commodity_mult = scenario.get("commodity_multiplier", 1.0)
 
     weighted_impact = 0.0
     covered_weight = 0.0
     asset_impacts: list[StressTestAssetImpact] = []
+    flags: list[str] = []
+    class_weight: dict[str, float] = defaultdict(float)
+    class_shock: dict[str, float] = {}
+    class_contribution: dict[str, float] = defaultdict(float)
 
     for holding in holdings:
         asset_class = _shock_asset_class(holding)
-        base_shock = shocks.get(asset_class, shocks.get("equity", -0.10))
+        if asset_class in shocks:
+            base_shock = shocks[asset_class]
+        else:
+            base_shock = shocks["equity"]
+            if UNKNOWN_CLASS_FLAG not in flags:
+                flags.append(UNKNOWN_CLASS_FLAG)
 
-        # Apply multipliers for specific scenarios
+        # The tech multiplier only concerns equity holdings.
         multiplier = 1.0
-        name_lower = holding.name.lower()
-        symbol_lower = holding.symbol.lower()
-        if tech_mult != 1.0 and _is_tech_like(name_lower, symbol_lower):
+        if tech_mult != 1.0 and asset_class == "equity" and _is_tech_like(
+            holding.name.lower(), holding.symbol.lower()
+        ):
             multiplier = tech_mult
-        if commodity_mult != 1.0 and _is_commodity_like(name_lower, symbol_lower):
-            multiplier = commodity_mult
 
         asset_shock = base_shock * multiplier
         weight_fraction = holding.weight_pct / 100.0
         weighted_impact += asset_shock * weight_fraction
         covered_weight += weight_fraction
+        class_weight[asset_class] += holding.weight_pct
+        class_shock[asset_class] = base_shock
+        class_contribution[asset_class] += asset_shock * weight_fraction
 
         asset_impacts.append(
             StressTestAssetImpact(
@@ -223,13 +248,25 @@ def _compute_shock_scenario(
                 name=holding.name,
                 weight_pct=round(holding.weight_pct, 2),
                 estimated_loss_pct=round(asset_shock * 100, 2),
+                asset_class=asset_class,
             )
         )
 
     portfolio_impact = (weighted_impact / covered_weight * 100.0) if covered_weight > 0 else 0.0
 
-    asset_impacts.sort(key=lambda a: a.estimated_loss_pct)
-    most_impacted = asset_impacts[:5]
+    # Contributions are normalized like the portfolio impact, so they add up to it.
+    class_breakdown = [
+        StressTestClassImpact(
+            asset_class=cls,
+            weight_pct=round(class_weight[cls], 2),
+            shock_pct=round(class_shock[cls] * 100, 2),
+            contribution_pct=round(
+                class_contribution[cls] / covered_weight * 100.0 if covered_weight > 0 else 0.0, 2
+            ),
+        )
+        for cls in sorted(class_weight, key=lambda c: (class_contribution[c], c))
+    ]
+    affected_classes = [row.asset_class for row in class_breakdown if row.contribution_pct != 0 or row.shock_pct != 0]
 
     return StressTestScenarioResult(
         scenario_id=scenario["id"],
@@ -241,31 +278,21 @@ def _compute_shock_scenario(
         recovery_months=None,
         benchmark_drawdown_pct=None,
         risk_level=_classify_risk_level(portfolio_impact),
-        most_impacted_assets=most_impacted,
+        most_impacted_assets=_rank_most_impacted(asset_impacts),
+        affected_classes=affected_classes,
+        class_breakdown=class_breakdown,
+        flags=flags,
     )
 
 
 def _shock_asset_class(holding: AnalyzedHolding) -> str:
-    """Map a holding to a broad asset class for shock scenarios."""
-    at = holding.asset_type.lower()
-    if at == "cash":
-        return "cash"
-    if at == "bond":
-        return "bond"
-    name_lower = holding.name.lower()
-    if "bond" in name_lower or "obbligaz" in name_lower or "fixed income" in name_lower:
-        return "bond"
-    return "equity"
+    """Asset class of a holding for shock scenarios (shared classifier)."""
+    return holding_asset_class(holding)
 
 
 def _is_tech_like(name: str, symbol: str) -> bool:
     tech_keywords = {"tech", "nasdaq", "tecnolog", "semiconductor", "software", "information tech"}
     return any(kw in name for kw in tech_keywords) or "qqq" in symbol
-
-
-def _is_commodity_like(name: str, symbol: str) -> bool:
-    commodity_keywords = {"commodity", "gold", "silver", "oil", "materie prime", "raw material", "metal"}
-    return any(kw in name for kw in commodity_keywords)
 
 
 def run_stress_test(

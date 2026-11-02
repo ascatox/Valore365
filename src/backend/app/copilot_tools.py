@@ -19,6 +19,7 @@ from .services.portfolio_doctor import (
     run_stress_test,
 )
 from .services.portfolio_doctor._health import resolve_holding_ters
+from .services.asset_classification import classify_asset_class
 from .services.portfolio_doctor._holdings import _load_holdings
 
 logger = logging.getLogger(__name__)
@@ -1223,9 +1224,27 @@ def _get_stress_test(
             scenario_data["recovery_months"] = s.recovery_months
         if s.most_impacted_assets:
             scenario_data["most_impacted"] = [
-                {"symbol": a.symbol, "loss_pct": round(a.estimated_loss_pct, 2)}
+                {
+                    "symbol": a.symbol,
+                    "loss_pct": round(a.estimated_loss_pct, 2),
+                    **({"asset_class": a.asset_class} if a.asset_class else {}),
+                }
                 for a in s.most_impacted_assets[:3]
             ]
+        if s.scenario_type == "shock":
+            # Classes hit, shock per class and contribution (weight x shock).
+            scenario_data["affected_classes"] = list(s.affected_classes)
+            scenario_data["class_breakdown"] = [
+                {
+                    "asset_class": row.asset_class,
+                    "weight_pct": row.weight_pct,
+                    "shock_pct": row.shock_pct,
+                    "contribution_pct": row.contribution_pct,
+                }
+                for row in s.class_breakdown
+            ]
+            if s.flags:
+                scenario_data["flags"] = list(s.flags)
         scenarios.append(scenario_data)
 
     # Sort by impact (most negative first)
@@ -1259,31 +1278,53 @@ def _get_income_projection(
     except Exception:
         pass
 
-    # Gather dividend yields, split by asset class for differentiated growth
+    # Gather dividend yields, split by asset class (shared classifier, TASK-36)
+    # for differentiated growth. Classification uses the position's own
+    # asset_type / investment_focus and the metadata category, matched by
+    # asset_id: get_asset_by_symbol returns only id/symbol/name, so reading
+    # asset_type from it put every instrument in equity (V365-004).
     EQUITY_GROWTH_RATE = 0.03   # 3% annual dividend growth for equity-like assets
-    FIXED_INCOME_GROWTH_RATE = 0.0  # 0% for bonds / fixed income (coupons don't grow)
-    FIXED_INCOME_TYPES = {"bond"}
+    # Coupons don't grow. Inflation-linked bonds (e.g. FRC3-like) also get 0%:
+    # their growth is an open decision (TASK-36), stated in the output.
+    FIXED_INCOME_GROWTH_RATE = 0.0
+    # Gold/commodity/cash/crypto/unknown: no growth assumed (prudential).
+    OTHER_GROWTH_RATE = 0.0
+    bucket_of_class = {"equity": "equity", "bond": "fixed_income"}
 
-    equity_annual_dividends = 0.0
-    fixed_income_annual_dividends = 0.0
-    total_annual_dividends = 0.0
+    try:
+        metadata_by_asset = repo.get_asset_metadata_bulk([p.asset_id for p in positions])
+    except Exception:
+        metadata_by_asset = {}
+
+    bucket_dividends = {"equity": 0.0, "fixed_income": 0.0, "other_or_unknown": 0.0}
+    unknown_symbols: list[str] = []
+    missing_yield_symbols: list[str] = []
     for p in positions:
-        try:
-            asset = repo.get_asset_by_symbol(p.symbol)
-            if not asset:
-                continue
-            meta = repo.get_asset_metadata(asset["id"])
-            if meta and meta.dividend_yield:
-                dy = float(meta.dividend_yield) / 100.0
-                annual_div = p.market_value * dy
-                total_annual_dividends += annual_div
-                asset_type = asset.get("asset_type", "stock") if isinstance(asset, dict) else getattr(asset, "asset_type", "stock")
-                if str(asset_type).lower() in FIXED_INCOME_TYPES:
-                    fixed_income_annual_dividends += annual_div
-                else:
-                    equity_annual_dividends += annual_div
-        except Exception:
+        meta = metadata_by_asset.get(p.asset_id)
+        asset_class = classify_asset_class(
+            asset_type=getattr(p, "asset_type", None),
+            name=p.name,
+            symbol=p.symbol,
+            investment_focus=getattr(p, "investment_focus", None),
+            category=meta.category if meta else None,
+        )
+        if asset_class == "unknown":
+            unknown_symbols.append(p.symbol)
+        dividend_yield = meta.dividend_yield if meta else None
+        if not dividend_yield:
+            # Accumulating funds and instruments without data: no income
+            # projected, listed explicitly.
+            if asset_class != "cash":
+                missing_yield_symbols.append(p.symbol)
             continue
+        annual_div = float(p.market_value) * float(dividend_yield) / 100.0
+        bucket_dividends[bucket_of_class.get(asset_class, "other_or_unknown")] += annual_div
+
+    equity_annual_dividends = bucket_dividends["equity"]
+    fixed_income_annual_dividends = bucket_dividends["fixed_income"]
+    other_annual_dividends = bucket_dividends["other_or_unknown"]
+    # Invariant: the buckets add up to the projected gross income.
+    total_annual_dividends = equity_annual_dividends + fixed_income_annual_dividends + other_annual_dividends
 
     projections = []
     for years in (1, 3, 5):
@@ -1293,6 +1334,7 @@ def _get_income_projection(
             gross_income += (
                 equity_annual_dividends * (1 + EQUITY_GROWTH_RATE) ** y
                 + fixed_income_annual_dividends * (1 + FIXED_INCOME_GROWTH_RATE) ** y
+                + other_annual_dividends * (1 + OTHER_GROWTH_RATE) ** y
             )
 
         net_income = gross_income * (1 - tax_rate / 100.0)
@@ -1320,10 +1362,24 @@ def _get_income_projection(
             total_annual_dividends * (1 - tax_rate / 100.0) / 12, 2,
         ),
         "tax_rate_pct": tax_rate,
+        "tax_note": (
+            f"Aliquota uniforme del {tax_rate:g}% applicata a tutto il reddito lordo. "
+            "Non è modellata l'aliquota agevolata del 12,5% sui titoli di Stato "
+            "e assimilati (né la quota di titoli di Stato negli ETF obbligazionari): "
+            "per la componente a reddito fisso il netto può essere sottostimato."
+        ),
         "dividend_growth_equity_pct": round(EQUITY_GROWTH_RATE * 100, 1),
         "dividend_growth_fixed_income_pct": round(FIXED_INCOME_GROWTH_RATE * 100, 1),
+        "dividend_growth_other_or_unknown_pct": round(OTHER_GROWTH_RATE * 100, 1),
+        "growth_note": (
+            "Crescita 0% sul reddito fisso, inclusi i bond indicizzati all'inflazione "
+            "(ipotesi aperta, TASK-36); 0% sul bucket other_or_unknown."
+        ),
         "equity_annual_dividends_eur": round(equity_annual_dividends, 2),
         "fixed_income_annual_dividends_eur": round(fixed_income_annual_dividends, 2),
+        "other_or_unknown_annual_dividends_eur": round(other_annual_dividends, 2),
+        "unknown_class_symbols": unknown_symbols,
+        "missing_yield_symbols": missing_yield_symbols,
         "yield_on_cost_pct": round(yield_on_cost, 2),
         "projections": projections,
     }

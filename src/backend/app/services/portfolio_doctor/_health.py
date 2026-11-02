@@ -23,7 +23,15 @@ from ...constants.geo_classification import (
     EUROPE_CURRENCIES,
 )
 from ...finance_client import normalize_expense_ratio_pct
-from ._holdings import AnalyzedHolding, PortfolioRef, _load_holdings, _is_equity_like, resolve_doctor_scope
+from ._holdings import (
+    AnalyzedHolding,
+    PortfolioRef,
+    _is_equity_like,
+    _load_holdings,
+    holding_asset_class,
+    holding_classification,
+    resolve_doctor_scope,
+)
 from .education_templates import enrich_alerts_with_education
 
 logger = logging.getLogger(__name__)
@@ -257,9 +265,16 @@ def infer_region_profile(holding: AnalyzedHolding, *, enrich: dict | None = None
         )
     descriptor = " ".join(part for part in descriptor_parts if part).upper()
     asset_type = holding.asset_type.lower()
+    asset_class = holding_asset_class(holding)
 
     if asset_type == "cash":
         return {"other": 100.0}
+    # Gold, commodities and crypto have no country: the listing currency is
+    # not a region (a gold ETC quoted in EUR is not European exposure).
+    if asset_class in {"gold", "commodity", "crypto"}:
+        return {"other": 100.0}
+    if asset_class == "bond":
+        asset_type = "bond"
     semantic_profile = _infer_region_profile_from_text(asset_type, descriptor)
     if semantic_profile is not None:
         return semantic_profile
@@ -285,8 +300,16 @@ def compute_max_position_weight(holdings: list[AnalyzedHolding]) -> float:
 _DIVERSIFIED_VEHICLE_TYPES = {"etf", "fund"}
 
 
+def _is_single_security(holding: AnalyzedHolding) -> bool:
+    """A single issuer's share or bond. ETF/fund, and products stored as stock
+    that the classifier recognizes as ETC/ETN/ETF (e.g. a gold ETC), are not."""
+    if holding.asset_type in _DIVERSIFIED_VEHICLE_TYPES:
+        return False
+    return not holding_classification(holding).is_exchange_traded_product
+
+
 def compute_max_single_security_weight(holdings: list[AnalyzedHolding]) -> float:
-    weights = [h.weight_pct for h in holdings if h.asset_type not in _DIVERSIFIED_VEHICLE_TYPES]
+    weights = [h.weight_pct for h in holdings if _is_single_security(h)]
     return round(max(weights), 1) if weights else 0.0
 
 
@@ -310,16 +333,20 @@ _GENERIC_OVERLAP_TAGS = {"equity_like"}
 
 
 def estimate_overlap_between_assets(asset_a: AnalyzedHolding, asset_b: AnalyzedHolding) -> float:
-    if asset_a.asset_type == "cash" or asset_b.asset_type == "cash":
+    class_a = holding_asset_class(asset_a)
+    class_b = holding_asset_class(asset_b)
+    if "cash" in {class_a, class_b} or asset_a.asset_type == "cash" or asset_b.asset_type == "cash":
         return 0.0
-    if asset_a.asset_type == "bond" and asset_b.asset_type == "bond":
+    if class_a == "bond" and class_b == "bond":
         if infer_region_profile(asset_a) == infer_region_profile(asset_b):
             return 55.0
         return 25.0
-    if {asset_a.asset_type, asset_b.asset_type} == {"bond", "stock"}:
+    if "bond" in {class_a, class_b}:
+        other = asset_b if class_a == "bond" else asset_a
+        return 5.0 if other.asset_type == "stock" else 10.0
+    # Gold/commodity/crypto against a different class share nothing.
+    if class_a != class_b and ({class_a, class_b} & {"gold", "commodity", "crypto"}):
         return 5.0
-    if "bond" in {asset_a.asset_type, asset_b.asset_type}:
-        return 10.0
 
     tags_a = extract_overlap_tags(asset_a)
     tags_b = extract_overlap_tags(asset_b)
@@ -502,11 +529,21 @@ def compute_weighted_ter(
 
 
 def infer_ter(holding: AnalyzedHolding) -> float | None:
-    """Fallback TER inference via pattern matching when DB metadata is missing."""
+    """Fallback TER inference via pattern matching when DB metadata is missing.
+
+    A share, a direct bond and cash have no running cost (0). An exchange-traded
+    product stored as ``stock`` (an ETC on gold, a bond ETF that Yahoo reports
+    as EQUITY) is not a single share: it goes through the fund patterns and
+    gets an inferred TER or None, never 0.
+    """
     asset_type = holding.asset_type.lower()
-    if asset_type in {"stock", "bond", "cash"}:
+    if asset_type == "stock":
+        classification = holding_classification(holding)
+        if classification.asset_class == "equity" and not classification.is_exchange_traded_product:
+            return 0.0
+    elif asset_type in {"bond", "cash"}:
         return 0.0
-    if asset_type not in {"etf", "fund"}:
+    elif asset_type not in {"etf", "fund"}:
         return None
 
     descriptor = f"{holding.symbol} {holding.name}".upper()
@@ -523,6 +560,8 @@ def infer_ter(holding: AnalyzedHolding) -> float | None:
     if any(token in descriptor for token in ("EMERGING", "MSCI EM", "EIMI", "EMIM")):
         return 0.22
     if any(token in descriptor for token in ("AGGREGATE BOND", "TREASURY", "CORP BOND")):
+        return 0.15
+    if any(token in descriptor for token in ("PHYSICAL GOLD", "GOLD ETC")):
         return 0.15
     if any(token in descriptor for token in ("VANGUARD", "ISHARES", "SPDR", "XTRACKERS", "AMUNDI", "INVESCO")):
         return 0.25
@@ -595,7 +634,7 @@ def build_alerts(metrics: PortfolioHealthMetrics, holdings: list[AnalyzedHolding
     alerts: list[PortfolioHealthAlert] = []
     usa = metrics.geographic_exposure.get("usa", 0.0)
     concentration_holdings = (
-        [h for h in holdings if h.asset_type not in _DIVERSIFIED_VEHICLE_TYPES]
+        [h for h in holdings if _is_single_security(h)]
         if metrics.max_single_security_weight is not None
         else holdings
     )

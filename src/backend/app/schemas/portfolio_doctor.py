@@ -184,6 +184,18 @@ class StressTestAssetImpact(BaseModel):
     name: str
     weight_pct: float
     estimated_loss_pct: float
+    # Shared asset class (shock scenarios only).
+    asset_class: str | None = None
+
+
+class StressTestClassImpact(BaseModel):
+    """Per-class view of a shock scenario: shock applied and contribution."""
+    asset_class: str
+    weight_pct: float
+    # Base shock of the class in the scenario (tech multiplier excluded).
+    shock_pct: float
+    # weight x applied shock, in portfolio percentage points.
+    contribution_pct: float
 
 
 class StressTestScenarioResult(BaseModel):
@@ -197,6 +209,11 @@ class StressTestScenarioResult(BaseModel):
     benchmark_drawdown_pct: float | None = None
     risk_level: Literal["low", "medium", "high", "critical"]
     most_impacted_assets: list[StressTestAssetImpact] = Field(default_factory=list)
+    # Shock scenarios only: classes with a non-zero shock, per-class breakdown
+    # and flags such as "unknown_asset_class_equity_shock".
+    affected_classes: list[str] = Field(default_factory=list)
+    class_breakdown: list[StressTestClassImpact] = Field(default_factory=list)
+    flags: list[str] = Field(default_factory=list)
 
 
 class StressTestResponse(BaseModel):

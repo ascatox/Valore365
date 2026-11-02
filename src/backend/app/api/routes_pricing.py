@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Header, Query
 from ..auth import AuthContext
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
-from ..finance_client import make_finance_client, QUOTE_TYPE_MAP
+from ..finance_client import make_finance_client, resolve_refreshed_asset_type
 from ..models import (
     DailyBackfillResponse,
     ErrorResponse,
@@ -84,7 +84,7 @@ def register_pricing_routes(
             except Exception:
                 pass
             if info.quote_type:
-                new_type = QUOTE_TYPE_MAP.get(info.quote_type.upper(), "stock")
+                new_type = resolve_refreshed_asset_type(asset.asset_type, info.quote_type)
                 if new_type != asset.asset_type:
                     repo.update_asset_type(aid, new_type)
                     updated.append({"symbol": asset.symbol, "old": asset.asset_type, "new": new_type})

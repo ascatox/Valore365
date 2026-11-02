@@ -25,6 +25,7 @@ from ..schemas.instant_portfolio_analyzer import (
     PortfolioTopInsight,
     ResolvedPosition,
 )
+from .asset_classification import classify_asset_class
 from .portfolio_doctor import (
     AnalyzedHolding,
     build_alerts,
@@ -693,19 +694,23 @@ def build_top_holdings(asset: CatalogAsset, enrich: dict | None) -> tuple[dict[s
     return {}, 1
 
 
-def map_asset_class(asset_type: str, name: str, symbol: str) -> str:
-    normalized_type = (asset_type or "").strip().lower()
-    normalized_name = f"{name} {symbol}".lower()
+# Shared classes folded into the four labels of the public analyzer. Other
+# commodities share the "Gold" risk profile; crypto and unknown instruments
+# take the equity profile (the riskiest available) as a prudential choice.
+_INSTANT_CLASS_LABELS = {
+    "equity": "Equity",
+    "bond": "Bond",
+    "gold": "Gold",
+    "commodity": "Gold",
+    "cash": "Cash",
+    "crypto": "Equity",
+    "unknown": "Equity",
+}
 
-    if "gold" in normalized_name:
-        return "Gold"
-    if normalized_type in {"bond"}:
-        return "Bond"
-    if normalized_type in {"cash"}:
-        return "Cash"
-    if normalized_type in {"stock", "etf", "fund"}:
-        return "Equity"
-    return "Equity"
+
+def map_asset_class(asset_type: str, name: str, symbol: str) -> str:
+    asset_class = classify_asset_class(asset_type=asset_type, name=name, symbol=symbol)
+    return _INSTANT_CLASS_LABELS.get(asset_class, "Equity")
 
 
 def normalize_percentage(value: object) -> float:
