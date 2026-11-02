@@ -4,6 +4,7 @@ title: 'Audit MCP: classificatore di asset class unico e tipo degli ETC'
 status: To Do
 assignee: []
 created_date: '2026-11-02T17:22:00Z'
+updated_date: '2026-11-02T17:31:00Z'
 labels:
   - audit-mcp
   - backend
@@ -27,3 +28,9 @@ V365-002 e V365-012. Esistono più classificatori incoerenti: _stress._shock_ass
 - [ ] #4 Per ogni shock l'output indica classi colpite, shock applicati e contributi
 - [ ] #5 XAD1.DE (ETC oro) non viene più trattato come singola azione con TER 0
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Da TASK-34: infer_ter restituisce 0 per asset_type=bond (ora marcato inferred); con il classificatore unico va rivisto per i fondi/ETF obbligazionari.
+<!-- SECTION:NOTES:END -->

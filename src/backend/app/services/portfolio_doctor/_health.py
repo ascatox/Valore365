@@ -434,38 +434,63 @@ def compute_portfolio_volatility(repo: PortfolioRepository, holdings: list[Analy
     return round(weighted_volatility / covered_weight, 1)
 
 
+TerSource = str  # "justetf" | "yfinance" | "inferred" | "none"
+
+
+def resolve_holding_ters(
+    holdings: list[AnalyzedHolding],
+    repo: PortfolioRepository | None = None,
+) -> dict[int, tuple[float | None, TerSource]]:
+    """Single source of truth for per-holding TER, in percentage points.
+
+    Priority: justETF enrichment (already a percentage) → yFinance metadata
+    (normalized with ``normalize_expense_ratio_pct``) → ``infer_ter`` pattern
+    matching. Returns ``{asset_id: (ter_pct, ter_source)}`` where ter_source is
+    one of ``"justetf"``, ``"yfinance"``, ``"inferred"`` or ``"none"``.
+    """
+    asset_ids = [h.asset_id for h in holdings]
+    justetf: dict[int, float] = {}
+    yfinance: dict[int, float] = {}
+    if repo:
+        try:
+            enrich_map = repo.get_etf_enrichment_bulk(asset_ids)
+            for aid, enrich in enrich_map.items():
+                if enrich.get("ter") is not None:
+                    justetf[aid] = float(enrich["ter"])  # justETF already returns percentage (e.g. 0.22)
+        except Exception:
+            pass
+        try:
+            meta_map = repo.get_asset_metadata_bulk(asset_ids)
+            for aid, meta in meta_map.items():
+                if meta.expense_ratio is not None:
+                    normalized = normalize_expense_ratio_pct(meta.expense_ratio)
+                    if normalized is not None:
+                        yfinance[aid] = normalized
+        except Exception:
+            pass
+
+    resolved: dict[int, tuple[float | None, TerSource]] = {}
+    for holding in holdings:
+        if holding.asset_id in justetf:
+            resolved[holding.asset_id] = (justetf[holding.asset_id], "justetf")
+        elif holding.asset_id in yfinance:
+            resolved[holding.asset_id] = (yfinance[holding.asset_id], "yfinance")
+        else:
+            inferred = infer_ter(holding)
+            resolved[holding.asset_id] = (inferred, "inferred" if inferred is not None else "none")
+    return resolved
+
+
 def compute_weighted_ter(
     holdings: list[AnalyzedHolding],
     repo: PortfolioRepository | None = None,
 ) -> float | None:
-    # Try to fetch TER from justETF enrichment first, then yFinance metadata
-    db_ter: dict[int, float] = {}
-    if repo:
-        try:
-            asset_ids = [h.asset_id for h in holdings]
-            # justETF enrichment (preferred — more accurate)
-            enrich_map = repo.get_etf_enrichment_bulk(asset_ids)
-            for aid, enrich in enrich_map.items():
-                if enrich.get("ter") is not None:
-                    db_ter[aid] = enrich["ter"]  # justETF already returns percentage (e.g. 0.22)
-        except Exception:
-            pass
-        try:
-            # yFinance metadata as fallback
-            asset_ids = [h.asset_id for h in holdings]
-            meta_map = repo.get_asset_metadata_bulk(asset_ids)
-            for aid, meta in meta_map.items():
-                if aid not in db_ter and meta.expense_ratio is not None:
-                    normalized = normalize_expense_ratio_pct(meta.expense_ratio)
-                    if normalized is not None:
-                        db_ter[aid] = normalized
-        except Exception:
-            pass
-
+    """TER weighted on the covered weight (holdings with a known or inferred TER)."""
+    resolved = resolve_holding_ters(holdings, repo)
     weighted_cost = 0.0
     covered_weight = 0.0
     for holding in holdings:
-        ter = db_ter[holding.asset_id] if holding.asset_id in db_ter else infer_ter(holding)
+        ter, _source = resolved[holding.asset_id]
         if ter is None:
             continue
         weight_fraction = holding.weight_pct / 100.0

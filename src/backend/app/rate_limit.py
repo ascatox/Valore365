@@ -1,5 +1,6 @@
 """Per-user rate limiting as a FastAPI dependency."""
 
+import math
 import threading
 import time
 from collections import defaultdict, deque
@@ -50,6 +51,25 @@ class SlidingWindowRateLimiter:
             if not bucket:
                 return False
             return sum(1 for t in bucket if t > cutoff) >= self.max_requests
+
+
+    def retry_after(self, key: str) -> int:
+        """Whole seconds until allow(key) can succeed again (0 if it can now).
+
+        Computed from the oldest hit still inside the window. Records nothing.
+        """
+        now = time.monotonic()
+        cutoff = now - self.window_seconds
+        with self._lock:
+            bucket = self._entries.get(key)
+            if not bucket:
+                return 0
+            live = [t for t in bucket if t > cutoff]
+            if len(live) < self.max_requests:
+                return 0
+            # The (len - max + 1)-th oldest hit must leave the window.
+            oldest = live[len(live) - self.max_requests]
+            return max(1, math.ceil(oldest + self.window_seconds - now))
 
 
 def client_ip(conn: HTTPConnection, settings=None) -> str:

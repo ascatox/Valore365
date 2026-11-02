@@ -159,8 +159,44 @@ class McpToolError(Exception):
     outcome = "error"
 
 
+# Seconds a client should wait after a "concurrency_busy" rejection: a
+# running call usually finishes within a couple of seconds.
+BUSY_RETRY_AFTER_SECONDS = 2
+
+
 class McpToolLimitError(McpToolError):
+    """A per-user limit refused the call.
+
+    Surfaced to the client as a CallToolResult with isError=True whose
+    structuredContent is ``{"error": {"code", "message", "retry_after_s"}}``;
+    the text content keeps the Italian message plus the same fields.
+    """
+
     outcome = "limited"
+
+    def __init__(self, message: str, *, code: str, retry_after_s: int) -> None:
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.retry_after_s = int(retry_after_s)
+
+    def to_payload(self) -> dict[str, Any]:
+        return {"error": {"code": self.code, "message": self.message, "retry_after_s": self.retry_after_s}}
+
+    def to_call_tool_result(self) -> types.CallToolResult:
+        text = f"{self.message} (code={self.code}, retry_after_s={self.retry_after_s})"
+        return types.CallToolResult(
+            content=[types.TextContent(type="text", text=text)],
+            structuredContent=self.to_payload(),
+            isError=True,
+        )
+
+
+def _format_window(seconds: int) -> str:
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return "1 minuto" if minutes == 1 else f"{minutes} minuti"
+    return f"{seconds} secondi"
 
 
 def _tool_input_schema(parameters: dict[str, Any]) -> dict[str, Any]:
@@ -396,10 +432,23 @@ async def _run_bounded(
     The concurrency slot is released when the worker actually finishes, so a
     timed-out call keeps counting until its thread is done.
     """
-    if name in HEAVY_TOOLS and not limits.heavy_limiter.allow(f"mcp-heavy:{user_id}"):
-        raise McpToolLimitError("Troppe richieste per questo tool di calcolo, riprova tra qualche minuto")
+    # Concurrency first: a call refused as busy must not burn heavy quota.
     if not limits.try_acquire(user_id):
-        raise McpToolLimitError("Troppe richieste in corso, riprova tra poco")
+        raise McpToolLimitError(
+            "Troppe richieste in corso, riprova tra poco",
+            code="concurrency_busy",
+            retry_after_s=BUSY_RETRY_AFTER_SECONDS,
+        )
+    heavy_key = f"mcp-heavy:{user_id}"
+    if name in HEAVY_TOOLS and not limits.heavy_limiter.allow(heavy_key):
+        limits.release(user_id)
+        limiter = limits.heavy_limiter
+        raise McpToolLimitError(
+            f"Troppe richieste per i tool di calcolo (massimo {limiter.max_requests} "
+            f"ogni {_format_window(int(limiter.window_seconds))}), riprova più tardi",
+            code="heavy_quota",
+            retry_after_s=max(1, limiter.retry_after(heavy_key)),
+        )
 
     release_lock = threading.Lock()
     state = {"started": False, "released": False}
@@ -490,6 +539,11 @@ def build_mcp_server(
                 outcome = "truncated"
                 return [types.TextContent(type="text", text=text)], None
             return [types.TextContent(type="text", text=text)], safe
+        except McpToolLimitError as exc:
+            outcome = exc.outcome
+            # Returned (not raised) so the client gets code/retry_after_s
+            # in structuredContent alongside the text.
+            return exc.to_call_tool_result()
         except McpToolError as exc:
             outcome = exc.outcome
             raise

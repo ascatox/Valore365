@@ -875,6 +875,8 @@ def test_per_user_concurrency_limit(mcp_on, monkeypatch):
         result = _call(TestClient(api_main.app), 'get_portfolio_summary', {'portfolio_id': 1})
         assert result['isError'] is True
         assert 'in corso' in result['content'][0]['text']
+        assert result['structuredContent']['error']['code'] == 'concurrency_busy'
+        assert result['structuredContent']['error']['retry_after_s'] >= 1
         # Another user is not affected.
         other = _call(TestClient(api_main.app), 'list_portfolios', {}, token=_make_token(sub='user_other'))
         assert other['isError'] is False
@@ -908,6 +910,9 @@ def test_heavy_tools_have_a_stricter_rate_limit(mcp_on, monkeypatch):
     second = _call(client, 'get_stress_test', {'portfolio_id': 1})
     assert second['isError'] is True
     assert 'Troppe richieste' in second['content'][0]['text']
+    error = second['structuredContent']['error']
+    assert error['code'] == 'heavy_quota'
+    assert 1 <= error['retry_after_s'] <= 60
     # Light tools are not affected.
     assert _call(client, 'get_portfolio_summary', {'portfolio_id': 1})['isError'] is False
     assert {'get_monte_carlo', 'get_stress_test', 'get_income_projection', 'get_xray_summary',

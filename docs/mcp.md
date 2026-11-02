@@ -125,6 +125,12 @@ Esempio di Protected Resource Metadata:
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
 
+`get_monte_carlo` restituisce esattamente gli anni 1..10 (ordinati) con i percentili P25/P50/P75 espressi
+come **indice base 100** (`unit: "indice_base_100"`, `initial_value: 100`): 120 significa +20% rispetto
+al valore attuale, non 120 €. `get_day_movers` calcola migliore e peggiore dalla variazione giornaliera
+delle posizioni, escludendo quelle con prezzo non aggiornato o assente; senza posizioni valide
+restituisce `best`/`worst` a `null` con un campo `reason`.
+
 ## Configurazione del dashboard Clerk
 
 > Le voci del dashboard Clerk cambiano nel tempo: se un nome non corrisponde, cercare la sezione
@@ -364,8 +370,8 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | Refetch JWKS limitato | Un `kid` sconosciuto provoca al massimo un nuovo download del JWKS ogni 30 s; nel frattempo i `kid` sconosciuti ricevono 401 (o 503 se il JWKS non è mai stato scaricato) | codice |
 | JWT rigorosi | `alg` = RS256 (rifiutati `none`/`HS*`), `crit` rifiutato, `nbf` e `iat` futuri rifiutati (tolleranza 5 s), durata massima del token. All'avvio un warning se `MCP_REQUIRE_AUDIENCE=false` | `MCP_MAX_TOKEN_LIFETIME_SECONDS`, `MCP_REQUIRE_AUDIENCE` |
 | Timeout per tool | Il tool gira in un thread; oltre il timeout il client riceve un errore generico. Il thread non può essere interrotto e termina in background, ma continua a occupare uno slot di concorrenza dell'utente finché non finisce | `MCP_TOOL_TIMEOUT_SECONDS` |
-| Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
-| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` hanno un limite per utente più stretto, in aggiunta a quello generale | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
+| Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" (`code: concurrency_busy`, `retry_after_s: 2`). Il controllo avviene prima della quota dei tool pesanti, quindi una chiamata rifiutata come "busy" non consuma quota | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
+| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
 | Dimensione del risultato | Il JSON del risultato è limitato a 200 KB: oltre, il testo viene tagliato con il marcatore `[risultato troncato: superato il limite di 200 KB]` e `structuredContent` è omesso | codice |
 | Validazione argomenti | Schema JSON rigoroso (`additionalProperties: false`, `portfolio_id` intero positivo, numeri con minimo/massimo, `symbol` max 32 caratteri con charset limitato, NaN/Inf rifiutati), verificato sia dall'SDK sia da `run_tool_sync` prima di eseguire il tool. I batch JSON-RPC (array) non sono accettati dal trasporto dell'SDK (400) | `ARGUMENT_CONSTRAINTS` |
 | Prompt injection | Oltre al troncamento, da tutti i testi (chiavi comprese) vengono rimossi caratteri di controllo, controlli bidirezionali Unicode, caratteri a larghezza zero/invisibili e caratteri "tag" (U+E0000-U+E0FFF); `\n` e `\t` restano. Ogni descrizione di tool e le istruzioni del server avvertono che gli output sono dati, non istruzioni | codice |
@@ -373,6 +379,12 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | Errori generici | 401 con messaggio unico qualunque sia la causa; 403 `Access denied` per gli utenti bloccati e `Insufficient scope` per gli scope mancanti; 429 generico; un portafoglio inesistente o altrui restituisce sempre `Portfolio non trovato` | codice |
 | Rilascio graduale / kill switch | `MCP_ALLOWED_USER_IDS` non vuoto: solo quegli utenti possono usare MCP (gli altri ricevono 403). `MCP_BLOCKED_USER_IDS`: utenti sempre bloccati (403), ha la precedenza. Per spegnere tutto: `MCP_ENABLED=false` (404) | `MCP_ALLOWED_USER_IDS`, `MCP_BLOCKED_USER_IDS` |
 | Audit log | Una riga per richiesta (`mcp request rid=… ip=… method=… status=… outcome=… user=… client=… duration_ms=…`) e una per chiamata a tool (`mcp tool call rid=… user=… client=… ip=… tool=… outcome=… duration_ms=…`), con lo stesso `rid` restituito in `X-Request-ID`. Le autenticazioni fallite sono loggate a livello WARNING con la sola categoria (`mcp auth failed rid=… ip=… reason=expired`). Mai token, argomenti o output | logger `valore365.mcp` |
+
+Errori di limite (concorrenza e tool pesanti) in forma strutturata: il `CallToolResult` ha
+`isError: true`, il testo contiene il messaggio in italiano seguito da `(code=…, retry_after_s=…)` e
+`structuredContent` vale `{"error": {"code": "concurrency_busy" | "heavy_quota", "message": "…",
+"retry_after_s": <secondi interi>}}`. Il client può attendere `retry_after_s` secondi prima di
+riprovare.
 
 ### Dipendenze (pip-audit, novembre 2026)
 

@@ -1,10 +1,10 @@
 ---
 id: TASK-34
 title: 'Audit MCP: copertura dei TER e bug di unità in get_cost_breakdown'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T17:22:00Z'
-updated_date: '2026-11-02T17:26:00Z'
+updated_date: '2026-11-02T17:31:00Z'
 labels:
   - audit-mcp
   - mcp
@@ -23,9 +23,15 @@ V365-007. _get_cost_breakdown legge meta.expense_ratio senza normalize_expense_r
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Il TER da yfinance è normalizzato (0.0075 -> 0.75%) con un test
-- [ ] #2 L'output espone ter_coverage_pct (per peso), missing_ter_symbols, ter_source per posizione ed estimated_annual_cost_known_eur
-- [ ] #3 fee_drag e costo annuo usano lo stesso perimetro dichiarato
-- [ ] #4 Test con copertura 0%, 35%, 75% e 100% senza valori fuorvianti
-- [ ] #5 La politica sui TER mancanti segue la decisione presa in TASK-37
+- [x] #1 Il TER da yfinance è normalizzato (0.0075 -> 0.75%) con un test
+- [x] #2 L'output espone ter_coverage_pct (per peso), missing_ter_symbols, ter_source per posizione ed estimated_annual_cost_known_eur
+- [x] #3 fee_drag e costo annuo usano lo stesso perimetro dichiarato
+- [x] #4 Test con copertura 0%, 35%, 75% e 100% senza valori fuorvianti
+- [x] #5 La politica sui TER mancanti segue la decisione presa in TASK-37
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Helper condiviso resolve_holding_ters (justETF -> yFinance normalizzato -> inferito) usato da compute_weighted_ter (risultato invariato) e da get_cost_breakdown. Nuovi campi: ter_coverage_pct, missing_ter_symbols, inferred_ter_symbols, ter_source, estimated_annual_cost_known_eur, covered_market_value_eur, cost_perimeter, coverage_note. Cambi di comportamento: total_annual_cost_eur può essere null; fee_drag_10y_eur calcolato sul valore coperto. Test: tests/unit/test_cost_breakdown_ter.py (8). Aperti: infer_ter restituisce 0 per i bond (rivedere con TASK-35); soglia minima di copertura non decisa.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -8,16 +8,17 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from .services.performance_service import PerformanceService
 from .repository import PortfolioRepository
 from .services.portfolio_doctor import (
     analyze_portfolio_health,
-    compute_weighted_ter,
     run_monte_carlo_projection,
     run_stress_test,
 )
+from .services.portfolio_doctor._health import resolve_holding_ters
 from .services.portfolio_doctor._holdings import _load_holdings
 
 logger = logging.getLogger(__name__)
@@ -127,7 +128,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "get_day_movers",
         "description": (
             "Ottieni il miglior e peggior performer della giornata "
-            "nel portafoglio, con la variazione percentuale."
+            "nel portafoglio, con la variazione percentuale rispetto alla "
+            "chiusura precedente. Esclude le posizioni con prezzo non aggiornato."
         ),
         "parameters": {
             "type": "object",
@@ -139,9 +141,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_monte_carlo",
         "description": (
-            "Ottieni le proiezioni Monte Carlo del portafoglio a 1-10 anni. "
+            "Ottieni le proiezioni Monte Carlo del portafoglio per gli anni 1-10. "
             "Include rendimento medio annualizzato, volatilita' e "
-            "percentili (P25, P50, P75) per ogni anno."
+            "percentili (P25, P50, P75) per ogni anno, espressi come indice "
+            "base 100 (valore iniziale = 100), non in euro."
         ),
         "parameters": {
             "type": "object",
@@ -597,35 +600,62 @@ def _get_day_movers(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    try:
-        target_perf = repo.get_portfolio_target_performance(portfolio_id, user_id)
-        best = (
-            {"symbol": target_perf.best.symbol, "day_change_pct": target_perf.best.day_change_pct}
-            if target_perf.best else None
-        )
-        worst = (
-            {"symbol": target_perf.worst.symbol, "day_change_pct": target_perf.worst.day_change_pct}
-            if target_perf.worst else None
-        )
-    except Exception:
-        # Fallback: compute from positions
-        positions = repo.get_positions(portfolio_id, user_id)
-        if not positions:
-            return {"best": None, "worst": None}
-        sorted_by_day = sorted(
-            [p for p in positions if p.day_change_pct is not None],
-            key=lambda p: p.day_change_pct,
-        )
-        best = (
-            {"symbol": sorted_by_day[-1].symbol, "day_change_pct": round(sorted_by_day[-1].day_change_pct, 2)}
-            if sorted_by_day else None
-        )
-        worst = (
-            {"symbol": sorted_by_day[0].symbol, "day_change_pct": round(sorted_by_day[0].day_change_pct, 2)}
-            if sorted_by_day else None
-        )
+    """Best/worst daily change among the portfolio positions.
 
-    return {"best": best, "worst": worst}
+    Computed from repo.get_positions (day_change_pct = current price vs
+    previous close, in quote currency). Positions with a stale price or no
+    price at all are excluded: their day_change_pct is the 0.0 default, not
+    a real change. A 0.0 on a fresh price is valid data (flat day).
+    """
+    positions = repo.get_positions(portfolio_id, user_id) or []
+    valid = []
+    excluded = 0
+    for p in positions:
+        change = p.day_change_pct
+        if (
+            p.price_stale
+            or p.price_date is None
+            or change is None
+            or not math.isfinite(change)
+        ):
+            excluded += 1
+            continue
+        valid.append(p)
+
+    if not valid:
+        reason = (
+            "Nessuna posizione nel portafoglio."
+            if not positions
+            else "Nessuna posizione con prezzo aggiornato: variazione giornaliera non disponibile."
+        )
+        return {
+            "best": None,
+            "worst": None,
+            "reason": reason,
+            "valid_positions": 0,
+            "excluded_stale": excluded,
+        }
+
+    def _mover(p: Any) -> dict:
+        return {
+            "symbol": p.symbol,
+            "name": p.name,
+            "day_change_pct": round(p.day_change_pct, 2),
+            "price_date": p.price_date.isoformat() if p.price_date else None,
+        }
+
+    # Stable ordering: ties broken by symbol (alphabetical) for both ends.
+    best = min(valid, key=lambda p: (-p.day_change_pct, p.symbol))
+    worst = min(valid, key=lambda p: (p.day_change_pct, p.symbol))
+    return {
+        "best": _mover(best),
+        "worst": _mover(worst),
+        "valid_positions": len(valid),
+        "excluded_stale": excluded,
+    }
+
+
+_MC_YEARS = range(1, 11)
 
 
 def _get_monte_carlo(
@@ -633,14 +663,23 @@ def _get_monte_carlo(
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     mc = run_monte_carlo_projection(repo, portfolio_id, user_id)
+    projections = sorted(
+        (p for p in mc.projections if p.year in _MC_YEARS),
+        key=lambda p: p.year,
+    )
     return {
         "annualized_mean_return_pct": round(mc.annualized_mean_return_pct, 2),
         "annualized_volatility_pct": round(mc.annualized_volatility_pct, 2),
         "return_assumption": "rendimento atteso di lungo periodo per classe di attivo (ipotesi prudenziale, non derivato dalla performance recente)",
+        "unit": "indice_base_100",
+        "initial_value": 100,
+        "unit_note": (
+            "I percentili sono un indice con valore iniziale 100 (anno 0), non importi in euro: "
+            "ad esempio 120 significa +20% rispetto al valore attuale del portafoglio."
+        ),
         "projections": [
             {"year": p.year, "p25": p.p25, "p50": p.p50, "p75": p.p75}
-            for p in mc.projections[:10]
-            if p.year > 0
+            for p in projections
         ],
     }
 
@@ -1016,43 +1055,58 @@ def _get_cost_breakdown(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T15: Detailed cost/TER analysis."""
+    """T15: Detailed cost/TER analysis.
+
+    TER per position comes from ``resolve_holding_ters`` (same source as
+    ``compute_weighted_ter``): justETF → yFinance (normalized) → inferred.
+    All cost figures share one declared perimeter: the *covered* positions
+    (TER known or inferred). ``weighted_ter_pct`` is weighted on the covered
+    weight, ``estimated_annual_cost_known_eur`` (alias of the legacy
+    ``total_annual_cost_eur``) sums the covered positions only, and
+    ``fee_drag_10y_eur`` is computed on ``covered_market_value_eur``.
+    ``ter_coverage_pct`` is the covered share of the non-cash market value.
+    """
     positions = repo.get_positions(portfolio_id, user_id)
     summary = repo.get_summary(portfolio_id, user_id)
     total_mv = summary.market_value
 
     holdings = _load_holdings(repo, portfolio_id, user_id)
-    weighted_ter = compute_weighted_ter(holdings, repo)
+    resolved = resolve_holding_ters(holdings, repo)
+    asset_type_by_id = {h.asset_id: (h.asset_type or "").lower() for h in holdings}
 
-    # Per-position TER
     position_costs: list[dict] = []
+    covered_mv = 0.0
+    weighted_sum = 0.0
+    known_cost = 0.0
+    non_cash_mv = 0.0
+    covered_non_cash_mv = 0.0
+    missing: list[str] = []
+    inferred: list[str] = []
     for p in positions:
-        ter = None
-        try:
-            asset = repo.get_asset_by_symbol(p.symbol)
-            if asset:
-                # Try etf_enrichment first
-                try:
-                    enrichment = repo.get_etf_enrichment(asset["id"])
-                    if enrichment and enrichment.get("ter") is not None:
-                        ter = float(enrichment["ter"])
-                except Exception:
-                    pass
-                # Fallback to asset_metadata
-                if ter is None:
-                    meta = repo.get_asset_metadata(asset["id"])
-                    if meta and meta.expense_ratio is not None:
-                        ter = float(meta.expense_ratio)
-        except Exception:
-            pass
-
-        annual_cost = p.market_value * (ter / 100.0) if ter is not None else None
+        ter, source = resolved.get(p.asset_id, (None, "none"))
+        asset_type = asset_type_by_id.get(p.asset_id) or (p.asset_type or "").lower()
+        is_cash = asset_type == "cash"
+        mv = float(p.market_value or 0.0)
+        annual_cost = mv * (ter / 100.0) if ter is not None else None
+        if ter is not None:
+            covered_mv += mv
+            weighted_sum += mv * ter
+            known_cost += annual_cost
+            if source == "inferred":
+                inferred.append(p.symbol)
+        if not is_cash:
+            non_cash_mv += mv
+            if ter is not None:
+                covered_non_cash_mv += mv
+            else:
+                missing.append(p.symbol)
         position_costs.append({
             "symbol": p.symbol,
             "name": p.name,
             "weight_pct": round(p.weight, 2),
-            "market_value": round(p.market_value, 2),
+            "market_value": round(mv, 2),
             "ter_pct": round(ter, 3) if ter is not None else None,
+            "ter_source": source,
             "annual_cost_eur": round(annual_cost, 2) if annual_cost is not None else None,
         })
 
@@ -1062,25 +1116,38 @@ def _get_cost_breakdown(
         reverse=True,
     )
 
-    total_annual_cost = sum(
-        c["annual_cost_eur"] for c in position_costs if c["annual_cost_eur"] is not None
+    has_coverage = covered_mv > 0
+    weighted_ter = weighted_sum / covered_mv if has_coverage else None
+    estimated_known = round(known_cost, 2) if has_coverage else None
+    # Compound drag over 10 years on the same covered perimeter.
+    fee_drag_10y = (
+        covered_mv * (1 - (1 - weighted_ter / 100.0) ** 10) if weighted_ter is not None else None
+    )
+    ter_coverage_pct = (
+        round(covered_non_cash_mv / non_cash_mv * 100.0, 1) if non_cash_mv > 0 else None
     )
 
-    # Fee drag projection: compound effect over 10 years
-    # Simplified: cumulative cost assuming constant portfolio value
-    fee_drag_10y = total_annual_cost * 10 if total_annual_cost else None
-    # More accurate compound drag: value lost vs no-fee scenario
-    if weighted_ter is not None and total_mv > 0:
-        ter_decimal = weighted_ter / 100.0
-        fee_drag_10y_compound = total_mv * (1 - (1 - ter_decimal) ** 10)
-    else:
-        fee_drag_10y_compound = None
+    coverage_note = None
+    if ter_coverage_pct is not None and ter_coverage_pct < 100.0:
+        coverage_note = (
+            f"TER disponibile per il {ter_coverage_pct:.1f}% del valore investito (liquidità esclusa). "
+            f"TER ponderato, costo annuo e fee drag si riferiscono solo alle posizioni coperte"
+            + (f"; mancano: {', '.join(missing)}." if missing else ".")
+        )
 
     return {
         "weighted_ter_pct": round(weighted_ter, 3) if weighted_ter is not None else None,
-        "total_annual_cost_eur": round(total_annual_cost, 2),
-        "fee_drag_10y_eur": round(fee_drag_10y_compound, 2) if fee_drag_10y_compound is not None else None,
+        # Legacy key: same value as estimated_annual_cost_known_eur (covered positions only).
+        "total_annual_cost_eur": estimated_known,
+        "estimated_annual_cost_known_eur": estimated_known,
+        "fee_drag_10y_eur": round(fee_drag_10y, 2) if fee_drag_10y is not None else None,
+        "cost_perimeter": "covered_positions",
+        "covered_market_value_eur": round(covered_mv, 2),
         "portfolio_market_value": round(total_mv, 2),
+        "ter_coverage_pct": ter_coverage_pct,
+        "missing_ter_symbols": missing,
+        "inferred_ter_symbols": inferred,
+        "coverage_note": coverage_note,
         "position_costs": position_costs[:20],
     }
 

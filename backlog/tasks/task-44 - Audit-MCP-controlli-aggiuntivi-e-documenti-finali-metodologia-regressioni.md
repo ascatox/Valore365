@@ -4,6 +4,7 @@ title: 'Audit MCP: controlli aggiuntivi e documenti finali (metodologia, regress
 status: To Do
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
+updated_date: '2026-11-02T17:31:00Z'
 labels:
   - audit-mcp
   - docs
@@ -30,3 +31,9 @@ Sezioni C e G del documento di audit: riconciliazione TWR/MWR, segno e valuta de
 - [ ] #2 methodology.md con formule, unità, denominatori, copertura e limiti
 - [ ] #3 regression-results.md con i comandi eseguiti e il loro esito
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Da TASK-33: aggiungere a Position un indicatore di chiusura precedente mancante, così day_change_pct=0.0 di default non viene scambiato per una giornata piatta.
+<!-- SECTION:NOTES:END -->
