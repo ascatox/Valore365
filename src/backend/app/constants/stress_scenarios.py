@@ -41,8 +41,8 @@ HISTORICAL_SCENARIOS = [
 # "unknown" instruments get the equity shock as a prudential choice and the
 # scenario result carries the "unknown_asset_class_equity_shock" flag.
 #
-# PROVVISORIO — da approvare (TASK-37): the gold, commodity and crypto shocks
-# (and the gold shock in the bond selloff) are provisional, deliberately
+# Approvati il 2026-11-02 (TASK-37): the gold, commodity and crypto shocks
+# (and the gold shock in the bond selloff) are deliberately
 # conservative values reasoned from historical behaviour:
 # - Dot-com crash 2000-2002: gold roughly flat to up, broad commodities mixed
 #   -> tech crash: gold 0%, commodity -10%.
@@ -61,7 +61,7 @@ SHOCK_SCENARIOS = [
         "name": "Global Equity Crash",
         "shocks": {
             "equity": -0.20, "bond": -0.03, "cash": 0.0,
-            "gold": -0.05, "commodity": -0.15, "crypto": -0.35,  # PROVVISORIO — da approvare (TASK-37)
+            "gold": -0.05, "commodity": -0.15, "crypto": -0.35,
         },
     },
     {
@@ -69,7 +69,7 @@ SHOCK_SCENARIOS = [
         "name": "US Tech Crash",
         "shocks": {
             "equity": -0.30, "bond": 0.02, "cash": 0.0,
-            "gold": 0.0, "commodity": -0.10, "crypto": -0.45,  # PROVVISORIO — da approvare (TASK-37)
+            "gold": 0.0, "commodity": -0.10, "crypto": -0.45,
         },
         # Applied to tech-like equity holdings only.
         "tech_multiplier": 1.5,
@@ -79,7 +79,7 @@ SHOCK_SCENARIOS = [
         "name": "Bond Selloff",
         "shocks": {
             "equity": -0.05, "bond": -0.12, "cash": 0.0,
-            "gold": -0.10, "commodity": -0.05, "crypto": -0.10,  # PROVVISORIO — da approvare (TASK-37)
+            "gold": -0.10, "commodity": -0.05, "crypto": -0.10,
         },
     },
     {
@@ -87,7 +87,7 @@ SHOCK_SCENARIOS = [
         "name": "Emerging Markets Crisis",
         "shocks": {
             "equity": -0.25, "bond": -0.08, "cash": 0.0,
-            "gold": -0.05, "commodity": -0.15, "crypto": -0.30,  # PROVVISORIO — da approvare (TASK-37)
+            "gold": -0.05, "commodity": -0.15, "crypto": -0.30,
         },
     },
     {
@@ -95,7 +95,7 @@ SHOCK_SCENARIOS = [
         "name": "Commodity Drop",
         "shocks": {
             "equity": -0.10, "bond": -0.02, "cash": 0.0,
-            "gold": -0.10, "commodity": -0.20, "crypto": -0.10,  # PROVVISORIO — da approvare (TASK-37)
+            "gold": -0.10, "commodity": -0.20, "crypto": -0.10,
         },
     },
 ]

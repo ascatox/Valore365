@@ -1,9 +1,10 @@
 ---
 id: TASK-38
 title: 'Audit MCP: stress test storici indipendenti dal portafoglio senza dati'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
+updated_date: '2026-11-02T18:37:00Z'
 labels:
   - audit-mcp
   - backend

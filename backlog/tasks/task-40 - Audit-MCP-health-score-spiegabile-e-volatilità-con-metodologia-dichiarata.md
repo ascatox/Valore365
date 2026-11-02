@@ -1,9 +1,10 @@
 ---
 id: TASK-40
 title: 'Audit MCP: health score spiegabile e volatilità con metodologia dichiarata'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
+updated_date: '2026-11-02T18:37:00Z'
 labels:
   - audit-mcp
   - mcp

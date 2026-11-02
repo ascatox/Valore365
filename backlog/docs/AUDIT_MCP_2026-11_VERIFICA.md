@@ -74,3 +74,11 @@ Approvate dal proprietario le opzioni ★:
 - **TER mancanti:** TER ponderato sul peso coperto, con copertura esplicita (`ter_coverage_pct`, `missing_ter_symbols`).
 
 Ancora aperte (da decidere prima del task indicato): banda di tolleranza, ordine minimo e liquidità nei pesi (TASK-39); tabella dei proxy e copertura minima (TASK-38); entità degli shock per classe (TASK-35/38); crescita dei bond indicizzati all'inflazione (TASK-36); soglia di copertura TER e TER dedotti (TASK-34, per ora: i TER dedotti sono contati come coperti ma marcati `ter_source=inferred`); volatilità canonica (TASK-40); backfill di `quote_currency` e FIFO (TASK-41); chiave di deduplicazione (TASK-42); forma dell'aggregato MCP (TASK-43).
+
+## Decisioni approvate (giorno 3, 2026-11-02)
+
+- **Shock per gold/commodity/crypto:** approvati i valori in `app/constants/stress_scenarios.py` (rimuovere la marcatura PROVVISORIO).
+- **Reddito:** crescita 0% per i bond indicizzati all'inflazione; l'aliquota `fire_capital_gains_tax_rate` dell'utente continua a sovrascrivere il 26% predefinito, dichiarata in `tax_note`.
+- **Ribilanciamento (TASK-39):** banda di tolleranza 0,5 pp; nessun importo minimo per ordine; la liquidità del portafoglio entra nel totale e nei pesi.
+- **Stress storici (TASK-38):** copertura minima del 60% del peso con storico reale perché lo scenario sia "storico"; sotto soglia si usano i proxy per asset class, dichiarati.
+- **Volatilità (TASK-40):** nessuna metrica canonica: entrambe esposte con nome, metodo, periodo e flag `is_floored`.
