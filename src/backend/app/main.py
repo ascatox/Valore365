@@ -334,5 +334,6 @@ register_mcp_routes(
     repo=RuntimeDependencyProxy(lambda: repo),
     performance_service=RuntimeDependencyProxy(lambda: performance_service),
     finance_client=RuntimeDependencyProxy(lambda: finance_client),
-    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+    # No justetf_client: MCP is strictly read-only (X-Ray would write
+    # the shared etf_enrichment cache).
 )

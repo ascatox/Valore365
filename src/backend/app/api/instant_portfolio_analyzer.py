@@ -9,6 +9,7 @@ from fastapi import File, Form, UploadFile
 from ..config import get_settings
 from ..errors import AppError
 from ..models import ErrorResponse
+from ..rate_limit import client_ip
 from ..repository import PortfolioRepository
 from .routes_csv import (
     CSV_IMPORT_ALLOWED_CONTENT_TYPES,
@@ -55,14 +56,7 @@ class SlidingWindowRateLimiter:
 
 
 def _client_ip(request: Request) -> str:
-    forwarded_for = request.headers.get("x-forwarded-for", "").strip()
-    settings = get_settings()
-    remote_host = request.client.host if request.client and request.client.host else None
-    if forwarded_for and remote_host and remote_host in settings.trusted_proxy_ips_list:
-        return forwarded_for.split(",")[0].strip()
-    if remote_host:
-        return remote_host
-    return "unknown"
+    return client_ip(request, get_settings())
 
 
 def _validate_public_payload(payload: InstantAnalyzeRequest) -> None:

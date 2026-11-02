@@ -37,4 +37,9 @@ Per comunicare la funzionalità, la landing page e il README mostrano un badge "
 - [ ] #6 I test backend esistenti e i nuovi test per il server MCP passano
 - [ ] #7 `docs/mcp.md` descrive la configurazione di Clerk e come collegare Claude e ChatGPT al server
 - [ ] #8 Il badge "AI Ready" è visibile nella homepage sia su desktop sia su mobile e nel README
+- [x] #9 Guida utente `docs/mcp-guida-utente.md` (non tecnica): cosa fa, sola lettura, collegamento da Claude (web/app/Desktop), Claude Code e ChatGPT, revoca, privacy, esempi di domande e risoluzione dei problemi
+- [x] #10 README principale: sezione "AI Ready (MCP)" con quickstart in 3 passi e link alla guida utente e a `docs/mcp.md`; note MCP in Architettura e Avvio in locale
+- [x] #11 `src/backend/README.md` documenta il server MCP (struttura del modulo, variabili d'ambiente, test, prova in locale) e `docs/mcp.md` copre il test in locale (pytest, MCP Inspector, curl)
+- [x] #12 `AGENTS.md` contiene le regole per sviluppatori: tool MCP solo in sola lettura, riuso di `TOOL_DEFINITIONS`/`execute_tool`, nessun `require_auth`/`dev-user`, esposizione automatica dei nuovi tool del Copilot
+- [x] #13 Impostazioni → Copilot mostra la sezione "Collega Claude o ChatGPT (MCP)" con URL del server copiabile, passaggi per client, nota "sola lettura" e link alla guida; la landing (`#ai-ready`) e la pagina About rimandano alla funzionalità, con test vitest
 <!-- AC:END -->

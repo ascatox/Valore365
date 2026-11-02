@@ -94,7 +94,20 @@ Valore365 espone un server **MCP** (Model Context Protocol, standard aperto) in 
 - 🔒 **Sola lettura**: l'AI può consultare i dati ma non può modificarli
 - 🔑 **Accesso protetto**: autorizzi la connessione con OAuth usando il tuo login Valore365
 
-Guida completa: [docs/mcp.md](docs/mcp.md)
+### 🚀 Collegalo in 3 passi
+
+1. In Valore365 apri **Impostazioni → Copilot → "Collega Claude o ChatGPT (MCP)"** e copia l'URL del server (`https://valore365.onrender.com/mcp`).
+2. Aggiungilo come connettore personalizzato nel tuo client AI:
+   - **Claude** (web, app e Desktop): *Settings → Connectors → Add custom connector*
+   - **Claude Code**: `claude mcp add --transport http valore365 https://valore365.onrender.com/mcp`, poi `/mcp` per il login
+   - **ChatGPT**: *Settings → Apps & Connectors*, con la *Developer mode* attiva (dipende dal piano)
+3. Accedi con il tuo account Valore365, autorizza l'accesso e chiedi, ad esempio, «Quali portafogli ho su Valore365?».
+
+I dati letti dall'assistente vengono inviati al provider AI che hai scelto; puoi scollegare il connettore in qualsiasi momento.
+
+📘 **Guida utente** (passo passo, esempi, revoca, problemi comuni): [docs/mcp-guida-utente.md](docs/mcp-guida-utente.md)
+
+🛠 **Documentazione tecnica** (sicurezza, Clerk, variabili d'ambiente, test in locale): [docs/mcp.md](docs/mcp.md)
 
 ---
 
@@ -176,6 +189,7 @@ Questo approccio mantiene l’analisi **affidabile e verificabile**.
 
 - FastAPI
 - Python
+- Server MCP remoto in sola lettura (`/mcp`, Streamable HTTP, OAuth Clerk) per Claude e ChatGPT
 
 ### 🗄 Database
 
@@ -221,6 +235,8 @@ Aprire nel browser
 http://localhost:8080
 
 
+Il server MCP (`/mcp`) è **disattivato** di default (`MCP_ENABLED=false`): per provarlo in locale servono Clerk abilitato e le variabili `MCP_*` / `CLERK_ISSUER` in `src/backend/.env` (vedi `src/backend/.env.example`). Istruzioni, MCP Inspector e curl: [docs/mcp.md](docs/mcp.md#sviluppo-e-test-in-locale).
+
 ---
 
 # 🎯 Visione
@@ -245,6 +261,7 @@ Possibili sviluppi futuri:
 - 🔮 simulazioni di portafoglio  
 - 📊 analisi ETF più avanzata  
 - 🤖 Copilot più evoluto  
+- 🔌 integrazione MCP più ricca (oggi in sola lettura)  
 - 🏦 supporto a nuovi broker  
 
 ---

@@ -27,6 +27,7 @@ import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
 import type { CopilotStatus } from '../services/api';
 import { PageHeader } from '../components/layout/PageHeader';
+import { McpConnectSection } from '../components/settings/McpConnectSection';
 import { PageLayout } from '../components/layout/PageLayout';
 import { useSwipeTabs } from '../hooks/useSwipeTabs';
 import {
@@ -205,6 +206,20 @@ export function SettingsPage() {
       });
   };
 
+  const panelPaperProps = {
+    withBorder: true,
+    p: 'lg',
+    radius: isMobile ? 'xl' : 'md',
+    ml: isMobile ? 0 : 'md',
+    mt: isMobile ? 'md' : 0,
+    style: isMobile ? {
+      background: colorScheme === 'dark'
+        ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+        : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+      boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
+    } : undefined,
+  };
+
   const swipeRef = useSwipeTabs({
     tabs: ['general', 'copilot', 'tax', 'security'],
     active: activeTab,
@@ -230,19 +245,7 @@ export function SettingsPage() {
         </Tabs.List>
 
         <Tabs.Panel value="general">
-          <Paper
-            withBorder
-            p="lg"
-            radius={isMobile ? 'xl' : 'md'}
-            ml={isMobile ? 0 : 'md'}
-            mt={isMobile ? 'md' : 0}
-            style={isMobile ? {
-              background: colorScheme === 'dark'
-                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
-            } : undefined}
-          >
+          <Paper {...panelPaperProps}>
             <Stack gap="lg">
               <Title order={3}>Impostazioni Generali</Title>
               <Select
@@ -305,19 +308,7 @@ export function SettingsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="copilot">
-          <Paper
-            withBorder
-            p="lg"
-            radius={isMobile ? 'xl' : 'md'}
-            ml={isMobile ? 0 : 'md'}
-            mt={isMobile ? 'md' : 0}
-            style={isMobile ? {
-              background: colorScheme === 'dark'
-                ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-                : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
-            } : undefined}
-          >
+          <Paper {...panelPaperProps}>
             <Stack gap="lg">
               <Title order={3}>Portfolio Copilot</Title>
               <Text size="sm" c="dimmed">
@@ -400,22 +391,13 @@ export function SettingsPage() {
               </Alert>
             </Stack>
           </Paper>
+          <Paper {...panelPaperProps} mt="md">
+            <McpConnectSection />
+          </Paper>
         </Tabs.Panel>
 
         <Tabs.Panel value="tax">
-        <Paper
-          withBorder
-          p="lg"
-          radius={isMobile ? 'xl' : 'md'}
-          ml={isMobile ? 0 : 'md'}
-          mt={isMobile ? 'md' : 0}
-          style={isMobile ? {
-            background: colorScheme === 'dark'
-              ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-              : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-            boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
-          } : undefined}
-        >
+        <Paper {...panelPaperProps}>
           <Stack>
             <Title order={3}>Impostazioni Fiscali</Title>
             {settingsSavedMessage && <Alert color={settingsSavedMessage.includes('non valide') ? 'red' : 'teal'}>{settingsSavedMessage}</Alert>}
@@ -470,19 +452,7 @@ export function SettingsPage() {
         </Tabs.Panel>
 
         <Tabs.Panel value="security">
-        <Paper
-          withBorder
-          p="lg"
-          radius={isMobile ? 'xl' : 'md'}
-          ml={isMobile ? 0 : 'md'}
-          mt={isMobile ? 'md' : 0}
-          style={isMobile ? {
-            background: colorScheme === 'dark'
-              ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
-              : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-            boxShadow: colorScheme === 'dark' ? '0 18px 36px rgba(0, 0, 0, 0.28)' : '0 18px 36px rgba(15, 23, 42, 0.08)',
-          } : undefined}
-        >
+        <Paper {...panelPaperProps}>
             <Stack>
                 <Title order={3}>Sicurezza e Dati</Title>
                 <Paper

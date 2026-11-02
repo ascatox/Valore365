@@ -16,6 +16,7 @@ import {
 import { Link } from 'react-router-dom';
 import logoMark from '../assets/logo-mark.svg';
 import { AiReadyBadge } from '../components/AiReadyBadge';
+import { MCP_USER_GUIDE_URL } from '../components/settings/mcpServerUrl';
 
 const PROBLEM_POINTS = [
   'sei davvero diversificato',
@@ -404,6 +405,21 @@ export function LandingPage() {
                 </Card>
               ))}
             </SimpleGrid>
+
+            <Group justify="center">
+              <Button
+                component="a"
+                href={MCP_USER_GUIDE_URL}
+                target="_blank"
+                rel="noreferrer"
+                variant="light"
+                color="teal"
+                radius="xl"
+                rightSection={<IconArrowRight size={16} />}
+              >
+                Scopri come collegarlo
+              </Button>
+            </Group>
           </Stack>
         </Container>
       </Box>

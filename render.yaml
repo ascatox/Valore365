@@ -55,6 +55,7 @@ services:
       # does not switch it back off.
       - key: MCP_ENABLED
         sync: false
+      # Production value: https://valore365.onrender.com/mcp
       - key: MCP_RESOURCE_URL
         sync: false
       - key: CLERK_ISSUER
@@ -66,3 +67,14 @@ services:
         sync: false
       - key: MCP_REQUIRE_AUDIENCE
         sync: false
+      # Gradual rollout / kill switch (Clerk user ids, comma separated):
+      # allowed empty = every user; blocked -> 403.
+      - key: MCP_ALLOWED_USER_IDS
+        sync: false
+      - key: MCP_BLOCKED_USER_IDS
+        sync: false
+      # Per-IP limit on failed auth: off on Render, because without
+      # TRUSTED_PROXY_IPS every client looks like Render's proxy IP and one
+      # attacker could lock everyone out. Re-enable once client IPs are reliable.
+      - key: MCP_AUTH_FAILURE_LIMIT
+        value: "0"
