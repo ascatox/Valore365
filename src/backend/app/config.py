@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
     app_env: str = 'dev'
+    # Interactive API docs (/docs, /redoc) and /openapi.json. None = on
+    # unless APP_ENV is production ("prod"/"production"): the API schema is
+    # not needed by the frontend and should not be public in production.
+    api_docs_enabled: bool | None = None
     database_url: str = 'postgresql+psycopg://postgres:postgres@localhost:5432/valore365'
 
     # Connection pool. The app runs as a single uvicorn process (see render.yaml),
@@ -213,6 +217,16 @@ class Settings(BaseSettings):
     @property
     def admin_user_ids_list(self) -> list[str]:
         return [v.strip() for v in self.admin_user_ids.split(",") if v.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env.strip().lower() in {"prod", "production"}
+
+    @property
+    def api_docs_enabled_resolved(self) -> bool:
+        if self.api_docs_enabled is not None:
+            return self.api_docs_enabled
+        return not self.is_production
 
     @property
     def justetf_xray_auto_enrich_enabled_resolved(self) -> bool:

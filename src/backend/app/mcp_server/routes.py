@@ -27,7 +27,6 @@ import time
 import uuid
 from typing import Any
 
-import anyio
 import anyio.to_thread
 import httpx
 from fastapi import FastAPI
@@ -52,24 +51,6 @@ MAX_AUTHORIZATION_HEADER_BYTES = MAX_TOKEN_LENGTH + 16
 _AS_METADATA_TTL = 3600.0
 _INVALID_TOKEN_MESSAGE = "The access token is invalid or expired"
 _NO_STORE_HEADERS = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
-
-
-class _StatelessTeardownNoiseFilter(logging.Filter):
-    """Drop the spurious "Error in message router" of mcp 1.12.x stateless mode.
-
-    After every stateless request the transport is terminated while its
-    message router still reads the closed stream, and the SDK logs the
-    resulting anyio.ClosedResourceError at ERROR level, once per request,
-    after the response has been sent. Any other error still goes through.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        if record.getMessage() != "Error in message router" or not record.exc_info:
-            return True
-        return not isinstance(record.exc_info[1], anyio.ClosedResourceError)
-
-
-logging.getLogger("mcp.server.streamable_http").addFilter(_StatelessTeardownNoiseFilter())
 
 
 def _json(status_code: int, code: str, message: str, headers: dict[str, str] | None = None) -> JSONResponse:
@@ -283,6 +264,9 @@ class McpEndpoint:
             event_store=None,
             json_response=True,
             stateless=True,
+            # Also enforced by the SDK on the streamed body (chunked uploads,
+            # no Content-Length): 413 before the JSON-RPC message is parsed.
+            max_request_body_size=MAX_BODY_BYTES,
             security_settings=TransportSecuritySettings(
                 enable_dns_rebinding_protection=True,
                 allowed_hosts=[config.host],
@@ -292,26 +276,12 @@ class McpEndpoint:
         reset_token = current_context.set(McpCallContext(principal=principal, request_id=request_id, client_ip=ip))
         try:
             async with manager.run():
-                await manager.handle_request(scope, _limit_body(receive), send)
+                await manager.handle_request(scope, receive, send)
         finally:
             current_context.reset(reset_token)
+        if audit["status"] == 413:
+            audit["outcome"] = "payload_too_large"
         return None
-
-
-def _limit_body(receive: Receive) -> Receive:
-    """Stop reading a body that grows past MAX_BODY_BYTES (chunked uploads)."""
-    received = 0
-
-    async def wrapped() -> dict[str, Any]:
-        nonlocal received
-        message = await receive()
-        if message["type"] == "http.request":
-            received += len(message.get("body", b""))
-            if received > MAX_BODY_BYTES:
-                raise ValueError("MCP request body too large")
-        return message
-
-    return wrapped
 
 
 class _AuthServerMetadataCache:

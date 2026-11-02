@@ -21,9 +21,12 @@ pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --port 8000
 ```
 
-Swagger/OpenAPI:
+Swagger/OpenAPI (solo se `API_DOCS_ENABLED` è attivo: di default sì in locale, no in produzione):
 - `http://localhost:8000/docs`
+- `http://localhost:8000/redoc`
 - `http://localhost:8000/openapi.json`
+
+Requisiti: Python 3.11-3.13 (il `Dockerfile` usa 3.12).
 
 Health:
 - `GET /api/health`
@@ -48,6 +51,8 @@ Variabili principali:
 - `CLERK_JWKS_URL` (obbligatoria se Clerk abilitato)
 - `CLERK_AUTHORIZED_PARTIES` (CSV opzionale)
 - `CORS_ALLOWED_ORIGINS` (CSV, usata in `prod`)
+- `API_DOCS_ENABLED` (`true/false`, opzionale): pubblica `/docs`, `/redoc` e `/openapi.json`. Se non impostata vale `true`, tranne con `APP_ENV=prod` (o `production`), dove le docs interattive e lo schema OpenAPI non sono esposti (404). Il frontend non usa `/openapi.json`
+- `JUSTETF_XRAY_AUTO_ENRICH_ENABLED` (`true/false`, opzionale): X-Ray (pagina, vista aggregata e Copilot) scarica da justETF e salva in cache i profili ETF mancanti. Se non impostata vale `true` solo con `APP_ENV=dev`. Via MCP X-Ray non scrive mai
 - `MCP_ENABLED`, `MCP_RESOURCE_URL`, `CLERK_ISSUER`, ... (server MCP, vedi [Server MCP](#server-mcp-sola-lettura))
 
 Note:

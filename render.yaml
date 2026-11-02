@@ -7,6 +7,13 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      # APP_ENV=prod also turns off /docs, /redoc and /openapi.json
+      # (API_DOCS_ENABLED unset) and X-Ray justETF auto-enrichment
+      # (JUSTETF_XRAY_AUTO_ENRICH_ENABLED unset). Requirements need Python
+      # 3.11-3.13 (see src/backend/README.md), pinned below so the service
+      # does not depend on Render's default.
+      - key: PYTHON_VERSION
+        value: "3.13.4"
       - key: APP_ENV
         value: prod
       - key: DATABASE_URL

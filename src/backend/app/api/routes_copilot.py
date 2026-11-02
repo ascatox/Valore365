@@ -74,11 +74,16 @@ def register_copilot_routes(
                     snapshot = build_portfolio_snapshot_light(
                         repo, payload.portfolio_id, _auth.user_id, payload.page_context,
                     )
+            # Same rule as the X-Ray routes: with auto-enrichment off, X-Ray
+            # (get_xray_summary) only reads the etf_enrichment cache and never
+            # fetches/writes justETF profiles. Resolved per request (None ->
+            # on only with APP_ENV=dev).
+            xray_justetf_client = justetf_client if settings.justetf_xray_auto_enrich_enabled_resolved else None
             generator = stream_copilot_response_agentic(
                 config, snapshot, payload.messages,
                 repo, performance_service, payload.portfolio_id, _auth.user_id,
                 finance_client=finance_client,
-                justetf_client=justetf_client,
+                justetf_client=xray_justetf_client,
                 page_context=payload.page_context,
             )
         else:
