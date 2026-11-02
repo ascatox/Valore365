@@ -129,6 +129,12 @@ class Settings(BaseSettings):
     # Public URL of the /mcp endpoint (e.g. https://api.example.com/mcp): the
     # OAuth resource identifier, checked against the token audience.
     mcp_resource_url: str = ""
+    # Public identity advertised in the MCP `initialize` serverInfo
+    # (websiteUrl, icons). Only https URLs are published; anything else is
+    # omitted. mcp_icon_base_url empty -> icons served from mcp_website_url
+    # (the frontend's /icons/icon-192x192.png and /icons/icon-512x512.png).
+    mcp_website_url: str = "https://valore365.vercel.app"
+    mcp_icon_base_url: str = ""
     # Clerk Frontend API URL (e.g. https://clerk.example.com): the OAuth
     # authorization server and the expected `iss` of JWT access tokens.
     clerk_issuer: str = ""

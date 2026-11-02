@@ -35,12 +35,18 @@ from mcp.server.lowlevel import Server
 from ..copilot_tools import TOOL_DEFINITIONS, execute_tool
 from ..rate_limit import SlidingWindowRateLimiter
 from ..repository._scope import NOT_FOUND_MESSAGE
+from ..version import APP_VERSION
 from .auth import McpPrincipal
 
 logger = logging.getLogger("valore365.mcp")
 
 SERVER_NAME = "valore365"
-SERVER_VERSION = "0.6.0"
+SERVER_VERSION = APP_VERSION
+# Icons served by the frontend (src/frontend/valore-frontend/public/icons/).
+SERVER_ICON_FILES: tuple[tuple[str, str], ...] = (
+    ("icons/icon-192x192.png", "192x192"),
+    ("icons/icon-512x512.png", "512x512"),
+)
 LIST_PORTFOLIOS_TOOL = "list_portfolios"
 
 # Copilot tools exposed over MCP. Explicit on purpose: a tool added to
@@ -420,8 +426,46 @@ async def _run_bounded(
             release_once()
 
 
-def build_mcp_server(deps_getter: Callable[[], ToolDependencies], limits: ToolCallLimits) -> Server:
-    server: Server = Server(SERVER_NAME, version=SERVER_VERSION, instructions=SERVER_INSTRUCTIONS)
+def _https_url(value: str | None) -> str | None:
+    value = (value or "").strip().rstrip("/")
+    return value if value.lower().startswith("https://") and len(value) > len("https://") else None
+
+
+@dataclass(frozen=True)
+class ServerIdentity:
+    """websiteUrl and icons advertised in the `initialize` serverInfo."""
+
+    website_url: str | None = None
+    icons: tuple[types.Icon, ...] = ()
+
+    @classmethod
+    def from_settings(cls, settings: Any) -> "ServerIdentity":
+        website = _https_url(getattr(settings, "mcp_website_url", ""))
+        base = _https_url(getattr(settings, "mcp_icon_base_url", "")) or website
+        icons: tuple[types.Icon, ...] = ()
+        if base:
+            icons = tuple(
+                types.Icon(src=f"{base}/{path}", mimeType="image/png", sizes=[size])
+                for path, size in SERVER_ICON_FILES
+            )
+        return cls(website_url=website, icons=icons)
+
+
+def build_mcp_server(
+    deps_getter: Callable[[], ToolDependencies],
+    limits: ToolCallLimits,
+    identity: ServerIdentity | None = None,
+) -> Server:
+    identity = identity or ServerIdentity()
+    # SDK 1.30.0 builds serverInfo without `title` (InitializationOptions has
+    # no such field), so only name/version/websiteUrl/icons are advertised.
+    server: Server = Server(
+        SERVER_NAME,
+        version=SERVER_VERSION,
+        instructions=SERVER_INSTRUCTIONS,
+        website_url=identity.website_url,
+        icons=list(identity.icons) or None,
+    )
     tool_list = build_tool_list()
 
     @server.list_tools()
