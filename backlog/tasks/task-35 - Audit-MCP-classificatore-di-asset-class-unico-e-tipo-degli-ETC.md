@@ -1,10 +1,10 @@
 ---
 id: TASK-35
 title: 'Audit MCP: classificatore di asset class unico e tipo degli ETC'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:22:00Z'
-updated_date: '2026-11-02T17:31:00Z'
+updated_date: '2026-11-02T17:32:00Z'
 labels:
   - audit-mcp
   - backend
