@@ -76,6 +76,7 @@ from .api.routes_cash import register_cash_routes
 from .api.routes_csv import register_csv_routes
 from .api.routes_pac import register_pac_routes
 from .api.routes_copilot import register_copilot_routes
+from .mcp_server import register_mcp_routes
 
 # ---------------------------------------------------------------------------
 # Service initialization
@@ -324,3 +325,14 @@ register_copilot_routes(
 )
 
 app.include_router(router, prefix="/api")
+
+# Remote MCP server (read-only, Clerk OAuth). Served at /mcp, outside /api:
+# it authenticates every request itself and never uses the dev-user fallback.
+register_mcp_routes(
+    app,
+    settings,
+    repo=RuntimeDependencyProxy(lambda: repo),
+    performance_service=RuntimeDependencyProxy(lambda: performance_service),
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
+    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+)

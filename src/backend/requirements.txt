@@ -7,6 +7,12 @@ psycopg[binary]==3.2.5
 httpx==0.28.1
 apscheduler==3.10.4
 PyJWT==2.10.1
+# Remote MCP server (/mcp). 1.12.4 is the newest release that still accepts
+# pydantic 2.10.x: mcp>=1.13 requires pydantic>=2.11.
+mcp==1.12.4
+# Transitive dep of mcp, pinned: newer releases need a starlette newer than
+# fastapi 0.115.8 allows (<0.46), and leaving it open makes pip backtrack.
+sse-starlette==3.0.3
 cryptography==44.0.2
 Jinja2==3.1.4
 yfinance>=0.2.50
