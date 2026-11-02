@@ -1,9 +1,10 @@
 ---
 id: TASK-37
 title: 'Audit MCP: decisioni di metodologia finanziaria da approvare'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:22:00Z'
+updated_date: '2026-11-02T17:26:00Z'
 labels:
   - audit-mcp
   - decisione
@@ -21,5 +22,11 @@ Raccogliere e approvare le decisioni elencate in backlog/docs/AUDIT_MCP_2026-11_
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Ogni decisione ha l'opzione scelta registrata nel documento di verifica
-- [ ] #2 I task dipendenti sono aggiornati con la scelta
+- [x] #2 I task dipendenti sono aggiornati con la scelta
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Approvate il 2026-11-02 le opzioni consigliate (vedi sezione 'Decisioni approvate' in backlog/docs/AUDIT_MCP_2026-11_VERIFICA.md). Restano aperte le decisioni elencate nello stesso documento, da prendere prima dei task corrispondenti.
+<!-- SECTION:NOTES:END -->

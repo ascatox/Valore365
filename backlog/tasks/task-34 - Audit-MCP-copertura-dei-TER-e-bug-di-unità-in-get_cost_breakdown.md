@@ -1,9 +1,10 @@
 ---
 id: TASK-34
 title: 'Audit MCP: copertura dei TER e bug di unità in get_cost_breakdown'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:22:00Z'
+updated_date: '2026-11-02T17:26:00Z'
 labels:
   - audit-mcp
   - mcp

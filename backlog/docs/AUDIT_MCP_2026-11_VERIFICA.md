@@ -62,3 +62,15 @@ Ogni task segue il ciclo `AUDIT -> TEST (che fallisce) -> FIX -> VERIFY`, lavora
 | 5 | TASK-43, TASK-44 | Aggregato MCP, controlli della sezione C, methodology.md e regression-results.md. |
 
 Per riprendere: `backlog task list -m m-1 --plain`, poi spostare il task in "In Progress" prima di iniziare.
+
+## Decisioni approvate (2026-11-02)
+
+Approvate dal proprietario le opzioni ★:
+- **Ribilanciamento:** modalità predefinita vendite+acquisti autofinanziati; `available_cash` è liquidità aggiuntiva a quella del portafoglio.
+- **Stress storici senza dati:** proxy di drawdown per asset class e scenario, con `coverage_pct` e metodo esplicito.
+- **Asset non classificabili:** classe `unknown` dichiarata (niente default silenzioso in equity).
+- **Tipizzazione ETC:** si mantiene `asset_type=etf`; l'asset class (gold/commodity) è ricavata separatamente, senza migrazione dello schema.
+- **Fiscalità del reddito:** 26% uniforme, dichiarato nell'output con `tax_note`.
+- **TER mancanti:** TER ponderato sul peso coperto, con copertura esplicita (`ter_coverage_pct`, `missing_ter_symbols`).
+
+Ancora aperte (da decidere prima del task indicato): banda di tolleranza, ordine minimo e liquidità nei pesi (TASK-39); tabella dei proxy e copertura minima (TASK-38); entità degli shock per classe (TASK-35/38); crescita dei bond indicizzati all'inflazione (TASK-36); soglia di copertura TER e TER dedotti (TASK-34, per ora: i TER dedotti sono contati come coperti ma marcati `ter_source=inferred`); volatilità canonica (TASK-40); backfill di `quote_currency` e FIFO (TASK-41); chiave di deduplicazione (TASK-42); forma dell'aggregato MCP (TASK-43).

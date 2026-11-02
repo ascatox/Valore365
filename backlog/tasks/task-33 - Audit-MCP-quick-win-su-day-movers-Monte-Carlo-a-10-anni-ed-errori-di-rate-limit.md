@@ -3,9 +3,10 @@ id: TASK-33
 title: >-
   Audit MCP: quick win su day movers, Monte Carlo a 10 anni ed errori di rate
   limit
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:22:00Z'
+updated_date: '2026-11-02T17:26:00Z'
 labels:
   - audit-mcp
   - mcp
