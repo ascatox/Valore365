@@ -4,7 +4,10 @@ import {
   IconArrowRight,
   IconBolt,
   IconChartDonut3,
+  IconKey,
+  IconLock,
   IconMessageCircle2,
+  IconPlugConnected,
   IconShieldCheck,
   IconSparkles,
   IconTargetArrow,
@@ -12,6 +15,7 @@ import {
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import logoMark from '../assets/logo-mark.svg';
+import { AiReadyBadge } from '../components/AiReadyBadge';
 
 const PROBLEM_POINTS = [
   'sei davvero diversificato',
@@ -60,6 +64,24 @@ const BENEFITS = [
     title: 'Supporto umano',
     description: 'Parla con qualcuno che ti spiega davvero le cose.',
     icon: IconMessageCircle2,
+  },
+];
+
+const AI_READY_POINTS = [
+  {
+    title: 'Connessione via MCP',
+    description: 'Usa il Model Context Protocol, uno standard aperto supportato dai principali assistenti AI.',
+    icon: IconPlugConnected,
+  },
+  {
+    title: 'Sola lettura',
+    description: "L'AI puo consultare il portafoglio, ma non puo modificare posizioni, transazioni o impostazioni.",
+    icon: IconLock,
+  },
+  {
+    title: 'Accesso con il tuo login',
+    description: "Autorizzi la connessione con OAuth dal tuo account Valore365: nessuna password condivisa con l'assistente.",
+    icon: IconKey,
   },
 ];
 
@@ -137,19 +159,29 @@ export function LandingPage() {
       >
         <Container size="1100" px={sectionPx}>
           <Stack gap="xl" align="center" style={{ textAlign: 'center' }}>
-            <Group
-              gap={6}
-              style={{
-                background: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.08)',
-                border: isDark ? '1px solid rgba(16, 185, 129, 0.2)' : `1px solid ${emeraldBorder}`,
-                borderRadius: 999,
-                padding: '6px 16px',
-              }}
-            >
-              <IconSparkles size={16} color={emerald} />
-              <Text fw={700} size="sm" c={isDark ? theme.colors.teal[3] : emeraldDark}>
-                AI + supporto umano
-              </Text>
+            <Group gap="sm" justify="center" wrap="wrap">
+              <Group
+                gap={6}
+                style={{
+                  background: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.08)',
+                  border: isDark ? '1px solid rgba(16, 185, 129, 0.2)' : `1px solid ${emeraldBorder}`,
+                  borderRadius: 999,
+                  padding: '6px 16px',
+                }}
+              >
+                <IconSparkles size={16} color={emerald} />
+                <Text fw={700} size="sm" c={isDark ? theme.colors.teal[3] : emeraldDark}>
+                  AI + supporto umano
+                </Text>
+              </Group>
+              <Box
+                component="a"
+                href="#ai-ready"
+                aria-label="AI Ready: scopri come collegare il portafoglio a Claude e ChatGPT"
+                style={{ display: 'inline-flex', borderRadius: 999 }}
+              >
+                <AiReadyBadge height={34} />
+              </Box>
             </Group>
 
             <Title
@@ -337,6 +369,41 @@ export function LandingPage() {
                 </Text>
               </Stack>
             </Card>
+          </Stack>
+        </Container>
+      </Box>
+
+      <Box id="ai-ready" py={isMobile ? 56 : 76} bg={softBackground} style={{ scrollMarginTop: 72 }}>
+        <Container size="1100" px={sectionPx}>
+          <Stack gap="xl">
+            <Stack gap="sm" align="center" style={{ textAlign: 'center' }}>
+              <AiReadyBadge height={30} />
+              <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.8rem' : '2.4rem' }} maw={760}>
+                AI Ready: collega il tuo portafoglio a Claude e ChatGPT
+              </Title>
+              <Text c={isDark ? theme.colors.gray[4] : '#4b5563'} maw={680} style={{ lineHeight: 1.7 }}>
+                Fai domande sul tuo portafoglio direttamente dal tuo assistente AI: analisi, X-ray,
+                simulazioni di ribilanciamento e dividendi, con i tuoi dati reali.
+              </Text>
+            </Stack>
+
+            <SimpleGrid cols={{ base: 1, md: 3 }} spacing="lg">
+              {AI_READY_POINTS.map(({ title, description, icon: Icon }) => (
+                <Card key={title} withBorder radius="xl" padding="xl" bg={isDark ? theme.colors.dark[6] : '#ffffff'}>
+                  <Stack gap="md">
+                    <Group gap="sm" wrap="nowrap">
+                      <ThemeIcon color="teal" variant="light" radius="xl" size="lg">
+                        <Icon size={18} />
+                      </ThemeIcon>
+                      <Title order={3} size="h4">{title}</Title>
+                    </Group>
+                    <Text c={isDark ? theme.colors.gray[4] : '#4b5563'} style={{ lineHeight: 1.7 }}>
+                      {description}
+                    </Text>
+                  </Stack>
+                </Card>
+              ))}
+            </SimpleGrid>
           </Stack>
         </Container>
       </Box>

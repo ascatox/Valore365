@@ -5,6 +5,7 @@
 ![Python](https://img.shields.io/badge/backend-FastAPI-blue)
 ![React](https://img.shields.io/badge/frontend-React-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+[<img src="docs/assets/ai-ready-badge.svg" alt="AI Ready (MCP)" height="20">](#-ai-ready-mcp)
 
 ## 🧠 Capisci se il tuo portafoglio è davvero ben costruito
 
@@ -82,6 +83,18 @@ Come posso migliorare la diversificazione?
 
 
 Il Copilot utilizza i dati del **Portfolio Doctor** per fornire spiegazioni chiare.
+
+---
+
+# 🤖 AI Ready (MCP)
+
+Valore365 espone un server **MCP** (Model Context Protocol, standard aperto) in **sola lettura** all'endpoint `/mcp`: puoi collegare il tuo portafoglio a Claude e ChatGPT e fargli domande su analisi, X-ray, simulazioni di ribilanciamento e dividendi.
+
+- 🔌 **Connessione via MCP**: nessuna integrazione proprietaria, basta aggiungere l'URL del server nel client AI
+- 🔒 **Sola lettura**: l'AI può consultare i dati ma non può modificarli
+- 🔑 **Accesso protetto**: autorizzi la connessione con OAuth usando il tuo login Valore365
+
+Guida completa: [docs/mcp.md](docs/mcp.md)
 
 ---
 

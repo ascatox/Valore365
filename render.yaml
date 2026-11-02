@@ -49,3 +49,20 @@ services:
         value: "https://ruling-coral-6.clerk.accounts.dev/.well-known/jwks.json"
       - key: CLERK_AUTHORIZED_PARTIES
         value: "https://valore365.vercel.app,https://*.vercel.app"
+      # Remote MCP server, read-only (docs/mcp.md). Fails closed: served only
+      # with CLERK_AUTH_ENABLED=true and MCP_RESOURCE_URL / CLERK_ISSUER set.
+      # Set in the Render dashboard (unset = disabled), so a blueprint sync
+      # does not switch it back off.
+      - key: MCP_ENABLED
+        sync: false
+      - key: MCP_RESOURCE_URL
+        sync: false
+      - key: CLERK_ISSUER
+        sync: false
+      # Only for opaque OAuth access tokens (oat_...).
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: MCP_ALLOWED_CLIENT_IDS
+        sync: false
+      - key: MCP_REQUIRE_AUDIENCE
+        sync: false

@@ -118,9 +118,58 @@ class Settings(BaseSettings):
     authenticated_rate_limit_requests: int = 120
     authenticated_rate_limit_window_seconds: int = 60
 
+    # --- Remote MCP server (read-only, see docs/mcp.md) ---
+    # Served at /mcp only when mcp_enabled is True AND Clerk auth is enabled
+    # AND clerk_issuer / mcp_resource_url are set: otherwise it fails closed.
+    mcp_enabled: bool = False
+    # Public URL of the /mcp endpoint (e.g. https://api.example.com/mcp): the
+    # OAuth resource identifier, checked against the token audience.
+    mcp_resource_url: str = ""
+    # Clerk Frontend API URL (e.g. https://clerk.example.com): the OAuth
+    # authorization server and the expected `iss` of JWT access tokens.
+    clerk_issuer: str = ""
+    # Clerk secret key (sk_...): only needed to verify opaque OAuth access
+    # tokens (oat_...) with Clerk's Backend API. JWT access tokens are
+    # verified locally against the JWKS.
+    clerk_secret_key: str = ""
+    clerk_api_url: str = "https://api.clerk.com/v1"
+    # Comma-separated OAuth client ids allowed to call the MCP server
+    # (empty = any client registered on the Clerk instance, e.g. via DCR).
+    mcp_allowed_client_ids: str = ""
+    # Scopes advertised in the protected resource metadata, and the ones a
+    # token must carry (empty = no scope required).
+    mcp_scopes_supported: str = "profile email"
+    mcp_required_scopes: str = ""
+    # When True, tokens without an `aud` claim are rejected. A token that has
+    # `aud` must always include mcp_resource_url.
+    mcp_require_audience: bool = False
+    # Browser origins allowed to call /mcp (DNS-rebinding protection). Server
+    # to server clients (Claude, ChatGPT) send no Origin and need nothing here.
+    mcp_allowed_origins: str = ""
+    mcp_rate_limit_requests: int = 60
+    mcp_rate_limit_window_seconds: int = 60
+    # How long a positively verified opaque token is cached (keyed by SHA-256).
+    mcp_token_cache_seconds: int = 60
+
     @property
     def clerk_authorized_parties_list(self) -> list[str]:
         return [value.strip() for value in self.clerk_authorized_parties.split(",") if value.strip()]
+
+    @property
+    def mcp_allowed_client_ids_list(self) -> list[str]:
+        return [v.strip() for v in self.mcp_allowed_client_ids.split(",") if v.strip()]
+
+    @property
+    def mcp_scopes_supported_list(self) -> list[str]:
+        return [v for v in self.mcp_scopes_supported.replace(",", " ").split() if v]
+
+    @property
+    def mcp_required_scopes_list(self) -> list[str]:
+        return [v for v in self.mcp_required_scopes.replace(",", " ").split() if v]
+
+    @property
+    def mcp_allowed_origins_list(self) -> list[str]:
+        return [v.strip() for v in self.mcp_allowed_origins.split(",") if v.strip()]
 
     @property
     def cors_allowed_origins_list(self) -> list[str]:
