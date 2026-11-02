@@ -118,12 +118,25 @@ Esempio di Protected Resource Metadata:
 |---|---|
 | `list_portfolios` | nessuno: restituisce id, nome e valuta base dei portafogli dell'utente |
 | `get_portfolio_summary`, `get_positions`, `get_target_drift`, `get_performance`, `get_cash_balance`, `get_recent_transactions`, `get_portfolio_health`, `get_day_movers`, `get_monte_carlo`, `get_dividend_summary`, `get_cost_breakdown`, `get_xray_summary`, `get_stress_test`, `get_income_projection` | `portfolio_id` |
-| `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale) |
+| `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale, liquidità aggiuntiva), `mode` (opzionale: `rebalance` predefinito, `buy_only`, `sell_only`) |
 | `calculate_what_if` | `portfolio_id`, `action` (`buy`/`sell`), `symbol`, `amount_eur` |
 | `calculate_pac_contribution` | `portfolio_id`, `monthly_amount` |
 | `search_asset_info` | `portfolio_id`, `symbol` |
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
+
+`calculate_rebalance_orders` segue queste regole:
+
+- **Totale e pesi:** valore delle posizioni con target + liquidità del portafoglio + `available_cash`
+  (liquidità aggiuntiva, non sostitutiva). Le posizioni senza target non vengono toccate e restano fuori dal totale.
+- **Banda di tolleranza di 0,5 punti percentuali sul peso, usata come soglia di attivazione:** se nessuno
+  strumento si scosta dal target di più di 0,5 pp non viene proposto alcun ordine; se almeno uno la supera,
+  **tutti** gli strumenti vengono riportati al target, anche quelli entro la banda. In questo modo i proventi
+  delle vendite finanziano gli acquisti invece di restare in liquidità.
+- **Modalità `rebalance`:** prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,
+  gli acquisti sono ridotti in proporzione. La liquidità finale non è mai negativa e vale
+  `cash_after = cash_before + extra_cash + sells_eur - buys_eur` (riportato in `totals`).
+- **Nessun importo minimo per ordine; commissioni e imposte non modellate** (importi lordi).
 
 `get_monte_carlo` restituisce esattamente gli anni 1..10 (ordinati) con i percentili P25/P50/P75 espressi
 come **indice base 100** (`unit: "indice_base_100"`, `initial_value: 100`): 120 significa +20% rispetto

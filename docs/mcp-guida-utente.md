@@ -148,6 +148,12 @@ succede dietro le quinte.
 | «Quanti dividendi ho incassato e quanto reddito posso aspettarmi?» | `get_dividend_summary`, `get_income_projection` |
 | «Simula uno stress test e la proiezione Monte Carlo a 10 anni.» | `get_stress_test`, `get_monte_carlo` |
 
+> **Come vengono calcolati gli ordini di ribilanciamento.** Si ribilancia solo se almeno uno strumento si
+> scosta dal suo peso target di **più di 0,5 punti percentuali**. In quel caso tutti gli strumenti vengono
+> riportati al target, anche quelli che si discostano di meno, così le vendite finanziano gli acquisti. La
+> liquidità indicata nella domanda si aggiunge a quella già presente nel portafoglio. Commissioni e imposte
+> non sono incluse: gli importi sono lordi.
+
 Consiglio: se hai più portafogli, nomina quello che ti interessa («il portafoglio *Pensione*»).
 
 ## Scollegare e revocare l'accesso

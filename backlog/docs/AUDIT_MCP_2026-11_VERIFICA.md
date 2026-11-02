@@ -82,3 +82,8 @@ Ancora aperte (da decidere prima del task indicato): banda di tolleranza, ordine
 - **Ribilanciamento (TASK-39):** banda di tolleranza 0,5 pp; nessun importo minimo per ordine; la liquidità del portafoglio entra nel totale e nei pesi.
 - **Stress storici (TASK-38):** copertura minima del 60% del peso con storico reale perché lo scenario sia "storico"; sotto soglia si usano i proxy per asset class, dichiarati.
 - **Volatilità (TASK-40):** nessuna metrica canonica: entrambe esposte con nome, metodo, periodo e flag `is_floored`.
+
+## Decisioni approvate (giorno 3, conferme)
+
+- **Tabella proxy degli stress storici (TASK-38):** valori approvati, a condizione che l'utente veda nell'interfaccia che sono basati su indici in USD e non includono l'effetto cambio EUR/USD.
+- **Banda di ribilanciamento (TASK-39):** 0,5 pp usata come soglia di attivazione (se uno strumento la supera, tutti tornano al target). Documentata nell'output del tool (`notes`), in `docs/mcp.md` e in `docs/mcp-guida-utente.md`.

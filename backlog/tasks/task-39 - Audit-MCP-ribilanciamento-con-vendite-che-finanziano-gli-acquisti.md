@@ -1,10 +1,10 @@
 ---
 id: TASK-39
 title: 'Audit MCP: ribilanciamento con vendite che finanziano gli acquisti'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
-updated_date: '2026-11-02T20:09:00Z'
+updated_date: '2026-11-02T20:15:00Z'
 labels:
   - audit-mcp
   - mcp
@@ -36,3 +36,9 @@ V365-003. _calculate_rebalance_orders non usa i proventi delle vendite, calcola 
 <!-- SECTION:NOTES:BEGIN -->
 Implementato services/rebalance.py usato da route e tool. In attesa di conferma: la banda di 0,5 pp è usata come soglia di attivazione (se una posizione supera la banda, tutte tornano al target). Il route mantiene la semantica precedente (pesi sul solo investito, nessuna banda). Test: tests/unit/test_rebalance_plan.py.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+services/rebalance.py condiviso da route e tool: vendite che finanziano gli acquisti, liquidità mai negativa, risultato indipendente dall'ordine, modalità rebalance/buy_only/sell_only. Banda 0,5 pp come soglia di attivazione (approvata, documentata in docs/mcp.md e docs/mcp-guida-utente.md). Il route dell'app mantiene la semantica precedente (pesi sul solo investito, nessuna banda). Test: tests/unit/test_rebalance_plan.py (27).
+<!-- SECTION:FINAL_SUMMARY:END -->
