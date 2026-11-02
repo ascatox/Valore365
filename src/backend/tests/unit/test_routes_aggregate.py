@@ -519,9 +519,13 @@ def test_aggregate_error_mapping():
 
 
 def test_every_aggregate_route_is_registered_before_the_portfolio_id_routes():
+    from fastapi.routing import iter_route_contexts
+
     import app.main as main
 
-    paths = [getattr(route, "path", "") for route in main.app.routes]
+    # FastAPI >=0.13x keeps included routers nested in app.routes: walk the
+    # effective (flattened) routes, in matching order.
+    paths = [getattr(route, "path", "") for route in iter_route_contexts(main.app.routes)]
     aggregate = [p for p in paths if p.startswith("/api/portfolios/aggregate/")]
     by_id = [i for i, p in enumerate(paths) if p.startswith("/api/portfolios/{portfolio_id}")]
 

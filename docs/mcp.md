@@ -10,8 +10,8 @@ portafogli dell'utente che ha fatto login con Clerk e di usare gli stessi strume
 Copilot interno (riepilogo, posizioni, performance, salute del portafoglio, X-Ray, stress test, ...).
 
 - Trasporto: Streamable HTTP, modalità **stateless** con risposte JSON (nessuna sessione lato server).
-- SDK: pacchetto ufficiale `mcp` (Python), versione `1.12.4` (l'ultima compatibile con
-  `pydantic==2.10.6`; dalla 1.13 serve `pydantic>=2.11`).
+- SDK: pacchetto ufficiale `mcp` (Python), versione `1.30.0` (ultima della serie 1.x; la 2.x cambia
+  l'API lato server). Vedi [Dipendenze](#dipendenze-pip-audit-novembre-2026).
 - Codice: `src/backend/app/mcp_server/` (`config.py`, `auth.py`, `tools.py`, `routes.py`).
 - Test: `src/backend/tests/integration/test_mcp_server.py`.
 
@@ -23,8 +23,8 @@ portafogli, transazioni o impostazioni. I tool riusano i gestori del Copilot
 `readOnlyHint: true` e `destructiveHint: false`. Sono esposti solo i tool elencati esplicitamente in
 `MCP_TOOL_ALLOWLIST` (`app/mcp_server/tools.py`). Anche `get_xray_summary` è in sola lettura: via MCP
 non riceve il client justETF, quindi non scarica né salva nella cache condivisa `etf_enrichment` i
-profili ETF mancanti (cosa che invece fanno la pagina X-Ray, quando `JUSTETF_XRAY_AUTO_ENRICH_ENABLED`
-è attivo, e il Copilot interno). Usa i dati già presenti in cache e, per gli altri ETF, le top
+profili ETF mancanti (cosa che invece fanno la pagina X-Ray e il Copilot interno, solo quando
+`JUSTETF_XRAY_AUTO_ENRICH_ENABLED` è attivo: di default solo con `APP_ENV=dev`). Usa i dati già presenti in cache e, per gli altri ETF, le top
 holdings di Yahoo Finance (cache in memoria, nessuna scrittura).
 
 **Solo OAuth Clerk, niente `dev-user`.** Ogni richiesta a `/mcp` richiede
@@ -81,9 +81,11 @@ In caso contrario il tool restituisce l'errore `Portfolio non trovato`.
   (riduce la superficie di prompt injection);
 - limiti per chiamata (timeout, concorrenza, dimensione del risultato, rate limit dei tool pesanti) e
   protezioni pre-autenticazione: vedi [Hardening](#hardening);
-- sono accettate solo richieste POST (GET e DELETE restituiscono 405) e il body è limitato a 1 MB;
+- sono accettate solo richieste POST (GET e DELETE restituiscono 405) e il body è limitato a 1 MB
+  (413: controllato su `Content-Length` da noi e sul body effettivamente ricevuto dall'SDK, anche
+  per upload chunked);
 - protezione DNS rebinding dell'SDK: l'header `Host` deve corrispondere a `MCP_RESOURCE_URL`, e le
-  richieste da browser con `Origin` sono rifiutate salvo le origini elencate in `MCP_ALLOWED_ORIGINS`;
+  richieste da browser con `Origin` sono rifiutate (403) salvo le origini elencate in `MCP_ALLOWED_ORIGINS`;
 - **CORS invariato**: Claude e ChatGPT si collegano dai loro server (server-to-server), quindi il
   CORS non c'entra e la configurazione CORS del resto dell'API resta com'è.
 
@@ -362,14 +364,45 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 
 ### Dipendenze (pip-audit, novembre 2026)
 
-`pip-audit` sulle versioni fissate in `requirements.txt` segnala advisory note per `mcp==1.12.4`,
-`PyJWT==2.10.1`, `starlette==0.45.3` (vincolata da `fastapi==0.115.8`), `cryptography==44.0.2`,
-`Jinja2==3.1.4` e `python-multipart==0.0.20`; nessuna per `sse-starlette==3.0.3`, `httpx`,
-`pydantic`, `anyio`, `jsonschema`.
+Le dipendenze vulnerabili segnalate da `pip-audit` sono state aggiornate (TASK-32):
 
-Advisory di `mcp==1.12.4` e impatto sulla nostra configurazione:
+| Pacchetto | Prima | Ora | Note |
+|---|---|---|---|
+| `mcp` | 1.12.4 | 1.30.0 | Resta sulla serie 1.x; richiede `pydantic>=2.11` |
+| `fastapi` | 0.115.8 | 0.162.0 | Necessaria per `starlette` 1.x |
+| `starlette` | 0.45.3 (transitiva) | 1.10.0 (fissata) | |
+| `pydantic` / `pydantic-settings` | 2.10.6 / 2.7.1 | 2.14.2 / 2.16.2 | |
+| `uvicorn[standard]` | 0.34.0 | 0.54.0 | |
+| `sse-starlette` | 3.0.3 | 3.6.0 | Transitiva di `mcp`, fissata |
+| `PyJWT` | 2.10.1 | 2.15.1 | |
+| `cryptography` | 44.0.2 | 50.0.2 | |
+| `Jinja2` | 3.1.4 | 3.1.6 | |
+| `python-multipart` | 0.0.20 | 0.0.33 | |
+| `jsonschema` | (transitiva) | 4.26.0 | Importata da `tools.py`, ora fissata |
+| `pytest` (solo dev) | 8.3.5 | 9.2.0 | CVE-2025-71176 |
 
-| Advisory | Corretta in | Impatto |
+Le nuove versioni richiedono **Python 3.11-3.13** (`starlette`, `pydantic-settings`,
+`python-multipart` e `sse-starlette` richiedono >= 3.11; `scipy==1.15.2` non ha wheel per 3.14).
+Il `Dockerfile` usa `python:3.12-slim`.
+
+Dopo l'aggiornamento `pip-audit` non segnala advisory note né sui pacchetti di `requirements.txt`
+né sull'ambiente completo installato da `requirements-dev.txt` (escluso `justetf-scraping`,
+installato da GitHub e non presente nel database delle advisory).
+
+Effetti dell'aggiornamento sul server MCP:
+
+- rimosso il filtro di log per il falso "Error in message router" (`anyio.ClosedResourceError`)
+  della modalità stateless della 1.12.x: la 1.30 lo registra solo a livello DEBUG (test
+  `test_stateless_request_logs_no_teardown_errors`);
+- il limite di 1 MB sul body è passato all'SDK (`max_request_body_size`), che risponde 413 anche
+  agli upload chunked senza `Content-Length` (prima: eccezione e 500);
+- un `Origin` non ammesso riceve 403 invece di 400;
+- i batch JSON-RPC continuano a essere rifiutati dall'SDK (400).
+
+Advisory della vecchia `mcp==1.12.4`, ora corrette, e impatto che avevano sulla nostra
+configurazione (per riferimento):
+
+| Advisory | Corretta in | Impatto con la 1.12.4 |
 |---|---|---|
 | GHSA-9h52-p55h-vw2f (DNS rebinding non attivo di default) | 1.23.0 | Mitigata: `enable_dns_rebinding_protection=True` esplicito, `allowed_hosts` = host di `MCP_RESOURCE_URL`, origini vuote di default, e comunque ogni richiesta è autenticata |
 | GHSA-jpw9-pfvf-9f58 (sessione non legata al principal) | 1.27.2 | Non applicabile: modalità stateless, nessun `Mcp-Session-Id`, autenticazione su ogni richiesta |
@@ -378,10 +411,10 @@ Advisory di `mcp==1.12.4` e impatto sulla nostra configurazione:
 | GHSA-w4fh-qvv9-3v23 (bearer auth dell'SDK senza audience) | 1.30.0 | Non applicabile: l'autenticazione è nostra (`auth.py`) e verifica `aud` se presente; consigliato `MCP_REQUIRE_AUDIENCE=true` |
 | GHSA-5h93-6whr-6q8j, GHSA-rwrf-2pqf-9j8j (lato client: redirect, `$ref` remoti) | 1.30.0 | Non applicabili: usiamo solo il lato server |
 
-L'aggiornamento di `mcp` oltre la 1.12.4 richiede `pydantic>=2.11` (e quindi una FastAPI più recente):
-va pianificato a parte. Per `PyJWT` le advisory più rilevanti (bypass dell'allowlist `alg` con
-`PyJWK`, confusione HMAC con chiave pubblica, `crit` ignorato, refetch JWKS illimitato) sono mitigate
-nel percorso MCP: `alg` controllato prima della verifica, chiave passata come oggetto RSA
-(`PyJWK.key`) con `algorithms=["RS256"]`, `crit` rifiutato, refetch JWKS limitato. Resta comunque
-consigliato aggiornare `PyJWT` (>= 2.15), `starlette`/`fastapi`, `cryptography`, `Jinja2` e
-`python-multipart`, che riguardano anche il resto del backend.
+Per verificare di nuovo:
+
+```bash
+cd src/backend
+pip install pip-audit
+grep -v justetf requirements.txt > /tmp/req.txt && pip-audit -r /tmp/req.txt
+```

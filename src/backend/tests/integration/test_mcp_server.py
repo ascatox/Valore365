@@ -458,7 +458,9 @@ def test_rate_limit_per_user(mcp_on, monkeypatch):
 
 def test_browser_origin_not_allowed_by_default(mcp_on):
     response = _rpc(TestClient(api_main.app), 'ping', token=_make_token(), headers={'Origin': 'https://evil.example.test'})
-    assert response.status_code == 400
+    # mcp>=1.2x answers 403 to a disallowed Origin (1.12.x answered 400).
+    assert response.status_code == 403
+    assert 'result' not in response.text
 
 
 def test_sanitize_output_truncates_and_drops_non_finite():
@@ -470,25 +472,41 @@ def test_sanitize_output_truncates_and_drops_non_finite():
     assert result['c'] == {'d': None}
 
 
-def test_stateless_teardown_noise_filter_only_drops_closed_stream_errors():
+def test_stateless_request_logs_no_teardown_errors(mcp_on, caplog):
+    # mcp 1.12.x logged a spurious "Error in message router"
+    # (anyio.ClosedResourceError) after every stateless request and needed a
+    # log filter; 1.30 logs it at DEBUG only, so the filter was removed.
     import logging
-    import sys
 
-    import anyio
+    with caplog.at_level(logging.WARNING, logger='mcp'):
+        assert _rpc(TestClient(api_main.app), 'ping', token=_make_token()).status_code == 200
+        assert _rpc(TestClient(api_main.app), 'tools/list', token=_make_token()).status_code == 200
+    assert [r for r in caplog.records if r.name.startswith('mcp')] == []
 
-    from app.mcp_server.routes import _StatelessTeardownNoiseFilter
 
-    def _record(message, exc):
-        try:
-            raise exc
-        except Exception:
-            exc_info = sys.exc_info()
-        return logging.LogRecord('mcp.server.streamable_http', logging.ERROR, __file__, 1, message, None, exc_info)
+def test_body_larger_than_limit_rejected_by_content_length(mcp_on):
+    response = TestClient(api_main.app).post(
+        '/mcp', content=b' ' * (mcp_routes.MAX_BODY_BYTES + 1),
+        headers={**MCP_HEADERS, 'Authorization': f'Bearer {_make_token()}'},
+    )
+    assert response.status_code == 413
+    assert response.json()['error']['code'] == 'payload_too_large'
+    assert response.headers['cache-control'] == 'no-store'
 
-    noise_filter = _StatelessTeardownNoiseFilter()
-    assert noise_filter.filter(_record('Error in message router', anyio.ClosedResourceError())) is False
-    assert noise_filter.filter(_record('Error in message router', RuntimeError('boom'))) is True
-    assert noise_filter.filter(_record('Other error', anyio.ClosedResourceError())) is True
+
+def test_chunked_body_larger_than_limit_rejected(mcp_on):
+    def chunks():
+        chunk = b' ' * 65536
+        for _ in range(mcp_routes.MAX_BODY_BYTES // len(chunk) + 2):
+            yield chunk
+
+    response = TestClient(api_main.app).post(
+        '/mcp', content=chunks(),
+        headers={**MCP_HEADERS, 'Authorization': f'Bearer {_make_token()}'},
+    )
+    assert response.status_code == 413
+    assert response.headers['cache-control'] == 'no-store'
+    assert 'x-request-id' in response.headers
 
 
 # =============================================================================
@@ -755,7 +773,7 @@ def _claims(**overrides):
 @pytest.mark.parametrize(
     'token_factory',
     [
-        lambda: jwt.encode(_claims(), 'secret', algorithm='HS256', headers={'kid': KID, 'typ': 'at+jwt'}),
+        lambda: jwt.encode(_claims(), 's' * 32, algorithm='HS256', headers={'kid': KID, 'typ': 'at+jwt'}),
         # HMAC "key confusion" with the public key as secret.
         lambda: jwt.encode(_claims(), 'x' * 64, algorithm='HS512', headers={'kid': KID, 'typ': 'at+jwt'}),
         lambda: jwt.encode(_claims(), None, algorithm='none', headers={'kid': KID, 'typ': 'at+jwt'}),

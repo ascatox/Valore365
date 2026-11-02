@@ -183,7 +183,21 @@ async def lifespan(_: FastAPI):
         scheduler.shutdown()
 
 
-app = FastAPI(title="Valore365 API", version="0.6.0", lifespan=lifespan, default_response_class=SafeJSONResponse)
+def api_docs_kwargs(app_settings) -> dict[str, Any]:
+    """FastAPI(...) arguments that turn off /docs, /redoc and /openapi.json
+    when API_DOCS_ENABLED resolves to false (default in production)."""
+    if app_settings.api_docs_enabled_resolved:
+        return {}
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
+
+app = FastAPI(
+    title="Valore365 API",
+    version="0.6.0",
+    lifespan=lifespan,
+    default_response_class=SafeJSONResponse,
+    **api_docs_kwargs(settings),
+)
 
 # --- Middleware stack (added in reverse order: last added = first executed) ---
 

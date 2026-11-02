@@ -1,24 +1,26 @@
-fastapi==0.115.8
-uvicorn[standard]==0.34.0
-pydantic==2.10.6
-pydantic-settings==2.7.1
+fastapi==0.162.0
+starlette==1.10.0
+uvicorn[standard]==0.54.0
+pydantic==2.14.2
+pydantic-settings==2.16.2
 sqlalchemy==2.0.38
 psycopg[binary]==3.2.5
 httpx==0.28.1
 apscheduler==3.10.4
-PyJWT==2.10.1
-# Remote MCP server (/mcp). 1.12.4 is the newest release that still accepts
-# pydantic 2.10.x: mcp>=1.13 requires pydantic>=2.11.
-mcp==1.12.4
-# Transitive dep of mcp, pinned: newer releases need a starlette newer than
-# fastapi 0.115.8 allows (<0.46), and leaving it open makes pip backtrack.
-sse-starlette==3.0.3
-cryptography==44.0.2
-Jinja2==3.1.4
+PyJWT==2.15.1
+# Remote MCP server (/mcp). Stays on the 1.x line (2.x changes the server
+# API); >=1.30.0 for the security fixes, needs pydantic>=2.11.
+mcp==1.30.0
+# Transitive deps of mcp, pinned for reproducible builds.
+sse-starlette==3.6.0
+# Imported directly by app/mcp_server/tools.py (tool argument validation).
+jsonschema==4.26.0
+cryptography==50.0.2
+Jinja2==3.1.6
 yfinance>=0.2.50
 # zoneinfo data: slim Docker images may ship without /usr/share/zoneinfo
 tzdata>=2024.1
-python-multipart==0.0.20
+python-multipart==0.0.33
 scipy==1.15.2
 openai>=1.40.0
 anthropic>=0.39.0

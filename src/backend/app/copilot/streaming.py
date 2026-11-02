@@ -229,7 +229,12 @@ def stream_copilot_response_agentic(
     justetf_client: object | None = None,
     page_context: str | None = None,
 ) -> Generator[str, None, None]:
-    """Stream LLM response with tool-calling loop. Max MAX_TOOL_ROUNDS rounds."""
+    """Stream LLM response with tool-calling loop. Max MAX_TOOL_ROUNDS rounds.
+
+    ``justetf_client`` enables X-Ray auto-enrichment (it writes the shared
+    etf_enrichment cache): the caller passes it only when
+    ``settings.justetf_xray_auto_enrich_enabled_resolved`` is true.
+    """
     allowed_tool_names = get_allowed_tool_names_for_page_context(page_context)
     system_prompt = SYSTEM_PROMPT_AGENTIC.format(
         context=json.dumps(snapshot, ensure_ascii=False, indent=2),
