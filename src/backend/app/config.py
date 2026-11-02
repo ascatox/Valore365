@@ -150,6 +150,25 @@ class Settings(BaseSettings):
     mcp_rate_limit_window_seconds: int = 60
     # How long a positively verified opaque token is cached (keyed by SHA-256).
     mcp_token_cache_seconds: int = 60
+    # Hardening (see docs/mcp.md, "Hardening"). All limits are in-memory, per
+    # process: with N instances the effective limits are N times larger.
+    # Failed authentications per client IP before /mcp answers 429 without
+    # contacting Clerk.
+    mcp_auth_failure_limit: int = 20
+    mcp_auth_failure_window_seconds: int = 300
+    # How long an opaque token rejected by Clerk is remembered (SHA-256 key).
+    mcp_negative_token_cache_seconds: int = 60
+    # Max accepted JWT lifetime (exp - iat); 0 disables the check.
+    mcp_max_token_lifetime_seconds: int = 86400
+    # Per-call limits for MCP tools.
+    mcp_tool_timeout_seconds: float = 20.0
+    mcp_max_concurrent_calls_per_user: int = 4
+    mcp_heavy_tool_rate_limit_requests: int = 10
+    mcp_heavy_tool_rate_limit_window_seconds: int = 60
+    # Gradual rollout / kill switch: Clerk user ids (user_...), comma separated.
+    # Allowed empty = every user; blocked users always get 403.
+    mcp_allowed_user_ids: str = ""
+    mcp_blocked_user_ids: str = ""
 
     @property
     def clerk_authorized_parties_list(self) -> list[str]:
@@ -166,6 +185,14 @@ class Settings(BaseSettings):
     @property
     def mcp_required_scopes_list(self) -> list[str]:
         return [v for v in self.mcp_required_scopes.replace(",", " ").split() if v]
+
+    @property
+    def mcp_allowed_user_ids_set(self) -> frozenset[str]:
+        return frozenset(v.strip() for v in self.mcp_allowed_user_ids.split(",") if v.strip())
+
+    @property
+    def mcp_blocked_user_ids_set(self) -> frozenset[str]:
+        return frozenset(v.strip() for v in self.mcp_blocked_user_ids.split(",") if v.strip())
 
     @property
     def mcp_allowed_origins_list(self) -> list[str]:

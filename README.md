@@ -96,10 +96,10 @@ Valore365 espone un server **MCP** (Model Context Protocol, standard aperto) in 
 
 ### 🚀 Collegalo in 3 passi
 
-1. In Valore365 apri **Impostazioni → Copilot → "Collega Claude o ChatGPT (MCP)"** e copia l'URL del server (`https://<host-backend>/mcp`).
+1. In Valore365 apri **Impostazioni → Copilot → "Collega Claude o ChatGPT (MCP)"** e copia l'URL del server (`https://valore365.onrender.com/mcp`).
 2. Aggiungilo come connettore personalizzato nel tuo client AI:
    - **Claude** (web, app e Desktop): *Settings → Connectors → Add custom connector*
-   - **Claude Code**: `claude mcp add --transport http valore365 https://<host-backend>/mcp`, poi `/mcp` per il login
+   - **Claude Code**: `claude mcp add --transport http valore365 https://valore365.onrender.com/mcp`, poi `/mcp` per il login
    - **ChatGPT**: *Settings → Apps & Connectors*, con la *Developer mode* attiva (dipende dal piano)
 3. Accedi con il tuo account Valore365, autorizza l'accesso e chiedi, ad esempio, «Quali portafogli ho su Valore365?».
 

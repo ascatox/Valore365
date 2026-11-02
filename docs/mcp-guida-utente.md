@@ -63,10 +63,10 @@ Ti servono:
 
 ## L'indirizzo del server
 
-L'indirizzo ha la forma:
+L'indirizzo del server MCP di Valore365 è:
 
 ```
-https://<host-backend>/mcp
+https://valore365.onrender.com/mcp
 ```
 
 Il modo più semplice per ottenerlo: apri Valore365, vai su **Impostazioni → Copilot** e, nella
@@ -101,7 +101,7 @@ Valore365 sul web lo trovi anche nell'app. Altrimenti, nell'app, segui gli stess
 Nel terminale:
 
 ```bash
-claude mcp add --transport http valore365 https://<host-backend>/mcp
+claude mcp add --transport http valore365 https://valore365.onrender.com/mcp
 ```
 
 Poi, dentro Claude Code:
@@ -182,6 +182,10 @@ account, cambia la password di Valore365 e contatta chi gestisce il servizio.
 | **Il login non si apre o il collegamento fallisce subito** | Controlla di aver incollato l'URL completo che finisce con `/mcp` e che sia quello del backend (copialo da *Impostazioni → Copilot*). Se ricevi un errore 503 o 404, il servizio MCP non è attivo sul server: contatta chi gestisce Valore365. |
 | **"Portfolio non trovato"** | L'assistente ha usato l'id di un portafoglio che non esiste o non è tuo. Chiedigli di elencare prima i portafogli («Quali portafogli ho?») e poi di usare quello giusto. Se hai appena cambiato account, scollega e ricollega il connettore. |
 | **"Non ho trovato portafogli" / elenco vuoto** | Stai usando un account Valore365 diverso da quello con i tuoi portafogli, oppure non ne hai ancora creato uno. Crea o importa un portafoglio nell'app, oppure riconnetti il connettore con l'account giusto. |
-| **Errore 429 / "Too many requests"** | Hai superato il limite di richieste al minuto (di default 60). Attendi circa un minuto e riprova. |
+| **Errore 429 / "Too many requests"** | Hai superato il limite di richieste al minuto (di default 60), oppure dalla tua rete sono arrivati troppi tentativi di accesso non validi. Attendi qualche minuto e riprova. |
+| **"Troppe richieste in corso" / "Troppe richieste per questo tool di calcolo"** | Le analisi più pesanti (Monte Carlo, stress test, X-Ray, proiezioni, simulazioni) hanno un limite più basso e poche chiamate possono essere in corso insieme. Attendi qualche istante e chiedi un'analisi alla volta. |
+| **"Il calcolo ha richiesto troppo tempo"** | L'analisi ha superato il tempo massimo. Riprova più tardi; se succede sempre con lo stesso portafoglio, segnalalo a chi gestisce Valore365. |
+| **Errore 403 / "Access denied"** | Il tuo account non è (ancora) abilitato all'uso di MCP: durante il rilascio graduale l'accesso può essere limitato ad alcuni utenti. Contatta chi gestisce Valore365. |
+| **L'X-Ray via assistente è meno completo che nell'app** | Via MCP l'X-Ray usa solo i dati ETF già presenti in Valore365 (non ne scarica di nuovi, per restare in sola lettura): per gli ETF senza dati la copertura può essere parziale. |
 | **L'assistente non usa Valore365** | Verifica che il connettore sia attivo nella chat e citalo esplicitamente («usa Valore365 per…»). |
 | **L'assistente dice di aver modificato qualcosa** | Non è possibile: il server è in sola lettura. Eventuali "ordini" o "acquisti" sono solo simulazioni. |

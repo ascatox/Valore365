@@ -156,19 +156,20 @@ Il backend espone un server [MCP](https://modelcontextprotocol.io) remoto su `PO
 
 Struttura del modulo `app/mcp_server/`:
 - `config.py`: valida le impostazioni e ricava gli URL pubblicati; se qualcosa manca l'endpoint non viene servito (*fail closed*)
-- `auth.py`: verifica gli access token OAuth di Clerk (JWT `at+jwt` via JWKS oppure opachi `oat_` via Backend API di Clerk); rifiuta i session token della web app
-- `tools.py`: costruisce i tool MCP a partire da `TOOL_DEFINITIONS` di `app/copilot_tools.py` (più `list_portfolios`), controlla che il `portfolio_id` appartenga all'utente e li esegue con `execute_tool`
-- `routes.py`: endpoint ASGI `/mcp` (autenticazione, rate limit per utente, solo POST, body max 1 MB) e documenti `/.well-known/oauth-protected-resource` e `/.well-known/oauth-authorization-server`
+- `auth.py`: verifica gli access token OAuth di Clerk (JWT `at+jwt` RS256 via JWKS, con refetch limitato, oppure opachi `oat_` via Backend API di Clerk, con cache positiva e negativa); rifiuta i session token della web app
+- `tools.py`: costruisce i tool MCP dai soli tool di `TOOL_DEFINITIONS` (`app/copilot_tools.py`) elencati in `MCP_TOOL_ALLOWLIST` (più `list_portfolios`), valida gli argomenti, controlla che il `portfolio_id` appartenga all'utente e li esegue con `execute_tool` sotto timeout, limite di concorrenza e rate limit dei tool pesanti; ripulisce e limita l'output
+- `routes.py`: endpoint ASGI `/mcp` (limite di autenticazioni fallite per IP, autenticazione, utenti ammessi/bloccati, rate limit per utente, solo POST, body max 1 MB, header `no-store`/`nosniff`, audit log) e documenti `/.well-known/oauth-protected-resource` e `/.well-known/oauth-authorization-server`
 
 La registrazione avviene in `app/main.py` con `register_mcp_routes(...)`.
 
 Variabili d'ambiente (elenco completo con default in `.env.example` e in `docs/mcp.md`):
 - `MCP_ENABLED` (default `false`)
 - `CLERK_AUTH_ENABLED=true` (obbligatoria: MCP non usa mai il fallback `dev-user`)
-- `MCP_RESOURCE_URL` (URL pubblico dell'endpoint, es. `https://<host-backend>/mcp`; `http` ammesso solo per localhost)
+- `MCP_RESOURCE_URL` (URL pubblico dell'endpoint, in produzione `https://valore365.onrender.com/mcp`; `http` ammesso solo per localhost)
 - `CLERK_ISSUER` (Frontend API URL di Clerk)
 - `CLERK_SECRET_KEY` (solo se Clerk emette token opachi `oat_`)
 - opzionali: `CLERK_API_URL`, `MCP_ALLOWED_CLIENT_IDS`, `MCP_SCOPES_SUPPORTED`, `MCP_REQUIRED_SCOPES`, `MCP_REQUIRE_AUDIENCE`, `MCP_ALLOWED_ORIGINS`, `MCP_RATE_LIMIT_REQUESTS`, `MCP_RATE_LIMIT_WINDOW_SECONDS`, `MCP_TOKEN_CACHE_SECONDS`
+- hardening (vedi [`docs/mcp.md`](../../docs/mcp.md#hardening)): `MCP_AUTH_FAILURE_LIMIT`, `MCP_AUTH_FAILURE_WINDOW_SECONDS`, `MCP_NEGATIVE_TOKEN_CACHE_SECONDS`, `MCP_MAX_TOKEN_LIFETIME_SECONDS`, `MCP_TOOL_TIMEOUT_SECONDS`, `MCP_MAX_CONCURRENT_CALLS_PER_USER`, `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS`, `MCP_ALLOWED_USER_IDS`, `MCP_BLOCKED_USER_IDS` (più `TRUSTED_PROXY_IPS` per l'IP del client dietro proxy). Tutti i limiti sono in memoria, per processo
 
 Comportamento:
 - `MCP_ENABLED=false` → `/mcp` risponde `404`; abilitato ma configurazione incompleta → `503` con l'errore nei log
