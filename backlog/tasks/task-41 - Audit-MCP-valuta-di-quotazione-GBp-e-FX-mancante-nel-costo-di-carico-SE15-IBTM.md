@@ -3,9 +3,10 @@ id: TASK-41
 title: >-
   Audit MCP: valuta di quotazione, GBp e FX mancante nel costo di carico (SE15,
   IBTM)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
+updated_date: '2026-11-02T20:21:00Z'
 labels:
   - audit-mcp
   - backend
@@ -29,3 +30,9 @@ V365-008. Prima di cambiare il codice va fatta un'indagine in sola lettura. Risc
 - [ ] #3 Test con strumenti in EUR, USD, GBP e GBX
 - [ ] #4 Nessuna modifica silenziosa della storia contabile: un eventuale backfill è un piano separato e approvato
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Query di verifica in sola lettura: backlog/docs/AUDIT_MCP_2026-11_QUERY_DATI.sql (in attesa dei risultati dal proprietario).
+<!-- SECTION:NOTES:END -->

@@ -1,9 +1,10 @@
 ---
 id: TASK-42
 title: 'Audit MCP: idempotenza dell''import e dividendi duplicati'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
+updated_date: '2026-11-02T20:21:00Z'
 labels:
   - audit-mcp
   - backend
@@ -29,3 +30,9 @@ V365-009. Le transazioni non hanno id esterno, hash di provenienza né vincolo d
 - [ ] #4 get_recent_transactions espone l'id della transazione
 - [ ] #5 Audit in sola lettura dei duplicati esistenti, senza cancellazioni automatiche
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Query di verifica in sola lettura: backlog/docs/AUDIT_MCP_2026-11_QUERY_DATI.sql (in attesa dei risultati dal proprietario).
+<!-- SECTION:NOTES:END -->
