@@ -1327,6 +1327,8 @@ def _get_stress_test(
             # covered by real prices and per-class drawdown with its source.
             scenario_data["method"] = s.method
             scenario_data["coverage_pct"] = s.coverage_pct
+            if s.methodology_note:
+                scenario_data["methodology_note"] = s.methodology_note
             scenario_data["class_breakdown"] = [
                 {
                     "asset_class": row.asset_class,

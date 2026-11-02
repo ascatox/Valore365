@@ -32,6 +32,13 @@ from ._holdings import (
 logger = logging.getLogger(__name__)
 
 
+HISTORICAL_PROXY_METHODOLOGY_NOTE = (
+    "Stima basata su indici di riferimento in dollari (USD) per asset class: "
+    "non include l'effetto del cambio EUR/USD, che può cambiare in modo "
+    "rilevante il risultato per un investitore in euro."
+)
+
+
 def _classify_risk_level(impact_pct: float) -> str:
     abs_impact = abs(impact_pct)
     if abs_impact < 5:
@@ -190,6 +197,11 @@ def _compute_historical_scenario(
         most_impacted_assets=_rank_most_impacted(asset_impacts),
         method=method,
         coverage_pct=coverage_pct,
+        methodology_note=(
+            HISTORICAL_PROXY_METHODOLOGY_NOTE
+            if any(row.source == "proxy" for row in class_breakdown)
+            else None
+        ),
         class_breakdown=class_breakdown,
         flags=flags,
     )

@@ -252,6 +252,9 @@ class StressTestScenarioResult(BaseModel):
     # prices in the window (cash included).
     method: Literal["historical", "proxy", "not_available"] | None = None
     coverage_pct: float | None = None
+    # Historical scenarios: Italian note for the user, set whenever any part
+    # of the estimate uses the USD class proxies (FX effect not modelled).
+    methodology_note: str | None = None
     # Classes with a non-zero shock (shock scenarios), per-class breakdown
     # and flags such as "unknown_asset_class_equity_shock".
     affected_classes: list[str] = Field(default_factory=list)

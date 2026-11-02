@@ -21,7 +21,10 @@ from app.constants.stress_scenarios import (
 )
 from app.services.portfolio_doctor import AnalyzedHolding
 from app.services.portfolio_doctor._holdings import holding_asset_class
-from app.services.portfolio_doctor._stress import _compute_historical_scenario
+from app.services.portfolio_doctor._stress import (
+    HISTORICAL_PROXY_METHODOLOGY_NOTE,
+    _compute_historical_scenario,
+)
 
 CLASSES = ("equity", "bond", "gold", "commodity", "cash", "crypto")
 
@@ -156,6 +159,8 @@ def test_sixty_forty_proxy_is_the_weighted_sum_of_class_drawdowns():
     assert rows["equity"].drawdown_pct == _proxy("bear_market_2022", "equity")
     assert rows["bond"].contribution_pct == pytest.approx(0.4 * _proxy("bear_market_2022", "bond"), abs=0.01)
     assert "class_proxy_drawdowns" in result.flags
+    assert result.methodology_note == HISTORICAL_PROXY_METHODOLOGY_NOTE
+    assert "USD" in result.methodology_note and "EUR/USD" in result.methodology_note
 
 
 def test_empty_portfolio_is_not_available():
@@ -165,6 +170,7 @@ def test_empty_portfolio_is_not_available():
     assert result.estimated_portfolio_impact_pct == 0.0
     assert result.class_breakdown == []
     assert result.coverage_pct is None
+    assert result.methodology_note is None
 
 
 def test_crypto_before_inception_and_unknown_take_equity_proxy_with_flags():
@@ -213,6 +219,7 @@ def test_coverage_above_threshold_is_historical_with_proxy_filled_remainder():
     assert rows[("equity", "historical")].drawdown_pct == -40.0
     assert rows[("bond", "proxy")].drawdown_pct == _proxy("covid_crash", "bond")
     assert "uncovered_weight_filled_with_class_proxy" in result.flags
+    assert result.methodology_note == HISTORICAL_PROXY_METHODOLOGY_NOTE
     assert result.max_drawdown_pct <= result.estimated_portfolio_impact_pct
 
 
@@ -227,6 +234,7 @@ def test_cash_counts_as_covered_with_zero_return():
     assert result.coverage_pct == 100.0
     assert result.estimated_portfolio_impact_pct == -10.0
     assert result.flags == []
+    assert result.methodology_note is None
 
 
 def test_coverage_below_threshold_switches_to_proxy():
@@ -263,6 +271,29 @@ def test_mcp_stress_output_exposes_method_coverage_and_class_sources(monkeypatch
     assert data["method"] == "historical"
     assert data["coverage_pct"] == 70.0
     assert "uncovered_weight_filled_with_class_proxy" in data["flags"]
+    assert data["methodology_note"] == HISTORICAL_PROXY_METHODOLOGY_NOTE
     sources = {(r["asset_class"], r["source"]) for r in data["class_breakdown"]}
     assert sources == {("equity", "historical"), ("bond", "proxy")}
     assert all("drawdown_pct" in r and "contribution_pct" in r for r in data["class_breakdown"])
+
+
+def test_mcp_stress_output_omits_methodology_note_for_fully_historical(monkeypatch):
+    from app import copilot_tools
+    from app.schemas.portfolio_doctor import StressTestResponse
+
+    holdings = [
+        _h(1, "VTI", "Vanguard Total Stock Market ETF", "etf", 50),
+        _h(2, "CASH", "Cash", "cash", 50),
+    ]
+    scenario = _compute_historical_scenario(
+        _PriceRepo(_covid_rows(1, 100.0, 80.0)), holdings, _scenario("covid_crash")
+    )
+    monkeypatch.setattr(
+        copilot_tools, "run_stress_test",
+        lambda repo, pid, uid: StressTestResponse(portfolio_id=1, scenarios=[scenario], analysis_date="2026-11-02"),
+    )
+
+    data = copilot_tools._get_stress_test({}, None, None, 1, "user")["scenarios"][0]
+
+    assert data["method"] == "historical"
+    assert "methodology_note" not in data
