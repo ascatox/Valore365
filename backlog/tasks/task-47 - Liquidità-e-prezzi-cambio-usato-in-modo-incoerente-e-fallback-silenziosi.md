@@ -4,6 +4,7 @@ title: 'Liquidità e prezzi: cambio usato in modo incoerente e fallback silenzio
 status: To Do
 assignee: []
 created_date: '2026-11-03T10:53:00Z'
+updated_date: '2026-11-03T11:09:00Z'
 labels:
   - audit-mcp
   - backend
@@ -25,3 +26,9 @@ Emerso in TASK-44 (controlli C2 e C4). get_cash_balance converte con il cambio p
 - [ ] #2 Cambio mancante e prezzo ripiegato sul costo segnalati nell'output (flag), non nascosti
 - [ ] #3 Decisione sulle ritenute dei dividendi documentata e testata
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Da TASK-46: summary.cash_balance conta solo i movimenti di cassa (più il cash_balance iniziale) e ignora acquisti e vendite, quindi può essere negativo; la valutazione storica della performance invece applica il modello di liquidità dell'opzione A. Per i portafogli con vendite senza prelievi, il valore corrente della performance supera il totale del summary dell'importo dei proventi. Il cash_balance iniziale (senza data) non entra nello storico. Ritenute sui dividendi ignorate.
+<!-- SECTION:NOTES:END -->

@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from sqlalchemy import Date, bindparam, text
 
+from ._cash_model import cash_delta, settle_day
 from ._scope import (
     EMPTY_SCOPE_MESSAGE,
     NOT_FOUND_MESSAGE,
@@ -613,9 +614,15 @@ class TransactionsMixin:
         price_dates = {aid: [d for d, _ in series] for aid, series in price_series.items()}
 
         def fold(portfolio, rows: list) -> dict[date, float]:
+            # Cash follows the shared model (_cash_model): buys are paid from
+            # cash, sell proceeds stay in it, and a day that would leave it
+            # negative is topped up by an implicit contribution (cash floors at
+            # 0). PerformanceService derives the same contributions from the
+            # same rows, so values and external flows stay consistent.
             holdings: dict[int, float] = defaultdict(float)
             cash_balance = 0.0
             applied = 0
+            open_day: date | None = None
             values: dict[date, float] = {}
 
             for target_date in wanted:
@@ -629,9 +636,14 @@ class TransactionsMixin:
                     qty = float(row["quantity"])
                     price = float(row["price"])
                     trade_day = row["trade_date"]
+                    if open_day is not None and trade_day != open_day:
+                        cash_balance, _ = settle_day(cash_balance)
+                    open_day = trade_day
                     trade_ccy = str(row["trade_currency"])
                     fx = fx_rate_on_or_before(trade_ccy, trade_day)
                     amount_base = qty * price * fx
+                    costs_base = (float(row.get("fees") or 0.0) + float(row.get("taxes") or 0.0)) * fx
+                    cash_balance += cash_delta(side, amount_base, costs_base)
 
                     if side == "buy":
                         aid = row["asset_id"]
@@ -643,10 +655,10 @@ class TransactionsMixin:
                         if aid is None:
                             continue
                         holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
-                    elif side in {"deposit", "dividend", "interest"}:
-                        cash_balance += amount_base
-                    elif side in {"withdrawal", "fee"}:
-                        cash_balance -= amount_base
+
+                # Every row dated <= target_date is in, so the last day folded
+                # is complete and can be settled (idempotent).
+                cash_balance, _ = settle_day(cash_balance)
 
                 if applied == 0:
                     # No transaction on or before this day: same answer the

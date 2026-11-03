@@ -30,6 +30,7 @@ from ..models import (
 )
 from ..config import get_settings
 from ..repository import PortfolioRepository
+from ..repository._cash_model import cash_delta_from_signed, settle_day
 from ..repository._scope import EMPTY_SCOPE_MESSAGE, aggregate_identity, normalize_portfolio_ids
 
 try:
@@ -43,6 +44,18 @@ logger = logging.getLogger(__name__)
 
 # A portfolio id, or several ids read as one aggregate (vista aggregata).
 PortfolioRef = int | Sequence[int]
+
+# Side of the external flow that funds what the cash on hand did not cover.
+IMPLICIT_CONTRIBUTION = 'implicit_contribution'
+
+
+@dataclass(frozen=True)
+class _ExternalFlow:
+    """An external flow with no transaction row behind it (same shape as CashFlowEntry)."""
+
+    date: str
+    side: str
+    amount: float
 
 
 _PERIOD_TO_DAYS: dict[str, int] = {
@@ -71,8 +84,9 @@ class _LookupCache:
 
     inception: date | None = None
     # list[CashFlowEntry] for one portfolio; dict[portfolio_id, list] for an
-    # aggregate, so the trade fallback can be decided per portfolio.
-    cashflows: dict[tuple[date, date, bool], list | dict] = field(default_factory=dict)
+    # aggregate, so the cash model is folded per portfolio. Keyed by
+    # (start, end, include_trades); start None = from the first transaction.
+    cashflows: dict[tuple[date | None, date, bool], list | dict] = field(default_factory=dict)
     values: dict[date, float] = field(default_factory=dict)
     lock: threading.RLock = field(default_factory=threading.RLock)
     created_at: float = field(default_factory=time.monotonic)
@@ -191,7 +205,7 @@ class PerformanceService:
         self,
         portfolio_id: PortfolioRef,
         user_id: str,
-        start: date,
+        start: date | None,
         end: date,
         include_trades: bool,
         cache: _LookupCache,
@@ -250,33 +264,69 @@ class PerformanceService:
         *,
         cache: _LookupCache | None = None,
     ) -> tuple[list, bool]:
-        """Return (investor_cashflows, used_trade_fallback).
+        """Return (external_flows, implicit_only) for [start_date, end_date].
 
-        Investor flows are deposit/withdrawal only: dividend/fee/interest move
-        cash that stays inside the portfolio (get_portfolio_value_at_date keeps
-        them in cash_balance), so they are part of performance, not external
-        contributions. If no deposit/withdrawal exist in the period, falls back
-        to buy/sell as implicit investor cashflows (buy = deposit of the cost,
-        sell = withdrawal of the proceeds).
+        External flows follow the cash model of the valuation
+        (repository/_cash_model.py, TASK-46): explicit deposits/withdrawals,
+        plus an ``implicit_contribution`` on every day whose buys, fees or
+        withdrawals exceed the cash available (cash floors at 0, the
+        shortfall came from outside). Buys paid from cash and sells (whose
+        proceeds stay in cash) move value between cash and securities and are
+        never flows; dividends, interest and fees are part of the return.
+
+        The cash at the window start depends on the whole history, so the
+        model is folded over every transaction up to ``end_date`` (one cached
+        read). A portfolio with no deposits gets every buy as an implicit
+        contribution: the old buy/sell fallback is a special case.
+
+        ``implicit_only`` is True when the window has implicit contributions
+        and no explicit deposit/withdrawal (formerly "trade fallback").
         """
         cache = cache if cache is not None else self._cache_for(portfolio_id, user_id)
         scope = self._scope_key(portfolio_id)
-        cashflows = self._cashflows(portfolio_id, user_id, start_date, end_date, False, cache)
+        history = self._cashflows(portfolio_id, user_id, None, end_date, True, cache)
         if isinstance(scope, tuple):
             return self._aggregate_cashflows_with_fallback(
-                portfolio_id, user_id, start_date, end_date, scope, cashflows, cache
+                portfolio_id, user_id, start_date, end_date, scope, history, cache
             )
+        flows = self._external_flows_from_history(history, start_date, end_date)
+        return flows, self._implicit_only(flows)
 
-        investor_flows = [cf for cf in cashflows if cf.side in ("deposit", "withdrawal")]
-        if investor_flows:
-            return investor_flows, False
+    @staticmethod
+    def _implicit_only(flows: list) -> bool:
+        return bool(flows) and all(cf.side == IMPLICIT_CONTRIBUTION for cf in flows)
 
-        trade_cashflows = self._cashflows(portfolio_id, user_id, start_date, end_date, True, cache)
-        buy_sell_flows = [cf for cf in trade_cashflows if cf.side in ("buy", "sell")]
-        if buy_sell_flows:
-            return buy_sell_flows, True
+    @staticmethod
+    def _external_flows_from_history(history: list, start_date: date, end_date: date) -> list:
+        """Fold the cash model over one portfolio's cashflow history (O(n)).
 
-        return [], False
+        ``history`` holds every cash-moving transaction up to ``end_date``
+        (buy/sell included). Days are settled exactly like the valuation fold:
+        all of a day's movements first, then a negative balance becomes an
+        implicit contribution and cash restarts from 0.
+        """
+        start_iso, end_iso = start_date.isoformat(), end_date.isoformat()
+        out: list = []
+        cash = 0.0
+        open_day: str | None = None
+
+        def close_day(day: str) -> None:
+            nonlocal cash
+            cash, implicit = settle_day(cash)
+            if implicit > 0 and start_iso <= day <= end_iso:
+                out.append(_ExternalFlow(date=day, side=IMPLICIT_CONTRIBUTION, amount=round(implicit, 8)))
+
+        # Stable sort: the repository already returns (trade_at, id) order.
+        for cf in sorted(history, key=lambda cf: cf.date):
+            if open_day is not None and cf.date != open_day:
+                close_day(open_day)
+            open_day = cf.date
+            cash += cash_delta_from_signed(cf.side, cf.amount)
+            if cf.side in ("deposit", "withdrawal") and start_iso <= cf.date <= end_iso:
+                out.append(cf)
+        if open_day is not None:
+            close_day(open_day)
+        return out
 
     def _aggregate_cashflows_with_fallback(
         self,
@@ -285,36 +335,25 @@ class PerformanceService:
         start_date: date,
         end_date: date,
         scope: tuple[int, ...],
-        cashflows_by_portfolio: dict,
+        history_by_portfolio: dict,
         cache: _LookupCache,
     ) -> tuple[list, bool]:
-        """Combined investor flows of an aggregate, choosing the source per portfolio.
+        """Combined external flows of an aggregate, cash model applied per portfolio.
 
-        Each portfolio contributes the flows it would use on its own
-        (deposit/withdrawal, or buy/sell when it has none), so mixing a
-        portfolio funded by deposits with one tracked only by trades does not
-        turn the latter's purchases into performance. A transfer between two
-        selected portfolios is a withdrawal in one and a deposit in the other:
-        both enter the list and cancel out once flows are summed per day.
+        Each portfolio keeps its own cash (the aggregate value is the sum of
+        the single-portfolio folds), so a portfolio funded by deposits and one
+        tracked only by trades each get the flows they would have on their
+        own. A transfer between two selected portfolios is a withdrawal in one
+        and a deposit in the other: both enter the list and cancel out once
+        flows are summed per day.
         """
         combined: list = []
-        used_trade_fallback = False
-        trades_by_portfolio: dict | None = None
         for pid in scope:
-            investor_flows = [
-                cf for cf in cashflows_by_portfolio.get(pid, []) if cf.side in ("deposit", "withdrawal")
-            ]
-            if investor_flows:
-                combined.extend(investor_flows)
-                continue
-            if trades_by_portfolio is None:
-                trades_by_portfolio = self._cashflows(portfolio_id, user_id, start_date, end_date, True, cache)
-            buy_sell_flows = [cf for cf in trades_by_portfolio.get(pid, []) if cf.side in ("buy", "sell")]
-            if buy_sell_flows:
-                combined.extend(buy_sell_flows)
-                used_trade_fallback = True
+            combined.extend(
+                self._external_flows_from_history(history_by_portfolio.get(pid, []), start_date, end_date)
+            )
         combined.sort(key=lambda cf: cf.date)
-        return combined, used_trade_fallback
+        return combined, self._implicit_only(combined)
 
     def calculate_twr(
         self,
@@ -330,9 +369,8 @@ class PerformanceService:
         period_days = max((end - start).days, 1)
 
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
-        # Portfolio value tracks bought assets without deducting their cost from
-        # cash, so in the buy/sell fallback trades enter value from outside and
-        # count as external cashflows exactly like deposits/withdrawals.
+        # Same cash model as the valuation: deposits/withdrawals and the
+        # implicit contributions that fund buys beyond the available cash.
         cashflow_by_day: dict[date, float] = {}
         for cf in cashflows:
             day = date.fromisoformat(cf.date)
@@ -497,7 +535,7 @@ class PerformanceService:
         cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_period_range(portfolio_id, user_id, period, cache=cache)
 
-        cashflows, use_trade_flows = self._get_cashflows_with_fallback(
+        cashflows, _ = self._get_cashflows_with_fallback(
             portfolio_id, user_id, start, end, cache=cache
         )
         # Un'unica lettura dei valori per tutto il riepilogo: TWR e MWR li
@@ -515,13 +553,12 @@ class PerformanceService:
         twr = self.calculate_twr(portfolio_id, user_id, start, end, cache=cache)
         mwr = self.calculate_mwr(portfolio_id, user_id, start, end, cache=cache)
 
-        if use_trade_flows:
-            # Treat buy cost as "deposits" and sell proceeds as "withdrawals"
-            total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'buy')
-            total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'sell')
-        else:
-            total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'deposit')
-            total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'withdrawal')
+        # Apporti impliciti (acquisti/uscite oltre la liquidita' disponibile)
+        # contano come versamenti: senza, net_invested e absolute_gain non
+        # tornerebbero con il valore, che li include.
+        implicit_contributions = sum(cf.amount for cf in cashflows if cf.side == IMPLICIT_CONTRIBUTION)
+        total_deposits = sum(cf.amount for cf in cashflows if cf.side == 'deposit') + implicit_contributions
+        total_withdrawals = sum(-cf.amount for cf in cashflows if cf.side == 'withdrawal')
         net_invested = total_deposits - total_withdrawals
         current_value = values[end]
 
@@ -551,6 +588,7 @@ class PerformanceService:
             initial_value=round(initial_value, 2) if initial_value is not None else None,
             current_value=round(current_value, 2),
             absolute_gain=absolute_gain,
+            implicit_contributions=round(implicit_contributions, 2),
         )
 
     def get_twr_timeseries(
@@ -611,7 +649,7 @@ class PerformanceService:
     ) -> list[GainTimeseriesPoint]:
         cache = self._cache_for(portfolio_id, user_id)
         start, end = self._resolve_date_range(portfolio_id, user_id, start_date, end_date, cache=cache)
-        # Fallback already returns deposit/withdrawal or buy/sell only
+        # Deposits/withdrawals plus implicit contributions (cash model)
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
 
         cf_by_day: dict[date, float] = {}
@@ -657,7 +695,7 @@ class PerformanceService:
         else:
             step = 1
 
-        # Pre-fetch all cashflows once (with buy/sell fallback)
+        # Pre-fetch all cashflows once (cash model, implicit contributions included)
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
         # Same dates the cursor walk below visits, plus the tail point at 'end'.
         values = self._values(
