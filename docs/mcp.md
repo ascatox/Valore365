@@ -173,7 +173,12 @@ ETC tipizzato `stock` (es. un ETC sull'oro) è classificato gold, e un asset non
 `unknown`, mai equity per default. Il classificatore usa prima i dati justETF salvati per l'ISIN
 (`etf_enrichment`), poi il nome e le abbreviazioni dei broker (es. `XTR2 EGB13 1CC` → bond,
 `Azioni Europa` → equity). L'MCP non scarica l'arricchimento mancante: lo popola
-`POST /api/portfolios/{id}/etf-enrichment/backfill` (API web, autenticata). Negli scenari a shock `get_stress_test` riporta `affected_classes`,
+`POST /api/portfolios/{id}/etf-enrichment/backfill` (API web, autenticata; con
+`refresh_missing_ter=true` riscarica anche le righe senza TER). Allo stesso modo il TER yFinance
+(`netExpenseRatio`, `annualReportExpenseRatio`, `expenseRatio`) degli ETF USA arriva in
+`get_cost_breakdown` solo dopo `POST /api/portfolios/{id}/asset-metadata/backfill`, che salva i
+metadati mancanti; `ter_source` dice sempre da dove viene il TER (`justetf`, `yfinance`, `inferred`,
+`none`). Negli scenari a shock `get_stress_test` riporta `affected_classes`,
 `class_breakdown` (per classe: `weight_pct`, `shock_pct`, `contribution_pct`, che sommano all'impatto)
 e `flags` (`unknown_asset_class_equity_shock` quando a un asset `unknown` si applica in via prudenziale
 lo shock equity); `most_impacted` elenca solo perdite effettive, con `asset_class`.
@@ -253,7 +258,12 @@ singolo non cambiano.
   `classified_country_pct` / `classified_sector_pct`; `geographic_exposure` e `sector_exposure`
   sommano a 100 (primi 10 + "Altri" + "Non classificato"; oro, obbligazioni ecc. senza dati come
   bucket di asset class); `data_as_of` = data più vecchia dei dati del provider; `funds` con fonte
-  (`justetf`/`yahoo`/`none`) e data per posizione; `coverage_note` in italiano. Dettagli in
+  (`justetf`/`yahoo`/`none`) e data per posizione; `coverage_note` in italiano. Non applicabile ≠
+  dati mancanti (TASK-52): ogni fondo ha `lookthrough_status` (`available`/`not_applicable`/`missing`)
+  e `lookthrough_reason`; oro, materie prime, obbligazioni, monetario e cripto sono `not_applicable`
+  (lo X-Ray è un look-through azionario); `applicable_lookthrough_coverage_pct` è la copertura della
+  sola parte applicabile (`applicable_denominator`), `available_pct` / `not_applicable_pct` /
+  `missing_pct` le quote per stato (sommano a 100). Dettagli in
   [audit-mcp-2026-11/methodology.md](audit-mcp-2026-11/methodology.md) §12.
 - **Non disponibili in forma aggregata** (l'app non ha una vista aggregata equivalente, quindi non
   vengono approssimati): drift rispetto al target e ordini di ribilanciamento (i target sono per

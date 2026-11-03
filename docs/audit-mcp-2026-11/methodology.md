@@ -83,6 +83,23 @@ non toglie punti.
 
 - Fonte per posizione (`ter_source`): justETF (già in %) → yfinance `expense_ratio` normalizzato
   (0,0075 → 0,75%) → dedotto da pattern (`inferred`) → `none`.
+- **Chiavi yFinance (TASK-52, `extract_expense_ratio_pct`)**: nell'ordine `netExpenseRatio` (chiave
+  attuale, punti percentuali: 0,15 = 0,15%), `annualReportExpenseRatio` (frazione: 0,0015 = 0,15%) ed
+  `expenseRatio` (storica); ogni valore passa da `normalize_expense_ratio_pct` (≤ 0,01 letto come
+  frazione). Prima veniva letta solo `netExpenseRatio`/`expenseRatio`. `ProviderAssetInfo` riporta
+  la chiave usata (`expense_ratio_source_key`). Per i metadati già salvati con la colonna
+  `expense_ratio` vuota, `resolve_holding_ters` legge le stesse chiavi da `raw_info` (sola lettura,
+  nessuna chiamata di rete). Un TER mancante resta `null` con `ter_source: "none"`: mai inventato.
+- **Popolamento (azione del proprietario, API web autenticata)**: i metadati yFinance erano scritti
+  solo aprendo la scheda di un titolo, da `reclassify-assets` o da `/assets/metadata/refresh-all`;
+  gli ETF USA mai aperti (TLT, IEF, DJP, GLD) non avevano un `asset_metadata`, quindi nessun TER.
+  `POST /api/portfolios/{id}/asset-metadata/backfill?limit=50` scarica i metadati degli asset del
+  portafoglio senza riga `asset_metadata` e dei fondi/ETP (classificatore condiviso) senza expense
+  ratio; risponde con `updated` (TER e chiave usata), `skipped`, `failed`.
+  `POST /api/portfolios/{id}/etf-enrichment/backfill?refresh_missing_ter=true` riscarica da justETF
+  anche le righe `etf_enrichment` già presenti ma senza TER (es. un ETC sull'oro tipizzato `stock`,
+  che non viene saltato: si saltano solo `cash`, `crypto`, `bond`). Gli ETF USA non sono su justETF
+  (ISIN US): per loro la fonte è yFinance.
 - `weighted_ter_pct` = Σ(peso_i × TER_i) / Σ(peso_i coperti): **TER sul peso coperto** (decisione
   TASK-37). `ter_coverage_pct` = peso coperto / peso totale delle posizioni.
 - `estimated_annual_cost_known_eur` e `fee_drag_10y_eur` sono calcolati sul solo
@@ -368,7 +385,34 @@ parità risolte in ordine alfabetico del simbolo; senza posizioni valide `best`/
 
 ## 12. X-Ray (`get_xray_summary`, `_xray.py`)
 
-- Look-through: top holdings justETF, altrimenti yfinance; oro/commodity/crypto senza look-through.
+- Look-through: top holdings justETF, altrimenti yfinance; oro/commodity/crypto/monetario senza
+  look-through (nessuna chiamata Yahoo), obbligazioni senza chiamata Yahoo.
+- **Stato per posizione (TASK-52)**: `lookthrough_status` + `lookthrough_reason` (italiano) in
+  `etf_details` e `coverage_issues`:
+  - `not_applicable`: oro, materie prime, cripto, monetario e **obbligazioni**. Lo X-Ray è un
+    look-through **azionario** (titoli, paesi e settori delle azioni): un fondo obbligazionario
+    detiene obbligazioni, non azioni, e il look-through dei titoli obbligazionari non è modellato
+    (le eventuali top holdings justETF di un fondo obbligazionario restano visibili ma non entrano
+    nella copertura applicabile).
+  - `missing`: fondo azionario o strumento `unknown` senza top holdings (nessun arricchimento justETF
+    salvato e Yahoo senza dati, oppure errore temporaneo di Yahoo).
+  - `available`: top holdings note, oppure titolo singolo (sottostante di sé stesso).
+- `applicable_lookthrough_coverage_pct` = Σ quota scomposta delle posizioni applicabili (come in
+  `lookthrough_coverage_pct`) / Σ quote delle posizioni applicabili (`available` + `missing`) × 100;
+  `null` se nessuna posizione è applicabile. Denominatore dichiarato in `applicable_denominator`.
+  `available_pct`, `not_applicable_pct`, `missing_pct` = quote del `coverage_denominator` per stato
+  (sommano a 100). Esempio All Weather (TLT 40, IEF 15, VTI 30 con top 10 al 30%, DJP 7,5, GLD 7,5):
+  `not_applicable_pct` 70, applicabile = VTI, `applicable_lookthrough_coverage_pct` 30, contro un
+  `lookthrough_coverage_pct` del 9%. `coverage_note` apre con questa frase ("Scomposto il X% della
+  parte azionaria; Y% del portafoglio non applicabile (oro, obbligazioni…); Z% con dati mancanti").
+- **Yahoo (TASK-52)**: `get_etf_top_holdings` restituisce `[]` solo quando Yahoo dichiara che non ci
+  sono dati di fondo (`YFDataException`, es. un'azione) — risposta memorizzata 1 h; un errore di rete
+  o di rate limit solleva `ProviderError` e **non** è memorizzato (prima diventava "nessuna holding"
+  per un'ora: plausibile causa dello 0% di VTI in All Weather). I pesi Yahoo sono frazioni del fondo
+  (0,065 = 6,5%), convertiti correttamente (nessun errore di unità trovato); le top 10 di VTI coprono
+  circa un terzo del fondo, compatibile con il 14,2% di 100% Azionario (solo VTI scomposto). VEUR/VFEM (UCITS irlandesi) non hanno top holdings su Yahoo: senza
+  `etf_enrichment` (justETF, ISIN IE…) sono `missing` — limite del provider, si risolve con
+  `POST /api/portfolios/{id}/etf-enrichment/backfill` (l'MCP non scarica nulla).
 - **Denominatore unico (TASK-48, `coverage_denominator`)**: valore di mercato delle posizioni,
   liquidità esclusa (il saldo di cassa non è una posizione; escluse anche le posizioni di tipo
   `cash`). Quota di una posizione = peso / Σ pesi delle posizioni non cash × 100.
@@ -395,7 +439,10 @@ parità risolte in ordine alfabetico del simbolo; senza posizioni valide `best`/
   in memoria (`fetch_time`, TTL 1 h). `data_as_of` complessivo = la data più vecchia.
 - `coverage_note` in italiano riassume le tre misure e la data. Copilot/MCP: esposizioni troncate
   ai primi 10 bucket + "Altri" + "Non classificato" (sommano sempre a 100), `funds` (max 20) con
-  fonte e data, 5 `coverage_issues` + `coverage_issues_total`.
+  fonte, data, `lookthrough_status`/`lookthrough_reason`, 5 `coverage_issues` (prima i `missing`,
+  ognuno con `lookthrough_status`) + `coverage_issues_total`; in più
+  `applicable_lookthrough_coverage_pct`, `applicable_denominator`, `available_pct`,
+  `not_applicable_pct`, `missing_pct`.
 - Limiti: i titoli singoli restano elencati fra le `coverage_issues` (yfinance non restituisce
   holdings) e non entrano negli `aggregated_holdings`.
 

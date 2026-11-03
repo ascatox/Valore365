@@ -244,3 +244,42 @@ Casi verificati (`tests/unit/test_asset_classification_broker_names.py`):
 | `search_asset_info` XAD1.DE (`GOLD/DB ETC 60`, type stock) | `type` stock, `asset_class` gold, `instrument_type` etc |
 | `search_asset_info` VWCE / DBXP / ETN Brent / Apple | etf-equity / etf-bond / etn-commodity / stock-equity |
 | `POST /api/portfolios/{id}/etf-enrichment/backfill` | arricchisce solo gli asset senza `etf_enrichment`; salta cash e asset senza ISIN; errori del provider in `failed` |
+
+## Run TASK-52 (2026-11-03) — X-Ray e TER: "non applicabile" distinto da "dati mancanti"
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_xray_lookthrough_status.py tests/unit/test_ter_sources_task52.py -q
+# 29 passed   (test nuovi)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 961 passed  (prima: 932 passed; +29 test nuovi, nessuna aspettativa esistente modificata)
+
+cd src/frontend/valore-frontend
+npm run lint          # ok
+npx vitest run        # 142 passed (XRayCard: +2 test)
+npx tsc -b            # 140 errori, invariati rispetto al baseline (nessuno nei file toccati)
+```
+
+Casi verificati:
+
+| Caso | Risultato |
+|---|---|
+| All Weather: TLT 40, IEF 15 (bond), VTI 30 (top 10 al 30%), DJP 7,5 (commodity), GLD 7,5 (oro) | TLT/IEF/DJP/GLD `not_applicable` con motivo, VTI `available`; `not_applicable_pct` 70, `missing_pct` 0, `applicable_lookthrough_coverage_pct` 30 (`lookthrough_coverage_pct` 9) |
+| All Weather senza dati VTI | VTI `missing` (30%), applicabile 0% — non più "0% del portafoglio" indistinto |
+| Solo oro + bond | `applicable_lookthrough_coverage_pct` null, `not_applicable_pct` 100 |
+| 100% Azionario: VTI (Yahoo), VEUR (nessun dato), VFEM (justETF) | VEUR `missing`, `missing_pct` 35, applicabile 17% |
+| 100% Azionario senza VFEM | VEUR e VFEM `missing`, `missing_pct` 60, `coverage_issues` con stato |
+| Azione + monetario (XEON) | AAPL `available`, XEON `not_applicable` senza chiamata Yahoo |
+| Yahoo: frazioni, "No Fund data", errore di rete | pesi 0,065 → frazioni; `[]` memorizzato; `ProviderError` non memorizzato, ritentato alla richiesta successiva |
+| Chiavi yFinance | `netExpenseRatio` 0,15 → 0,15%; `annualReportExpenseRatio` 0,0015 → 0,15%; `expenseRatio` 0,0003 → 0,03%; `{raw}`, stringhe, negativi |
+| Metadati già salvati con colonna vuota | TER da `raw_info` (`ter_source` yfinance), senza rete |
+| ETC XAD1.DE tipizzato `stock` con TER justETF | `ter_source` justetf; backfill con `refresh_missing_ter=true` non lo salta |
+| Nessuna fonte | TER `null`, `ter_source` none (mai inventato) |
+| `POST /api/portfolios/{id}/asset-metadata/backfill` | scarica solo fondi senza TER e asset senza metadati; salta cash; errori in `failed`; 404 per portafoglio altrui |
+| Copilot/MCP `get_xray_summary` | campi nuovi, `funds[].lookthrough_status/reason`, `coverage_issues` con stato |
+| XRayCard | "Scomposto il 28,1% della parte azionaria; 20% non applicabile (oro); 30% con dati mancanti"; badge "non applicabile" / "dati mancanti"; avviso solo per i dati mancanti |
+
+Da eseguire in produzione (proprietario) per popolare i dati, poi rileggere via MCP:
+`POST /api/portfolios/{id}/asset-metadata/backfill` (TER yFinance di TLT, IEF, DJP, GLD) e
+`POST /api/portfolios/{id}/etf-enrichment/backfill?refresh_missing_ter=true` (VEUR, VFEM, XAD1.DE da justETF).

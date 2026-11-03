@@ -933,6 +933,10 @@ export interface XRayEtfDetail {
   top_holdings: XRayHolding[];
   /** fund | direct_stock (its own underlying) | no_lookthrough (gold/commodity/crypto) | missing. */
   lookthrough_kind?: 'fund' | 'direct_stock' | 'no_lookthrough' | 'missing';
+  /** TASK-52: available | not_applicable (gold, commodity, bond, money market, crypto) | missing (data absent). */
+  lookthrough_status?: XRayLookthroughStatus;
+  /** Italian reason of lookthrough_status. */
+  lookthrough_reason?: string | null;
   /** Sum of the listed top-holding weights, in % of the fund. */
   listed_holdings_pct?: number | null;
   data_source?: 'justetf' | 'yahoo' | 'none';
@@ -941,11 +945,16 @@ export interface XRayEtfDetail {
   data_as_of_basis?: 'holdings_date' | 'fetched_at' | 'fetch_time' | null;
 }
 
+export type XRayLookthroughStatus = 'available' | 'not_applicable' | 'missing';
+
 export interface XRayCoverageIssue {
   asset_id: number;
   symbol: string;
   name: string;
   reason: string;
+  /** TASK-52: not_applicable positions are listed too, but they are not missing data. */
+  lookthrough_status?: XRayLookthroughStatus;
+  lookthrough_reason?: string | null;
 }
 
 export interface XRayResponse {
@@ -960,6 +969,13 @@ export interface XRayResponse {
   coverage_pct: number;
   /** Share of the portfolio (cash excluded) actually decomposed into underlying holdings. */
   lookthrough_coverage_pct?: number;
+  /** TASK-52: decomposed share of the applicable (equity) part; null when nothing is applicable. */
+  applicable_lookthrough_coverage_pct?: number | null;
+  /** Shares of coverage_denominator by lookthrough_status (sum to 100). */
+  available_pct?: number;
+  not_applicable_pct?: number;
+  missing_pct?: number;
+  applicable_denominator?: string;
   funds_with_holdings_pct?: number;
   classified_country_pct?: number;
   classified_sector_pct?: number;

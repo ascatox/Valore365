@@ -312,7 +312,10 @@ class AssetCrudMixin:
                            trailing_pe, forward_pe, dividend_yield, dividend_rate,
                            beta, fifty_two_week_high, fifty_two_week_low, avg_volume,
                            profit_margins, return_on_equity, revenue_growth, earnings_growth,
-                           description, website, logo_url, updated_at
+                           description, website, logo_url, updated_at,
+                           raw_info->>'netExpenseRatio' as raw_net_expense_ratio,
+                           raw_info->>'annualReportExpenseRatio' as raw_annual_report_expense_ratio,
+                           raw_info->>'expenseRatio' as raw_expense_ratio
                     from asset_metadata
                     where asset_id = any(:ids)
                 """),
@@ -347,6 +350,8 @@ class AssetCrudMixin:
                 description=row["description"],
                 website=row["website"],
                 logo_url=row["logo_url"],
+                # Only the expense-ratio keys of raw_info (TASK-52), not the whole payload.
+                raw_info=_expense_ratio_raw_info(row),
                 updated_at=row["updated_at"],
             )
         return result
@@ -487,3 +492,14 @@ class AssetCrudMixin:
                 {"max_age": max_age_days},
             ).fetchall()
         return [(int(r[0]), str(r[1])) for r in rows]
+
+
+def _expense_ratio_raw_info(row) -> dict | None:
+    """yFinance expense-ratio keys read from raw_info by get_asset_metadata_bulk (TASK-52)."""
+    keys = {
+        "netExpenseRatio": "raw_net_expense_ratio",
+        "annualReportExpenseRatio": "raw_annual_report_expense_ratio",
+        "expenseRatio": "raw_expense_ratio",
+    }
+    picked = {key: row.get(column) for key, column in keys.items() if row.get(column) is not None}
+    return picked or None

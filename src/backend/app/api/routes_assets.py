@@ -525,6 +525,7 @@ def register_assets_routes(
     def backfill_portfolio_etf_enrichment(
         portfolio_id: int,
         limit: int = Query(default=50, ge=1, le=200),
+        refresh_missing_ter: bool = Query(default=False),
         _auth: AuthContext = Depends(require_auth_rate_limited),
     ) -> dict:
         """Fetch justETF enrichment for the portfolio's assets that lack it (TASK-50).
@@ -533,7 +534,9 @@ def register_assets_routes(
         of the portfolio without an etf_enrichment row (cash, crypto and direct
         bonds are skipped). The stored investment_focus / index_tracked / name
         are then read by the shared asset-class classifier; the MCP and the
-        analyses never fetch it themselves (read-only).
+        analyses never fetch it themselves (read-only). With
+        ``refresh_missing_ter=true`` an existing row without a TER is fetched
+        again (TASK-52: e.g. an ETC typed ``stock``, whose TER is on justETF).
         """
         try:
             asset_ids = repo.get_portfolio_asset_ids(portfolio_id, _auth.user_id)
@@ -546,7 +549,9 @@ def register_assets_routes(
         failed: list[dict] = []
         attempted = 0
         for asset_id in asset_ids:
-            if asset_id in existing:
+            if asset_id in existing and not (
+                refresh_missing_ter and (existing[asset_id] or {}).get("ter") is None
+            ):
                 continue
             try:
                 asset = repo.get_asset(asset_id)
@@ -587,6 +592,85 @@ def register_assets_routes(
             "total_assets": len(asset_ids),
             "already_enriched": len(existing),
             "enriched": enriched,
+            "skipped": skipped,
+            "failed": failed,
+        }
+
+    @router.post("/portfolios/{portfolio_id}/asset-metadata/backfill")
+    def backfill_portfolio_asset_metadata(
+        portfolio_id: int,
+        limit: int = Query(default=50, ge=1, le=200),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> dict:
+        """Fetch yFinance metadata for the portfolio's assets that lack it (TASK-52).
+
+        Targets the assets with no asset_metadata row and the funds/ETPs
+        (shared classifier) whose stored metadata has no expense ratio, so the
+        TER of US ETFs (TLT, IEF, GLD, ...) comes from yFinance
+        (``netExpenseRatio`` / ``annualReportExpenseRatio`` / ``expenseRatio``).
+        Same path as /assets/{id}/metadata/refresh. Cash is skipped. The MCP
+        and the cost analyses only read what is stored (no network).
+        """
+        from ..finance_client import extract_expense_ratio_pct
+        from ..services.asset_classification import classify_asset
+
+        try:
+            asset_ids = repo.get_portfolio_asset_ids(portfolio_id, _auth.user_id)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+        existing = repo.get_asset_metadata_bulk(asset_ids) if asset_ids else {}
+        updated: list[dict] = []
+        skipped: list[dict] = []
+        failed: list[dict] = []
+        attempted = 0
+        for asset_id in asset_ids:
+            try:
+                asset = repo.get_asset(asset_id)
+            except ValueError:
+                continue
+            asset_type = (asset.asset_type or "").lower()
+            if asset_type == "cash":
+                skipped.append({"asset_id": asset_id, "symbol": asset.symbol, "reason": "asset_type"})
+                continue
+            meta = existing.get(asset_id)
+            if meta is not None:
+                has_ter = getattr(meta, "expense_ratio", None) is not None or (
+                    extract_expense_ratio_pct(getattr(meta, "raw_info", None))[0] is not None
+                )
+                classification = classify_asset(
+                    asset_type=asset.asset_type, name=asset.name, symbol=asset.symbol, isin=asset.isin,
+                )
+                is_fund = asset_type in {"etf", "fund"} or classification.is_exchange_traded_product
+                if has_ter or not is_fund:
+                    continue
+            if attempted >= limit:
+                skipped.append({"asset_id": asset_id, "symbol": asset.symbol, "reason": "limit"})
+                continue
+            try:
+                pricing = repo.get_asset_pricing_symbol(asset_id, provider=settings.finance_provider)
+                provider_symbol = pricing.provider_symbol
+            except ValueError:
+                provider_symbol = asset.symbol
+            attempted += 1
+            try:
+                info = finance_client.get_asset_info(provider_symbol)
+            except Exception as exc:  # noqa: BLE001 - one asset must not stop the backfill
+                failed.append({"asset_id": asset_id, "symbol": asset.symbol, "reason": type(exc).__name__})
+                continue
+            repo.upsert_asset_metadata(asset_id, _asdict(info))
+            updated.append({
+                "asset_id": asset_id,
+                "symbol": asset.symbol,
+                "provider_symbol": provider_symbol,
+                "quote_type": info.quote_type,
+                "expense_ratio_pct": info.expense_ratio,
+                "expense_ratio_source_key": getattr(info, "expense_ratio_source_key", None),
+            })
+        return {
+            "portfolio_id": portfolio_id,
+            "total_assets": len(asset_ids),
+            "updated": updated,
             "skipped": skipped,
             "failed": failed,
         }
