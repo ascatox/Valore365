@@ -239,6 +239,15 @@ singolo non cambiano.
   `get_aggregate_stress_test` e `get_aggregate_xray` sono in `HEAVY_TOOLS` (quota dei tool pesanti,
   condivisa con quelli singoli). Valgono anche concorrenza, timeout e dimensione massima del risultato.
   `get_aggregate_xray`, come `get_xray_summary`, non riceve il client justETF (nessuna scrittura).
+- **Output X-Ray** (`get_xray_summary`, `get_aggregate_xray`): percentuali sul valore delle posizioni,
+  liquidità esclusa (`coverage_denominator`). `lookthrough_coverage_pct` = quota del portafoglio davvero
+  scomposta (peso del fondo × quota coperta dalle top holdings, più i titoli singoli);
+  `funds_with_holdings_pct` = quota in fondi con almeno una top holding (= `coverage_pct`, invariato);
+  `classified_country_pct` / `classified_sector_pct`; `geographic_exposure` e `sector_exposure`
+  sommano a 100 (primi 10 + "Altri" + "Non classificato"; oro, obbligazioni ecc. senza dati come
+  bucket di asset class); `data_as_of` = data più vecchia dei dati del provider; `funds` con fonte
+  (`justetf`/`yahoo`/`none`) e data per posizione; `coverage_note` in italiano. Dettagli in
+  [audit-mcp-2026-11/methodology.md](audit-mcp-2026-11/methodology.md) §12.
 - **Non disponibili in forma aggregata** (l'app non ha una vista aggregata equivalente, quindi non
   vengono approssimati): drift rispetto al target e ordini di ribilanciamento (i target sono per
   portafoglio), `calculate_what_if`, `calculate_pac_contribution`, dividendi, costi (TER), reddito

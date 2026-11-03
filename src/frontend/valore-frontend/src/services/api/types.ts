@@ -931,6 +931,14 @@ export interface XRayEtfDetail {
   holdings_source: 'justetf' | 'yfinance' | 'missing';
   failure_reason: string | null;
   top_holdings: XRayHolding[];
+  /** fund | direct_stock (its own underlying) | no_lookthrough (gold/commodity/crypto) | missing. */
+  lookthrough_kind?: 'fund' | 'direct_stock' | 'no_lookthrough' | 'missing';
+  /** Sum of the listed top-holding weights, in % of the fund. */
+  listed_holdings_pct?: number | null;
+  data_source?: 'justetf' | 'yahoo' | 'none';
+  /** ISO date of the provider data used for this position. */
+  data_as_of?: string | null;
+  data_as_of_basis?: 'holdings_date' | 'fetched_at' | 'fetch_time' | null;
 }
 
 export interface XRayCoverageIssue {
@@ -948,7 +956,20 @@ export interface XRayResponse {
   aggregated_holdings: XRayHolding[];
   etf_details: XRayEtfDetail[];
   etf_count: number;
+  /** Legacy: weight of funds with at least one top holding (= funds_with_holdings_pct). */
   coverage_pct: number;
+  /** Share of the portfolio (cash excluded) actually decomposed into underlying holdings. */
+  lookthrough_coverage_pct?: number;
+  funds_with_holdings_pct?: number;
+  classified_country_pct?: number;
+  classified_sector_pct?: number;
+  unclassified_country_pct?: number;
+  unclassified_sector_pct?: number;
+  coverage_denominator?: string;
+  coverage_note?: string;
+  /** Oldest ISO date of the provider data used. */
+  data_as_of?: string | null;
+  /** Sum to 100 over coverage_denominator, with a "Non classificato" bucket. */
   aggregated_country_exposure: Record<string, number>;
   aggregated_sector_exposure: Record<string, number>;
   coverage_issues: XRayCoverageIssue[];
