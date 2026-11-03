@@ -12,7 +12,7 @@ Copilot interno (riepilogo, posizioni, performance, salute del portafoglio, X-Ra
 - Trasporto: Streamable HTTP, modalità **stateless** con risposte JSON (nessuna sessione lato server).
 - SDK: pacchetto ufficiale `mcp` (Python), versione `1.30.0` (ultima della serie 1.x; la 2.x cambia
   l'API lato server). Vedi [Dipendenze](#dipendenze-pip-audit-novembre-2026).
-- Codice: `src/backend/app/mcp_server/` (`config.py`, `auth.py`, `tools.py`, `routes.py`).
+- Codice: `src/backend/app/mcp_server/` (`config.py`, `auth.py`, `tools.py`, `aggregate_tools.py`, `routes.py`).
 - Test: `src/backend/tests/integration/test_mcp_server.py`.
 
 ## Modello di sicurezza
@@ -122,6 +122,7 @@ Esempio di Protected Resource Metadata:
 | `calculate_what_if` | `portfolio_id`, `action` (`buy`/`sell`), `symbol`, `amount_eur` |
 | `calculate_pac_contribution` | `portfolio_id`, `monthly_amount` |
 | `search_asset_info` | `portfolio_id`, `symbol` |
+| `get_aggregate_summary`, `get_aggregate_positions`, `get_aggregate_allocation`, `get_aggregate_performance`, `get_aggregate_recent_transactions`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray` | `portfolio_ids` (da 2 a 20 id distinti, stessa valuta base): vedi [Vista aggregata](#vista-aggregata-più-portafogli) |
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
 
@@ -186,6 +187,42 @@ la cui somma per categoria è la differenza tra massimo e punteggio.
 somma è il lordo proiettato), senza crescita sul reddito fisso; elenca `unknown_class_symbols` e
 `missing_yield_symbols` e dichiara l'ipotesi fiscale in `tax_note` (aliquota uniforme, 12,5% sui titoli
 di Stato non modellato).
+
+### Vista aggregata (più portafogli)
+
+I tool `get_aggregate_*` (`app/mcp_server/aggregate_tools.py`) leggono più portafogli dello stesso
+utente **come uno solo**, come la vista aggregata dell'app (`GET /api/portfolios/aggregate/...`,
+`app/api/routes_aggregate.py`). Sono in sola lettura (`readOnlyHint: true`): i portafogli restano
+separati nel database e non viene creato né modificato nulla. Gli schemi dei tool a portafoglio
+singolo non cambiano.
+
+- **Parametro:** `portfolio_ids`, array di interi (ognuno tra 1 e 2³¹−1), `minItems: 2`,
+  `maxItems: 20` (lo stesso limite delle route aggregate), `uniqueItems: true`. Gli id duplicati sono
+  **rifiutati** dallo schema (non deduplicati in silenzio), così l'assistente sa sempre quali
+  portafogli ha aggregato; per un portafoglio solo si usano i tool con `portfolio_id`.
+- **Autorizzazione:** prima di qualsiasi lettura tutti gli id passano da `resolve_portfolio_scope`
+  (`app/repository/_scope.py`), lo stesso controllo delle route aggregate. Un id inesistente o di un
+  altro utente dà sempre lo stesso errore `Portfolio non trovato`, senza dati e senza indicare quale
+  id ha fallito. Valute base diverse: `I portafogli aggregati devono avere la stessa valuta base`.
+- **Stessi numeri dell'app:** ogni tool chiama lo stesso metodo della route aggregata
+  (`get_summary_multi`, `get_positions_multi`, `get_allocation_multi`, `list_transactions_multi`) o lo
+  stesso servizio con la lista di id (`get_performance_summary`, `analyze_portfolio_health`,
+  `run_monte_carlo_projection`, `run_stress_test`, `compute_portfolio_xray`); il formato dell'output è
+  quello del tool singolo corrispondente. La performance è il **TWR sul perimetro combinato**
+  (valori e flussi sommati), mai la media dei TWR dei singoli portafogli. Le posizioni dello stesso
+  titolo in più portafogli diventano una riga (quantità e costi sommati, pesi sul totale).
+- **Output:** ogni risultato contiene `portfolio_ids`, `base_currency` e `aggregate_note` (vista
+  aggregata in sola lettura). `get_aggregate_recent_transactions` riporta `portfolio_id` e
+  `portfolio_name` per ogni riga.
+- **Limiti:** ogni chiamata conta una volta nel rate limit generale, qualunque sia il numero di id.
+  `get_aggregate_performance`, `get_aggregate_health`, `get_aggregate_monte_carlo`,
+  `get_aggregate_stress_test` e `get_aggregate_xray` sono in `HEAVY_TOOLS` (quota dei tool pesanti,
+  condivisa con quelli singoli). Valgono anche concorrenza, timeout e dimensione massima del risultato.
+  `get_aggregate_xray`, come `get_xray_summary`, non riceve il client justETF (nessuna scrittura).
+- **Non disponibili in forma aggregata** (l'app non ha una vista aggregata equivalente, quindi non
+  vengono approssimati): drift rispetto al target e ordini di ribilanciamento (i target sono per
+  portafoglio), `calculate_what_if`, `calculate_pac_contribution`, dividendi, costi (TER), reddito
+  atteso, day movers. La liquidità complessiva è in `get_aggregate_summary` (`cash_balance`).
 
 ## Configurazione del dashboard Clerk
 
@@ -427,7 +464,7 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | JWT rigorosi | `alg` = RS256 (rifiutati `none`/`HS*`), `crit` rifiutato, `nbf` e `iat` futuri rifiutati (tolleranza 5 s), durata massima del token. All'avvio un warning se `MCP_REQUIRE_AUDIENCE=false` | `MCP_MAX_TOKEN_LIFETIME_SECONDS`, `MCP_REQUIRE_AUDIENCE` |
 | Timeout per tool | Il tool gira in un thread; oltre il timeout il client riceve un errore generico. Il thread non può essere interrotto e termina in background, ma continua a occupare uno slot di concorrenza dell'utente finché non finisce | `MCP_TOOL_TIMEOUT_SECONDS` |
 | Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" (`code: concurrency_busy`, `retry_after_s: 2`). Il controllo avviene prima della quota dei tool pesanti, quindi una chiamata rifiutata come "busy" non consuma quota | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
-| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
+| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` e gli aggregati `get_aggregate_performance`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
 | Dimensione del risultato | Il JSON del risultato è limitato a 200 KB: oltre, il testo viene tagliato con il marcatore `[risultato troncato: superato il limite di 200 KB]` e `structuredContent` è omesso | codice |
 | Validazione argomenti | Schema JSON rigoroso (`additionalProperties: false`, `portfolio_id` intero positivo, numeri con minimo/massimo, `symbol` max 32 caratteri con charset limitato, NaN/Inf rifiutati), verificato sia dall'SDK sia da `run_tool_sync` prima di eseguire il tool. I batch JSON-RPC (array) non sono accettati dal trasporto dell'SDK (400) | `ARGUMENT_CONSTRAINTS` |
 | Prompt injection | Oltre al troncamento, da tutti i testi (chiavi comprese) vengono rimossi caratteri di controllo, controlli bidirezionali Unicode, caratteri a larghezza zero/invisibili e caratteri "tag" (U+E0000-U+E0FFF); `\n` e `\t` restano. Ogni descrizione di tool e le istruzioni del server avvertono che gli output sono dati, non istruzioni | codice |

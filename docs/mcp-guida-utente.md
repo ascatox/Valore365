@@ -36,6 +36,9 @@ con il tuo normale login Valore365.
 **Può (sola lettura):**
 
 - elencare i tuoi portafogli;
+- leggere più portafogli **insieme** (da 2 a 20, nella stessa valuta), come la vista aggregata
+  dell'app: riepilogo, posizioni, allocazione, performance, transazioni, salute, Monte Carlo,
+  stress test e X-Ray complessivi. I portafogli restano separati: è solo una lettura combinata;
 - leggere riepilogo, posizioni, liquidità, transazioni recenti, performance, dividendi e costi;
 - calcolare analisi come salute del portafoglio, X-Ray (esposizione geografica e settoriale),
   stress test, proiezione Monte Carlo e reddito atteso;
@@ -147,6 +150,8 @@ succede dietro le quinte.
 | «Quanto pago di TER in totale e quanto mi costerà in 10 anni?» | `get_cost_breakdown` |
 | «Quanti dividendi ho incassato e quanto reddito posso aspettarmi?» | `get_dividend_summary`, `get_income_projection` |
 | «Simula uno stress test e la proiezione Monte Carlo a 10 anni.» | `get_stress_test`, `get_monte_carlo` |
+| «Dammi il riepilogo complessivo di *Parent* e *Wealth*.» | `list_portfolios`, `get_aggregate_summary` |
+| «Com'è andata la performance di *Parent* e *Wealth* insieme da inizio anno? E le posizioni complessive?» | `get_aggregate_performance`, `get_aggregate_positions` |
 
 > **Come vengono calcolati gli ordini di ribilanciamento.** Si ribilancia solo se almeno uno strumento si
 > scosta dal suo peso target di **più di 0,5 punti percentuali**. In quel caso tutti gli strumenti vengono
@@ -154,7 +159,10 @@ succede dietro le quinte.
 > liquidità indicata nella domanda si aggiunge a quella già presente nel portafoglio. Commissioni e imposte
 > non sono incluse: gli importi sono lordi.
 
-Consiglio: se hai più portafogli, nomina quello che ti interessa («il portafoglio *Pensione*»).
+Consiglio: se hai più portafogli, nomina quello che ti interessa («il portafoglio *Pensione*»), oppure
+chiedi esplicitamente una vista **complessiva** di quelli che vuoi sommare. Nella vista complessiva
+ribilanciamento, drift dal target, simulazioni, dividendi, costi e reddito atteso non sono disponibili:
+chiedili per un portafoglio alla volta. I portafogli in valute base diverse non si possono sommare.
 
 ## Scollegare e revocare l'accesso
 
@@ -186,6 +194,7 @@ account, cambia la password di Valore365 e contatta chi gestisce il servizio.
 |---|---|
 | **Errore 401 / "Unauthorized" / il client chiede di nuovo il login** | L'autorizzazione è scaduta o non è valida. Riconnetti il connettore (claude.ai: *Connect*; Claude Code: `/mcp` → autenticati di nuovo) e rifai il login Valore365. |
 | **Il login non si apre o il collegamento fallisce subito** | Controlla di aver incollato l'URL completo che finisce con `/mcp` e che sia quello del backend (copialo da *Impostazioni → Copilot*). Se ricevi un errore 503 o 404, il servizio MCP non è attivo sul server: contatta chi gestisce Valore365. |
+| **"I portafogli aggregati devono avere la stessa valuta base"** | Hai chiesto una vista complessiva di portafogli in valute diverse (es. EUR e USD): chiedila solo per quelli nella stessa valuta. |
 | **"Portfolio non trovato"** | L'assistente ha usato l'id di un portafoglio che non esiste o non è tuo. Chiedigli di elencare prima i portafogli («Quali portafogli ho?») e poi di usare quello giusto. Se hai appena cambiato account, scollega e ricollega il connettore. |
 | **"Non ho trovato portafogli" / elenco vuoto** | Stai usando un account Valore365 diverso da quello con i tuoi portafogli, oppure non ne hai ancora creato uno. Crea o importa un portafoglio nell'app, oppure riconnetti il connettore con l'account giusto. |
 | **Errore 429 / "Too many requests"** | Hai superato il limite di richieste al minuto (di default 60), oppure dalla tua rete sono arrivati troppi tentativi di accesso non validi. Attendi qualche minuto e riprova. |
