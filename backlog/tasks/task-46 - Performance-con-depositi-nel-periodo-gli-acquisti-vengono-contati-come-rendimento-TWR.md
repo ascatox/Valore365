@@ -3,9 +3,10 @@ id: TASK-46
 title: >-
   Performance: con depositi nel periodo gli acquisti vengono contati come
   rendimento (TWR)
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-03T10:53:00Z'
+updated_date: '2026-11-03T11:00:00Z'
 labels:
   - audit-mcp
   - backend
@@ -29,3 +30,9 @@ Emerso in TASK-44 (controllo C1). Se nel periodo ci sono depositi o prelievi, pe
 - [ ] #3 Test con deposito+acquisto, vendita+prelievo, mix di periodi con e senza depositi, perimetro aggregato
 - [ ] #4 Confronto prima/dopo del TWR di un portafoglio sintetico documentato in docs/audit-mcp-2026-11
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-03 decisione approvata (opzione A): gli acquisti vengono pagati dalla liquidità; la parte non coperta dalla liquidità disponibile è un flusso esterno implicito (apporto). Simmetricamente, i proventi delle vendite restano in liquidità (non sono prelievi) finché non c'è un prelievo registrato.
+<!-- SECTION:NOTES:END -->
