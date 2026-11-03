@@ -284,3 +284,25 @@ def completed_sessions_after(symbol: str, last_day: date, now: datetime, *, limi
             count += 1
         day += timedelta(days=1)
     return count
+
+
+def last_completed_session_close(symbol: str, now: datetime, *, lookback_days: int = 21) -> datetime | None:
+    """Istante (UTC) di chiusura dell'ultima seduta conclusa in `now` per la borsa del simbolo (TASK-54).
+
+    Stesso calendario di completed_sessions_after: weekend e principali
+    festività non sono sedute, quindi lunedì mattina restituisce la chiusura
+    di venerdì. None se non c'è una seduta negli ultimi `lookback_days` giorni.
+    """
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=UTC)
+    session, _, _ = _calendar_for_symbol(symbol)
+    tz = ZoneInfo(session.timezone)
+    today = now.astimezone(tz).date()
+    for offset in range(max(1, int(lookback_days)) + 1):
+        day = today - timedelta(days=offset)
+        if not is_trading_day(symbol, day):
+            continue
+        closes_at = datetime.combine(day, session.close, tzinfo=tz)
+        if closes_at <= now:
+            return closes_at.astimezone(UTC)
+    return None

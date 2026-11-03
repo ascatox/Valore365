@@ -394,7 +394,7 @@ def test_initialize_and_list_read_only_tools(mcp_on):
     assert listed.status_code == 200
     tools = listed.json()['result']['tools']
     names = {t['name'] for t in tools}
-    assert names == {'list_portfolios', *MCP_TOOL_ALLOWLIST, *AGGREGATE_TOOLS}
+    assert names == {'list_portfolios', 'get_data_freshness', *MCP_TOOL_ALLOWLIST, *AGGREGATE_TOOLS}
 
     for tool in tools:
         assert tool['annotations']['readOnlyHint'] is True
@@ -432,6 +432,31 @@ def test_tool_call_on_owned_portfolio(mcp_on, fake_repo):
     assert result['isError'] is False
     assert result['structuredContent']['market_value'] == 1000.0
     assert fake_repo.summary_calls == [(1, OWNER)]
+
+
+def test_value_tools_carry_data_freshness_and_get_data_freshness_is_callable(mcp_on, fake_repo):
+    """TASK-54: data_freshness never breaks a tool, even when the repo cannot provide it."""
+    client = TestClient(api_main.app)
+    summary = _rpc(
+        client, 'tools/call', {'name': 'get_portfolio_summary', 'arguments': {'portfolio_id': 1}}, token=_make_token(),
+    ).json()['result']
+    assert summary['isError'] is False
+    fresh = summary['structuredContent']['data_freshness']
+    assert set(fresh) == {
+        'last_successful_price_sync', 'last_sync_status', 'last_sync_finished_at', 'stale_symbols', 'oldest_price_at', 'note',
+    }
+    assert fresh['last_successful_price_sync'] is None and 'non disponibile' in fresh['note']
+
+    dedicated = _rpc(
+        client, 'tools/call', {'name': 'get_data_freshness', 'arguments': {'portfolio_id': 1}}, token=_make_token(), request_id=2,
+    ).json()['result']
+    assert dedicated['isError'] is False
+    assert dedicated['structuredContent']['portfolio_id'] == 1
+    foreign = _rpc(
+        client, 'tools/call', {'name': 'get_data_freshness', 'arguments': {'portfolio_id': 1}},
+        token=_make_token(sub='user_other'), request_id=3,
+    ).json()['result']
+    assert foreign['isError'] is True
 
 
 def test_tool_call_on_portfolio_not_owned_returns_error(mcp_on, fake_repo):
@@ -587,7 +612,7 @@ def test_new_copilot_tool_is_not_exposed_until_allowlisted(monkeypatch):
     ])
     names = {t.name for t in build_tool_list()}
     assert 'delete_everything' not in names
-    assert names == {'list_portfolios', *MCP_TOOL_ALLOWLIST, *AGGREGATE_TOOLS}
+    assert names == {'list_portfolios', 'get_data_freshness', *MCP_TOOL_ALLOWLIST, *AGGREGATE_TOOLS}
 
 
 # --- 2. X-Ray strictly read-only ----------------------------------------------

@@ -117,6 +117,7 @@ Esempio di Protected Resource Metadata:
 | Tool | Parametri |
 |---|---|
 | `list_portfolios` | nessuno: restituisce id, nome e valuta base dei portafogli dell'utente |
+| `get_data_freshness` | `portfolio_id`: per ogni posizione ultimo prezzo, ultima chiusura giornaliera, prezzo fermo e motivo, più lo stato della sincronizzazione dei dati di mercato (vedi [market-data-sync.md](market-data-sync.md)) |
 | `get_portfolio_summary`, `get_positions`, `get_target_drift`, `get_performance`, `get_cash_balance`, `get_recent_transactions`, `get_portfolio_health`, `get_day_movers`, `get_monte_carlo`, `get_dividend_summary`, `get_cost_breakdown`, `get_xray_summary`, `get_stress_test`, `get_income_projection` | `portfolio_id` |
 | `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale, liquidità aggiuntiva), `mode` (opzionale: `rebalance` predefinito, `buy_only`, `sell_only`) |
 | `calculate_what_if` | `portfolio_id`, `action` (`buy`/`sell`), `symbol`, `amount_eur` |
@@ -125,6 +126,17 @@ Esempio di Protected Resource Metadata:
 | `get_aggregate_summary`, `get_aggregate_positions`, `get_aggregate_allocation`, `get_aggregate_performance`, `get_aggregate_recent_transactions`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray` | `portfolio_ids` (da 2 a 20 id distinti, stessa valuta base): vedi [Vista aggregata](#vista-aggregata-più-portafogli) |
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
+
+**Freschezza dei dati (TASK-54).** I tool che restituiscono valori del portafoglio (`get_portfolio_summary`,
+`get_positions`, `get_target_drift`, `get_performance`, `get_portfolio_health`, `get_day_movers`,
+`calculate_rebalance_orders`, `calculate_what_if`, `get_stress_test` e gli aggregati summary, positions,
+allocation, performance, health, stress test) aggiungono un blocco `data_freshness`:
+`last_successful_price_sync` (fine dell'ultima sincronizzazione riuscita), `last_sync_status` e
+`last_sync_finished_at` (ultima esecuzione, anche parziale o fallita), `stale_symbols` (prezzi fermi
+secondo il calendario della borsa di ogni asset), `oldest_price_at` (prezzo più vecchio fra le posizioni
+aperte) e `note` in italiano. Se lo stato non è leggibile i campi valgono `null` con una nota, e il tool
+risponde comunque. Il dettaglio per posizione è in `get_data_freshness`. Come la sincronizzazione viene
+eseguita e verificata: [market-data-sync.md](market-data-sync.md).
 
 `calculate_rebalance_orders` segue queste regole:
 

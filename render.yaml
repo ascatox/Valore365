@@ -53,6 +53,14 @@ services:
       # PRICE_UNCHANGED_TS_WARN_AFTER=3.
       - key: DAILY_BARS_SCHEDULER_ENABLED
         value: "true"
+      # TASK-54: token Bearer degli endpoint interni /api/internal/market-data/sync
+      # chiamati da GitHub Actions (.github/workflows/market-data-sync.yml).
+      # Impostato nel dashboard (vuoto = endpoint disattivati, 404); stesso valore
+      # del secret MARKET_DATA_SYNC_TOKEN del repository. Docs: docs/market-data-sync.md.
+      # Default degli altri parametri: MARKET_DATA_SYNC_ON_STARTUP=true,
+      # MARKET_DATA_SYNC_MAX_LOOKBACK_DAYS=30, MARKET_DATA_SYNC_GRACE_MINUTES=60.
+      - key: MARKET_DATA_SYNC_TOKEN
+        sync: false
       - key: CLERK_AUTH_ENABLED
         value: "true"
       - key: CORS_ALLOWED_ORIGINS
