@@ -27,6 +27,7 @@ import { AssetInfoModal } from '../dashboard/holdings/AssetInfoModal';
 import type { XRayEtfDetail, XRayHolding } from '../../services/api';
 import { formatXrayFailureReason } from '../../services/dataQuality';
 import type { PortfolioScopeInput } from '../../scope/portfolioScope';
+import { exposureRows, formatIsoDateIt, formatPctIt, lookthroughCoverageText } from './xrayFormat';
 
 const PRIVACY_MASK = '******';
 
@@ -40,6 +41,8 @@ function getHoldingsSourceTone(detail: XRayEtfDetail): { color: string; label: s
   if (detail.holdings_source === 'yfinance') return { color: 'blue', label: 'fallback yfinance' };
   return { color: 'orange', label: 'copertura assente' };
 }
+
+const DATA_SOURCE_LABEL: Record<string, string> = { justetf: 'justETF', yahoo: 'Yahoo' };
 
 interface Props {
   /** Portfolio or aggregate scope (aggregate: merged holdings). */
@@ -195,11 +198,37 @@ export function XRayCard({ scope }: Props) {
               <Badge variant="light" color="indigo">
                 {xray.etf_count} ETF analizzati
               </Badge>
-              <Badge variant="light" color={xray.coverage_pct >= 80 ? 'teal' : 'yellow'}>
-                Copertura {privacy ? PRIVACY_MASK : `${xray.coverage_pct}%`}
-              </Badge>
+              {xray.lookthrough_coverage_pct != null ? (
+                <Tooltip
+                  label={xray.coverage_note || xray.coverage_denominator}
+                  multiline
+                  w={320}
+                  withArrow
+                  disabled={!xray.coverage_note && !xray.coverage_denominator}
+                >
+                  <Badge variant="light" color={xray.lookthrough_coverage_pct >= 60 ? 'teal' : 'yellow'}>
+                    {privacy ? `Scomposto il ${PRIVACY_MASK}` : lookthroughCoverageText(xray.lookthrough_coverage_pct)}
+                  </Badge>
+                </Tooltip>
+              ) : (
+                <Badge variant="light" color={xray.coverage_pct >= 80 ? 'teal' : 'yellow'}>
+                  Copertura {privacy ? PRIVACY_MASK : `${xray.coverage_pct}%`}
+                </Badge>
+              )}
             </Group>
           </Group>
+
+          {xray.lookthrough_coverage_pct != null && (
+            <Text size="xs" c="dimmed">
+              {privacy
+                ? 'Percentuali calcolate sul valore delle posizioni, liquidità esclusa.'
+                : `Fondi con top holdings note: ${formatPctIt(xray.funds_with_holdings_pct ?? xray.coverage_pct)} · paese noto: ${formatPctIt(xray.classified_country_pct ?? 0)} · settore noto: ${formatPctIt(xray.classified_sector_pct ?? 0)}. Percentuali sul valore delle posizioni, liquidità esclusa.`}
+              {' '}
+              {xray.data_as_of
+                ? `Dati del provider al ${formatIsoDateIt(xray.data_as_of)} (data più vecchia).`
+                : 'Data dei dati del provider non disponibile.'}
+            </Text>
+          )}
 
           {xray.coverage_issues.length > 0 && (
             <Alert
@@ -230,11 +259,11 @@ export function XRayCard({ scope }: Props) {
                 {Object.keys(xray.aggregated_country_exposure ?? {}).length > 0 && (
                   <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
                     <Text size="sm" fw={600} mb={4}>Esposizione Geografica</Text>
-                    {Object.entries(xray.aggregated_country_exposure).slice(0, 8).map(([country, weight]) => (
+                    {exposureRows(xray.aggregated_country_exposure).map(([country, weight, unclassified]) => (
                       <Group key={country} justify="space-between" gap="xs" wrap="nowrap">
-                        <Text size="xs" truncate style={{ flex: 1 }}>{country}</Text>
+                        <Text size="xs" truncate c={unclassified ? 'dimmed' : undefined} fs={unclassified ? 'italic' : undefined} style={{ flex: 1 }}>{country}</Text>
                         <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-                          <Progress value={Math.min(weight, 100)} size="xs" color="teal" style={{ width: 50 }} />
+                          <Progress value={Math.min(weight, 100)} size="xs" color={unclassified ? 'gray' : 'teal'} style={{ width: 50 }} />
                           <Text size="xs" fw={500} w={42} ta="right">{weight.toFixed(1)}%</Text>
                         </Group>
                       </Group>
@@ -244,11 +273,11 @@ export function XRayCard({ scope }: Props) {
                 {Object.keys(xray.aggregated_sector_exposure ?? {}).length > 0 && (
                   <Stack gap={4} style={{ flex: 1, minWidth: 200 }}>
                     <Text size="sm" fw={600} mb={4}>Esposizione Settoriale</Text>
-                    {Object.entries(xray.aggregated_sector_exposure).slice(0, 8).map(([sector, weight]) => (
+                    {exposureRows(xray.aggregated_sector_exposure).map(([sector, weight, unclassified]) => (
                       <Group key={sector} justify="space-between" gap="xs" wrap="nowrap">
-                        <Text size="xs" truncate style={{ flex: 1 }}>{sector}</Text>
+                        <Text size="xs" truncate c={unclassified ? 'dimmed' : undefined} fs={unclassified ? 'italic' : undefined} style={{ flex: 1 }}>{sector}</Text>
                         <Group gap={4} wrap="nowrap" style={{ flexShrink: 0 }}>
-                          <Progress value={Math.min(weight, 100)} size="xs" color="violet" style={{ width: 50 }} />
+                          <Progress value={Math.min(weight, 100)} size="xs" color={unclassified ? 'gray' : 'violet'} style={{ width: 50 }} />
                           <Text size="xs" fw={500} w={42} ta="right">{weight.toFixed(1)}%</Text>
                         </Group>
                       </Group>
@@ -397,9 +426,21 @@ export function XRayCard({ scope }: Props) {
                             <Badge size="sm" variant="light" color={sourceTone.color}>
                               {sourceTone.label}
                             </Badge>
+                            {etf.listed_holdings_pct != null && (
+                              <Tooltip label="Quota del fondo coperta dalle top holdings elencate" withArrow>
+                                <Badge size="sm" variant="light" color="gray">
+                                  Top holdings: {formatPctIt(etf.listed_holdings_pct)} del fondo
+                                </Badge>
+                              </Tooltip>
+                            )}
+                            {etf.data_as_of && (
+                              <Badge size="sm" variant="outline" color="gray">
+                                {DATA_SOURCE_LABEL[etf.data_source ?? ''] ?? 'Dati'} al {formatIsoDateIt(etf.data_as_of)}
+                              </Badge>
+                            )}
                             {!etf.holdings_available && (
                               <Badge size="sm" variant="light" color="orange">
-                                Dati non disponibili
+                                {etf.lookthrough_kind === 'direct_stock' ? 'Titolo singolo' : 'Dati non disponibili'}
                               </Badge>
                             )}
                           </Group>

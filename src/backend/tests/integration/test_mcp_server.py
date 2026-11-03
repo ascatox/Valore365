@@ -1353,6 +1353,44 @@ def test_aggregate_call_counts_once_in_the_general_limiter(mcp_on, monkeypatch):
     assert _rpc(client, 'ping', token=_make_token()).status_code == 429
 
 
+def test_aggregate_xray_exposes_coverage_denominators_and_data_date(mcp_on, monkeypatch):
+    """TASK-48: look-through coverage, unclassified share and data date over MCP."""
+    from app.schemas.portfolio_doctor import XRayEtfDetail, XRayResponse
+    from app.services import portfolio_doctor
+
+    def _fake_xray(repo, ids, user_id, finance_client, justetf_client=None):
+        return XRayResponse(
+            portfolio_id=0, portfolio_ids=list(ids), etf_count=1, coverage_pct=50.0,
+            lookthrough_coverage_pct=22.5, funds_with_holdings_pct=50.0,
+            classified_country_pct=45.0, classified_sector_pct=0.0,
+            aggregated_country_exposure={'United States': 45.0, 'Non classificato': 55.0},
+            aggregated_sector_exposure={'Non classificato': 100.0},
+            coverage_denominator='Valore di mercato delle posizioni, liquidità esclusa',
+            coverage_note='Scomposto il 22,5% del portafoglio', data_as_of='2026-09-30',
+            etf_details=[XRayEtfDetail(symbol='AAA', name='AAA', portfolio_weight_pct=50.0,
+                                       holdings_available=True, holdings_source='justetf',
+                                       lookthrough_kind='fund', listed_holdings_pct=45.0,
+                                       data_source='justetf', data_as_of='2026-09-30',
+                                       data_as_of_basis='holdings_date')],
+        )
+
+    monkeypatch.setattr(portfolio_doctor, 'compute_portfolio_xray', _fake_xray)
+    monkeypatch.setattr(_FakeRepo, 'resolve_portfolio_scope', lambda self, ids, uid: SimpleNamespace(
+        portfolio_ids=tuple(ids), base_currency='EUR'))
+    result = _call(TestClient(api_main.app), 'get_aggregate_xray', {'portfolio_ids': [1, 2]})
+
+    assert result['isError'] is False, result
+    out = result['structuredContent']
+    assert out['lookthrough_coverage_pct'] == 22.5
+    assert out['funds_with_holdings_pct'] == 50.0
+    assert out['classified_country_pct'] == 45.0
+    assert out['coverage_denominator'] and out['coverage_note']
+    assert out['data_as_of'] == '2026-09-30'
+    assert sum(out['geographic_exposure'].values()) == 100.0
+    assert out['sector_exposure'] == {'Non classificato': 100.0}
+    assert out['funds'][0]['source'] == 'justetf'
+
+
 def test_aggregate_xray_never_gets_a_justetf_client(mcp_on, monkeypatch):
     from app.mcp_server import aggregate_tools
 

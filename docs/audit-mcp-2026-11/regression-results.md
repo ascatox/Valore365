@@ -181,3 +181,35 @@ Test esistenti aggiornati (codificavano la vecchia semantica):
   `::test_batch_valuation_before_first_transaction_matches_empty_portfolio_rule`: il saldo iniziale
   (500 nei dati finti) è ora parte della storia dal giorno della prima transazione (+500 su ogni
   valore).
+
+## Run TASK-48 (2026-11-03) — X-Ray: copertura, denominatori e data dei dati
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_xray_coverage.py -q
+# 11 passed   (test nuovi)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 870 passed  (prima: 858 passed; +11 test_xray_coverage.py, +1 test MCP get_aggregate_xray, 1 aspettativa aggiornata)
+```
+
+Frontend (`src/frontend/valore-frontend`): `npm run lint` pulito; `npx vitest run` 140 passed
+(27 file, +4 test `XRayCard.test.tsx`); `npx tsc -b` 140 errori (baseline invariata, nessuno nei
+file toccati).
+
+Casi verificati (`tests/unit/test_xray_coverage.py`):
+
+| Caso | Risultato |
+|---|---|
+| Fondo 50% con top 10 al 45% + fondo 50% senza dati | `lookthrough_coverage_pct` 22,5; `funds_with_holdings_pct` 50; `coverage_pct` 50 (invariato) |
+| Fondo 50% (top al 40%) + azione 50% | look-through 70 (azione = sottostante di sé stessa) |
+| Paesi 60+30% di un fondo al 60% + fondo senza dati al 40% | USA 36, "Non classificato" 46, somma 100; settori: 60 + 40 non classificato |
+| Equity 50% + oro 20% + obbligazionario 30% (solo paesi) | "Oro (asset class)" 20 in paesi e settori; "Obbligazioni (asset class)" 30 nei settori; somme 100 |
+| Posizione `cash` 20% | esclusa dal denominatore: USA 100%, look-through 50% del fondo al 50% |
+| Nessun dato | look-through 0, "Non classificato" 100, `data_as_of` null, `data_source` none |
+| `holdings_date` 30.09.2026 / non leggibile (fetched_at 15/10) | 2026-09-30 (`holdings_date`) / 2026-10-15 (`fetched_at`); complessivo 2026-09-30 |
+| Copilot/MCP con 14 paesi | primi 10 + "Altri" + "Non classificato" = 100 |
+
+Test esistente aggiornato: `test_audit_section_c.py::test_xray_coverage_is_weight_with_any_top_holdings_and_exposures_are_on_total`
+→ `::test_xray_coverage_has_explicit_denominators_and_exposures_sum_to_100` (la geografia ora include
+"Non classificato" 50; `lookthrough_coverage_pct` 10; `data_as_of` presente).

@@ -251,7 +251,9 @@ AGGREGATE_TOOLS: dict[str, AggregateTool] = {
             title="X-Ray aggregato",
             description=(
                 "X-Ray di più portafogli letti come uno solo: principali titoli sottostanti degli ETF, "
-                "esposizione geografica e settoriale (solo dati ETF già in cache)."
+                "esposizione geografica e settoriale (solo dati ETF già in cache). Copertura del look-through "
+                "(lookthrough_coverage_pct) sul valore delle posizioni esclusa la liquidità, esposizioni che "
+                "sommano a 100 con 'Non classificato', data dei dati del provider (data_as_of)."
             ),
             handler=_copilot("get_xray_summary"),
             heavy=True,

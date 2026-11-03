@@ -230,7 +230,7 @@ def test_income_projection_counts_only_distributions_and_lists_accumulating_fund
 # --- C6: X-Ray coverage -----------------------------------------------------------
 
 
-def test_xray_coverage_is_weight_with_any_top_holdings_and_exposures_are_on_total(monkeypatch):
+def test_xray_coverage_has_explicit_denominators_and_exposures_sum_to_100(monkeypatch):
     from app.services.portfolio_doctor import _xray
     from app.services.portfolio_doctor._holdings import AnalyzedHolding
 
@@ -257,13 +257,17 @@ def test_xray_coverage_is_weight_with_any_top_holdings_and_exposures_are_on_tota
     out = copilot_tools._get_xray_summary({}, _Repo(), MagicMock(), 1, "u", finance_client=finance)
     _xray._top_holdings_cache.clear()
 
-    # Fund AAA counts as fully covered although only 20% of its basket is known.
+    # Legacy coverage_pct: fund AAA counts as fully covered although only 20% of
+    # its basket is known. TASK-48 adds the real look-through share: 50 x 20%.
     assert out["coverage_pct"] == 50.0
-    # Exposures are shares of the whole (invested) portfolio, not of the covered part.
-    assert out["geographic_exposure"] == {"USA": 50.0}
+    assert out["funds_with_holdings_pct"] == 50.0
+    assert out["lookthrough_coverage_pct"] == 10.0
+    assert "liquidità" in out["coverage_denominator"]
+    # Exposures sum to 100 over the non-cash positions, the unknown part explicit.
+    assert out["geographic_exposure"] == {"USA": 50.0, "Non classificato": 50.0}
     assert out["top_underlying_holdings"][0]["aggregated_weight_pct"] == 6.0
-    # No reference date of the provider data in the output.
-    assert "as_of" not in out and "data_date" not in out
+    # Reference date of the provider data: the profile has none here.
+    assert "data_as_of" in out
 
 
 # --- C8: fractional quantities ----------------------------------------------------

@@ -337,13 +337,35 @@ parità risolte in ordine alfabetico del simbolo; senza posizioni valide `best`/
 ## 12. X-Ray (`get_xray_summary`, `_xray.py`)
 
 - Look-through: top holdings justETF, altrimenti yfinance; oro/commodity/crypto senza look-through.
-- `coverage_pct` = peso delle posizioni con almeno una top holding / peso totale delle posizioni
-  (liquidità esclusa). Misura la presenza di dati, **non** la profondità del look-through (le top 10
-  possono coprire il 20% del fondo) né la qualità della diversificazione.
-- Peso aggregato di un titolo = Σ peso_fondo × peso_nel_fondo, sul **totale** del portafoglio.
-- Esposizioni geografiche/settoriali: solo da justETF, sul totale (non sommano a 100).
-- Limiti: nessuna data di riferimento dei dati del provider; solo 5 `coverage_issues` nel tool MCP
-  (issue aperta C6).
+- **Denominatore unico (TASK-48, `coverage_denominator`)**: valore di mercato delle posizioni,
+  liquidità esclusa (il saldo di cassa non è una posizione; escluse anche le posizioni di tipo
+  `cash`). Quota di una posizione = peso / Σ pesi delle posizioni non cash × 100.
+- `lookthrough_coverage_pct` = Σ_fondi quota_fondo × min(Σ pesi delle top holdings elencate, 100) / 100
+  \+ Σ quote dei titoli singoli (un'azione è già il proprio sottostante). Esempio: fondo al 50% con
+  top 10 che sommano al 45% → contribuisce 22,5%. Per fondo: `listed_holdings_pct`.
+- `funds_with_holdings_pct` = Σ quote delle posizioni con almeno una top holding: è ciò che
+  misurava `coverage_pct`, che resta invariato (stesso numeratore, denominatore = tutte le posizioni;
+  coincidono senza posizioni di tipo `cash`). Misura la presenza di dati, non la profondità.
+- Esposizioni geografiche/settoriali (`aggregated_country_exposure`, `aggregated_sector_exposure`):
+  in % del denominatore, **sommano a 100** (2 decimali, residuo di arrotondamento sul bucket
+  maggiore). Per ogni posizione: pesi justETF del fondo (o paese/settore dei metadati yFinance per un
+  titolo singolo); la parte non elencata (pesi < 100) va in **"Non classificato"**, pesi > 100 sono
+  riscalati; senza dati la posizione intera va nel bucket della sua asset class (classificatore
+  condiviso: "Oro (asset class)", "Obbligazioni (asset class)", "Materie prime (asset class)",
+  "Cripto (asset class)", "Monetario (asset class)") oppure in "Non classificato" (azionario o
+  `unknown`). Etichette del provider (es. "Other") restano come sono.
+- `classified_country_pct` / `classified_sector_pct` = quota con un paese/settore nominato (esclusi
+  "Non classificato" e i bucket di asset class); `unclassified_*_pct` = bucket "Non classificato".
+- Peso aggregato di un titolo = Σ peso_fondo × peso_nel_fondo, sul totale delle posizioni (invariato).
+- **Data di riferimento**: per posizione `data_source` (`justetf`/`yahoo`/`none`), `data_as_of` e
+  `data_as_of_basis`: `holdings_date` dichiarata da justETF se leggibile, altrimenti `fetched_at` del
+  profilo in `etf_enrichment`; per Yahoo (nessuna data del provider) l'ora del download nella cache
+  in memoria (`fetch_time`, TTL 1 h). `data_as_of` complessivo = la data più vecchia.
+- `coverage_note` in italiano riassume le tre misure e la data. Copilot/MCP: esposizioni troncate
+  ai primi 10 bucket + "Altri" + "Non classificato" (sommano sempre a 100), `funds` (max 20) con
+  fonte e data, 5 `coverage_issues` + `coverage_issues_total`.
+- Limiti: i titoli singoli restano elencati fra le `coverage_issues` (yfinance non restituisce
+  holdings) e non entrano negli `aggregated_holdings`.
 
 ## 13. Tool aggregati MCP (`get_aggregate_*`)
 

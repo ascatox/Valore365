@@ -298,7 +298,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Ottieni l'X-Ray del portafoglio: titoli sottostanti aggregati degli ETF, "
             "esposizione geografica e settoriale, concentrazione su singoli titoli. "
-            "Utile per capire cosa si possiede realmente attraverso gli ETF."
+            "Utile per capire cosa si possiede realmente attraverso gli ETF. "
+            "lookthrough_coverage_pct è la quota del portafoglio (liquidità esclusa) davvero scomposta; "
+            "le esposizioni sommano a 100 con la quota 'Non classificato'; data_as_of è la data dei dati."
         ),
         "parameters": {
             "type": "object",
@@ -1411,25 +1413,54 @@ def _get_xray_summary(
         for h in xray.aggregated_holdings[:15]
     ]
 
-    # Geographic exposure
-    geo = {k: round(v, 2) for k, v in xray.aggregated_country_exposure.items()}
-    # Sort by weight descending, top 10
-    geo_sorted = dict(sorted(geo.items(), key=lambda x: x[1], reverse=True)[:10])
+    from .services.portfolio_doctor._xray import UNCLASSIFIED_LABEL
 
-    # Sector exposure
-    sectors = {k: round(v, 2) for k, v in xray.aggregated_sector_exposure.items()}
-    sectors_sorted = dict(sorted(sectors.items(), key=lambda x: x[1], reverse=True)[:10])
+    def _top_summing_to_100(dist: dict[str, float], limit: int = 10) -> dict[str, float]:
+        """Top buckets, the rest grouped in "Altri", unclassified always explicit,
+        so the truncated distribution still sums to 100 (TASK-48)."""
+        named = sorted(
+            ((k, v) for k, v in dist.items() if k != UNCLASSIFIED_LABEL),
+            key=lambda x: x[1], reverse=True,
+        )
+        out = {k: round(v, 2) for k, v in named[:limit]}
+        rest = sum(v for _, v in named[limit:])
+        if rest > 0:
+            out["Altri"] = round(out.get("Altri", 0.0) + rest, 2)
+        if dist.get(UNCLASSIFIED_LABEL):
+            out[UNCLASSIFIED_LABEL] = round(dist[UNCLASSIFIED_LABEL], 2)
+        return out
 
     return {
         "etf_count": xray.etf_count,
+        # Legacy: same as funds_with_holdings_pct (weight of funds with some top holdings).
         "coverage_pct": round(xray.coverage_pct, 1),
+        "lookthrough_coverage_pct": xray.lookthrough_coverage_pct,
+        "funds_with_holdings_pct": xray.funds_with_holdings_pct,
+        "classified_country_pct": xray.classified_country_pct,
+        "classified_sector_pct": xray.classified_sector_pct,
+        "coverage_denominator": xray.coverage_denominator,
+        "coverage_note": xray.coverage_note,
+        "data_as_of": xray.data_as_of,
         "top_underlying_holdings": top_holdings,
-        "geographic_exposure": geo_sorted,
-        "sector_exposure": sectors_sorted,
+        # Geographic / sector exposure: sum to 100 over coverage_denominator.
+        "geographic_exposure": _top_summing_to_100(xray.aggregated_country_exposure),
+        "sector_exposure": _top_summing_to_100(xray.aggregated_sector_exposure),
+        "funds": [
+            {
+                "symbol": d.symbol,
+                "portfolio_weight_pct": d.portfolio_weight_pct,
+                "lookthrough_kind": d.lookthrough_kind,
+                "listed_holdings_pct": d.listed_holdings_pct,
+                "source": d.data_source,
+                "data_as_of": d.data_as_of,
+            }
+            for d in xray.etf_details[:20]
+        ],
         "coverage_issues": [
             {"symbol": ci.symbol, "reason": ci.reason}
             for ci in xray.coverage_issues[:5]
         ],
+        "coverage_issues_total": len(xray.coverage_issues),
     }
 
 

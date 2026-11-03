@@ -289,6 +289,18 @@ class XRayEtfDetail(BaseModel):
     holdings_source: Literal["justetf", "yfinance", "missing"] = "missing"
     failure_reason: str | None = None
     top_holdings: list[XRayHolding] = Field(default_factory=list)
+    # TASK-48: what kind of look-through this position gets and how deep it goes.
+    # fund: a fund with listed top holdings; direct_stock: a single share (its own
+    # underlying); no_lookthrough: gold/commodity/crypto; missing: no data.
+    lookthrough_kind: Literal["fund", "direct_stock", "no_lookthrough", "missing"] = "missing"
+    # Sum of the listed top-holding weights, in % of the fund (None without holdings).
+    listed_holdings_pct: float | None = None
+    # Provider of the data used for this position and its reference date (ISO).
+    data_source: Literal["justetf", "yahoo", "none"] = "none"
+    data_as_of: str | None = None
+    # holdings_date: as-of date stated by the provider; fetched_at: when the
+    # justETF profile was stored; fetch_time: when Yahoo was asked (process cache).
+    data_as_of_basis: Literal["holdings_date", "fetched_at", "fetch_time"] | None = None
 
 
 class XRayCoverageIssue(BaseModel):
@@ -305,7 +317,21 @@ class XRayResponse(BaseModel):
     aggregated_holdings: list[XRayHolding] = Field(default_factory=list)
     etf_details: list[XRayEtfDetail] = Field(default_factory=list)
     etf_count: int = Field(ge=0)
+    # Legacy: weight of the positions with at least one top holding over all
+    # positions. Same meaning as funds_with_holdings_pct (TASK-48), kept as is.
     coverage_pct: float = Field(ge=0, le=100)
+    # TASK-48 — every percentage below is over coverage_denominator (market value
+    # of the positions, cash excluded).
+    lookthrough_coverage_pct: float = Field(default=0.0, ge=0, le=100)
+    funds_with_holdings_pct: float = Field(default=0.0, ge=0, le=100)
+    classified_country_pct: float = Field(default=0.0, ge=0, le=100)
+    classified_sector_pct: float = Field(default=0.0, ge=0, le=100)
+    unclassified_country_pct: float = Field(default=0.0, ge=0, le=100)
+    unclassified_sector_pct: float = Field(default=0.0, ge=0, le=100)
+    coverage_denominator: str = ""
+    coverage_note: str = ""
+    # Oldest reference date (ISO) of the provider data used; None without data.
+    data_as_of: str | None = None
     aggregated_country_exposure: dict[str, float] = Field(default_factory=dict)
     aggregated_sector_exposure: dict[str, float] = Field(default_factory=dict)
     coverage_issues: list[XRayCoverageIssue] = Field(default_factory=list)
