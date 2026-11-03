@@ -3,14 +3,28 @@ from bisect import bisect_right
 from collections import defaultdict
 from contextlib import contextmanager
 from contextvars import ContextVar
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import text
 
-from ..price_validation import check_staleness
+from ..price_validation import DEFAULT_STALE_MAX_SESSIONS, assess_price_freshness
 from ..models import PeriodPerformer, Position
 from ._base import _finite
 from ._scope import EMPTY_SCOPE_MESSAGE, load_scope_portfolios, normalize_portfolio_ids, row_portfolio_id
+
+
+def _utcnow() -> datetime:
+    """Current instant for the staleness check (patched in tests)."""
+    return datetime.now(UTC)
+
+
+def _stale_max_sessions() -> int:
+    try:
+        from ..config import get_settings
+
+        return int(get_settings().price_stale_max_sessions)
+    except Exception:
+        return DEFAULT_STALE_MAX_SESSIONS
 
 
 # Per-scope memo for get_positions, active only inside memoize_positions().
@@ -177,6 +191,9 @@ class PositionsMixin:
         return self._compute_positions_multi([portfolio_id], user_id, stale_days)
 
     def _compute_positions_multi(self, portfolio_ids: list[int], user_id: str, stale_days: int) -> list[Position]:
+        # stale_days is the old calendar-day threshold, kept in the signature
+        # (and memo key) for callers: price_stale is now session-based (TASK-53,
+        # settings.price_stale_max_sessions).
         with self.engine.begin() as conn:
             scope_ids, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
 
@@ -236,6 +253,7 @@ class PositionsMixin:
                     """
                     select distinct on (asset_id)
                         asset_id,
+                        ts as tick_ts,
                         ts::date as tick_date,
                         last::float8 as last,
                         previous_close::float8 as previous_close
@@ -248,8 +266,12 @@ class PositionsMixin:
             ).mappings().all()
             tick_last_by_asset: dict[int, float] = {}
             prev_close_by_asset: dict[int, float] = {}
+            tick_ts_by_asset: dict[int, datetime] = {}
             for r in latest_tick_rows:
                 asset_id = int(r["asset_id"])
+                tick_ts = r.get("tick_ts")
+                if isinstance(tick_ts, datetime):
+                    tick_ts_by_asset[asset_id] = tick_ts
                 last = r.get("last")
                 if last is not None:
                     last_value = float(last)
@@ -260,6 +282,26 @@ class PositionsMixin:
                     prev_close_value = float(prev_close)
                     if math.isfinite(prev_close_value):
                         prev_close_by_asset[asset_id] = prev_close_value
+
+            # TASK-53: the exchange of each asset (suffix of the mapped provider
+            # symbol, e.g. XAD1.DE) for the session-based staleness check.
+            market_symbol_rows = conn.execute(
+                text(
+                    """
+                    select a.id as asset_id,
+                           coalesce(aps.provider_symbol, a.symbol) as provider_symbol
+                    from assets a
+                    left join asset_provider_symbols aps on aps.asset_id = a.id
+                    where a.id = any(:asset_ids)
+                    order by a.id, aps.provider
+                    """
+                ),
+                {"asset_ids": asset_ids},
+            ).mappings().all()
+            market_symbol_by_asset: dict[int, str] = {}
+            for r in market_symbol_rows:
+                if r.get("provider_symbol"):
+                    market_symbol_by_asset.setdefault(int(r["asset_id"]), str(r["provider_symbol"]))
 
             # Fallback: for assets without previous_close in ticks, use penultimate daily bar
             missing_assets = [aid for aid in asset_ids if aid not in prev_close_by_asset]
@@ -381,6 +423,8 @@ class PositionsMixin:
                 total["quantity"] += lot["quantity"]
                 total["cost"] += lot["cost"]
 
+            now = _utcnow()
+            max_sessions = _stale_max_sessions()
             positions: list[Position] = []
             for aid, lot in merged.items():
                 qty = lot["quantity"]
@@ -416,12 +460,15 @@ class PositionsMixin:
                 name = asset_details.get("name", "")
                 asset_type = asset_details.get("asset_type", "stock")
 
-                stale = check_staleness(
+                # TASK-53: stale after max_sessions completed sessions of the
+                # asset's market (weekends/holidays skipped), not calendar days.
+                freshness = assess_price_freshness(
                     asset_id=aid,
                     symbol=symbol,
+                    market_symbol=market_symbol_by_asset.get(aid),
                     price_date=price_day_val,
-                    today=date.today(),
-                    stale_days=stale_days,
+                    now=now,
+                    max_sessions=max_sessions,
                 )
 
                 prev_close = prev_close_by_asset.get(aid)
@@ -453,8 +500,10 @@ class PositionsMixin:
                         previous_close_available=has_previous_close,
                         weight=0,  # Placeholder, will be calculated next
                         first_trade_at=first_trade_at_by_asset.get(aid),
-                        price_stale=stale,
+                        price_stale=freshness.stale,
                         price_date=price_day_val,
+                        stale_reason=freshness.reason,
+                        last_price_at=tick_ts_by_asset.get(aid),
                         price_fallback=price_fallback,
                         fx_missing=bool(missing_ccys),
                         fx_missing_currencies=missing_ccys,

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import text
 
@@ -209,6 +209,73 @@ class SearchPricingMixin:
             )
             for r in rows
         ]
+
+    def get_held_assets_for_daily_bars(self, provider: str) -> list[PricingAsset]:
+        """Active assets held in any portfolio (transactions or target allocations), for the daily bars job.
+
+        provider_symbol is the mapped listing first (asset_provider_symbols, the
+        same symbol backfill_daily and backfill_single_asset write bars with),
+        then the asset symbol, then the ISIN: bars must keep coming from the
+        listing the stored history comes from.
+        """
+        provider_value = provider.strip().lower()
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    select a.id as asset_id,
+                           a.symbol,
+                           coalesce(aps.provider_symbol, nullif(a.symbol, ''), a.isin) as provider_symbol,
+                           coalesce(aps.provider_symbol, a.symbol) as market_symbol
+                    from assets a
+                    left join asset_provider_symbols aps
+                      on aps.asset_id = a.id and aps.provider = :provider
+                    where a.active = true
+                      and a.id in (
+                          select t.asset_id from transactions t where t.asset_id is not null
+                          union
+                          select pta.asset_id from portfolio_target_allocations pta
+                      )
+                    order by a.symbol asc
+                    """
+                ),
+                {"provider": provider_value},
+            ).mappings().all()
+        return [
+            PricingAsset(
+                asset_id=int(r["asset_id"]),
+                symbol=str(r["symbol"]),
+                provider_symbol=str(r["provider_symbol"]),
+                market_symbol=str(r["market_symbol"]) if r["market_symbol"] else None,
+            )
+            for r in rows
+            if r["provider_symbol"]
+        ]
+
+    def get_latest_daily_bars(self, asset_ids: list[int]) -> dict[int, tuple[date, float]]:
+        """Latest (price_date, close) per asset, in one short query."""
+        if not asset_ids:
+            return {}
+        with self.engine.begin() as conn:
+            return self._get_latest_daily_prices(conn, list(asset_ids))
+
+    def get_latest_tick_ts(self, asset_ids: list[int], provider: str) -> dict[int, datetime]:
+        """Latest stored tick timestamp per asset for a provider."""
+        if not asset_ids:
+            return {}
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    select asset_id, max(ts) as ts
+                    from price_ticks
+                    where asset_id = any(:asset_ids) and provider = :provider
+                    group by asset_id
+                    """
+                ),
+                {"asset_ids": list(asset_ids), "provider": provider.strip().lower()},
+            ).mappings().all()
+        return {int(r["asset_id"]): r["ts"] for r in rows if r["ts"] is not None}
 
     def save_price_tick(
         self,

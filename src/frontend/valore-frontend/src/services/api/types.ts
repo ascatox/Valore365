@@ -403,6 +403,8 @@ export interface PortfolioSummary {
   fx_missing_currencies?: string[];
   /** TASK-47: positions valued at average cost (no price or no FX). */
   price_fallback_symbols?: string[];
+  /** TASK-53: positions whose price is stale (N completed sessions without a new close). */
+  stale_price_symbols?: string[];
   /**
    * TASK-49: cash_balance follows the performance cash model (buys debit,
    * sells credit, never negative); cumulative implicit contributions that
@@ -489,6 +491,10 @@ export interface Position {
   first_trade_at?: string | null;
   price_stale?: boolean;
   price_date?: string | null;
+  /** TASK-53: why price_stale is set, e.g. "ultima quotazione del 30/10, 2 sedute fa". */
+  stale_reason?: string | null;
+  /** TASK-53: timestamp of the latest provider tick. */
+  last_price_at?: string | null;
   /** TASK-47: 'avg_cost' when market_price is the average cost (no price or no FX). */
   price_fallback?: 'avg_cost' | null;
   fx_missing?: boolean;
@@ -642,6 +648,8 @@ export interface PriceRefreshResponse {
   requested_assets: number;
   refreshed_assets: number;
   failed_assets: number;
+  /** TASK-53: quotes whose market timestamp did not advance while the market was open. */
+  unchanged_ts_symbols?: string[];
   items: Array<{
     asset_id: number;
     symbol: string;

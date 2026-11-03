@@ -1,3 +1,4 @@
+import logging
 import sys
 import threading
 import types
@@ -399,9 +400,35 @@ def test_daily_bars_skip_null_rows_and_default_missing_volume_to_zero():
 
     bars = _client(handler).get_daily_bars("AAPL", start_date="2026-10-21", end_date="2026-10-27")
 
-    assert [b.day for b in bars] == [date(2026, 10, 21), date(2026, 10, 26)]
+    # TASK-53: a row with a close is kept (missing high filled from open/close);
+    # only rows without a close are dropped.
+    assert [b.day for b in bars] == [date(2026, 10, 21), date(2026, 10, 23), date(2026, 10, 26)]
+    assert (bars[1].open, bars[1].high, bars[1].low, bars[1].close) == (101.0, 101.5, 100.0, 101.5)
     # yfinance: Volume.fillna(0).
     assert bars[0].volume == 0.0
+
+
+def test_daily_bars_keep_sessions_with_close_but_no_ohlc_or_adjclose(caplog):
+    # TASK-53, XAD1.DE: Yahoo returned the latest sessions of a thinly traded
+    # Xetra listing with a close but null open/high/low and no adjclose. They
+    # were dropped silently, so price_bars_1d stopped at 30/10 with no error.
+    rows = [
+        (_epoch("2026-10-29 09:00", "Europe/Berlin"), 219.0, 220.5, 218.7, 220.1, 3500, 220.1),
+        (_epoch("2026-10-30 09:00", "Europe/Berlin"), 220.0, 221.0, 219.5, 220.8, 3700, 220.8),
+        (_epoch("2026-11-02 09:00", "Europe/Berlin"), None, None, None, 221.6, 3650, None),
+        (_epoch("2026-11-03 09:00", "Europe/Berlin"), None, None, None, None, None, None),
+    ]
+    handler = _Recorder(_chart("XAD1.DE", rows, tz="Europe/Berlin", gmtoffset=3600, currency="EUR"))
+
+    with caplog.at_level(logging.INFO, logger="app.finance_client"):
+        bars = _client(handler).get_daily_bars("XAD1.DE", start_date="2026-10-29", end_date="2026-11-04")
+
+    assert [(b.day, b.close) for b in bars] == [
+        (date(2026, 10, 29), 220.1), (date(2026, 10, 30), 220.8), (date(2026, 11, 2), 221.6),
+    ]
+    assert (bars[-1].open, bars[-1].high, bars[-1].low) == (221.6, 221.6, 221.6)
+    assert "daily_bars_partial_rows symbol=XAD1.DE filled=1 days=2026-11-02" in caplog.text
+    assert "daily_bars_rows_without_close symbol=XAD1.DE dropped=1 days=2026-11-03" in caplog.text
 
 
 def test_daily_bars_without_adjclose_use_raw_values():

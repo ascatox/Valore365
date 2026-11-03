@@ -78,8 +78,36 @@ class PriceRefreshScheduler:
             )
             logger.info('Benchmark backfill scheduler started at 06:30 UTC')
 
+        if self._daily_bars_enabled() and self.historical_service is not None:
+            hour = int(getattr(self.settings, 'daily_bars_scheduler_hour', 22))
+            minute = int(getattr(self.settings, 'daily_bars_scheduler_minute', 30))
+            self._scheduler.add_job(
+                self._run_daily_bars,
+                trigger='cron',
+                day_of_week='mon-fri',
+                hour=hour,
+                minute=minute,
+                id='daily_bars',
+                max_instances=1,
+                coalesce=True,
+                # Still run if the process was busy/paused at the scheduled
+                # minute (APScheduler drops misfires after 1s by default).
+                misfire_grace_time=6 * 3600,
+                replace_existing=True,
+            )
+            logger.info('Daily bars scheduler started at %02d:%02d UTC mon-fri', hour, minute)
+        else:
+            logger.info('Daily bars scheduler disabled')
+
         if self._scheduler.get_jobs():
             self._scheduler.start()
+
+    def _daily_bars_enabled(self) -> bool:
+        """DAILY_BARS_SCHEDULER_ENABLED, or PRICE_SCHEDULER_ENABLED when it is unset."""
+        flag = getattr(self.settings, 'daily_bars_scheduler_enabled', None)
+        if flag is None:
+            return bool(self.settings.price_scheduler_enabled)
+        return bool(flag)
 
     def shutdown(self) -> None:
         if self._scheduler.running:
@@ -101,12 +129,15 @@ class PriceRefreshScheduler:
                 prefer_symbol_then_isin=True,
                 market_hours_at=market_hours_at,
             )
+            unchanged = list(getattr(response, 'unchanged_ts_symbols', None) or [])
             logger.info(
-                'Scheduled refresh completed scope=%s requested=%s refreshed=%s failed=%s',
+                'Scheduled refresh completed scope=%s requested=%s refreshed=%s failed=%s unchanged_ts=%s%s',
                 asset_scope,
                 response.requested_assets,
                 response.refreshed_assets,
                 response.failed_assets,
+                len(unchanged),
+                f" unchanged_ts_symbols={','.join(unchanged)}" if unchanged else '',
             )
         except Exception as exc:  # nosec B110
             logger.exception('Scheduled refresh failed: %s', exc)
@@ -128,6 +159,30 @@ class PriceRefreshScheduler:
                 logger.info('Benchmark backfill completed symbol=%s', symbol)
             except Exception as exc:
                 logger.exception('Benchmark backfill failed symbol=%s: %s', symbol, exc)
+
+    def _run_daily_bars(self) -> None:
+        """Daily closes of every active asset held in any portfolio (TASK-53)."""
+        if self.historical_service is None:
+            return
+        days = int(getattr(self.settings, 'daily_bars_lookback_days', 10))
+        try:
+            result = self.historical_service.refresh_recent_daily_bars(days=days)
+        except Exception as exc:  # nosec B110
+            logger.exception('Daily bars job failed: %s', exc)
+            return
+        logger.info(
+            'Daily bars job completed lookback_days=%s requested=%s updated=%s no_new_bar=%s lagging=%s failed=%s '
+            'skipped=%s lagging_symbols=%s failed_symbols=%s',
+            days,
+            result.requested,
+            len(result.updated),
+            len(result.no_new_bar),
+            len(result.lagging),
+            len(result.failed),
+            len(result.skipped),
+            ','.join(result.lagging) or '-',
+            ','.join(result.failed) or '-',
+        )
 
     def _run_pac_processing(self) -> None:
         if self.pac_service is None:

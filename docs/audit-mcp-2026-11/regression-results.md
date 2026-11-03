@@ -283,3 +283,40 @@ Casi verificati:
 Da eseguire in produzione (proprietario) per popolare i dati, poi rileggere via MCP:
 `POST /api/portfolios/{id}/asset-metadata/backfill` (TER yFinance di TLT, IEF, DJP, GLD) e
 `POST /api/portfolios/{id}/etf-enrichment/backfill?refresh_missing_ter=true` (VEUR, VFEM, XAD1.DE da justETF).
+
+## Run TASK-53 (2026-11-03) — Barre giornaliere degli asset in portafoglio e quotazioni ferme
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_task53_daily_bars_and_stale_prices.py -q
+# 23 passed   (test nuovi)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 986 passed  (prima: 961; +25 test nuovi; 1 aspettativa cambiata: test_daily_bars_skip_null_rows...
+#              ora tiene la seduta con chiusura e high nullo)
+
+cd src/frontend/valore-frontend
+npm run lint          # ok
+npx vitest run        # 142 passed
+npx tsc -b            # 140 errori, invariati rispetto al baseline (solo campi opzionali in types.ts)
+```
+
+Casi verificati:
+
+| Caso | Risultato |
+|---|---|
+| Yahoo XAD1.DE: seduta 02/11 con chiusura ma open/high/low/adjclose nulli, 03/11 tutta nulla | 02/11 tenuta (O=H=L=chiusura), log `daily_bars_partial_rows`; 03/11 scartata con log `daily_bars_rows_without_close` (prima: entrambe scartate in silenzio) |
+| Calendario Xetra: barra 30/10 | 02/11 08:00 UTC → 0 sedute; 02/11 17:00 → 1; 03/11 13:16 → 1; 03/11 18:00 → 2 |
+| Weekend e Natale (barra 23/12, lunedì 28/12) | 0 sedute la mattina, 1 la sera: mai stale |
+| XAD1 in `get_positions` (repository) 03/11 18:00 | `price_stale` true, `stale_reason` "ultima quotazione del 30/10, 2 sedute fa", `last_price_at` 2026-11-02T20:38Z; VWCE (barra 03/11) non stale |
+| Asset illiquido con barra 01/12/2025; asset senza prezzo | stale, "ultima quotazione del 01/12/2025, N sedute fa"; "nessuna quotazione giornaliera disponibile" |
+| MCP `get_positions` / `get_day_movers` / summary | `stale_reason` per riga + nota; `stale_positions` con motivo; `stale_price_symbols` + nota |
+| Job `daily_bars` | cron lun-ven 22:30 UTC; legge gli asset in portafoglio e le ultime barre, finestra 10 giorni con la seduta del giorno (end Yahoo = domani); VWCE aggiornato, XAD1.DE `lagging` (log `daily_bars_no_new_bar ... missed_sessions=2`), errore provider in `failed` senza fermare il batch |
+| Job il 25/12 (festivo) con barra 23/12 | `no_new_bar`, nessun warning |
+| `backfill_daily` che non porta barre nuove per XAD1.DE | warning `daily_bars_no_new_bar context=backfill_daily ... symbol=XAD1` |
+| Timestamp del provider ripetuto a borsa aperta | `unchanged_ts_symbols` = [XAD1.DE] a ogni refresh, warning `price_unchanged_ts` una volta al giorno, tick comunque scritto |
+| Timestamp ripetuto a borsa chiusa | contato solo dal 3° refresh di fila; ts più recente azzera il conteggio |
+
+Da verificare in produzione dopo il deploy: righe `Daily bars scheduler started at 22:30 UTC`,
+`Daily bars job completed ...` dopo le 22:30 UTC, e per XAD1.DE `daily_bars_partial_rows` (causa
+confermata) oppure `daily_bars_no_new_bar ... symbol=XAD1` / `price_unchanged_ts ... symbol=XAD1.DE`.

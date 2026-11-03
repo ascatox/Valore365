@@ -280,6 +280,9 @@ class SummaryMixin:
             price_fallback_symbols=sorted(
                 str(p.symbol) for p in positions if getattr(p, "price_fallback", None)
             ),
+            stale_price_symbols=sorted(
+                str(p.symbol) for p in positions if getattr(p, "price_stale", False)
+            ),
         )
 
     def get_intraday_timeseries(self, portfolio_id: int, user_id: str, finance_client) -> list[IntradayTimeseriesPoint]:
