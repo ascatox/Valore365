@@ -1,10 +1,10 @@
 ---
 id: TASK-44
 title: 'Audit MCP: controlli aggiuntivi e documenti finali (metodologia, regressioni)'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
-updated_date: '2026-11-02T17:48:00Z'
+updated_date: '2026-11-03T10:40:00Z'
 labels:
   - audit-mcp
   - docs
