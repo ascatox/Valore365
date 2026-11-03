@@ -1,9 +1,10 @@
 ---
 id: TASK-49
 title: 'Liquidità: allineare il summary al modello di liquidità della performance'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-03T11:40:00Z'
+updated_date: '2026-11-03T12:32:00Z'
 labels:
   - backend
   - dati
@@ -26,3 +27,9 @@ Emerso in TASK-47 (methodology.md §9.1). summary.cash_balance = cash_balance in
 - [ ] #2 Summary, hero, totale aggregato, Monte Carlo e ribilanciamento usano la liquidità decisa
 - [ ] #3 Test con l'esempio sintetico: totale del summary = valore della performance
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-11-03 decisione del proprietario: opzione 1 (il summary adotta il modello di liquidità della performance, una sola verità).
+<!-- SECTION:NOTES:END -->
