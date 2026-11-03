@@ -4,7 +4,7 @@ title: 'Audit MCP: idempotenza dell''import e dividendi duplicati'
 status: Done
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
-updated_date: '2026-11-03T09:57:00Z'
+updated_date: '2026-11-03T11:11:00Z'
 labels:
   - audit-mcp
   - backend
@@ -39,6 +39,8 @@ Query di verifica in sola lettura: backlog/docs/AUDIT_MCP_2026-11_QUERY_DATI.sql
 2026-11-03: Q6-Q8 analizzate. Confermato: 'Lista Titoli (2).xlsx' confermato 4 volte il 2026-10-23 (batch 31/34/35/36) -> dividendi e un acquisto EUN5 quadruplicati in Wealth. In attesa dell'elenco completo degli id 5790-5870 per il piano di correzione dei dati.
 
 2026-11-03 decisione (proposta dall'assistente, approvata con 'procedi'): nessuna migrazione dello schema; il commit del batch è atomico e un batch non può essere confermato due volte; le righe già presenti nel portafoglio (stesso strumento, tipo, data, quantità, prezzo, commissioni, valuta) sono segnalate nell'anteprima ed escluse per default, con possibilità di includerle.
+
+2026-11-03: PARTE B dello script di correzione eseguita dal proprietario con COMMIT. 21 righe duplicate eliminate in Wealth (backup in backup_tx_dup_import_20261103). Verifiche superate: dividendi 46 righe per 4.121,72 EUR (prima 64 righe, 6.876,59 EUR); EUN5.DE 242 quote.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
