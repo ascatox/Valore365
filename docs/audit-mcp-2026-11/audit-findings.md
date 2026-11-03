@@ -52,7 +52,7 @@ Dettaglio in [methodology.md](methodology.md) e test in
 
 | ID | Sev. | Controllo | Esito | File:riga | Stato |
 |---|---|---|---|---|---|
-| C1-TWR-MIXED | **P1** | TWR/MWR con depositi **e** acquisti nella stessa finestra | **Issue aperta.** Con almeno un deposito/prelievo nella finestra gli acquisti e le vendite non sono flussi esterni (`performance_service.py:270`), ma la valutazione storica non scala la liquidità sugli acquisti (`_transactions.py:636-640`): l'acquisto entra come rendimento. Sintetico: deposito 500 €, acquisto 10 × 100 € a prezzo piatto → TWR +200% invece di 0%. | `app/services/performance_service.py:244-279`, `app/repository/_transactions.py:629-650` | Aperta (test `xfail(strict=True)`); decisione di modello necessaria |
+| C1-TWR-MIXED | **P1** | TWR/MWR con depositi **e** acquisti nella stessa finestra | **Corretto in TASK-46.** Prima: con almeno un deposito/prelievo nella finestra acquisti e vendite non erano flussi esterni, ma la valutazione storica non scalava la liquidità sugli acquisti: l'acquisto entrava come rendimento (deposito 500 €, acquisto 10 × 100 € a prezzo piatto → TWR +200%). Ora un unico modello di liquidità (`repository/_cash_model.py`) per valori e flussi: acquisti pagati dalla liquidità, proventi delle vendite in liquidità, scoperto = apporto esterno implicito (liquidità mai negativa). Stesso caso → TWR 0%, MWR 0%. Vedi [methodology.md](methodology.md) §8. | `app/services/performance_service.py` (`_get_cashflows_with_fallback`, `_external_flows_from_history`), `app/repository/_transactions.py` (fold), `app/repository/_cash_model.py` | Chiuso (TASK-46; test `test_twr_deposit_then_buy_at_flat_price_is_zero` senza `xfail`, `tests/unit/test_performance_cash_model.py`) |
 | C1-TWR | — | TWR/MWR su portafogli di soli acquisti, depositi/prelievi a prezzo piatto, IRR indipendente | Confermato corretto | `performance_service.py:319-486` | Chiuso |
 | C2-CASH-FX | P2 | Valuta dei movimenti di cassa | **Issue aperta.** `get_cash_balance.total_cash` converte i saldi non in valuta base al cambio **più recente** (`_utilities.py:283-307`), `summary.cash_balance` al cambio **della data** del movimento (`_utilities.py:46-89`): con movimenti non EUR i due valori divergono. FX mancante → 1,0 in entrambi. | `app/repository/_utilities.py:307`, `:58-69` | Aperta (nessun effetto sui dati attuali, tutto EUR) |
 | C2-DIV-TAX | P3 | Dividendi con ritenuta | Da definire: la cassa somma `quantity × price` e ignora `taxes` sui dividendi (`_utilities.py:85`, `:262`). Wealth ha ritenute a 0. | `_utilities.py:85` | Decisione aperta (lordo vs netto) |
@@ -68,7 +68,7 @@ Dettaglio in [methodology.md](methodology.md) e test in
 
 | Task | Problema | Priorità |
 |---|---|---|
-| TASK-46 | Con depositi o prelievi nel periodo il TWR conta gli acquisti come rendimento: la valutazione storica non toglie il costo degli acquisti dalla liquidità | alta |
+| TASK-46 | Con depositi o prelievi nel periodo il TWR conta gli acquisti come rendimento: la valutazione storica non toglie il costo degli acquisti dalla liquidità | alta — **corretto** (modello di liquidità con apporti impliciti) |
 | TASK-47 | `get_cash_balance` usa il cambio più recente e il summary quello della data dell'operazione; cambio mancante → 1.0; prezzo che ripiega sul costo medio senza avviso | media |
 | TASK-48 | X-Ray: `coverage_pct` senza denominatore chiaro, esposizioni che non sommano a 100, nessuna data di riferimento | bassa |
 | TASK-41 | Valuta di quotazione dei listing `.L` registrata in EUR | da confermare con il broker |

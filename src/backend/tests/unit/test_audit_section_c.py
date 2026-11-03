@@ -139,12 +139,6 @@ def test_mwr_with_mid_period_deposit_matches_independent_irr():
     assert twr.twr_pct == pytest.approx((1700 / 1500 - 1) * 100, abs=1e-3)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "Issue aperta (TASK-44, C1): con un deposito nella finestra gli acquisti non sono "
-    "flussi esterni (performance_service.py:_get_cashflows_with_fallback), ma la "
-    "valutazione non scala la liquidità sugli acquisti (_transactions.py fold): "
-    "l'acquisto viene contato come rendimento."
-))
 def test_twr_deposit_then_buy_at_flat_price_is_zero():
     txs = [_tx(_d(0), "deposit", None, qty=500, price=1), _tx(_d(5), "buy", 1, qty=10, price=100)]
     bars = [{"asset_id": 1, "price_date": _d(5), "close": 100.0}]

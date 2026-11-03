@@ -130,12 +130,46 @@ non toglie punti.
   positivo; senza valore iniziale `twr_pct` è `null` (non 0).
 - **MWR:** IRR (ACT/365) con valore iniziale come uscita, flussi invertiti (prospettiva investitore),
   valore finale come entrata; `mwr_pct` è il rendimento del periodo, l'annualizzato solo ≥ 1 anno.
-- **Flussi esterni:** depositi/prelievi; se nella finestra non ce ne sono, acquisti (costo +
-  commissioni) e vendite (proventi − commissioni). Dividendi, interessi e commissioni sono interni.
-- **Valore V(t):** posizioni a prezzo di chiusura × FX + liquidità = depositi − prelievi +
-  dividendi + interessi − commissioni (gli acquisti **non** riducono la liquidità).
-- **Limite (issue aperta C1-TWR-MIXED):** con depositi e acquisti nella stessa finestra l'acquisto
-  è contato come rendimento (vedi [audit-findings.md](audit-findings.md)).
+- **Modello di liquidità (TASK-46, opzione A approvata):** la stessa regola vale per la serie
+  dei valori V(t) (`repository/_transactions.py`, fold) e per i flussi esterni di TWR e MWR
+  (`performance_service._get_cashflows_with_fallback`), perimetro singolo e aggregato; il codice è
+  in `repository/_cash_model.py`.
+  - acquisto: liquidità − (prezzo × quantità + commissioni + imposte), al cambio del giorno;
+  - vendita: liquidità + (prezzo × quantità − commissioni − imposte); i proventi restano in
+    liquidità (non sono un prelievo) finché non c'è un prelievo registrato;
+  - deposito, dividendo, interesse: +importo; prelievo, commissione (movimento `fee`): −importo
+    (per questi lati `fees`/`taxes` non sono applicati, come nel saldo di cassa del summary).
+- **Apporti impliciti:** la liquidità si chiude a fine giornata (tutti i movimenti del giorno,
+  poi il saldo); se è negativa, lo scoperto è un **apporto esterno implicito** datato quel giorno
+  (`implicit_contribution`) e la liquidità riparte da 0: non va mai sotto zero. Vale per un
+  acquisto oltre la liquidità disponibile e, simmetricamente, per un prelievo o una commissione
+  oltre la liquidità: la parte non coperta è denaro mai registrato in entrata, quindi il flusso
+  netto del giorno è pari alla liquidità effettivamente uscita (il valore e i flussi restano
+  coerenti, nessun rendimento fittizio). Il saldo all'inizio della finestra dipende da tutta la
+  storia: il modello è ripiegato su tutte le transazioni fino alla fine della finestra (una sola
+  lettura, in cache).
+- **Flussi esterni:** depositi/prelievi registrati + apporti impliciti. Acquisti pagati con la
+  liquidità e vendite spostano valore fra liquidità e titoli e non sono flussi. Dividendi,
+  interessi e commissioni sono interni (rendimento). Il vecchio fallback "senza depositi usa
+  acquisti/vendite" è un caso particolare: senza depositi ogni acquisto è interamente un apporto
+  implicito (stessi flussi di prima); cambia solo il trattamento delle vendite, i cui proventi ora
+  restano in liquidità a rendimento 0 invece di uscire come prelievo.
+- **Valore V(t):** posizioni a prezzo di chiusura × FX + liquidità del modello sopra.
+- **Riepilogo:** `total_deposits` = depositi + apporti impliciti della finestra;
+  `implicit_contributions` (e `implicit_contributions_eur` per periodo in `get_performance`)
+  espone la parte implicita. `cashflow_basis = 'trades'` quando la storia ha solo apporti impliciti.
+- **Limiti:**
+  - la liquidità storica è un unico saldo in valuta base (importi al cambio del giorno del
+    movimento), non un saldo per valuta;
+  - il saldo iniziale `portfolios.cash_balance` (senza data) non entra nella serie storica, come
+    prima;
+  - la serie storica **differisce** da `summary.cash_balance`, che conta solo i movimenti di cassa
+    (depositi/prelievi/dividendi/interessi/commissioni + saldo iniziale), ignora acquisti e vendite
+    e può essere negativo: la semantica del summary non è stata cambiata (TASK-46);
+  - l'ordine infragiornaliero non conta (chiusura a fine giornata): un deposito registrato dopo
+    un acquisto nello stesso giorno lo copre;
+  - le vendite oltre la quantità detenuta (bloccate in inserimento) azzerano la posizione ma
+    accreditano l'intero controvalore, come la lista dei flussi.
 
 ## 9. Liquidità, prezzi e variazione giornaliera
 

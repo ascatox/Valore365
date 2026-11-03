@@ -6,7 +6,7 @@ title: >-
 status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
-updated_date: '2026-11-03T07:50:00Z'
+updated_date: '2026-11-03T11:07:00Z'
 labels:
   - audit-mcp
   - backend
@@ -37,4 +37,6 @@ V365-008. Prima di cambiare il codice va fatta un'indagine in sola lettura. Risc
 Query di verifica in sola lettura: backlog/docs/AUDIT_MCP_2026-11_QUERY_DATI.sql (in attesa dei risultati dal proprietario).
 
 2026-11-03: Q1-Q4 analizzate (vedi sezione 'TASK-41 — Riconciliazione sui dati' nel documento di verifica). Causa 1 confermata: 17 righe di Wealth con prezzo x1000 e quantità /1000 dovute al parser dei numeri a 3 decimali (già corretto nel codice in b655330, dati da correggere con un piano approvato). Causa 2 da confermare: quote_currency=EUR su tutti i listing .L.
+
+2026-11-03: PARTE A dello script di correzione eseguita dal proprietario con COMMIT. 39 righe corrette in Wealth; verifica 1 (controvalore invariato) e verifica 2 (nessun prezzo anomalo) superate. Backup in backup_tx_fix_x1000_20261103. Resta da confermare la valuta dei listing .L.
 <!-- SECTION:NOTES:END -->

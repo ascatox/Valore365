@@ -542,13 +542,21 @@ def _get_performance(
     _args: dict, _repo: PortfolioRepository, perf_service: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    result = {}
+    result: dict = {}
+    implicit: dict[str, float | None] = {}
     for period in ("1m", "3m", "ytd", "1y"):
         try:
             ps = perf_service.get_performance_summary(portfolio_id, user_id, period)
             result[f"twr_{period}"] = round(ps.twr.twr_pct, 2) if ps.twr.twr_pct is not None else None
+            implicit[period] = round(float(getattr(ps, "implicit_contributions", 0.0) or 0.0), 2)
         except Exception:
             result[f"twr_{period}"] = None
+            implicit[period] = None
+    result["implicit_contributions_eur"] = implicit
+    result["implicit_contributions_note"] = (
+        "Apporti impliciti per periodo (valuta base): acquisti o uscite oltre la liquidita' "
+        "registrata, trattati come versamenti esterni nel TWR/MWR (non come rendimento)."
+    )
     return result
 
 

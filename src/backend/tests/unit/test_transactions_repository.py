@@ -289,9 +289,13 @@ def test_batch_valuation_clamps_oversized_sell_at_zero():
 
     values = repo.get_portfolio_values_in_range(1, "u", [date(2026, 1, 23), date(2026, 1, 27)])
 
-    assert values[date(2026, 1, 23)] == 0.0
-    # 4 units at the last close on or before 27 Jan (24.0 from 18 Jan).
-    assert values[date(2026, 1, 27)] == 96.0
+    # Holding clamped at 0; since TASK-46 the sell proceeds (99 x 25) stay in
+    # cash (the external-flow list books the same unclamped amount).
+    assert values[date(2026, 1, 23)] == 2475.0
+    # The later buy is paid from that cash: 4 units at the last close on or
+    # before 27 Jan (24.0 from 18 Jan) = 96 + cash 2475 - 96 = 2475. Before
+    # TASK-46 the value was 96 (cash ignored trades).
+    assert values[date(2026, 1, 27)] == 2475.0
 
 
 def test_batch_valuation_pins_absolute_values():
@@ -301,12 +305,14 @@ def test_batch_valuation_pins_absolute_values():
         1, "u", [date(2026, 1, 12), date(2026, 1, 15), date(2026, 1, 25), date(2026, 1, 26)]
     )
 
-    # 1000 cash deposited, 10 units of asset 1 at 20.00 EUR.
-    assert values[date(2026, 1, 12)] == 1200.0
-    # + 5 units of asset 2 at 30.00 USD, converted at the 14 Jan rate of 0.90.
-    assert values[date(2026, 1, 15)] == 1335.0
-    # After the 12.00 dividend, the clamped sell and the 100.00 withdrawal:
-    # cash 912.00 + 5 units of asset 2 at 33.00 USD x 0.90.
-    assert values[date(2026, 1, 25)] == 1060.5
+    # Cash model of TASK-46: buys are paid from cash, sell proceeds go to cash
+    # (before TASK-46 trades did not touch cash: 1200 / 1335 / 1060.5 / 1061.62).
+    # 1000 deposited, 10 units of asset 1 bought at 20.00 EUR: cash 800 + 200.
+    assert values[date(2026, 1, 12)] == 1000.0
+    # 5 units of asset 2 at 30.00 USD (14 Jan rate 0.90 = 135) paid from cash.
+    assert values[date(2026, 1, 15)] == 1000.0
+    # Cash 665 + 12.00 dividend + the clamped sell's proceeds 99 x 25 - 100.00
+    # withdrawal = 3052.00, + 5 units of asset 2 at 33.00 USD x 0.90 = 148.50.
+    assert values[date(2026, 1, 25)] == 3200.5
     # 26 Jan revalues asset 2 at 31.50 USD and picks up the 24 Jan rate of 0.95.
-    assert values[date(2026, 1, 26)] == 1061.62
+    assert values[date(2026, 1, 26)] == 3201.62

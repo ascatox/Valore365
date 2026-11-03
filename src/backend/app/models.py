@@ -383,6 +383,10 @@ class PerformanceSummary(BaseModel):
     current_value: float
     # current_value - initial_value - net_invested, stessa finestra e perimetro.
     absolute_gain: float | None
+    # Parte di total_deposits non registrata come deposito: acquisti (o
+    # prelievi/commissioni) oltre la liquidita' disponibile, coperti da un
+    # apporto esterno implicito (TASK-46). Valuta base del portafoglio.
+    implicit_contributions: float = 0.0
 
 
 class TWRTimeseriesPoint(BaseModel):

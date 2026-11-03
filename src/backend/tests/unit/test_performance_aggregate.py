@@ -107,9 +107,12 @@ def test_a_transfer_between_selected_portfolios_nets_out():
             1: {START: 1000.0, MID: 550.0, END: 600.0},
             2: {START: 1000.0, MID: 1550.0, END: 1600.0},
         },
+        # Since TASK-46 a withdrawal needs the cash to be on record (otherwise
+        # the uncovered part is an implicit contribution): each portfolio's
+        # starting 1000 is a deposit on START, already inside the start value.
         cashflows={
-            1: [_cf(MID, "withdrawal", -500.0)],
-            2: [_cf(MID, "deposit", 500.0)],
+            1: [_cf(START, "deposit", 1000.0), _cf(MID, "withdrawal", -500.0)],
+            2: [_cf(START, "deposit", 1000.0), _cf(MID, "deposit", 500.0)],
         },
     )
     service = PerformanceService(repo)
@@ -135,9 +138,10 @@ def test_a_transfer_between_selected_portfolios_nets_out():
     assert drawdown.max_drawdown_pct == pytest.approx(0.0, abs=1e-6)
 
 
-def test_aggregate_fallback_to_trades_is_decided_per_portfolio():
+def test_aggregate_cash_model_is_applied_per_portfolio():
     # Portfolio 1 is funded by a deposit; portfolio 2 has only trades. Its
-    # purchase must still count as an external flow, not as performance.
+    # purchase must still count as an external flow, not as performance: the
+    # deposit of portfolio 1 cannot pay for it (cash is kept per portfolio).
     repo = _FakeRepo(
         values={
             1: {START: 1000.0, END: 1000.0},
@@ -150,9 +154,12 @@ def test_aggregate_fallback_to_trades_is_decided_per_portfolio():
     )
     service = PerformanceService(repo)
 
-    flows, used_fallback = service._get_cashflows_with_fallback([1, 2], "u", START, END)
-    assert [(f.side, f.amount) for f in flows] == [("deposit", 1000.0), ("buy", 500.0)]
-    assert used_fallback
+    flows, implicit_only = service._get_cashflows_with_fallback([1, 2], "u", START, END)
+    # TASK-46: the buy is funded by an implicit contribution of its full cost
+    # (was the raw buy flow). The flag is now "implicit contributions only",
+    # False here because portfolio 1 has an explicit deposit.
+    assert [(f.side, f.amount) for f in flows] == [("deposit", 1000.0), ("implicit_contribution", 500.0)]
+    assert not implicit_only
 
     twr = service.calculate_twr([1, 2], "u", START, END)
     assert twr.twr_pct == pytest.approx(0.0, abs=1e-6)
