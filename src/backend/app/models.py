@@ -313,6 +313,10 @@ class Position(BaseModel):
     investment_focus: str | None = None
     price_stale: bool = False
     price_date: date | None = None
+    # TASK-53: why price_stale is set (Italian, e.g. "ultima quotazione del
+    # 30/10, 2 sedute fa") and the timestamp of the latest provider tick.
+    stale_reason: str | None = None
+    last_price_at: datetime | None = None
     # TASK-47: no silent fallbacks. 'avg_cost' when market_price is the average
     # cost (no price, or no FX rate for the quote currency): P/L is then 0.
     price_fallback: Literal['avg_cost'] | None = None
@@ -347,6 +351,8 @@ class PortfolioSummary(BaseModel):
     # positions whose price fell back to the average cost.
     fx_missing_currencies: list[str] = Field(default_factory=list)
     price_fallback_symbols: list[str] = Field(default_factory=list)
+    # TASK-53: positions whose price is stale (see Position.stale_reason).
+    stale_price_symbols: list[str] = Field(default_factory=list)
     # TASK-49: cash_balance follows the performance cash model (buys debit,
     # sells credit, cash floored at 0); this is the cumulative money that
     # entered implicitly to cover buys/outflows beyond the cash available.
@@ -541,6 +547,10 @@ class PriceRefreshResponse(BaseModel):
     failed_assets: int
     items: list[PriceRefreshItem]
     errors: list[str]
+    # TASK-53: assets whose quote came back with a market timestamp not newer
+    # than the latest stored tick while their market was open (or for several
+    # refreshes in a row): the price is not moving on the provider side.
+    unchanged_ts_symbols: list[str] = Field(default_factory=list)
 
 
 class DailyBackfillItem(BaseModel):

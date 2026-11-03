@@ -68,6 +68,21 @@ class Settings(BaseSettings):
     price_scheduler_market_hours_only: bool = True
     # Minuti dopo la chiusura in cui l'asset si aggiorna ancora (prezzo d'asta).
     price_scheduler_after_close_grace_minutes: int = 30
+    # TASK-53: job giornaliero delle barre 1d (chiusure) per tutti gli asset
+    # attivi in un portafoglio (transazioni o target). Gira lun-ven all'ora UTC
+    # indicata e scarica gli ultimi daily_bars_lookback_days giorni di
+    # calendario. None = segue price_scheduler_enabled; true/false lo
+    # accende/spegne indipendentemente dal refresh a intervalli.
+    daily_bars_scheduler_enabled: bool | None = None
+    daily_bars_scheduler_hour: int = 22
+    daily_bars_scheduler_minute: int = 30
+    daily_bars_lookback_days: int = 10
+    # TASK-53: prezzo "fermo" (price_stale) quando dopo la sua data si sono
+    # chiuse almeno N sedute della borsa dell'asset (weekend e festività esclusi).
+    price_stale_max_sessions: int = 2
+    # TASK-53: avviso nel log quando il provider ripete lo stesso timestamp di
+    # mercato (a borsa aperta, o per N refresh di fila); uno per asset al giorno.
+    price_unchanged_ts_warn_after: int = 3
 
     clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""

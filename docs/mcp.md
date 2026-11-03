@@ -156,7 +156,12 @@ come **indice base 100** (`unit: "indice_base_100"`, `initial_value: 100`): 120 
 al valore attuale, non 120 €. `get_day_movers` calcola migliore e peggiore dalla variazione giornaliera
 delle posizioni, escludendo quelle con prezzo non aggiornato o assente e quelle senza chiusura
 precedente (`previous_close_available: false` sulla posizione, contate in `excluded_no_previous_close`);
-senza posizioni valide restituisce `best`/`worst` a `null` con un campo `reason`.
+senza posizioni valide restituisce `best`/`worst` a `null` con un campo `reason`. Le posizioni escluse
+per prezzo fermo sono elencate in `stale_positions` (`symbol`, `price_date`, `stale_reason`). Il prezzo è
+fermo (`price_stale`) quando dopo `price_date` si sono chiuse almeno 2 sedute della borsa dell'asset
+(`PRICE_STALE_MAX_SESSIONS`; weekend e festività esclusi): `get_positions` riporta per ogni riga
+`price_date`, `price_stale`, `stale_reason` (es. "ultima quotazione del 30/10, 2 sedute fa") e
+`last_price_at` (ultimo tick del provider), `get_portfolio_summary` `stale_price_symbols` (TASK-53).
 `get_dividend_summary` e `search_asset_info` risolvono i simboli del portafoglio per asset_id (simbolo
 esatto); per un simbolo non presente `search_asset_info` segnala con `match: "different_listing"` e
 `warning` quando trova solo un altro listing con lo stesso ticker base. `search_asset_info` riporta

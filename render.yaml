@@ -46,6 +46,13 @@ services:
         value: "true"
       - key: PRICE_SCHEDULER_INTERVAL_SECONDS
         value: "60"
+      # TASK-53: daily closes (price_bars_1d) of every held asset, mon-fri.
+      # Unset = follows PRICE_SCHEDULER_ENABLED. Defaults of the other knobs:
+      # DAILY_BARS_SCHEDULER_HOUR=22, DAILY_BARS_SCHEDULER_MINUTE=30 (UTC),
+      # DAILY_BARS_LOOKBACK_DAYS=10, PRICE_STALE_MAX_SESSIONS=2,
+      # PRICE_UNCHANGED_TS_WARN_AFTER=3.
+      - key: DAILY_BARS_SCHEDULER_ENABLED
+        value: "true"
       - key: CLERK_AUTH_ENABLED
         value: "true"
       - key: CORS_ALLOWED_ORIGINS

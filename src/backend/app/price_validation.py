@@ -173,3 +173,69 @@ def check_staleness(
             asset_id, symbol, price_date, delta, stale_days,
         )
     return True
+
+
+# Default number of completed sessions after which a price is stale (TASK-53).
+DEFAULT_STALE_MAX_SESSIONS = 2
+
+
+@dataclass(frozen=True)
+class PriceFreshness:
+    stale: bool
+    # Completed sessions of the asset's market after price_date (0 = up to date).
+    missed_sessions: int
+    # Italian explanation when stale, e.g. "ultima quotazione del 30/10, 2 sedute fa".
+    reason: str | None = None
+
+
+def _format_price_day(price_date: date, today: date) -> str:
+    if price_date.year == today.year:
+        return price_date.strftime("%d/%m")
+    return price_date.strftime("%d/%m/%Y")
+
+
+def stale_reason_text(price_date: date | None, missed_sessions: int, today: date) -> str:
+    if price_date is None:
+        return "nessuna quotazione giornaliera disponibile"
+    sessions = "1 seduta fa" if missed_sessions == 1 else f"{missed_sessions} sedute fa"
+    return f"ultima quotazione del {_format_price_day(price_date, today)}, {sessions}"
+
+
+def assess_price_freshness(
+    *,
+    asset_id: int,
+    symbol: str,
+    market_symbol: str | None,
+    price_date: date | None,
+    now,
+    max_sessions: int = DEFAULT_STALE_MAX_SESSIONS,
+) -> PriceFreshness:
+    """Stale when ``max_sessions`` or more sessions of the asset's market closed after ``price_date``.
+
+    Replaces the calendar-day threshold of :func:`check_staleness` for positions:
+    the market calendar (services/market_hours) skips weekends and the main
+    holidays, so a Friday close is fresh on Monday and a quote stuck for two
+    trading days is flagged even inside a calendar week. Logged once per
+    (asset, price_date), like check_staleness.
+    """
+    from .services.market_hours import completed_sessions_after
+
+    threshold = max(1, int(max_sessions))
+    today = now.date()
+    if price_date is None:
+        missed = threshold
+    else:
+        missed = completed_sessions_after(market_symbol or symbol, price_date, now, limit=max(threshold, 60))
+    if missed < threshold:
+        _stale_logged.pop(asset_id, None)
+        return PriceFreshness(stale=False, missed_sessions=missed)
+
+    reason = stale_reason_text(price_date, missed, today)
+    first_seen = asset_id not in _stale_logged or _stale_logged[asset_id] != price_date
+    _stale_logged[asset_id] = price_date
+    log = logger.warning if first_seen else logger.debug
+    log(
+        "price_stale asset_id=%s symbol=%s market_symbol=%s price_date=%s missed_sessions=%s max_sessions=%s reason=%s",
+        asset_id, symbol, market_symbol, price_date, missed, threshold, reason,
+    )
+    return PriceFreshness(stale=True, missed_sessions=missed, reason=reason)

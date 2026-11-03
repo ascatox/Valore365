@@ -234,6 +234,48 @@ non toglie punti.
   `get_cash_balance` (e gli aggregati `get_aggregate_summary` / `get_aggregate_positions`) espongono
   i campi e una `data_quality_note` in italiano solo quando c'è qualcosa da segnalare.
   `quote_currency` dei listing `.L` da riconciliare (TASK-41).
+- **Freschezza dei prezzi e barre giornaliere (TASK-53):**
+  - *Da dove arriva il prezzo:* `market_price` e `price_date` vengono dall'ultima barra di
+    `price_bars_1d`; i `price_ticks` servono alla variazione giornaliera. Le barre erano scritte solo
+    da backfill manuali (`backfill_daily` dopo il refresh dalla UI), nuove transazioni o pagina
+    dell'asset; il job delle 06:30 copre solo i benchmark.
+  - *Job giornaliero delle barre:* `daily_bars` (APScheduler, lun-ven alle
+    `DAILY_BARS_SCHEDULER_HOUR:MINUTE` UTC, default 22:30) scarica gli ultimi
+    `DAILY_BARS_LOOKBACK_DAYS` (default 10) giorni di calendario, seduta del giorno compresa, per
+    **tutti gli asset attivi in un qualsiasi portafoglio** (transazioni o target), con
+    `price_backfill_max_workers` richieste in parallelo e nessuna connessione DB tenuta durante le
+    chiamate (due letture brevi prima, una scrittura breve per asset). Simbolo: listing mappato in
+    `asset_provider_symbols` (lo stesso con cui sono scritte le barre esistenti), poi simbolo, poi
+    ISIN; fallback per ISIN se lo storico è insufficiente, come `backfill_daily`. Acceso da
+    `DAILY_BARS_SCHEDULER_ENABLED` (non impostato = segue `PRICE_SCHEDULER_ENABLED`). Log di sintesi
+    `Daily bars job completed ... updated/no_new_bar/lagging/failed ... lagging_symbols=...`.
+  - *Righe Yahoo incomplete (causa di XAD1.DE):* il client scartava in silenzio le sedute con
+    chiusura ma `open/high/low` o `adjclose` nulli (comportamento ereditato da yfinance): per un
+    listing poco scambiato lo storico si fermava all'ultimo giorno "completo" senza errori. Ora la
+    riga è tenuta, i valori mancanti presi dalla chiusura (log `daily_bars_partial_rows`); le righe
+    senza chiusura restano scartate ma loggate (`daily_bars_rows_without_close`).
+  - *Log per asset dei backfill* (`backfill_daily`, `backfill_single_asset`, job giornaliero): barre
+    scartate dalla validazione (`daily_bars_rejected`, motivo nelle righe `price_bar_rejected`) e
+    nessuna barra nuova quando la borsa dell'asset ha chiuso almeno una seduta dopo l'ultima barra
+    (`daily_bars_no_new_bar ... last_bar=... missed_sessions=... reason=...`); "niente di nuovo" in
+    regola resta a debug.
+  - *Quotazione ferma:* `price_stale` non usa più i 5 giorni di calendario ma il calendario della
+    borsa dell'asset (`services/market_hours.py`: orari dal suffisso del simbolo mappato, weekend e
+    principali festività NYSE/europee, crypto 7/7, cambi 5/7, ISIN/sconosciuti giorni feriali): il
+    prezzo è fermo quando dopo `price_date` si sono **concluse** almeno `PRICE_STALE_MAX_SESSIONS`
+    (default 2) sedute. Esempio: barra di venerdì → lunedì sera 1 seduta, non stale; XAD1.DE con
+    barra del 30/10 → il 3/11 dopo la chiusura Xetra "ultima quotazione del 30/10, 2 sedute fa".
+    Calcolato in lettura, quindi funziona anche senza scheduler. Campi additivi:
+    `Position.stale_reason`, `Position.last_price_at` (ultimo tick del provider),
+    `PortfolioSummary.stale_price_symbols`; tool `get_positions` (`price_date`, `price_stale`,
+    `stale_reason`, `last_price_at` e nota), `get_portfolio_summary`/`get_aggregate_summary`
+    (`stale_price_symbols` e nota), `get_day_movers` (`stale_positions` con motivo).
+  - *Timestamp del provider ripetuto:* il tick usa il timestamp di mercato del provider, quindi una
+    quotazione ferma riscrive la stessa chiave `(asset, provider, ts)` senza lasciare traccia. Il
+    refresh confronta il ts della quotazione con l'ultimo tick salvato: se non è più recente a
+    borsa aperta, o per `PRICE_UNCHANGED_TS_WARN_AFTER` (default 3) refresh di fila, logga
+    `price_unchanged_ts ... symbol=... ts=... stored_ts=... source=...` (una volta per asset al
+    giorno) e lo riporta in `PriceRefreshResponse.unchanged_ts_symbols`. Upsert invariato.
 - **Ritenute sui dividendi (decisione TASK-47):** la liquidità riceve il dividendo **netto**
   (`quantity × price − taxes`) nel summary, in `get_cash_balance` (totale e `currency_breakdown`), nel
   `cash-flow-timeline` e nel modello di liquidità della performance (§8). `get_dividend_summary`
@@ -378,7 +420,8 @@ cambia un etf/fund in stock né in bond (TASK-44). Schema invariato (ETC restano
 
 ## 11. Day movers (`get_day_movers`)
 
-Fonte: `get_positions`. Escluse le posizioni con prezzo stale o assente (`excluded_stale`) e quelle
+Fonte: `get_positions`. Escluse le posizioni con prezzo stale o assente (`excluded_stale`; da
+TASK-53 elencate in `stale_positions` con `price_date` e `stale_reason`) e quelle
 senza chiusura precedente (`excluded_no_previous_close`). Migliore/peggiore per `day_change_pct`,
 parità risolte in ordine alfabetico del simbolo; senza posizioni valide `best`/`worst` = `null` con
 `reason`. La variazione è in valuta di quotazione (senza effetto cambio).

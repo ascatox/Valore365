@@ -1,8 +1,9 @@
 import logging
+import threading
 import time
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import UTC, date, datetime
 
 import httpx
 
@@ -16,10 +17,21 @@ from .market_hours import is_market_open
 logger = logging.getLogger(__name__)
 
 
+def _utcnow() -> datetime:
+    """Current instant for the repeated-timestamp check (patched in tests)."""
+    return datetime.now(UTC)
+
+
 class PriceIngestionService:
     def __init__(self, settings: Settings, repository: PortfolioRepository) -> None:
         self.settings = settings
         self.repository = repository
+        # TASK-53: consecutive refreshes in which an asset's quote came back
+        # with a market timestamp not newer than the stored one, and the day
+        # its warning was last logged (one warning per asset per day).
+        self._unchanged_ts_lock = threading.Lock()
+        self._unchanged_ts_streak: dict[int, int] = {}
+        self._unchanged_ts_warned: dict[int, date] = {}
 
     def refresh_prices(
         self,
@@ -90,6 +102,10 @@ class PriceIngestionService:
             len(pricing_assets),
         )
 
+        latest_tick_ts = self._latest_tick_ts(pricing_assets, provider)
+        check_at = market_hours_at or _utcnow()
+        unchanged_ts_symbols: list[str] = []
+
         items: list[PriceRefreshItem] = []
         # Ticks are collected here and written once after the provider calls
         # finish, so the refresh holds a connection for a single short
@@ -109,6 +125,8 @@ class PriceIngestionService:
                 if not vr.valid:
                     errors.append(f"{asset.provider_symbol}: rejected - {vr.rejected_reason}")
                     continue
+                if self._is_unchanged_ts(asset, quote, latest_tick_ts.get(asset.asset_id), check_at):
+                    unchanged_ts_symbols.append(asset.provider_symbol)
                 pending_ticks.append({
                     "asset_id": asset.asset_id,
                     "provider": provider,
@@ -155,7 +173,58 @@ class PriceIngestionService:
             failed_assets=len(errors),
             items=items,
             errors=errors,
+            unchanged_ts_symbols=unchanged_ts_symbols,
         )
+
+    def _latest_tick_ts(self, pricing_assets: list, provider: str) -> dict[int, datetime]:
+        """Stored latest tick ts per asset, read before the provider calls (one short query)."""
+        getter = getattr(self.repository, 'get_latest_tick_ts', None)
+        if getter is None or not pricing_assets:
+            return {}
+        try:
+            return getter([a.asset_id for a in pricing_assets], provider) or {}
+        except Exception as exc:
+            logger.warning('Unable to read latest tick timestamps provider=%s error=%s', provider, exc)
+            return {}
+
+    def _is_unchanged_ts(self, asset, quote, stored_ts: datetime | None, now: datetime) -> bool:
+        """True when the provider repeats a market timestamp while it should be moving (TASK-53).
+
+        The tick ts is the provider's market timestamp, so a quote that does not
+        move upserts the same (asset, provider, ts) key: nothing new is stored
+        and, before this check, nothing was logged (XAD1.DE). Counted when the
+        asset's market is open, or after price_unchanged_ts_warn_after
+        refreshes in a row; the warning is logged once per asset per day.
+        """
+        quote_ts = getattr(quote, 'ts', None)
+        if not isinstance(quote_ts, datetime) or not isinstance(stored_ts, datetime):
+            return False
+        if quote_ts.tzinfo is None:
+            quote_ts = quote_ts.replace(tzinfo=UTC)
+        if stored_ts.tzinfo is None:
+            stored_ts = stored_ts.replace(tzinfo=UTC)
+        asset_id = asset.asset_id
+        with self._unchanged_ts_lock:
+            if quote_ts > stored_ts:
+                self._unchanged_ts_streak.pop(asset_id, None)
+                return False
+            streak = self._unchanged_ts_streak.get(asset_id, 0) + 1
+            self._unchanged_ts_streak[asset_id] = streak
+            market_symbol = getattr(asset, 'market_symbol', None) or asset.provider_symbol
+            market_open = is_market_open(market_symbol, now, after_close_grace_minutes=0)
+            warn_after = max(1, int(getattr(self.settings, 'price_unchanged_ts_warn_after', 3)))
+            if not market_open and streak < warn_after:
+                return False
+            today = now.astimezone(UTC).date()
+            first_today = self._unchanged_ts_warned.get(asset_id) != today
+            self._unchanged_ts_warned[asset_id] = today
+        log = logger.warning if first_today else logger.debug
+        log(
+            'price_unchanged_ts asset_id=%s symbol=%s market_symbol=%s ts=%s stored_ts=%s streak=%s market_open=%s source=%s',
+            asset_id, asset.provider_symbol, market_symbol, quote_ts.isoformat(), stored_ts.isoformat(),
+            streak, market_open, getattr(quote, 'source', None),
+        )
+        return True
 
     def _fetch_quotes(self, client, pricing_assets: list) -> Iterator[tuple[object | None, Exception | None]]:
         """(quote, errore) per ogni asset, nello stesso ordine di pricing_assets.

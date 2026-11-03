@@ -487,6 +487,11 @@ CASH_FX_MISSING_NOTE = (
     "Liquidita' approssimata: manca il cambio per {ccys} alla data dei movimenti, "
     "convertiti a 1,0."
 )
+STALE_PRICE_NOTE = (
+    "Quotazione ferma per {symbols}: il prezzo non si aggiorna da almeno {sessions} sedute "
+    "della borsa dell'asset (vedi stale_reason nelle posizioni); valore e variazione "
+    "giornaliera di queste posizioni non sono aggiornati."
+)
 PRICE_FALLBACK_NOTE = (
     "Prezzo non disponibile (o senza cambio) per {symbols}: valore di mercato pari al "
     "costo medio, P/L non significativo."
@@ -497,12 +502,19 @@ def summary_data_flags(summary: Any) -> dict:
     """fx_missing_currencies / price_fallback_symbols of a summary, with an Italian note when non-empty."""
     fx_missing = list(getattr(summary, "fx_missing_currencies", None) or [])
     fallback = list(getattr(summary, "price_fallback_symbols", None) or [])
-    out: dict[str, Any] = {"fx_missing_currencies": fx_missing, "price_fallback_symbols": fallback}
+    stale = list(getattr(summary, "stale_price_symbols", None) or [])
+    out: dict[str, Any] = {
+        "fx_missing_currencies": fx_missing,
+        "price_fallback_symbols": fallback,
+        "stale_price_symbols": stale,
+    }
     notes = []
     if fx_missing:
         notes.append(FX_MISSING_NOTE.format(ccys=", ".join(fx_missing)))
     if fallback:
         notes.append(PRICE_FALLBACK_NOTE.format(symbols=", ".join(fallback)))
+    if stale:
+        notes.append(STALE_PRICE_NOTE.format(symbols=", ".join(stale), sessions=_stale_max_sessions()))
     if notes:
         out["data_quality_note"] = " ".join(notes)
     return out
@@ -522,20 +534,43 @@ def position_row(p: Any) -> dict:
         "market_price": round(p.market_price, 4) if p.market_price else 0,
         "price_fallback": getattr(p, "price_fallback", None),
         "fx_missing": bool(getattr(p, "fx_missing", False)),
+        # TASK-53: date of the daily close used as market_price, whether it is
+        # stale (sessions of the asset's market) and why, latest provider tick.
+        "price_date": _iso(getattr(p, "price_date", None)),
+        "price_stale": bool(getattr(p, "price_stale", False)),
+        "stale_reason": getattr(p, "stale_reason", None),
+        "last_price_at": _iso(getattr(p, "last_price_at", None)),
     }
+
+
+def _iso(value: Any) -> str | None:
+    return value.isoformat() if value is not None and hasattr(value, "isoformat") else None
+
+
+def _stale_max_sessions() -> int:
+    try:
+        from .config import get_settings
+
+        return int(get_settings().price_stale_max_sessions)
+    except Exception:
+        return 2
 
 
 def positions_data_note(rows: list[dict]) -> dict:
-    """Italian note for the positions whose price fell back to the average cost."""
+    """Italian note for the positions whose price fell back to the average cost or is stale."""
     fallback = [r["symbol"] for r in rows if r.get("price_fallback")]
-    if not fallback:
-        return {}
-    return {
-        "data_quality_note": (
+    stale = [r["symbol"] for r in rows if r.get("price_stale")]
+    notes = []
+    if fallback:
+        notes.append(
             PRICE_FALLBACK_NOTE.format(symbols=", ".join(fallback))
             + " Per le posizioni con fx_missing manca il cambio della valuta di quotazione o di acquisto."
         )
-    }
+    if stale:
+        notes.append(STALE_PRICE_NOTE.format(symbols=", ".join(stale), sessions=_stale_max_sessions()))
+    if not notes:
+        return {}
+    return {"data_quality_note": " ".join(notes)}
 
 
 def _get_portfolio_summary(
@@ -730,6 +765,8 @@ def _get_day_movers(
     valid = []
     excluded = 0
     excluded_no_prev = 0
+    # TASK-53: which positions were left out for a stale price, and why.
+    stale_positions: list[dict] = []
     for p in positions:
         change = p.day_change_pct
         if (
@@ -739,6 +776,13 @@ def _get_day_movers(
             or not math.isfinite(change)
         ):
             excluded += 1
+            if p.price_stale or p.price_date is None:
+                stale_positions.append({
+                    "symbol": p.symbol,
+                    "price_date": _iso(p.price_date),
+                    "stale_reason": getattr(p, "stale_reason", None)
+                    or ("nessuna quotazione giornaliera disponibile" if p.price_date is None else None),
+                })
             continue
         if not getattr(p, "previous_close_available", False):
             excluded_no_prev += 1
@@ -762,6 +806,7 @@ def _get_day_movers(
             "valid_positions": 0,
             "excluded_stale": excluded,
             "excluded_no_previous_close": excluded_no_prev,
+            "stale_positions": stale_positions,
         }
 
     def _mover(p: Any) -> dict:
@@ -781,6 +826,7 @@ def _get_day_movers(
         "valid_positions": len(valid),
         "excluded_stale": excluded,
         "excluded_no_previous_close": excluded_no_prev,
+        "stale_positions": stale_positions,
     }
 
 

@@ -1409,3 +1409,41 @@ def test_aggregate_xray_never_gets_a_justetf_client(mcp_on, monkeypatch):
     assert result['isError'] is False, result
     assert calls[0][0] == [1, 2]
     assert calls[0][1]['justetf_client'] is None
+
+
+# --- TASK-53: stale prices are visible over MCP ---------------------------------
+
+def test_mcp_positions_and_day_movers_show_the_stale_reason(mcp_on, fake_repo, monkeypatch):
+    from datetime import UTC as _UTC
+    from datetime import date as _date
+    from datetime import datetime as _datetime
+
+    from app.models import Position
+
+    reason = 'ultima quotazione del 30/10, 2 sedute fa'
+
+    def _position(symbol, change, *, stale):
+        return Position(
+            asset_id=120 if stale else 7, symbol=symbol, name=symbol, quantity=1, avg_cost=100,
+            market_price=100, market_value=100, unrealized_pl=0, unrealized_pl_pct=0, weight=50,
+            day_change_pct=change, previous_close_available=True, price_stale=stale,
+            price_date=_date(2026, 10, 30) if stale else _date(2026, 11, 3),
+            stale_reason=reason if stale else None,
+            last_price_at=_datetime(2026, 11, 2, 20, 38, tzinfo=_UTC) if stale else None,
+        )
+
+    monkeypatch.setattr(
+        fake_repo, 'get_positions',
+        lambda portfolio_id, user_id: [_position('XAD1', 4.0, stale=True), _position('VWCE', 1.0, stale=False)],
+        raising=False,
+    )
+    client = TestClient(api_main.app)
+
+    positions = _call(client, 'get_positions', {'portfolio_id': 1})['structuredContent']
+    xad1 = next(r for r in positions['positions'] if r['symbol'] == 'XAD1')
+    assert (xad1['price_stale'], xad1['stale_reason'], xad1['price_date']) == (True, reason, '2026-10-30')
+    assert 'Quotazione ferma per XAD1' in positions['data_quality_note']
+
+    movers = _call(client, 'get_day_movers', {'portfolio_id': 1}, request_id=2)['structuredContent']
+    assert movers['best']['symbol'] == 'VWCE'
+    assert movers['stale_positions'] == [{'symbol': 'XAD1', 'price_date': '2026-10-30', 'stale_reason': reason}]

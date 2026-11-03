@@ -1036,10 +1036,25 @@ class YahooFinanceClient:
             no_data_message=f"Nessun dato storico per {symbol}",
         )
         bars_by_day: dict[date, ProviderDailyBar] = {}
+        # TASK-53: Yahoo serves sessions of thinly traded listings (e.g.
+        # XAD1.DE) with a close but null open/high/low or a missing adjclose.
+        # yfinance dropped those rows silently, so the stored history stopped
+        # at the last "complete" day with no error. The close is the price
+        # used everywhere: keep the row, fill the gaps from the close, log it.
+        filled_days: list[date] = []
+        dropped_days: list[date] = []
         for day, row in rows:
             o, h, l, c, adj = row.open, row.high, row.low, row.close, row.adjclose
-            if o is None or h is None or l is None or c is None or adj is None or c == 0:
+            if c is None or c == 0:
+                dropped_days.append(day)
                 continue
+            if o is None or h is None or l is None or adj is None:
+                filled_days.append(day)
+                if adj is None:
+                    adj = c
+                o = c if o is None else o
+                h = max(v for v in (h, o, c) if v is not None)
+                l = min(v for v in (l, o, c) if v is not None)
             # auto_adjust=True di yfinance: OHLC rettificati per split e
             # dividendi con il rapporto adjclose/close, volume invariato.
             ratio = adj / c
@@ -1056,6 +1071,17 @@ class YahooFinanceClient:
                 close=adj,
                 # yfinance: Volume.fillna(0).astype(int64).
                 volume=float(int(row.volume)) if row.volume is not None else 0.0,
+            )
+        if filled_days:
+            logger.warning(
+                'daily_bars_partial_rows symbol=%s filled=%s days=%s (open/high/low/adjclose missing, filled from close)',
+                symbol, len(filled_days), ','.join(d.isoformat() for d in filled_days[-10:]),
+            )
+        dropped_days = [d for d in dropped_days if d not in bars_by_day]
+        if dropped_days:
+            logger.info(
+                'daily_bars_rows_without_close symbol=%s dropped=%s days=%s',
+                symbol, len(dropped_days), ','.join(d.isoformat() for d in dropped_days[-10:]),
             )
         if not bars_by_day:
             raise ProviderError(
