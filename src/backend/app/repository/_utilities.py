@@ -1,6 +1,7 @@
 import json
 from bisect import bisect_right
 from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import date
 
 from sqlalchemy import text
@@ -16,6 +17,7 @@ from ..models import (
     TransactionRead,
 )
 from ._base import PortfolioData
+from ._cash_model import cash_delta
 from ._scope import load_scope_portfolios
 
 
@@ -43,6 +45,97 @@ def _build_cash_breakdown(
     ]
 
 
+CASH_MOVEMENT_SIDES = ("deposit", "withdrawal", "dividend", "fee", "interest")
+
+
+@dataclass(frozen=True)
+class CashBalanceDetail:
+    """Cash of one portfolio (or a sum of portfolios) in its base currency.
+
+    ``balance``: opening ``cash_balance`` + every cash movement, each converted
+    at the FX rate of its trade date. ``fx_missing_currencies``: currencies of
+    movements with no rate on or before their trade date (converted at 1.0, so
+    the balance is approximate). ``nominal_by_currency``: the same movements
+    summed per currency without conversion (opening cash in the base currency).
+    """
+
+    balance: float
+    fx_missing_currencies: list[str] = field(default_factory=list)
+    nominal_by_currency: dict[str, float] = field(default_factory=dict)
+
+
+def _cash_movement_nominal(side: str, quantity: float, price: float, taxes: float) -> float:
+    """Signed change of cash of one cash movement, in its own currency.
+
+    Same rule as the TASK-46 cash model (``_cash_model.cash_delta``) for the
+    cash sides: dividends are net of withholding taxes. Buys and sells never
+    move this balance (summary semantics, see methodology section 9).
+    """
+    if side not in CASH_MOVEMENT_SIDES:
+        return 0.0
+    return cash_delta(side, quantity * price, 0.0, taxes)
+
+
+def _cash_balance_detail(
+    *,
+    base_currency: str,
+    opening_cash_balance: float,
+    rows: list[dict],
+    fx_rows: list[dict],
+) -> CashBalanceDetail:
+    """The one cash rule shared by summary.cash_balance and get_cash_balance (TASK-47).
+
+    Every movement in a non-base currency is converted at the rate of its
+    trade date (last rate on or before it), like the TASK-46 cash model and
+    the cost basis of the positions. A movement without such a rate is
+    converted at 1.0 and its currency is reported, never silently.
+    """
+    fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
+    for row in fx_rows:
+        fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
+    fx_dates = {ccy: [d for d, _ in series] for ccy, series in fx_series.items()}
+
+    def fx_rate_on_or_before(currency: str, day: date | None) -> float | None:
+        if currency == base_currency:
+            return 1.0
+        if day is None:
+            return None
+        series = fx_series.get(currency)
+        dates = fx_dates.get(currency)
+        if not series or not dates:
+            return None
+        idx = bisect_right(dates, day) - 1
+        if idx < 0:
+            return None
+        return series[idx][1]
+
+    cash_balance = float(opening_cash_balance)
+    nominal: dict[str, float] = defaultdict(float)
+    if opening_cash_balance:
+        nominal[base_currency] += float(opening_cash_balance)
+    missing: set[str] = set()
+    for row in rows:
+        side = str(row["side"])
+        if side not in CASH_MOVEMENT_SIDES:
+            continue
+        trade_ccy = str(row["trade_currency"])
+        amount = _cash_movement_nominal(
+            side, float(row["quantity"]), float(row["price"]), float(row.get("taxes") or 0.0)
+        )
+        nominal[trade_ccy] += amount
+        fx_rate = fx_rate_on_or_before(trade_ccy, row.get("trade_date"))
+        if fx_rate is None:
+            missing.add(trade_ccy)
+            fx_rate = 1.0
+        cash_balance += amount * fx_rate
+
+    return CashBalanceDetail(
+        balance=round(cash_balance, 2),
+        fx_missing_currencies=sorted(missing),
+        nominal_by_currency={ccy: round(v, 2) for ccy, v in nominal.items()},
+    )
+
+
 def _compute_cash_balance_base(
     *,
     base_currency: str,
@@ -50,44 +143,12 @@ def _compute_cash_balance_base(
     rows: list[dict],
     fx_rows: list[dict],
 ) -> float:
-    fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
-    for row in fx_rows:
-        fx_series[str(row["from_ccy"])].append((row["price_date"], float(row["rate"])))
-    fx_dates = {ccy: [d for d, _ in series] for ccy, series in fx_series.items()}
-
-    def fx_rate_on_or_before(currency: str, day: date | None) -> float:
-        if currency == base_currency:
-            return 1.0
-        if day is None:
-            return 1.0
-        series = fx_series.get(currency)
-        dates = fx_dates.get(currency)
-        if not series or not dates:
-            return 1.0
-        idx = bisect_right(dates, day) - 1
-        if idx < 0:
-            return 1.0
-        return series[idx][1]
-
-    cash_balance = float(opening_cash_balance)
-    for row in rows:
-        side = str(row["side"])
-        # Only explicit cash movements affect liquidity
-        if side not in {"deposit", "withdrawal", "dividend", "fee", "interest"}:
-            continue
-        trade_day = row["trade_date"]
-        trade_ccy = str(row["trade_currency"])
-        quantity = float(row["quantity"])
-        price = float(row["price"])
-        fx_rate = fx_rate_on_or_before(trade_ccy, trade_day)
-        amount_base = quantity * price * fx_rate
-
-        if side in {"deposit", "interest", "dividend"}:
-            cash_balance += amount_base
-        elif side in {"withdrawal", "fee"}:
-            cash_balance -= amount_base
-
-    return round(cash_balance, 2)
+    return _cash_balance_detail(
+        base_currency=base_currency,
+        opening_cash_balance=opening_cash_balance,
+        rows=rows,
+        fx_rows=fx_rows,
+    ).balance
 
 
 class UtilitiesMixin:
@@ -253,59 +314,18 @@ class UtilitiesMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-            # Compute cash only from explicit cash movements (no buy/sell)
-            rows = conn.execute(
-                text(
-                    """
-                    select trade_currency,
-                           coalesce(sum(case
-                             when side in ('deposit', 'interest', 'dividend') then quantity * price
-                             when side in ('withdrawal', 'fee') then -quantity * price
-                             else 0
-                           end), 0)::float8 as balance
-                    from transactions
-                    where portfolio_id = :portfolio_id
-                      and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
-                    group by trade_currency
-                    order by trade_currency
-                    """
-                ),
-                {"portfolio_id": portfolio_id},
-            ).mappings().all()
-
+            # One rule with summary.cash_balance (TASK-47): movements at
+            # their trade-date FX, dividends net of taxes, buys/sells ignored.
+            detail = self._cash_balance_details(conn, [portfolio])[portfolio.id]
             breakdown = _build_cash_breakdown(
                 base_currency=portfolio.base_currency,
-                opening_cash_balance=portfolio.cash_balance,
-                rows=[dict(r) for r in rows],
+                opening_cash_balance=0.0,
+                rows=[
+                    {"trade_currency": ccy, "balance": balance}
+                    for ccy, balance in detail.nominal_by_currency.items()
+                ],
             )
-
-            # Convert each currency to base currency using latest FX rates
-            non_base_currencies = sorted(
-                {b.currency for b in breakdown if b.currency != portfolio.base_currency}
-            )
-            fx_latest: dict[str, float] = {}
-            if non_base_currencies:
-                fx_rows = conn.execute(
-                    text(
-                        """
-                        select distinct on (from_ccy) from_ccy, rate::float8 as rate
-                        from fx_rates_1d
-                        where from_ccy = any(:from_ccy) and to_ccy = :to_ccy
-                        order by from_ccy, price_date desc
-                        """
-                    ),
-                    {"from_ccy": non_base_currencies, "to_ccy": portfolio.base_currency},
-                ).mappings().all()
-                for r in fx_rows:
-                    fx_latest[str(r["from_ccy"])] = float(r["rate"])
-
-            total_cash = 0.0
-            for b in breakdown:
-                if b.currency == portfolio.base_currency:
-                    total_cash += b.balance
-                else:
-                    total_cash += b.balance * fx_latest.get(b.currency, 1.0)
-            total_cash = round(total_cash, 2)
+            total_cash = detail.balance
 
             # Recent cash movements (last 20)
             recent_rows = conn.execute(
@@ -351,25 +371,44 @@ class UtilitiesMixin:
             total_cash=total_cash,
             currency_breakdown=breakdown,
             recent_movements=recent,
+            fx_missing_currencies=detail.fx_missing_currencies,
         )
 
     def get_current_cash_balance_value(self, portfolio_id: int, user_id: str) -> float:
+        return self.get_current_cash_balance_detail(portfolio_id, user_id).balance
+
+    def get_current_cash_balance_detail(self, portfolio_id: int, user_id: str) -> CashBalanceDetail:
         with self.engine.begin() as conn:
             portfolio = self._get_portfolio_for_user(conn, portfolio_id, user_id)
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
-            return self._cash_balance_values(conn, [portfolio])[portfolio.id]
+            return self._cash_balance_details(conn, [portfolio])[portfolio.id]
 
     def get_current_cash_balance_value_multi(self, portfolio_ids: list[int], user_id: str) -> float:
         """Combined current cash of several portfolios (sum of each balance)."""
+        return self.get_current_cash_balance_detail_multi(portfolio_ids, user_id).balance
+
+    def get_current_cash_balance_detail_multi(self, portfolio_ids: list[int], user_id: str) -> CashBalanceDetail:
+        """Combined cash of several portfolios: summed balances, union of the missing FX currencies."""
         with self.engine.begin() as conn:
             _, portfolios = load_scope_portfolios(self, conn, portfolio_ids, user_id)
-            if len(portfolios) == 1:
-                return self._cash_balance_values(conn, portfolios)[portfolios[0].id]
-            balances = self._cash_balance_values(conn, portfolios)
-        return round(sum(balances[p.id] for p in portfolios), 2)
+            details = self._cash_balance_details(conn, portfolios)
+        if len(portfolios) == 1:
+            return details[portfolios[0].id]
+        nominal: dict[str, float] = defaultdict(float)
+        for p in portfolios:
+            for ccy, value in details[p.id].nominal_by_currency.items():
+                nominal[ccy] += value
+        return CashBalanceDetail(
+            balance=round(sum(details[p.id].balance for p in portfolios), 2),
+            fx_missing_currencies=sorted({c for p in portfolios for c in details[p.id].fx_missing_currencies}),
+            nominal_by_currency={ccy: round(v, 2) for ccy, v in nominal.items()},
+        )
 
     def _cash_balance_values(self, conn, portfolios: list[PortfolioData]) -> dict[int, float]:
+        return {pid: detail.balance for pid, detail in self._cash_balance_details(conn, portfolios).items()}
+
+    def _cash_balance_details(self, conn, portfolios: list[PortfolioData]) -> dict[int, CashBalanceDetail]:
         """Cash balance for several portfolios from one connection.
 
         Computing them one at a time cost a checkout and three queries each, so
@@ -446,7 +485,7 @@ class UtilitiesMixin:
                     fx_by_base[str(row["to_ccy"])].append(dict(row))
 
         return {
-            p.id: _compute_cash_balance_base(
+            p.id: _cash_balance_detail(
                 base_currency=p.base_currency,
                 opening_cash_balance=p.cash_balance,
                 rows=rows_by_portfolio.get(p.id, []),
@@ -465,7 +504,9 @@ class UtilitiesMixin:
                     """
                     select trade_at::date as trade_date,
                            side,
-                           sum(quantity * price)::float8 as total
+                           -- dividends net of withholding taxes (TASK-47)
+                           sum(quantity * price
+                               - case when side = 'dividend' then coalesce(taxes, 0) else 0 end)::float8 as total
                     from transactions
                     where portfolio_id = :portfolio_id
                       and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')

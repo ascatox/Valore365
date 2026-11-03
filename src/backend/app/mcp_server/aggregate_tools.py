@@ -31,6 +31,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..copilot_tools import _TOOL_HANDLERS as COPILOT_HANDLERS
+from ..copilot_tools import position_row, positions_data_note, summary_data_flags
 from ..repository._scope import EMPTY_SCOPE_MESSAGE, MIXED_CURRENCY_MESSAGE, NOT_FOUND_MESSAGE
 
 MIN_AGGREGATE_PORTFOLIOS = 2
@@ -99,6 +100,7 @@ def _summary(deps: Any, ids: list[int], user_id: str) -> dict[str, Any]:
         "day_change": round(s.day_change, 2),
         "day_change_pct": round(s.day_change_pct, 2),
         "cash_balance": round(s.cash_balance, 2),
+        **summary_data_flags(s),
     }
 
 
@@ -106,23 +108,8 @@ def _positions(deps: Any, ids: list[int], user_id: str) -> dict[str, Any]:
     # Same call as GET /portfolios/aggregate/positions: one row per asset.
     positions = deps.repo.get_positions_multi(ids, user_id)
     top = sorted(positions, key=lambda p: p.weight, reverse=True)[:30]
-    return {
-        "positions_count": len(positions),
-        "positions": [
-            {
-                "symbol": p.symbol,
-                "name": p.name,
-                "weight": round(p.weight, 2),
-                "market_value": round(p.market_value, 2),
-                "cost_basis": round(p.avg_cost * p.quantity, 2) if p.avg_cost else 0,
-                "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
-                "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
-                "quantity": float(p.quantity),
-                "market_price": round(p.market_price, 4) if p.market_price else 0,
-            }
-            for p in top
-        ],
-    }
+    rows = [position_row(p) for p in top]
+    return {"positions_count": len(positions), "positions": rows, **positions_data_note(rows)}
 
 
 def _allocation(deps: Any, ids: list[int], user_id: str) -> dict[str, Any]:

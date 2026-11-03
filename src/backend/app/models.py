@@ -313,6 +313,13 @@ class Position(BaseModel):
     investment_focus: str | None = None
     price_stale: bool = False
     price_date: date | None = None
+    # TASK-47: no silent fallbacks. 'avg_cost' when market_price is the average
+    # cost (no price, or no FX rate for the quote currency): P/L is then 0.
+    price_fallback: Literal['avg_cost'] | None = None
+    # A needed FX rate (quote currency, or the currency of a trade for the cost
+    # basis) was missing and 1.0 was used / the price fell back.
+    fx_missing: bool = False
+    fx_missing_currencies: list[str] = Field(default_factory=list)
 
 
 class PeriodPerformer(BaseModel):
@@ -335,6 +342,11 @@ class PortfolioSummary(BaseModel):
     day_change: float = 0.0
     day_change_pct: float = 0.0
     cash_balance: float = 0.0
+    # TASK-47: currencies whose FX rate was missing (cash movements converted
+    # at 1.0, positions valued at avg cost / cost basis at 1.0) and the
+    # positions whose price fell back to the average cost.
+    fx_missing_currencies: list[str] = Field(default_factory=list)
+    price_fallback_symbols: list[str] = Field(default_factory=list)
 
 
 class TimeSeriesPoint(BaseModel):
@@ -769,6 +781,8 @@ class CashBalanceResponse(BaseModel):
     total_cash: float
     currency_breakdown: list[CashCurrencyBreakdown]
     recent_movements: list[TransactionListItem]
+    # TASK-47: currencies converted at 1.0 for lack of a trade-date FX rate.
+    fx_missing_currencies: list[str] = Field(default_factory=list)
 
 
 class CashFlowTimelinePoint(BaseModel):

@@ -76,6 +76,11 @@ class _Repo(SummaryMixin):
     def get_current_cash_balance_value(self, portfolio_id, user_id):
         return 0.0
 
+    def get_current_cash_balance_detail(self, portfolio_id, user_id):
+        from app.repository._utilities import CashBalanceDetail
+
+        return CashBalanceDetail(balance=0.0)
+
     def get_positions(self, portfolio_id, user_id):
         return self._positions
 

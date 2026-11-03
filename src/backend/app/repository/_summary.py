@@ -29,9 +29,11 @@ class SummaryMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-        current_cash_balance = self.get_current_cash_balance_value(portfolio_id, user_id)
+        cash = self.get_current_cash_balance_detail(portfolio_id, user_id)
         positions = self.get_positions(portfolio_id, user_id)
-        return self._summary_from_positions(portfolio_id, portfolio.base_currency, positions, current_cash_balance)
+        return self._summary_from_positions(
+            portfolio_id, portfolio.base_currency, positions, cash.balance, cash.fx_missing_currencies,
+        )
 
     def get_summary_multi(self, portfolio_ids: list[int], user_id: str) -> PortfolioSummary:
         """Summary of several portfolios read as one.
@@ -46,13 +48,16 @@ class SummaryMixin:
         if not scope.is_aggregate:
             summary = self.get_summary(ids[0], user_id)
         else:
-            current_cash_balance = self.get_current_cash_balance_value_multi(ids, user_id)
+            cash = self.get_current_cash_balance_detail_multi(ids, user_id)
             positions = self.get_positions_multi(ids, user_id)
-            summary = self._summary_from_positions(ids[0], scope.base_currency, positions, current_cash_balance)
+            summary = self._summary_from_positions(
+                ids[0], scope.base_currency, positions, cash.balance, cash.fx_missing_currencies,
+            )
         return summary.model_copy(update=aggregate_identity(ids))
 
     def _summary_from_positions(
         self, portfolio_id: int, base_currency: str, positions, current_cash_balance: float,
+        cash_fx_missing: list[str] | None = None,
     ) -> PortfolioSummary:
         market_value = sum(p.market_value for p in positions)
         cost_basis = sum(p.quantity * p.avg_cost for p in positions)
@@ -260,6 +265,14 @@ class SummaryMixin:
             day_change=round(_finite(day_change), 2),
             day_change_pct=round(_finite(day_change_pct), 2),
             cash_balance=current_cash_balance,
+            # TASK-47: data gaps of cash and positions, reported not hidden.
+            fx_missing_currencies=sorted(
+                set(cash_fx_missing or [])
+                | {c for p in positions for c in (getattr(p, "fx_missing_currencies", None) or [])}
+            ),
+            price_fallback_symbols=sorted(
+                str(p.symbol) for p in positions if getattr(p, "price_fallback", None)
+            ),
         )
 
     def get_intraday_timeseries(self, portfolio_id: int, user_id: str, finance_client) -> list[IntradayTimeseriesPoint]:

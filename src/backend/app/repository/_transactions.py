@@ -460,7 +460,10 @@ class TransactionsMixin:
             elif side == "sell":
                 # Investor inflow: price - fees/taxes (same sign as withdrawal)
                 signed = -(amount_base - costs_base)
-            elif side in {"deposit", "dividend", "interest"}:
+            elif side == "dividend":
+                # Net of withholding taxes, like the cash balance (TASK-47).
+                signed = amount_base - float(row["taxes"]) * fx
+            elif side in {"deposit", "interest"}:
                 signed = amount_base
             else:  # withdrawal, fee
                 signed = -amount_base
@@ -642,8 +645,9 @@ class TransactionsMixin:
                     trade_ccy = str(row["trade_currency"])
                     fx = fx_rate_on_or_before(trade_ccy, trade_day)
                     amount_base = qty * price * fx
-                    costs_base = (float(row.get("fees") or 0.0) + float(row.get("taxes") or 0.0)) * fx
-                    cash_balance += cash_delta(side, amount_base, costs_base)
+                    taxes_base = float(row.get("taxes") or 0.0) * fx
+                    costs_base = float(row.get("fees") or 0.0) * fx + taxes_base
+                    cash_balance += cash_delta(side, amount_base, costs_base, taxes_base)
 
                     if side == "buy":
                         aid = row["asset_id"]

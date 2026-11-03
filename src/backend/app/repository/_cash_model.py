@@ -8,7 +8,9 @@ the flows can never disagree:
 - buy: cash -= price x quantity + fees + taxes
 - sell: cash += price x quantity - fees - taxes (proceeds stay in cash until an
   explicit withdrawal; a sell is never an external flow)
-- deposit, dividend, interest: cash += amount
+- deposit, interest: cash += amount
+- dividend: cash += amount - taxes (net of withholding taxes, TASK-47; the
+  same rule as summary.cash_balance / get_cash_balance)
 - withdrawal, fee: cash -= amount
 
 Cash is settled at the end of every day (the valuation is end-of-day): if the
@@ -34,16 +36,19 @@ CASH_IN_SIDES = frozenset({"deposit", "dividend", "interest"})
 CASH_OUT_SIDES = frozenset({"withdrawal", "fee"})
 
 
-def cash_delta(side: str, gross_base: float, costs_base: float) -> float:
+def cash_delta(side: str, gross_base: float, costs_base: float, taxes_base: float = 0.0) -> float:
     """Change of cash for one transaction, amounts already in base currency.
 
     ``gross_base`` is quantity x price, ``costs_base`` fees + taxes (applied
-    to buys and sells only, like the external cashflow list).
+    to buys and sells only, like the external cashflow list). ``taxes_base``
+    is the withholding tax of a dividend, which reaches cash net of it.
     """
     if side == "buy":
         return -(gross_base + costs_base)
     if side == "sell":
         return gross_base - costs_base
+    if side == "dividend":
+        return gross_base - taxes_base
     if side in CASH_IN_SIDES:
         return gross_base
     if side in CASH_OUT_SIDES:
@@ -53,6 +58,8 @@ def cash_delta(side: str, gross_base: float, costs_base: float) -> float:
 
 def cash_delta_from_signed(side: str, signed_amount: float) -> float:
     """Same as cash_delta, from a CashFlowEntry amount (portfolio perspective).
+
+    A dividend entry already carries the net amount (gross - taxes).
 
     The entry signs a buy as +cost and a sell as -proceeds (money the
     investor puts in / takes out when trades are flows), so for trades the

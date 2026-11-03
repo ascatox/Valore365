@@ -110,3 +110,30 @@ Test aggiornati (aspettative che codificavano il comportamento precedente):
   → `test_aggregate_cash_model_is_applied_per_portfolio`: l'acquisto compare come
   `implicit_contribution` (non più come flusso `buy`) e il flag vale "solo apporti impliciti";
   TWR atteso invariato (0%).
+
+## TASK-47 — liquidità: un solo cambio, nessun ripiego silenzioso, dividendi netti (2026-11-03)
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_cash_fx_task47.py -q
+# 14 passed   (prima delle modifiche: 13 failed, 1 passed)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 847 passed  (prima: 833 passed; +14 test nuovi, nessuna aspettativa esistente cambiata)
+```
+
+Frontend (`src/frontend/valore-frontend`, solo campi opzionali aggiunti in `services/api/types.ts`):
+`npm run lint` pulito; `npx vitest run` 134 passed (25 file); `npx tsc -b` 140 errori (baseline
+invariata).
+
+Prima → dopo su dati sintetici (`tests/unit/test_cash_fx_task47.py`):
+
+| Caso | Prima | Dopo |
+|---|---|---|
+| Saldo iniziale 200 + deposito 1000 + dividendo 100 USD (cambio 0,90 alla data, 0,95 ultimo) | summary 1290, `total_cash` 1295 | entrambi 1290 |
+| Stesso caso senza cambi USD | 1300 in entrambi, nessun avviso | 1300, `fx_missing_currencies = ["USD"]` |
+| Dividendo 100 con ritenuta 26 (+ deposito 1000) | liquidità 1100, valore performance 1100, flusso `dividend` 100 | 1074 in summary, `get_cash_balance`, valutazione storica; flusso `dividend` 74 |
+| Titolo quotato in USD senza cambio; titolo senza prezzi | prezzo = costo medio senza segnalazione | stesso valore, `price_fallback = 'avg_cost'`, `fx_missing` (solo il primo), elencati in `price_fallback_symbols` |
+
+Test esistente adattato: `tests/unit/test_summary_day_change.py` (il finto repository espone anche
+`get_current_cash_balance_detail`, usato ora dal summary).
