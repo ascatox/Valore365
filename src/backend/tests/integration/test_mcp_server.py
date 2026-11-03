@@ -12,6 +12,7 @@ import app.auth as app_auth
 import app.main as api_main
 import app.mcp_server.auth as mcp_auth
 from app.copilot_tools import TOOL_DEFINITIONS
+from app.mcp_server.aggregate_tools import AGGREGATE_TOOLS
 from app.mcp_server.config import resolve_mcp_config
 from app.mcp_server.tools import MAX_TEXT_FIELD_CHARS, MCP_TOOL_ALLOWLIST, ServerIdentity, sanitize_output
 from app.rate_limit import SlidingWindowRateLimiter
@@ -393,12 +394,14 @@ def test_initialize_and_list_read_only_tools(mcp_on):
     assert listed.status_code == 200
     tools = listed.json()['result']['tools']
     names = {t['name'] for t in tools}
-    assert names == {'list_portfolios', *MCP_TOOL_ALLOWLIST}
+    assert names == {'list_portfolios', *MCP_TOOL_ALLOWLIST, *AGGREGATE_TOOLS}
 
     for tool in tools:
         assert tool['annotations']['readOnlyHint'] is True
         assert tool['annotations']['destructiveHint'] is False
-        if tool['name'] != 'list_portfolios':
+        if tool['name'] in AGGREGATE_TOOLS:
+            assert tool['inputSchema']['required'] == ['portfolio_ids']
+        elif tool['name'] != 'list_portfolios':
             assert tool['inputSchema']['required'][0] == 'portfolio_id'
             assert tool['inputSchema']['properties']['portfolio_id']['type'] == 'integer'
 
@@ -572,7 +575,8 @@ def test_every_copilot_tool_is_explicitly_allowlisted_or_excluded():
     assert not undecided, f'Decide MCP exposure for: {sorted(undecided)}'
     assert not (MCP_TOOL_ALLOWLIST & set(MCP_TOOL_EXCLUDED))
     assert MCP_TOOL_ALLOWLIST <= copilot_names, 'stale names in MCP_TOOL_ALLOWLIST'
-    assert HEAVY_TOOLS <= MCP_TOOL_ALLOWLIST
+    assert HEAVY_TOOLS <= MCP_TOOL_ALLOWLIST | set(AGGREGATE_TOOLS)
+    assert not (MCP_TOOL_ALLOWLIST & set(AGGREGATE_TOOLS))
     assert all(reason.strip() for reason in MCP_TOOL_EXCLUDED.values())
 
 
@@ -583,7 +587,7 @@ def test_new_copilot_tool_is_not_exposed_until_allowlisted(monkeypatch):
     ])
     names = {t.name for t in build_tool_list()}
     assert 'delete_everything' not in names
-    assert names == {'list_portfolios', *MCP_TOOL_ALLOWLIST}
+    assert names == {'list_portfolios', *MCP_TOOL_ALLOWLIST, *AGGREGATE_TOOLS}
 
 
 # --- 2. X-Ray strictly read-only ----------------------------------------------
@@ -916,7 +920,9 @@ def test_heavy_tools_have_a_stricter_rate_limit(mcp_on, monkeypatch):
     # Light tools are not affected.
     assert _call(client, 'get_portfolio_summary', {'portfolio_id': 1})['isError'] is False
     assert {'get_monte_carlo', 'get_stress_test', 'get_income_projection', 'get_xray_summary',
-            'calculate_rebalance_orders', 'calculate_what_if', 'calculate_pac_contribution'} == HEAVY_TOOLS
+            'calculate_rebalance_orders', 'calculate_what_if', 'calculate_pac_contribution',
+            'get_aggregate_performance', 'get_aggregate_health', 'get_aggregate_monte_carlo',
+            'get_aggregate_stress_test', 'get_aggregate_xray'} == HEAVY_TOOLS
 
 
 # --- 6. input validation ------------------------------------------------------
@@ -1116,3 +1122,252 @@ def test_rate_limiter_is_limited_does_not_consume_and_prunes():
     for i in range(SlidingWindowRateLimiter._PRUNE_EVERY):
         expired.allow(f'ip-{i}')
     assert len(expired._entries) <= 1
+
+
+# --- aggregate (multi-portfolio) read-only tools (TASK-43) ---------------------
+
+from app.auth import AuthContext  # noqa: E402
+from app.mcp_server.aggregate_tools import AGGREGATE_NOTE, MAX_AGGREGATE_PORTFOLIOS  # noqa: E402
+from app.rate_limit import require_auth_rate_limited  # noqa: E402
+from app.repository._scope import MIXED_CURRENCY_MESSAGE  # noqa: E402
+from tests.unit.test_aggregate_repository import USER as AGG_USER  # noqa: E402
+from tests.unit.test_aggregate_repository import _repo as _scripted_repo  # noqa: E402
+
+ADDITIVE_FIELDS = ('market_value', 'cost_basis', 'unrealized_pl', 'day_change', 'cash_balance')
+
+
+@pytest.fixture
+def scripted_repo(monkeypatch):
+    """Two EUR portfolios (1, 2) of OWNER, a USD one (3), someone else's (4)."""
+    repo = _scripted_repo()
+    # The MCP token subject must look like a Clerk user id: hand AGG_USER's portfolios to OWNER.
+    for portfolio in repo.engine.portfolios:
+        if portfolio['owner_user_id'] == AGG_USER:
+            portfolio['owner_user_id'] = OWNER
+    monkeypatch.setattr(api_main, 'repo', repo)
+    return repo
+
+
+def _agg_token(**overrides):
+    return _make_token(**overrides)
+
+
+def test_aggregate_tools_are_listed_read_only_with_bounded_portfolio_ids(mcp_on):
+    tools = _rpc(TestClient(api_main.app), 'tools/list', token=_make_token()).json()['result']['tools']
+    aggregate = {t['name']: t for t in tools if t['name'].startswith('get_aggregate_')}
+
+    assert set(aggregate) == set(AGGREGATE_TOOLS) >= {
+        'get_aggregate_summary', 'get_aggregate_positions', 'get_aggregate_allocation',
+        'get_aggregate_performance', 'get_aggregate_recent_transactions', 'get_aggregate_monte_carlo',
+    }
+    for tool in aggregate.values():
+        assert tool['annotations']['readOnlyHint'] is True
+        assert tool['annotations']['destructiveHint'] is False
+        schema = tool['inputSchema']
+        assert schema['required'] == ['portfolio_ids']
+        assert schema['additionalProperties'] is False
+        assert set(schema['properties']) == {'portfolio_ids'}
+        ids = schema['properties']['portfolio_ids']
+        assert ids['type'] == 'array'
+        assert (ids['minItems'], ids['maxItems'], ids['uniqueItems']) == (2, MAX_AGGREGATE_PORTFOLIOS, True)
+        assert ids['items'] == {'type': 'integer', 'minimum': 1, 'maximum': mcp_tools.MAX_PORTFOLIO_ID}
+    # Existing single-portfolio tools keep their schema.
+    assert all('portfolio_ids' not in t['inputSchema']['properties'] for t in tools if t['name'] in MCP_TOOL_ALLOWLIST)
+
+
+def test_aggregate_summary_matches_the_app_route_and_the_sum_of_singles(mcp_on, scripted_repo, monkeypatch):
+    client = TestClient(api_main.app)
+    result = _call(client, 'get_aggregate_summary', {'portfolio_ids': [1, 2]}, token=_agg_token())
+    assert result['isError'] is False, result
+    agg = result['structuredContent']
+
+    assert agg['portfolio_ids'] == [1, 2]
+    assert agg['base_currency'] == 'EUR'
+    assert agg['aggregate_note'] == AGGREGATE_NOTE
+
+    # Same numbers as the app aggregate route on the same data.
+    api_main.app.dependency_overrides[require_auth_rate_limited] = lambda: AuthContext(
+        user_id=OWNER, org_id=None, email=None, claims={},
+    )
+    try:
+        route = client.get('/api/portfolios/aggregate/summary?portfolio_ids=1&portfolio_ids=2')
+    finally:
+        api_main.app.dependency_overrides.pop(require_auth_rate_limited, None)
+    assert route.status_code == 200, route.text
+    app_view = route.json()
+    for field in (*ADDITIVE_FIELDS, 'unrealized_pl_pct', 'day_change_pct'):
+        assert agg[field] == pytest.approx(app_view[field], abs=0.01), field
+
+    # Additive fields are the sum of the single-portfolio tools.
+    singles = [
+        _call(client, 'get_portfolio_summary', {'portfolio_id': pid}, token=_agg_token(), request_id=pid)['structuredContent']
+        for pid in (1, 2)
+    ]
+    for field in ADDITIVE_FIELDS:
+        assert agg[field] == pytest.approx(sum(s[field] for s in singles), abs=0.01), field
+    assert agg['market_value'] > 0
+
+
+def test_aggregate_positions_and_allocation_merge_the_portfolios(mcp_on, scripted_repo):
+    client = TestClient(api_main.app)
+    positions = _call(client, 'get_aggregate_positions', {'portfolio_ids': [1, 2]}, token=_agg_token())['structuredContent']
+    allocation = _call(client, 'get_aggregate_allocation', {'portfolio_ids': [2, 1]}, token=_agg_token())['structuredContent']
+
+    assert [p['symbol'] for p in positions['positions']].count('VWCE') == 1
+    expected = scripted_repo.get_positions_multi([1, 2], OWNER)
+    assert sum(p['market_value'] for p in positions['positions']) == pytest.approx(
+        sum(p.market_value for p in expected), abs=0.01,
+    )
+    assert allocation['portfolio_ids'] == [2, 1]
+    assert sum(a['weight_pct'] for a in allocation['allocation']) == pytest.approx(100.0, abs=0.05)
+
+
+def test_aggregate_tool_with_an_id_not_owned_returns_error_without_data(mcp_on, scripted_repo, monkeypatch):
+    reads = []
+    monkeypatch.setattr(type(scripted_repo), 'get_summary_multi', lambda *a: reads.append(a))
+    client = TestClient(api_main.app)
+    texts = set()
+    # Someone else's portfolio, a missing id, and the owner's ids with another user's token.
+    for ids, sub in (([1, 4], OWNER), ([1, 999], OWNER), ([1, 2], 'user_intruder')):
+        result = _call(client, 'get_aggregate_summary', {'portfolio_ids': ids}, token=_make_token(sub=sub))
+        assert result['isError'] is True
+        assert result.get('structuredContent') is None
+        texts.add(result['content'][0]['text'])
+    # One message for every case: no hint about which id exists.
+    assert texts == {'Portfolio non trovato'}
+    assert reads == []
+
+
+def test_aggregate_tool_with_mixed_currencies_is_rejected(mcp_on, scripted_repo):
+    result = _call(TestClient(api_main.app), 'get_aggregate_summary', {'portfolio_ids': [1, 3]}, token=_agg_token())
+    assert result['isError'] is True
+    assert result['content'][0]['text'] == MIXED_CURRENCY_MESSAGE
+    assert 'valuta base' in MIXED_CURRENCY_MESSAGE
+
+
+@pytest.mark.parametrize(
+    'arguments',
+    [
+        {},
+        {'portfolio_ids': []},
+        {'portfolio_ids': [1]},
+        {'portfolio_ids': list(range(1, MAX_AGGREGATE_PORTFOLIOS + 2))},
+        {'portfolio_ids': [1, 1]},
+        {'portfolio_ids': [1, 0]},
+        {'portfolio_ids': [1, 2**40]},
+        {'portfolio_ids': [1, '2']},
+        {'portfolio_ids': [1, True]},
+        {'portfolio_ids': '1,2'},
+        {'portfolio_ids': [1, 2], 'portfolio_id': 1},
+    ],
+)
+def test_aggregate_tool_rejects_invalid_portfolio_ids_before_execution(mcp_on, monkeypatch, arguments):
+    ran = []
+    monkeypatch.setattr(_FakeRepo, 'resolve_portfolio_scope', lambda *a: ran.append(a), raising=False)
+    result = _call(TestClient(api_main.app), 'get_aggregate_summary', arguments)
+    assert result['isError'] is True
+    assert ran == []
+
+
+def test_aggregate_tool_accepts_twenty_ids(mcp_on, monkeypatch):
+    seen = []
+
+    def _scope(self, ids, user_id):
+        seen.append(list(ids))
+        return SimpleNamespace(portfolio_ids=tuple(ids), base_currency='EUR')
+
+    monkeypatch.setattr(_FakeRepo, 'resolve_portfolio_scope', _scope)
+    monkeypatch.setattr(_FakeRepo, 'get_summary_multi', lambda self, ids, user_id: SimpleNamespace(
+        market_value=1.0, cost_basis=1.0, unrealized_pl=0.0, unrealized_pl_pct=0.0,
+        day_change=0.0, day_change_pct=0.0, cash_balance=0.0,
+    ), raising=False)
+    ids = list(range(1, MAX_AGGREGATE_PORTFOLIOS + 1))
+    result = _call(TestClient(api_main.app), 'get_aggregate_summary', {'portfolio_ids': ids})
+    assert result['isError'] is False, result
+    assert result['structuredContent']['portfolio_ids'] == ids
+    assert seen == [ids]
+
+
+def test_aggregate_performance_is_computed_on_the_combined_scope(mcp_on, monkeypatch):
+    calls = []
+
+    class _Perf:
+        def get_performance_summary(self, portfolio_id, user_id, period):
+            calls.append((portfolio_id, period))
+            return SimpleNamespace(twr=SimpleNamespace(twr_pct=1.234))
+
+    monkeypatch.setattr(_FakeRepo, 'resolve_portfolio_scope', lambda self, ids, uid: SimpleNamespace(
+        portfolio_ids=tuple(ids), base_currency='EUR'))
+    monkeypatch.setattr(api_main, 'performance_service', _Perf(), raising=False)
+    result = _call(TestClient(api_main.app), 'get_aggregate_performance', {'portfolio_ids': [2, 1]})
+
+    assert result['isError'] is False, result
+    assert result['structuredContent']['twr_1y'] == 1.23
+    # One TWR per period over the whole scope (as the app route), never per portfolio.
+    assert calls == [([2, 1], p) for p in ('1m', '3m', 'ytd', '1y')]
+
+
+def test_aggregate_recent_transactions_name_each_portfolio(mcp_on, monkeypatch):
+    from datetime import datetime, timezone
+
+    row = lambda tid, pid: SimpleNamespace(  # noqa: E731
+        id=tid, portfolio_id=pid, portfolio_name=f'P{pid}', trade_at=datetime(2026, 1, tid, tzinfo=timezone.utc),
+        side='buy', symbol='VWCE', asset_name='All World', quantity=1.0, price=10.0, trade_currency='EUR', fees=0.0,
+    )
+    monkeypatch.setattr(_FakeRepo, 'resolve_portfolio_scope', lambda self, ids, uid: SimpleNamespace(
+        portfolio_ids=tuple(ids), base_currency='EUR'))
+    monkeypatch.setattr(_FakeRepo, 'list_transactions_multi', lambda self, ids, uid: [row(i, 1 + i % 2) for i in range(1, 26)],
+                        raising=False)
+    result = _call(TestClient(api_main.app), 'get_aggregate_recent_transactions', {'portfolio_ids': [1, 2]})
+
+    rows = result['structuredContent']['transactions']
+    assert len(rows) == 20
+    assert {r['portfolio_id'] for r in rows} == {1, 2}
+    assert all(r['portfolio_name'] == f"P{r['portfolio_id']}" for r in rows)
+
+
+def test_aggregate_heavy_tool_uses_the_heavy_quota(mcp_on, monkeypatch):
+    monkeypatch.setattr(_mcp_endpoint()._limits, 'heavy_limiter', SlidingWindowRateLimiter(max_requests=1, window_seconds=60))
+    monkeypatch.setattr(mcp_tools, 'run_tool_sync', lambda *a: {'ok': True})
+    client = TestClient(api_main.app)
+
+    assert _call(client, 'get_aggregate_monte_carlo', {'portfolio_ids': [1, 2]})['isError'] is False
+    second = _call(client, 'get_aggregate_performance', {'portfolio_ids': [1, 2]})
+    assert second['isError'] is True
+    assert second['structuredContent']['error']['code'] == 'heavy_quota'
+    # Single-portfolio heavy tools share the same quota.
+    assert _call(client, 'get_monte_carlo', {'portfolio_id': 1})['structuredContent']['error']['code'] == 'heavy_quota'
+    # Light aggregate reads are not affected.
+    assert _call(client, 'get_aggregate_summary', {'portfolio_ids': [1, 2]})['isError'] is False
+    assert {'get_aggregate_summary', 'get_aggregate_positions', 'get_aggregate_allocation',
+            'get_aggregate_recent_transactions'}.isdisjoint(HEAVY_TOOLS)
+
+
+def test_aggregate_call_counts_once_in_the_general_limiter(mcp_on, monkeypatch):
+    monkeypatch.setattr(_mcp_endpoint(), '_limiter', SlidingWindowRateLimiter(max_requests=1, window_seconds=60))
+    monkeypatch.setattr(mcp_tools, 'run_tool_sync', lambda *a: {'ok': True})
+    client = TestClient(api_main.app)
+
+    ids = list(range(1, MAX_AGGREGATE_PORTFOLIOS + 1))
+    assert _call(client, 'get_aggregate_summary', {'portfolio_ids': ids})['isError'] is False
+    assert _rpc(client, 'ping', token=_make_token()).status_code == 429
+
+
+def test_aggregate_xray_never_gets_a_justetf_client(mcp_on, monkeypatch):
+    from app.mcp_server import aggregate_tools
+
+    calls = []
+
+    def _spy(args, repo, perf, portfolio_id, user_id, **kwargs):
+        calls.append((portfolio_id, kwargs))
+        return {'etf_count': 0}
+
+    monkeypatch.setitem(aggregate_tools.COPILOT_HANDLERS, 'get_xray_summary', _spy)
+    monkeypatch.setattr(_FakeRepo, 'resolve_portfolio_scope', lambda self, ids, uid: SimpleNamespace(
+        portfolio_ids=tuple(ids), base_currency='EUR'))
+    monkeypatch.setattr(api_main, 'justetf_client', object(), raising=False)
+    result = _call(TestClient(api_main.app), 'get_aggregate_xray', {'portfolio_ids': [1, 2]})
+
+    assert result['isError'] is False, result
+    assert calls[0][0] == [1, 2]
+    assert calls[0][1]['justetf_client'] is None
