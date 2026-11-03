@@ -473,6 +473,8 @@ export interface Position {
   unrealized_pl: number;
   unrealized_pl_pct: number;
   day_change_pct: number;
+  /** false: no previous close, day_change_pct is the 0 default (not a flat day). */
+  previous_close_available?: boolean;
   weight: number;
   first_trade_at?: string | null;
   price_stale?: boolean;

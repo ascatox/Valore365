@@ -26,6 +26,7 @@ def _pos(symbol: str, day_change_pct: float = 0.0, *, stale: bool = False, price
         day_change_pct=day_change_pct,
         price_stale=stale,
         price_date=price_date,
+        previous_close_available=True,
     )
 
 

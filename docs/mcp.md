@@ -142,8 +142,14 @@ I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma 
 `get_monte_carlo` restituisce esattamente gli anni 1..10 (ordinati) con i percentili P25/P50/P75 espressi
 come **indice base 100** (`unit: "indice_base_100"`, `initial_value: 100`): 120 significa +20% rispetto
 al valore attuale, non 120 €. `get_day_movers` calcola migliore e peggiore dalla variazione giornaliera
-delle posizioni, escludendo quelle con prezzo non aggiornato o assente; senza posizioni valide
-restituisce `best`/`worst` a `null` con un campo `reason`.
+delle posizioni, escludendo quelle con prezzo non aggiornato o assente e quelle senza chiusura
+precedente (`previous_close_available: false` sulla posizione, contate in `excluded_no_previous_close`);
+senza posizioni valide restituisce `best`/`worst` a `null` con un campo `reason`.
+`get_dividend_summary` e `search_asset_info` risolvono i simboli del portafoglio per asset_id (simbolo
+esatto); per un simbolo non presente `search_asset_info` segnala con `match: "different_listing"` e
+`warning` quando trova solo un altro listing con lo stesso ticker base. `get_dividend_summary` non somma
+dividendi in valute diverse: `dividends_by_currency` riporta i totali per valuta e, se le valute sono più
+di una (`mixed_currencies: true`), `total_dividends_received` e `dividends_last_12m` sono `null`.
 
 Le asset class usate da stress test, salute, X-Ray e reddito vengono da un classificatore unico
 (`app/services/asset_classification.py`: equity, bond, gold, commodity, cash, crypto, `unknown`); un
@@ -187,6 +193,8 @@ la cui somma per categoria è la differenza tra massimo e punteggio.
 somma è il lordo proiettato), senza crescita sul reddito fisso; elenca `unknown_class_symbols` e
 `missing_yield_symbols` e dichiara l'ipotesi fiscale in `tax_note` (aliquota uniforme, 12,5% sui titoli
 di Stato non modellato).
+
+Audit MCP di novembre 2026 (finding, metodologia, regressioni, decisioni): [docs/audit-mcp-2026-11/](audit-mcp-2026-11/).
 
 ### Vista aggregata (più portafogli)
 

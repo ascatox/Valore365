@@ -115,15 +115,17 @@ QUOTE_TYPE_MAP: dict[str, str] = {
 def resolve_refreshed_asset_type(current_type: str | None, quote_type: str | None) -> str:
     """Asset type to store after a provider refresh (TASK-35, V365-012).
 
-    Yahoo reports many ETCs/ETFs listed in Europe as EQUITY: an asset already
-    typed etf/fund is never downgraded to stock, and an unknown quote type
+    Yahoo reports many ETCs/ETFs listed in Europe as EQUITY (and bond ETFs as
+    BOND): an asset already typed etf/fund is never retyped to stock or bond, and an unknown quote type
     keeps the current type instead of falling back to stock.
     """
     current = (current_type or "").strip().lower()
     mapped = QUOTE_TYPE_MAP.get((quote_type or "").strip().upper())
     if mapped is None:
         return current or "stock"
-    if mapped == "stock" and current in {"etf", "fund"}:
+    # Yahoo also reports bond ETFs/funds as BOND: keep etf/fund, the bond
+    # asset class is derived by the classifier (TASK-44).
+    if mapped in {"stock", "bond"} and current in {"etf", "fund"}:
         return current
     return mapped
 

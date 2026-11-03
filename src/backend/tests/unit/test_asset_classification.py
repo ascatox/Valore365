@@ -205,7 +205,7 @@ def test_unknown_class_gets_the_equity_shock_with_an_explicit_flag():
         ("etf", "WEIRD", "etf"),
         ("stock", "ETF", "etf"),
         ("stock", "EQUITY", "stock"),
-        ("etf", "BOND", "bond"),
+        ("etf", "BOND", "etf"),
     ],
 )
 def test_refreshed_asset_type_never_downgrades_a_fund(current, quote_type, expected):

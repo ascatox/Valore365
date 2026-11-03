@@ -416,10 +416,12 @@ class PositionsMixin:
                 if current_quote_price is None:
                     current_quote_price = raw_price
                 pos_day_change_pct = 0.0
+                has_previous_close = False
                 # Compare in quote currency (no FX) to match yFinance modal behaviour.
                 # Avoid falling back to market_price here because that is in base currency.
                 if prev_close is not None and prev_close > 0 and current_quote_price is not None and math.isfinite(current_quote_price):
                     pos_day_change_pct = ((current_quote_price / prev_close) - 1) * 100.0
+                    has_previous_close = True
 
                 positions.append(
                     Position(
@@ -435,6 +437,7 @@ class PositionsMixin:
                         unrealized_pl=round(_finite(pl), 2),
                         unrealized_pl_pct=round(_finite(pl_pct), 2),
                         day_change_pct=round(_finite(pos_day_change_pct), 2),
+                        previous_close_available=has_previous_close,
                         weight=0,  # Placeholder, will be calculated next
                         first_trade_at=first_trade_at_by_asset.get(aid),
                         price_stale=stale,
