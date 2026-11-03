@@ -4,7 +4,7 @@ title: 'Audit MCP: idempotenza dell''import e dividendi duplicati'
 status: In Progress
 assignee: []
 created_date: '2026-11-02T17:23:00Z'
-updated_date: '2026-11-03T07:51:00Z'
+updated_date: '2026-11-03T09:47:00Z'
 labels:
   - audit-mcp
   - backend
@@ -37,4 +37,6 @@ V365-009. Le transazioni non hanno id esterno, hash di provenienza né vincolo d
 Query di verifica in sola lettura: backlog/docs/AUDIT_MCP_2026-11_QUERY_DATI.sql (in attesa dei risultati dal proprietario).
 
 2026-11-03: Q6-Q8 analizzate. Confermato: 'Lista Titoli (2).xlsx' confermato 4 volte il 2026-10-23 (batch 31/34/35/36) -> dividendi e un acquisto EUN5 quadruplicati in Wealth. In attesa dell'elenco completo degli id 5790-5870 per il piano di correzione dei dati.
+
+2026-11-03 decisione (proposta dall'assistente, approvata con 'procedi'): nessuna migrazione dello schema; il commit del batch è atomico e un batch non può essere confermato due volte; le righe già presenti nel portafoglio (stesso strumento, tipo, data, quantità, prezzo, commissioni, valuta) sono segnalate nell'anteprima ed escluse per default, con possibilità di includerle.
 <!-- SECTION:NOTES:END -->
