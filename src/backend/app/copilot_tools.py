@@ -8,15 +8,27 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from typing import Any
 
 from .services.performance_service import PerformanceService
 from .repository import PortfolioRepository
 from .services.portfolio_doctor import (
     analyze_portfolio_health,
-    compute_weighted_ter,
     run_monte_carlo_projection,
     run_stress_test,
+)
+from .services.portfolio_doctor._health import (
+    CATEGORY_MAX_SCORES,
+    health_volatility_info,
+    resolve_holding_ters,
+)
+from .services.asset_classification import classify_asset_class
+from .services.rebalance import (
+    DEFAULT_TOLERANCE_PP,
+    REBALANCE_MODES,
+    RebalanceHolding,
+    compute_rebalance_plan,
 )
 from .services.portfolio_doctor._holdings import _load_holdings
 
@@ -127,7 +139,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "get_day_movers",
         "description": (
             "Ottieni il miglior e peggior performer della giornata "
-            "nel portafoglio, con la variazione percentuale."
+            "nel portafoglio, con la variazione percentuale rispetto alla "
+            "chiusura precedente. Esclude le posizioni con prezzo non aggiornato."
         ),
         "parameters": {
             "type": "object",
@@ -139,9 +152,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_monte_carlo",
         "description": (
-            "Ottieni le proiezioni Monte Carlo del portafoglio a 1-10 anni. "
+            "Ottieni le proiezioni Monte Carlo del portafoglio per gli anni 1-10. "
             "Include rendimento medio annualizzato, volatilita' e "
-            "percentili (P25, P50, P75) per ogni anno."
+            "percentili (P25, P50, P75) per ogni anno, espressi come indice "
+            "base 100 (valore iniziale = 100), non in euro."
         ),
         "parameters": {
             "type": "object",
@@ -154,8 +168,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "calculate_rebalance_orders",
         "description": (
             "Calcola gli ordini di acquisto/vendita necessari per riallineare "
-            "il portafoglio al target. Usa questo tool quando l'utente chiede "
-            "come ribilanciare o tornare in target."
+            "il portafoglio al target (le vendite finanziano gli acquisti). Usa "
+            "questo tool quando l'utente chiede come ribilanciare o tornare in target."
         ),
         "parameters": {
             "type": "object",
@@ -163,8 +177,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "available_cash": {
                     "type": "number",
                     "description": (
-                        "Cash aggiuntivo da investire in EUR (opzionale). "
-                        "Se omesso, usa il cash disponibile nel portafoglio."
+                        "Liquidita' AGGIUNTIVA in EUR (opzionale, default 0), sommata "
+                        "alla liquidita' gia' presente nel portafoglio."
+                    ),
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["rebalance", "buy_only", "sell_only"],
+                    "default": "rebalance",
+                    "description": (
+                        "rebalance (default): vendite + acquisti autofinanziati; "
+                        "buy_only: solo acquisti con la liquidita'; sell_only: solo vendite."
                     ),
                 },
             },
@@ -582,6 +605,18 @@ def _get_portfolio_health(
             round(doctor.metrics.weighted_ter, 2)
             if doctor.metrics.weighted_ter is not None else None
         ),
+        # Methodology of portfolio_volatility (TASK-40): weighted average of
+        # single-asset realized volatility, no correlations, never floored.
+        "volatility": (
+            doctor.volatility.model_dump()
+            if doctor.volatility is not None
+            else health_volatility_info(doctor.metrics.portfolio_volatility).model_dump()
+        ),
+        # Score = sum of category scores; each category starts at its max and
+        # loses the points listed in score_deductions.
+        "category_scores": doctor.category_scores.model_dump(),
+        "category_max_scores": dict(CATEGORY_MAX_SCORES),
+        "score_deductions": [d.model_dump() for d in doctor.score_deductions],
         "alerts": [
             {"severity": a.severity, "message": a.message}
             for a in doctor.alerts[:8]
@@ -597,35 +632,62 @@ def _get_day_movers(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    try:
-        target_perf = repo.get_portfolio_target_performance(portfolio_id, user_id)
-        best = (
-            {"symbol": target_perf.best.symbol, "day_change_pct": target_perf.best.day_change_pct}
-            if target_perf.best else None
-        )
-        worst = (
-            {"symbol": target_perf.worst.symbol, "day_change_pct": target_perf.worst.day_change_pct}
-            if target_perf.worst else None
-        )
-    except Exception:
-        # Fallback: compute from positions
-        positions = repo.get_positions(portfolio_id, user_id)
-        if not positions:
-            return {"best": None, "worst": None}
-        sorted_by_day = sorted(
-            [p for p in positions if p.day_change_pct is not None],
-            key=lambda p: p.day_change_pct,
-        )
-        best = (
-            {"symbol": sorted_by_day[-1].symbol, "day_change_pct": round(sorted_by_day[-1].day_change_pct, 2)}
-            if sorted_by_day else None
-        )
-        worst = (
-            {"symbol": sorted_by_day[0].symbol, "day_change_pct": round(sorted_by_day[0].day_change_pct, 2)}
-            if sorted_by_day else None
-        )
+    """Best/worst daily change among the portfolio positions.
 
-    return {"best": best, "worst": worst}
+    Computed from repo.get_positions (day_change_pct = current price vs
+    previous close, in quote currency). Positions with a stale price or no
+    price at all are excluded: their day_change_pct is the 0.0 default, not
+    a real change. A 0.0 on a fresh price is valid data (flat day).
+    """
+    positions = repo.get_positions(portfolio_id, user_id) or []
+    valid = []
+    excluded = 0
+    for p in positions:
+        change = p.day_change_pct
+        if (
+            p.price_stale
+            or p.price_date is None
+            or change is None
+            or not math.isfinite(change)
+        ):
+            excluded += 1
+            continue
+        valid.append(p)
+
+    if not valid:
+        reason = (
+            "Nessuna posizione nel portafoglio."
+            if not positions
+            else "Nessuna posizione con prezzo aggiornato: variazione giornaliera non disponibile."
+        )
+        return {
+            "best": None,
+            "worst": None,
+            "reason": reason,
+            "valid_positions": 0,
+            "excluded_stale": excluded,
+        }
+
+    def _mover(p: Any) -> dict:
+        return {
+            "symbol": p.symbol,
+            "name": p.name,
+            "day_change_pct": round(p.day_change_pct, 2),
+            "price_date": p.price_date.isoformat() if p.price_date else None,
+        }
+
+    # Stable ordering: ties broken by symbol (alphabetical) for both ends.
+    best = min(valid, key=lambda p: (-p.day_change_pct, p.symbol))
+    worst = min(valid, key=lambda p: (p.day_change_pct, p.symbol))
+    return {
+        "best": _mover(best),
+        "worst": _mover(worst),
+        "valid_positions": len(valid),
+        "excluded_stale": excluded,
+    }
+
+
+_MC_YEARS = range(1, 11)
 
 
 def _get_monte_carlo(
@@ -633,14 +695,23 @@ def _get_monte_carlo(
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     mc = run_monte_carlo_projection(repo, portfolio_id, user_id)
+    projections = sorted(
+        (p for p in mc.projections if p.year in _MC_YEARS),
+        key=lambda p: p.year,
+    )
     return {
         "annualized_mean_return_pct": round(mc.annualized_mean_return_pct, 2),
         "annualized_volatility_pct": round(mc.annualized_volatility_pct, 2),
         "return_assumption": "rendimento atteso di lungo periodo per classe di attivo (ipotesi prudenziale, non derivato dalla performance recente)",
+        "unit": "indice_base_100",
+        "initial_value": 100,
+        "unit_note": (
+            "I percentili sono un indice con valore iniziale 100 (anno 0), non importi in euro: "
+            "ad esempio 120 significa +20% rispetto al valore attuale del portafoglio."
+        ),
         "projections": [
             {"year": p.year, "p25": p.p25, "p50": p.p50, "p75": p.p75}
-            for p in mc.projections[:10]
-            if p.year > 0
+            for p in projections
         ],
     }
 
@@ -653,73 +724,121 @@ def _calculate_rebalance_orders(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T10: Calculate buy/sell orders to realign portfolio to target."""
-    summary = repo.get_summary(portfolio_id, user_id)
-    positions = repo.get_positions(portfolio_id, user_id)
-    allocation = repo.get_allocation(portfolio_id, user_id)
-    alloc_map = {a.asset_id: a.weight_pct for a in allocation}
+    """T10: buy/sell orders to realign the portfolio to target (TASK-39).
 
+    Self-financing by default (mode ``rebalance``): sells first, proceeds fund
+    the buys. Portfolio cash + ``available_cash`` (extra) are part of the total
+    and of the weights. See app.services.rebalance for the algorithm.
+    """
+    mode = args.get("mode") or "rebalance"
+    if mode not in REBALANCE_MODES:
+        return {"error": f"mode non valida: {mode}. Valori ammessi: rebalance, buy_only, sell_only"}
+    extra_cash = args.get("available_cash")
+    if extra_cash is None:
+        extra_cash = 0.0
+    try:
+        extra_cash = float(extra_cash)
+    except (TypeError, ValueError):
+        return {"error": "available_cash deve essere un numero >= 0"}
+    if not math.isfinite(extra_cash) or extra_cash < 0:
+        return {"error": "available_cash deve essere un numero >= 0"}
+
+    summary = repo.get_summary(portfolio_id, user_id)
+    positions = repo.get_positions(portfolio_id, user_id) or []
     try:
         target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
     except Exception:
-        return {"orders": [], "note": "Nessun target configurato."}
-
+        target_alloc = []
     if not target_alloc:
-        return {"orders": [], "note": "Nessun target configurato."}
+        return {"mode": mode, "orders": [], "note": "Nessun target configurato."}
 
-    pos_map = {p.symbol: p for p in positions}
-    available_cash = args.get("available_cash", summary.cash_balance)
-    if available_cash is None or available_cash < 0:
-        available_cash = summary.cash_balance
+    targets = {t.asset_id: t for t in target_alloc}
+    pos_by_asset = {p.asset_id: p for p in positions}
+    holdings = [
+        RebalanceHolding(
+            key=p.asset_id, symbol=p.symbol, current_value=float(p.market_value or 0.0),
+            target_weight_pct=float(targets[p.asset_id].weight_pct) if p.asset_id in targets else None,
+        )
+        for p in positions
+    ]
+    holdings += [
+        RebalanceHolding(key=t.asset_id, symbol=t.symbol, current_value=0.0, target_weight_pct=float(t.weight_pct))
+        for t in target_alloc
+        if t.asset_id not in pos_by_asset
+    ]
+    portfolio_cash = float(summary.cash_balance or 0.0)
+    plan = compute_rebalance_plan(
+        holdings,
+        portfolio_cash=portfolio_cash,
+        extra_cash=extra_cash,
+        mode=mode,
+        tolerance_pp=DEFAULT_TOLERANCE_PP,
+    )
 
-    total_value = summary.market_value + available_cash
     orders = []
-
-    for ta in target_alloc:
-        current_w = alloc_map.get(ta.asset_id, 0.0)
-        drift = current_w - ta.weight_pct
-        pos = pos_map.get(ta.symbol)
+    for o in plan.orders:
+        pos = pos_by_asset.get(o.key)
         price = pos.market_price if pos and pos.market_price else None
+        amount = round(o.amount, 2)
+        orders.append({
+            "side": o.side,
+            "symbol": o.symbol,
+            "amount_eur": amount,
+            "shares_approx": round(amount / price, 4) if price and price > 0 else None,
+            "current_weight_pct": round(o.current_weight_pct, 2),
+            "target_weight_pct": round(o.target_weight_pct, 2),
+            "weight_after_pct": round(o.weight_after_pct, 2),
+        })
 
-        if abs(drift) < 0.5:
-            continue  # within tolerance
+    sells = round(sum(o["amount_eur"] for o in orders if o["side"] == "sell"), 2)
+    buys = round(sum(o["amount_eur"] for o in orders if o["side"] == "buy"), 2)
+    cash_before = round(plan.portfolio_cash, 2)
+    extra = round(plan.extra_cash, 2)
+    cash_after = round(cash_before + extra + sells - buys, 2)
+    invariant_ok = cash_after >= 0 and abs(cash_after - plan.cash_after) <= 0.01 * (len(orders) + 1)
 
-        if drift < 0:
-            # Under-weight -> buy
-            amount = abs(drift) / 100.0 * total_value
-            amount = min(amount, available_cash)
-            if amount < 1:
-                continue
-            available_cash -= amount
-            orders.append({
-                "symbol": ta.symbol,
-                "action": "buy",
-                "amount_eur": round(amount, 2),
-                "shares_approx": round(amount / price, 4) if price and price > 0 else None,
-                "reason": f"Sotto-pesato di {abs(drift):.1f}pp rispetto al target ({ta.weight_pct:.1f}%)",
-            })
-        else:
-            # Over-weight -> sell
-            current_value = pos.market_value if pos else 0
-            amount = drift / 100.0 * current_value
-            if amount < 1:
-                continue
-            orders.append({
-                "symbol": ta.symbol,
-                "action": "sell",
-                "amount_eur": round(amount, 2),
-                "shares_approx": round(amount / price, 4) if price and price > 0 else None,
-                "reason": f"Sovra-pesato di {drift:.1f}pp rispetto al target ({ta.weight_pct:.1f}%)",
-            })
-
-    # Sort by absolute drift (largest deviation first)
-    orders.sort(key=lambda o: o["amount_eur"], reverse=True)
+    notes = [
+        "Le commissioni e le imposte non sono modellate: importi lordi.",
+        f"Banda di tolleranza {DEFAULT_TOLERANCE_PP} pp sul peso: se nessuno strumento la supera "
+        "non ci sono ordini; altrimenti tutti gli strumenti tornano al target.",
+        "La liquidita' del portafoglio e available_cash (liquidita' aggiuntiva) entrano nel totale e nei pesi.",
+    ]
+    if portfolio_cash < 0:
+        notes.append("Saldo di liquidita' negativo considerato pari a 0.")
+    if plan.untargeted_symbols:
+        notes.append(
+            "Posizioni senza target lasciate invariate ed escluse dal totale: "
+            "i pesi target si applicano al valore restante."
+        )
+    if plan.unallocated_target_pct > 0.005:
+        notes.append(
+            f"I target sommano a {plan.target_sum_pct:.2f}%: il restante "
+            f"{plan.unallocated_target_pct:.2f}% resta in liquidita'."
+        )
+    if plan.buys_scaled:
+        notes.append("Liquidita' insufficiente: acquisti ridotti in proporzione al fabbisogno.")
+    if not orders:
+        notes.append("Nessun ordine necessario: portafoglio entro la banda di tolleranza.")
 
     return {
+        "mode": mode,
         "orders": orders,
-        "total_value": round(total_value, 2),
-        "cash_used": round(summary.cash_balance + (args.get("available_cash", 0) or 0) - available_cash, 2),
-        "cash_remaining": round(available_cash, 2),
+        "totals": {
+            "sells_eur": sells,
+            "buys_eur": buys,
+            "cash_before": cash_before,
+            "extra_cash": extra,
+            "cash_after": cash_after,
+            "invariant": "cash_after = cash_before + extra_cash + sells_eur - buys_eur",
+            "invariant_ok": invariant_ok,
+        },
+        "total_value": round(plan.base_value, 2),
+        "tolerance_pp": DEFAULT_TOLERANCE_PP,
+        "untargeted_holdings": plan.untargeted_symbols,
+        "untargeted_value": round(plan.untargeted_value, 2),
+        "target_sum_pct": round(plan.target_sum_pct, 2),
+        "unallocated_target_pct": round(plan.unallocated_target_pct, 2),
+        "notes": notes,
     }
 
 
@@ -1016,43 +1135,58 @@ def _get_cost_breakdown(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T15: Detailed cost/TER analysis."""
+    """T15: Detailed cost/TER analysis.
+
+    TER per position comes from ``resolve_holding_ters`` (same source as
+    ``compute_weighted_ter``): justETF → yFinance (normalized) → inferred.
+    All cost figures share one declared perimeter: the *covered* positions
+    (TER known or inferred). ``weighted_ter_pct`` is weighted on the covered
+    weight, ``estimated_annual_cost_known_eur`` (alias of the legacy
+    ``total_annual_cost_eur``) sums the covered positions only, and
+    ``fee_drag_10y_eur`` is computed on ``covered_market_value_eur``.
+    ``ter_coverage_pct`` is the covered share of the non-cash market value.
+    """
     positions = repo.get_positions(portfolio_id, user_id)
     summary = repo.get_summary(portfolio_id, user_id)
     total_mv = summary.market_value
 
     holdings = _load_holdings(repo, portfolio_id, user_id)
-    weighted_ter = compute_weighted_ter(holdings, repo)
+    resolved = resolve_holding_ters(holdings, repo)
+    asset_type_by_id = {h.asset_id: (h.asset_type or "").lower() for h in holdings}
 
-    # Per-position TER
     position_costs: list[dict] = []
+    covered_mv = 0.0
+    weighted_sum = 0.0
+    known_cost = 0.0
+    non_cash_mv = 0.0
+    covered_non_cash_mv = 0.0
+    missing: list[str] = []
+    inferred: list[str] = []
     for p in positions:
-        ter = None
-        try:
-            asset = repo.get_asset_by_symbol(p.symbol)
-            if asset:
-                # Try etf_enrichment first
-                try:
-                    enrichment = repo.get_etf_enrichment(asset["id"])
-                    if enrichment and enrichment.get("ter") is not None:
-                        ter = float(enrichment["ter"])
-                except Exception:
-                    pass
-                # Fallback to asset_metadata
-                if ter is None:
-                    meta = repo.get_asset_metadata(asset["id"])
-                    if meta and meta.expense_ratio is not None:
-                        ter = float(meta.expense_ratio)
-        except Exception:
-            pass
-
-        annual_cost = p.market_value * (ter / 100.0) if ter is not None else None
+        ter, source = resolved.get(p.asset_id, (None, "none"))
+        asset_type = asset_type_by_id.get(p.asset_id) or (p.asset_type or "").lower()
+        is_cash = asset_type == "cash"
+        mv = float(p.market_value or 0.0)
+        annual_cost = mv * (ter / 100.0) if ter is not None else None
+        if ter is not None:
+            covered_mv += mv
+            weighted_sum += mv * ter
+            known_cost += annual_cost
+            if source == "inferred":
+                inferred.append(p.symbol)
+        if not is_cash:
+            non_cash_mv += mv
+            if ter is not None:
+                covered_non_cash_mv += mv
+            else:
+                missing.append(p.symbol)
         position_costs.append({
             "symbol": p.symbol,
             "name": p.name,
             "weight_pct": round(p.weight, 2),
-            "market_value": round(p.market_value, 2),
+            "market_value": round(mv, 2),
             "ter_pct": round(ter, 3) if ter is not None else None,
+            "ter_source": source,
             "annual_cost_eur": round(annual_cost, 2) if annual_cost is not None else None,
         })
 
@@ -1062,25 +1196,38 @@ def _get_cost_breakdown(
         reverse=True,
     )
 
-    total_annual_cost = sum(
-        c["annual_cost_eur"] for c in position_costs if c["annual_cost_eur"] is not None
+    has_coverage = covered_mv > 0
+    weighted_ter = weighted_sum / covered_mv if has_coverage else None
+    estimated_known = round(known_cost, 2) if has_coverage else None
+    # Compound drag over 10 years on the same covered perimeter.
+    fee_drag_10y = (
+        covered_mv * (1 - (1 - weighted_ter / 100.0) ** 10) if weighted_ter is not None else None
+    )
+    ter_coverage_pct = (
+        round(covered_non_cash_mv / non_cash_mv * 100.0, 1) if non_cash_mv > 0 else None
     )
 
-    # Fee drag projection: compound effect over 10 years
-    # Simplified: cumulative cost assuming constant portfolio value
-    fee_drag_10y = total_annual_cost * 10 if total_annual_cost else None
-    # More accurate compound drag: value lost vs no-fee scenario
-    if weighted_ter is not None and total_mv > 0:
-        ter_decimal = weighted_ter / 100.0
-        fee_drag_10y_compound = total_mv * (1 - (1 - ter_decimal) ** 10)
-    else:
-        fee_drag_10y_compound = None
+    coverage_note = None
+    if ter_coverage_pct is not None and ter_coverage_pct < 100.0:
+        coverage_note = (
+            f"TER disponibile per il {ter_coverage_pct:.1f}% del valore investito (liquidità esclusa). "
+            f"TER ponderato, costo annuo e fee drag si riferiscono solo alle posizioni coperte"
+            + (f"; mancano: {', '.join(missing)}." if missing else ".")
+        )
 
     return {
         "weighted_ter_pct": round(weighted_ter, 3) if weighted_ter is not None else None,
-        "total_annual_cost_eur": round(total_annual_cost, 2),
-        "fee_drag_10y_eur": round(fee_drag_10y_compound, 2) if fee_drag_10y_compound is not None else None,
+        # Legacy key: same value as estimated_annual_cost_known_eur (covered positions only).
+        "total_annual_cost_eur": estimated_known,
+        "estimated_annual_cost_known_eur": estimated_known,
+        "fee_drag_10y_eur": round(fee_drag_10y, 2) if fee_drag_10y is not None else None,
+        "cost_perimeter": "covered_positions",
+        "covered_market_value_eur": round(covered_mv, 2),
         "portfolio_market_value": round(total_mv, 2),
+        "ter_coverage_pct": ter_coverage_pct,
+        "missing_ter_symbols": missing,
+        "inferred_ter_symbols": inferred,
+        "coverage_note": coverage_note,
         "position_costs": position_costs[:20],
     }
 
@@ -1156,9 +1303,44 @@ def _get_stress_test(
             scenario_data["recovery_months"] = s.recovery_months
         if s.most_impacted_assets:
             scenario_data["most_impacted"] = [
-                {"symbol": a.symbol, "loss_pct": round(a.estimated_loss_pct, 2)}
+                {
+                    "symbol": a.symbol,
+                    "loss_pct": round(a.estimated_loss_pct, 2),
+                    **({"asset_class": a.asset_class} if a.asset_class else {}),
+                }
                 for a in s.most_impacted_assets[:3]
             ]
+        if s.scenario_type == "shock":
+            # Classes hit, shock per class and contribution (weight x shock).
+            scenario_data["affected_classes"] = list(s.affected_classes)
+            scenario_data["class_breakdown"] = [
+                {
+                    "asset_class": row.asset_class,
+                    "weight_pct": row.weight_pct,
+                    "shock_pct": row.shock_pct,
+                    "contribution_pct": row.contribution_pct,
+                }
+                for row in s.class_breakdown
+            ]
+        else:
+            # Historical: method (historical/proxy/not_available), weight
+            # covered by real prices and per-class drawdown with its source.
+            scenario_data["method"] = s.method
+            scenario_data["coverage_pct"] = s.coverage_pct
+            if s.methodology_note:
+                scenario_data["methodology_note"] = s.methodology_note
+            scenario_data["class_breakdown"] = [
+                {
+                    "asset_class": row.asset_class,
+                    "weight_pct": row.weight_pct,
+                    "drawdown_pct": row.drawdown_pct,
+                    "contribution_pct": row.contribution_pct,
+                    "source": row.source,
+                }
+                for row in s.class_breakdown
+            ]
+        if s.flags:
+            scenario_data["flags"] = list(s.flags)
         scenarios.append(scenario_data)
 
     # Sort by impact (most negative first)
@@ -1170,6 +1352,9 @@ def _get_stress_test(
             round(result.portfolio_volatility_pct, 2)
             if result.portfolio_volatility_pct is not None else None
         ),
+        # Methodology of portfolio_volatility_pct (TASK-40): realized 1y
+        # portfolio volatility floored at the long-term class-mix volatility.
+        "volatility": result.volatility.model_dump() if result.volatility is not None else None,
         "scenarios": scenarios[:10],
     }
 
@@ -1192,31 +1377,53 @@ def _get_income_projection(
     except Exception:
         pass
 
-    # Gather dividend yields, split by asset class for differentiated growth
+    # Gather dividend yields, split by asset class (shared classifier, TASK-36)
+    # for differentiated growth. Classification uses the position's own
+    # asset_type / investment_focus and the metadata category, matched by
+    # asset_id: get_asset_by_symbol returns only id/symbol/name, so reading
+    # asset_type from it put every instrument in equity (V365-004).
     EQUITY_GROWTH_RATE = 0.03   # 3% annual dividend growth for equity-like assets
-    FIXED_INCOME_GROWTH_RATE = 0.0  # 0% for bonds / fixed income (coupons don't grow)
-    FIXED_INCOME_TYPES = {"bond"}
+    # Coupons don't grow. Inflation-linked bonds (e.g. FRC3-like) also get 0%:
+    # their growth is an open decision (TASK-36), stated in the output.
+    FIXED_INCOME_GROWTH_RATE = 0.0
+    # Gold/commodity/cash/crypto/unknown: no growth assumed (prudential).
+    OTHER_GROWTH_RATE = 0.0
+    bucket_of_class = {"equity": "equity", "bond": "fixed_income"}
 
-    equity_annual_dividends = 0.0
-    fixed_income_annual_dividends = 0.0
-    total_annual_dividends = 0.0
+    try:
+        metadata_by_asset = repo.get_asset_metadata_bulk([p.asset_id for p in positions])
+    except Exception:
+        metadata_by_asset = {}
+
+    bucket_dividends = {"equity": 0.0, "fixed_income": 0.0, "other_or_unknown": 0.0}
+    unknown_symbols: list[str] = []
+    missing_yield_symbols: list[str] = []
     for p in positions:
-        try:
-            asset = repo.get_asset_by_symbol(p.symbol)
-            if not asset:
-                continue
-            meta = repo.get_asset_metadata(asset["id"])
-            if meta and meta.dividend_yield:
-                dy = float(meta.dividend_yield) / 100.0
-                annual_div = p.market_value * dy
-                total_annual_dividends += annual_div
-                asset_type = asset.get("asset_type", "stock") if isinstance(asset, dict) else getattr(asset, "asset_type", "stock")
-                if str(asset_type).lower() in FIXED_INCOME_TYPES:
-                    fixed_income_annual_dividends += annual_div
-                else:
-                    equity_annual_dividends += annual_div
-        except Exception:
+        meta = metadata_by_asset.get(p.asset_id)
+        asset_class = classify_asset_class(
+            asset_type=getattr(p, "asset_type", None),
+            name=p.name,
+            symbol=p.symbol,
+            investment_focus=getattr(p, "investment_focus", None),
+            category=meta.category if meta else None,
+        )
+        if asset_class == "unknown":
+            unknown_symbols.append(p.symbol)
+        dividend_yield = meta.dividend_yield if meta else None
+        if not dividend_yield:
+            # Accumulating funds and instruments without data: no income
+            # projected, listed explicitly.
+            if asset_class != "cash":
+                missing_yield_symbols.append(p.symbol)
             continue
+        annual_div = float(p.market_value) * float(dividend_yield) / 100.0
+        bucket_dividends[bucket_of_class.get(asset_class, "other_or_unknown")] += annual_div
+
+    equity_annual_dividends = bucket_dividends["equity"]
+    fixed_income_annual_dividends = bucket_dividends["fixed_income"]
+    other_annual_dividends = bucket_dividends["other_or_unknown"]
+    # Invariant: the buckets add up to the projected gross income.
+    total_annual_dividends = equity_annual_dividends + fixed_income_annual_dividends + other_annual_dividends
 
     projections = []
     for years in (1, 3, 5):
@@ -1226,6 +1433,7 @@ def _get_income_projection(
             gross_income += (
                 equity_annual_dividends * (1 + EQUITY_GROWTH_RATE) ** y
                 + fixed_income_annual_dividends * (1 + FIXED_INCOME_GROWTH_RATE) ** y
+                + other_annual_dividends * (1 + OTHER_GROWTH_RATE) ** y
             )
 
         net_income = gross_income * (1 - tax_rate / 100.0)
@@ -1253,10 +1461,24 @@ def _get_income_projection(
             total_annual_dividends * (1 - tax_rate / 100.0) / 12, 2,
         ),
         "tax_rate_pct": tax_rate,
+        "tax_note": (
+            f"Aliquota uniforme del {tax_rate:g}% applicata a tutto il reddito lordo. "
+            "Non è modellata l'aliquota agevolata del 12,5% sui titoli di Stato "
+            "e assimilati (né la quota di titoli di Stato negli ETF obbligazionari): "
+            "per la componente a reddito fisso il netto può essere sottostimato."
+        ),
         "dividend_growth_equity_pct": round(EQUITY_GROWTH_RATE * 100, 1),
         "dividend_growth_fixed_income_pct": round(FIXED_INCOME_GROWTH_RATE * 100, 1),
+        "dividend_growth_other_or_unknown_pct": round(OTHER_GROWTH_RATE * 100, 1),
+        "growth_note": (
+            "Crescita 0% sul reddito fisso, inclusi i bond indicizzati all'inflazione "
+            "(ipotesi aperta, TASK-36); 0% sul bucket other_or_unknown."
+        ),
         "equity_annual_dividends_eur": round(equity_annual_dividends, 2),
         "fixed_income_annual_dividends_eur": round(fixed_income_annual_dividends, 2),
+        "other_or_unknown_annual_dividends_eur": round(other_annual_dividends, 2),
+        "unknown_class_symbols": unknown_symbols,
+        "missing_yield_symbols": missing_yield_symbols,
         "yield_on_cost_pct": round(yield_on_cost, 2),
         "projections": projections,
     }

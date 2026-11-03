@@ -12,8 +12,10 @@ from ...schemas.portfolio_doctor import (
     PortfolioHealthCategoryScores,
     PortfolioHealthMetrics,
     PortfolioHealthResponse,
+    PortfolioHealthScoreDeduction,
     PortfolioHealthSuggestion,
     PortfolioHealthSummary,
+    VolatilityInfo,
 )
 from ...constants.geo_classification import (
     REGIONS,
@@ -23,7 +25,15 @@ from ...constants.geo_classification import (
     EUROPE_CURRENCIES,
 )
 from ...finance_client import normalize_expense_ratio_pct
-from ._holdings import AnalyzedHolding, PortfolioRef, _load_holdings, _is_equity_like, resolve_doctor_scope
+from ._holdings import (
+    AnalyzedHolding,
+    PortfolioRef,
+    _is_equity_like,
+    _load_holdings,
+    holding_asset_class,
+    holding_classification,
+    resolve_doctor_scope,
+)
 from .education_templates import enrich_alerts_with_education
 
 logger = logging.getLogger(__name__)
@@ -63,6 +73,7 @@ def analyze_portfolio_health(
         weighted_ter=weighted_ter,
     )
     category_scores = compute_category_scores(metrics, top3_weight=top3_weight, equity_weight=equity_weight)
+    score_deductions = compute_score_deductions(metrics, top3_weight=top3_weight, equity_weight=equity_weight)
     score = compute_total_score(category_scores)
     summary = build_summary(metrics, category_scores)
     alerts = build_alerts(metrics, holdings)
@@ -75,6 +86,8 @@ def analyze_portfolio_health(
         summary=summary,
         metrics=metrics,
         category_scores=category_scores,
+        score_deductions=score_deductions,
+        volatility=health_volatility_info(portfolio_volatility),
         alerts=alerts,
         suggestions=suggestions,
     )
@@ -257,9 +270,16 @@ def infer_region_profile(holding: AnalyzedHolding, *, enrich: dict | None = None
         )
     descriptor = " ".join(part for part in descriptor_parts if part).upper()
     asset_type = holding.asset_type.lower()
+    asset_class = holding_asset_class(holding)
 
     if asset_type == "cash":
         return {"other": 100.0}
+    # Gold, commodities and crypto have no country: the listing currency is
+    # not a region (a gold ETC quoted in EUR is not European exposure).
+    if asset_class in {"gold", "commodity", "crypto"}:
+        return {"other": 100.0}
+    if asset_class == "bond":
+        asset_type = "bond"
     semantic_profile = _infer_region_profile_from_text(asset_type, descriptor)
     if semantic_profile is not None:
         return semantic_profile
@@ -285,8 +305,16 @@ def compute_max_position_weight(holdings: list[AnalyzedHolding]) -> float:
 _DIVERSIFIED_VEHICLE_TYPES = {"etf", "fund"}
 
 
+def _is_single_security(holding: AnalyzedHolding) -> bool:
+    """A single issuer's share or bond. ETF/fund, and products stored as stock
+    that the classifier recognizes as ETC/ETN/ETF (e.g. a gold ETC), are not."""
+    if holding.asset_type in _DIVERSIFIED_VEHICLE_TYPES:
+        return False
+    return not holding_classification(holding).is_exchange_traded_product
+
+
 def compute_max_single_security_weight(holdings: list[AnalyzedHolding]) -> float:
-    weights = [h.weight_pct for h in holdings if h.asset_type not in _DIVERSIFIED_VEHICLE_TYPES]
+    weights = [h.weight_pct for h in holdings if _is_single_security(h)]
     return round(max(weights), 1) if weights else 0.0
 
 
@@ -310,16 +338,20 @@ _GENERIC_OVERLAP_TAGS = {"equity_like"}
 
 
 def estimate_overlap_between_assets(asset_a: AnalyzedHolding, asset_b: AnalyzedHolding) -> float:
-    if asset_a.asset_type == "cash" or asset_b.asset_type == "cash":
+    class_a = holding_asset_class(asset_a)
+    class_b = holding_asset_class(asset_b)
+    if "cash" in {class_a, class_b} or asset_a.asset_type == "cash" or asset_b.asset_type == "cash":
         return 0.0
-    if asset_a.asset_type == "bond" and asset_b.asset_type == "bond":
+    if class_a == "bond" and class_b == "bond":
         if infer_region_profile(asset_a) == infer_region_profile(asset_b):
             return 55.0
         return 25.0
-    if {asset_a.asset_type, asset_b.asset_type} == {"bond", "stock"}:
+    if "bond" in {class_a, class_b}:
+        other = asset_b if class_a == "bond" else asset_a
+        return 5.0 if other.asset_type == "stock" else 10.0
+    # Gold/commodity/crypto against a different class share nothing.
+    if class_a != class_b and ({class_a, class_b} & {"gold", "commodity", "crypto"}):
         return 5.0
-    if "bond" in {asset_a.asset_type, asset_b.asset_type}:
-        return 10.0
 
     tags_a = extract_overlap_tags(asset_a)
     tags_b = extract_overlap_tags(asset_b)
@@ -434,38 +466,63 @@ def compute_portfolio_volatility(repo: PortfolioRepository, holdings: list[Analy
     return round(weighted_volatility / covered_weight, 1)
 
 
+TerSource = str  # "justetf" | "yfinance" | "inferred" | "none"
+
+
+def resolve_holding_ters(
+    holdings: list[AnalyzedHolding],
+    repo: PortfolioRepository | None = None,
+) -> dict[int, tuple[float | None, TerSource]]:
+    """Single source of truth for per-holding TER, in percentage points.
+
+    Priority: justETF enrichment (already a percentage) → yFinance metadata
+    (normalized with ``normalize_expense_ratio_pct``) → ``infer_ter`` pattern
+    matching. Returns ``{asset_id: (ter_pct, ter_source)}`` where ter_source is
+    one of ``"justetf"``, ``"yfinance"``, ``"inferred"`` or ``"none"``.
+    """
+    asset_ids = [h.asset_id for h in holdings]
+    justetf: dict[int, float] = {}
+    yfinance: dict[int, float] = {}
+    if repo:
+        try:
+            enrich_map = repo.get_etf_enrichment_bulk(asset_ids)
+            for aid, enrich in enrich_map.items():
+                if enrich.get("ter") is not None:
+                    justetf[aid] = float(enrich["ter"])  # justETF already returns percentage (e.g. 0.22)
+        except Exception:
+            pass
+        try:
+            meta_map = repo.get_asset_metadata_bulk(asset_ids)
+            for aid, meta in meta_map.items():
+                if meta.expense_ratio is not None:
+                    normalized = normalize_expense_ratio_pct(meta.expense_ratio)
+                    if normalized is not None:
+                        yfinance[aid] = normalized
+        except Exception:
+            pass
+
+    resolved: dict[int, tuple[float | None, TerSource]] = {}
+    for holding in holdings:
+        if holding.asset_id in justetf:
+            resolved[holding.asset_id] = (justetf[holding.asset_id], "justetf")
+        elif holding.asset_id in yfinance:
+            resolved[holding.asset_id] = (yfinance[holding.asset_id], "yfinance")
+        else:
+            inferred = infer_ter(holding)
+            resolved[holding.asset_id] = (inferred, "inferred" if inferred is not None else "none")
+    return resolved
+
+
 def compute_weighted_ter(
     holdings: list[AnalyzedHolding],
     repo: PortfolioRepository | None = None,
 ) -> float | None:
-    # Try to fetch TER from justETF enrichment first, then yFinance metadata
-    db_ter: dict[int, float] = {}
-    if repo:
-        try:
-            asset_ids = [h.asset_id for h in holdings]
-            # justETF enrichment (preferred — more accurate)
-            enrich_map = repo.get_etf_enrichment_bulk(asset_ids)
-            for aid, enrich in enrich_map.items():
-                if enrich.get("ter") is not None:
-                    db_ter[aid] = enrich["ter"]  # justETF already returns percentage (e.g. 0.22)
-        except Exception:
-            pass
-        try:
-            # yFinance metadata as fallback
-            asset_ids = [h.asset_id for h in holdings]
-            meta_map = repo.get_asset_metadata_bulk(asset_ids)
-            for aid, meta in meta_map.items():
-                if aid not in db_ter and meta.expense_ratio is not None:
-                    normalized = normalize_expense_ratio_pct(meta.expense_ratio)
-                    if normalized is not None:
-                        db_ter[aid] = normalized
-        except Exception:
-            pass
-
+    """TER weighted on the covered weight (holdings with a known or inferred TER)."""
+    resolved = resolve_holding_ters(holdings, repo)
     weighted_cost = 0.0
     covered_weight = 0.0
     for holding in holdings:
-        ter = db_ter[holding.asset_id] if holding.asset_id in db_ter else infer_ter(holding)
+        ter, _source = resolved[holding.asset_id]
         if ter is None:
             continue
         weight_fraction = holding.weight_pct / 100.0
@@ -477,11 +534,21 @@ def compute_weighted_ter(
 
 
 def infer_ter(holding: AnalyzedHolding) -> float | None:
-    """Fallback TER inference via pattern matching when DB metadata is missing."""
+    """Fallback TER inference via pattern matching when DB metadata is missing.
+
+    A share, a direct bond and cash have no running cost (0). An exchange-traded
+    product stored as ``stock`` (an ETC on gold, a bond ETF that Yahoo reports
+    as EQUITY) is not a single share: it goes through the fund patterns and
+    gets an inferred TER or None, never 0.
+    """
     asset_type = holding.asset_type.lower()
-    if asset_type in {"stock", "bond", "cash"}:
+    if asset_type == "stock":
+        classification = holding_classification(holding)
+        if classification.asset_class == "equity" and not classification.is_exchange_traded_product:
+            return 0.0
+    elif asset_type in {"bond", "cash"}:
         return 0.0
-    if asset_type not in {"etf", "fund"}:
+    elif asset_type not in {"etf", "fund"}:
         return None
 
     descriptor = f"{holding.symbol} {holding.name}".upper()
@@ -499,9 +566,90 @@ def infer_ter(holding: AnalyzedHolding) -> float | None:
         return 0.22
     if any(token in descriptor for token in ("AGGREGATE BOND", "TREASURY", "CORP BOND")):
         return 0.15
+    if any(token in descriptor for token in ("PHYSICAL GOLD", "GOLD ETC")):
+        return 0.15
     if any(token in descriptor for token in ("VANGUARD", "ISHARES", "SPDR", "XTRACKERS", "AMUNDI", "INVESCO")):
         return 0.25
     return None
+
+
+CATEGORY_MAX_SCORES: dict[str, int] = {
+    "diversification": 25,
+    "risk": 25,
+    "concentration": 20,
+    "overlap": 15,
+    "cost_efficiency": 15,
+}
+
+
+def compute_score_deductions(
+    metrics: PortfolioHealthMetrics,
+    *,
+    top3_weight: float,
+    equity_weight: float,
+) -> list[PortfolioHealthScoreDeduction]:
+    """Rules that remove points from each category (TASK-40).
+
+    The category score is its maximum minus the points listed here, so the
+    health score is fully explained by this list.
+    """
+    usa = metrics.geographic_exposure.get("usa", 0.0)
+    emerging = metrics.geographic_exposure.get("emerging", 0.0)
+    concentration_weight = metrics.concentration_weight
+    deductions: list[PortfolioHealthScoreDeduction] = []
+
+    def deduct(category: str, code: str, points: int, reason: str) -> None:
+        deductions.append(
+            PortfolioHealthScoreDeduction(category=category, code=code, points=points, reason=reason)
+        )
+
+    if usa > 60:
+        deduct("diversification", "usa_over_60", 6, f"Esposizione USA {usa:.1f}% (> 60%).")
+    if concentration_weight > 40:
+        deduct("diversification", "position_over_40", 4,
+               f"Singola posizione al {concentration_weight:.1f}% (> 40%).")
+    if metrics.overlap_score > 50:
+        deduct("diversification", "overlap_over_50", 4, f"Sovrapposizione {metrics.overlap_score:.1f} (> 50).")
+    if emerging < 5 and equity_weight >= 60:
+        deduct("diversification", "low_emerging_exposure", 3,
+               f"Mercati emergenti {emerging:.1f}% (< 5%) con azionario al {equity_weight:.1f}%.")
+
+    volatility = metrics.portfolio_volatility
+    if volatility is not None:
+        if volatility > 15:
+            deduct("risk", "volatility_over_15", 10, f"Volatilità {volatility:.1f}% (> 15%).")
+        elif volatility >= 12:
+            deduct("risk", "volatility_12_15", 5, f"Volatilità {volatility:.1f}% (12-15%).")
+    if concentration_weight > 40:
+        deduct("risk", "position_over_40", 5, f"Singola posizione al {concentration_weight:.1f}% (> 40%).")
+
+    if concentration_weight > 60:
+        deduct("concentration", "position_over_60", 10,
+               f"Singola posizione al {concentration_weight:.1f}% (> 60%).")
+    elif concentration_weight > 40:
+        deduct("concentration", "position_over_40", 6,
+               f"Singola posizione al {concentration_weight:.1f}% (> 40%).")
+    if top3_weight > 75:
+        deduct("concentration", "top3_over_75", 4, f"Prime 3 posizioni al {top3_weight:.1f}% (> 75%).")
+
+    overlap = metrics.overlap_score
+    if overlap > 70:
+        deduct("overlap", "overlap_over_70", 12, f"Sovrapposizione {overlap:.1f} (> 70).")
+    elif overlap > 50:
+        deduct("overlap", "overlap_over_50", 8, f"Sovrapposizione {overlap:.1f} (> 50).")
+    elif overlap > 40:
+        deduct("overlap", "overlap_over_40", 4, f"Sovrapposizione {overlap:.1f} (> 40).")
+
+    ter = metrics.weighted_ter
+    if ter is not None:
+        if ter > 0.75:
+            deduct("cost_efficiency", "ter_over_0_75", 10, f"TER ponderato {ter:.2f}% (> 0,75%).")
+        elif ter > 0.5:
+            deduct("cost_efficiency", "ter_over_0_5", 7, f"TER ponderato {ter:.2f}% (> 0,5%).")
+        elif ter > 0.3:
+            deduct("cost_efficiency", "ter_over_0_3", 3, f"TER ponderato {ter:.2f}% (> 0,3%).")
+
+    return deductions
 
 
 def compute_category_scores(
@@ -510,59 +658,34 @@ def compute_category_scores(
     top3_weight: float,
     equity_weight: float,
 ) -> PortfolioHealthCategoryScores:
-    usa = metrics.geographic_exposure.get("usa", 0.0)
-    emerging = metrics.geographic_exposure.get("emerging", 0.0)
-
-    diversification = 25
-    if usa > 60:
-        diversification -= 6
-    if metrics.concentration_weight > 40:
-        diversification -= 4
-    if metrics.overlap_score > 50:
-        diversification -= 4
-    if emerging < 5 and equity_weight >= 60:
-        diversification -= 3
-
-    risk = 25
-    if metrics.portfolio_volatility is not None:
-        if metrics.portfolio_volatility > 15:
-            risk -= 10
-        elif metrics.portfolio_volatility >= 12:
-            risk -= 5
-    if metrics.concentration_weight > 40:
-        risk -= 5
-
-    concentration = 20
-    if metrics.concentration_weight > 60:
-        concentration -= 10
-    elif metrics.concentration_weight > 40:
-        concentration -= 6
-    if top3_weight > 75:
-        concentration -= 4
-
-    overlap = 15
-    if metrics.overlap_score > 70:
-        overlap -= 12
-    elif metrics.overlap_score > 50:
-        overlap -= 8
-    elif metrics.overlap_score > 40:
-        overlap -= 4
-
-    cost_efficiency = 15
-    if metrics.weighted_ter is not None:
-        if metrics.weighted_ter > 0.75:
-            cost_efficiency -= 10
-        elif metrics.weighted_ter > 0.5:
-            cost_efficiency -= 7
-        elif metrics.weighted_ter > 0.3:
-            cost_efficiency -= 3
-
+    scores = dict(CATEGORY_MAX_SCORES)
+    for deduction in compute_score_deductions(metrics, top3_weight=top3_weight, equity_weight=equity_weight):
+        scores[deduction.category] -= deduction.points
     return PortfolioHealthCategoryScores(
-        diversification=max(0, min(25, diversification)),
-        risk=max(0, min(25, risk)),
-        concentration=max(0, min(20, concentration)),
-        overlap=max(0, min(15, overlap)),
-        cost_efficiency=max(0, min(15, cost_efficiency)),
+        **{cls: max(0, min(CATEGORY_MAX_SCORES[cls], value)) for cls, value in scores.items()}
+    )
+
+
+HEALTH_VOLATILITY_METHOD = (
+    "weighted_average_of_single_asset_realized_volatility_no_correlation"
+)
+
+
+def health_volatility_info(value_pct: float | None) -> VolatilityInfo:
+    """Methodology of the health-score volatility (TASK-40).
+
+    Weighted average of each holding's annualized realized volatility, on
+    the holdings with at least 20 daily returns, renormalized on that
+    weight. Correlations are ignored, so it overstates the volatility of a
+    diversified portfolio; it is never floored.
+    """
+    return VolatilityInfo(
+        name="health_weighted_asset_volatility",
+        value_pct=value_pct,
+        method=HEALTH_VOLATILITY_METHOD,
+        period="last 1y of daily closes (min 20 returns per holding), annualized x sqrt(252)",
+        is_floored=False,
+        floor_pct=None,
     )
 
 
@@ -570,7 +693,7 @@ def build_alerts(metrics: PortfolioHealthMetrics, holdings: list[AnalyzedHolding
     alerts: list[PortfolioHealthAlert] = []
     usa = metrics.geographic_exposure.get("usa", 0.0)
     concentration_holdings = (
-        [h for h in holdings if h.asset_type not in _DIVERSIFIED_VEHICLE_TYPES]
+        [h for h in holdings if _is_single_security(h)]
         if metrics.max_single_security_weight is not None
         else holdings
     )

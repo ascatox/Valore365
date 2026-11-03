@@ -19,7 +19,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { IconChevronDown, IconChevronUp, IconFlame } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronUp, IconFlame, IconInfoCircle } from '@tabler/icons-react';
 import { useStressTest } from '../dashboard/hooks/queries';
 import type { StressTestScenarioResult } from '../../services/api';
 import type { PortfolioScopeInput } from '../../scope/portfolioScope';
@@ -55,10 +55,37 @@ function formatImpact(pct: number | null | undefined): string {
   return `${sign}${pct.toFixed(1)}%`;
 }
 
+function formatCoverage(pct: number | null | undefined): string | null {
+  if (pct == null || !Number.isFinite(pct)) return null;
+  return `copertura ${Math.round(pct)}%`;
+}
+
+/** Type badge; historical scenarios also show how they were estimated. */
+function scenarioBadge(scenario: StressTestScenarioResult): { label: string; color: string; title?: string } {
+  if (scenario.scenario_type === 'shock') return { label: 'Shock', color: 'grape' };
+  const coverage = formatCoverage(scenario.coverage_pct);
+  if (scenario.method === 'proxy') {
+    return {
+      label: coverage ? `Stima per asset class · ${coverage}` : 'Stima per asset class',
+      color: 'orange',
+      title: 'Prezzi storici disponibili per meno del 60% del portafoglio: impatto stimato con indici di riferimento per asset class.',
+    };
+  }
+  if (scenario.method === 'historical' && coverage) {
+    return {
+      label: `Storico · ${coverage}`,
+      color: 'blue',
+      title: 'Quota del portafoglio calcolata con i prezzi storici reali dei tuoi strumenti.',
+    };
+  }
+  return { label: 'Storico', color: 'blue' };
+}
+
 function ScenarioCard({ scenario, isDark }: { scenario: StressTestScenarioResult; isDark: boolean }) {
   const theme = useMantineTheme();
   const [expanded, setExpanded] = useState(false);
   const impactAbs = Math.abs(scenario.estimated_portfolio_impact_pct);
+  const badge = scenarioBadge(scenario);
 
   return (
     <Box
@@ -75,8 +102,8 @@ function ScenarioCard({ scenario, isDark }: { scenario: StressTestScenarioResult
         <div style={{ minWidth: 0, flex: 1 }}>
           <Group gap="xs" wrap="wrap">
             <Text fw={700} size="sm">{scenario.scenario_name}</Text>
-            <Badge size="xs" variant="light" color={scenario.scenario_type === 'historical' ? 'blue' : 'grape'}>
-              {scenario.scenario_type === 'historical' ? 'Storico' : 'Shock'}
+            <Badge size="xs" variant="light" color={badge.color} title={badge.title}>
+              {badge.label}
             </Badge>
           </Group>
           {scenario.period && (
@@ -209,6 +236,9 @@ export function StressTestCard({ scope }: Props) {
     return true;
   });
 
+  // USD/FX limitation of the class proxies, shown once for the visible scenarios.
+  const methodologyNote = filteredScenarios.find((s) => s.methodology_note)?.methodology_note ?? null;
+
   const worstScenario = data.scenarios.reduce((worst, s) =>
     s.estimated_portfolio_impact_pct < worst.estimated_portfolio_impact_pct ? s : worst
   , data.scenarios[0]);
@@ -241,6 +271,19 @@ export function StressTestCard({ scope }: Props) {
             ]}
           />
         </Group>
+
+        {methodologyNote && (
+          <Alert
+            color="blue"
+            variant="light"
+            radius="md"
+            p="xs"
+            icon={<IconInfoCircle size={16} />}
+            title="Limite della stima storica"
+          >
+            <Text size="xs">{methodologyNote}</Text>
+          </Alert>
+        )}
 
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
           {filteredScenarios.map((scenario) => (

@@ -9,6 +9,7 @@ from datetime import date, timedelta
 from sqlalchemy import text
 
 from ...repository import PortfolioRepository, aggregate_identity, normalize_portfolio_ids
+from ..asset_classification import AssetClassification, classify_asset
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,29 @@ class AnalyzedHolding:
     quote_currency: str
     market_value: float
     weight_pct: float
+    # Inputs of the shared asset-class classifier (TASK-35); optional so that
+    # holdings built without enrichment keep working.
+    isin: str | None = None
+    investment_focus: str | None = None
+    index_tracked: str | None = None
+    category: str | None = None
+
+
+def holding_classification(holding: AnalyzedHolding) -> AssetClassification:
+    """Asset class of a holding from the shared classifier."""
+    return classify_asset(
+        asset_type=holding.asset_type,
+        name=holding.name,
+        symbol=holding.symbol,
+        isin=holding.isin,
+        investment_focus=holding.investment_focus,
+        index_tracked=holding.index_tracked,
+        category=holding.category,
+    )
+
+
+def holding_asset_class(holding: AnalyzedHolding) -> str:
+    return holding_classification(holding).asset_class
 
 
 PortfolioRef = int | Sequence[int]
@@ -67,9 +91,12 @@ def _holdings_from_positions(repo: PortfolioRepository, positions) -> list[Analy
         rows = conn.execute(
             text(
                 """
-                select id, asset_type, quote_currency
-                from assets
-                where id = any(:asset_ids)
+                select a.id, a.asset_type, a.quote_currency, a.isin,
+                       am.category, ee.index_tracked, ee.investment_focus
+                from assets a
+                left join asset_metadata am on am.asset_id = a.id
+                left join etf_enrichment ee on ee.asset_id = a.id
+                where a.id = any(:asset_ids)
                 """
             ),
             {"asset_ids": asset_ids},
@@ -79,6 +106,10 @@ def _holdings_from_positions(repo: PortfolioRepository, positions) -> list[Analy
         int(row["id"]): {
             "asset_type": str(row["asset_type"] or ""),
             "quote_currency": str(row["quote_currency"] or ""),
+            "isin": row.get("isin"),
+            "category": row.get("category"),
+            "index_tracked": row.get("index_tracked"),
+            "investment_focus": row.get("investment_focus"),
         }
         for row in rows
     }
@@ -95,6 +126,10 @@ def _holdings_from_positions(repo: PortfolioRepository, positions) -> list[Analy
                 quote_currency=str(meta.get("quote_currency") or ""),
                 market_value=float(position.market_value),
                 weight_pct=float(position.weight),
+                isin=meta.get("isin"),
+                investment_focus=getattr(position, "investment_focus", None) or meta.get("investment_focus"),
+                index_tracked=meta.get("index_tracked"),
+                category=meta.get("category"),
             )
         )
     return holdings
@@ -118,7 +153,9 @@ def _merge_holdings_by_asset(holdings: list[AnalyzedHolding]) -> list[AnalyzedHo
 
 
 def _is_equity_like(holding: AnalyzedHolding) -> bool:
-    return holding.asset_type.lower() in {"stock", "etf", "fund"}
+    """Equity by the shared classifier. Bond ETFs, ETCs and ``unknown``
+    instruments are not counted as equity (no silent equity default)."""
+    return holding_asset_class(holding) == "equity"
 
 
 def _normalize_portfolio_ids(portfolio_ids: list[int]) -> list[int]:
@@ -154,6 +191,10 @@ def _rebalance_holdings_by_market_value(holdings: list[AnalyzedHolding]) -> list
                 quote_currency=holding.quote_currency,
                 market_value=market_value,
                 weight_pct=(market_value / total_market_value) * 100.0,
+                isin=holding.isin,
+                investment_focus=holding.investment_focus,
+                index_tracked=holding.index_tracked,
+                category=holding.category,
             )
         )
     return rebalanced
@@ -181,23 +222,23 @@ _LONG_TERM_CORRELATION = {
     frozenset({"equity", "commodity"}): 0.2,
     frozenset({"bond", "commodity"}): 0.2,
 }
-_BOND_KEYWORDS = ("bond", "obbligaz", "fixed income", "treasury", "govt", "aggregate")
-_COMMODITY_KEYWORDS = ("gold", "oro", "silver", "commodit", "materie prime", "precious metal")
+# Shared classes folded into the four long-term classes. Crypto and unknown
+# instruments take the equity assumptions (the riskiest class available) as a
+# prudential choice.
+_LONG_TERM_CLASS = {
+    "equity": "equity",
+    "bond": "bond",
+    "gold": "commodity",
+    "commodity": "commodity",
+    "cash": "cash",
+    "crypto": "equity",
+    "unknown": "equity",
+}
 
 
 def _asset_class(holding: AnalyzedHolding) -> str:
     """Map a holding to a broad asset class for long-term assumptions."""
-    asset_type = holding.asset_type.lower()
-    if asset_type == "cash":
-        return "cash"
-    if asset_type == "bond":
-        return "bond"
-    name = holding.name.lower()
-    if any(keyword in name for keyword in _BOND_KEYWORDS):
-        return "bond"
-    if any(keyword in name for keyword in _COMMODITY_KEYWORDS):
-        return "commodity"
-    return "equity"
+    return _LONG_TERM_CLASS.get(holding_asset_class(holding), "equity")
 
 
 def _long_term_return_assumptions(holdings: list[AnalyzedHolding]) -> tuple[float, float]:

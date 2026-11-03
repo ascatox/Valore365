@@ -118,12 +118,74 @@ Esempio di Protected Resource Metadata:
 |---|---|
 | `list_portfolios` | nessuno: restituisce id, nome e valuta base dei portafogli dell'utente |
 | `get_portfolio_summary`, `get_positions`, `get_target_drift`, `get_performance`, `get_cash_balance`, `get_recent_transactions`, `get_portfolio_health`, `get_day_movers`, `get_monte_carlo`, `get_dividend_summary`, `get_cost_breakdown`, `get_xray_summary`, `get_stress_test`, `get_income_projection` | `portfolio_id` |
-| `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale) |
+| `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale, liquidità aggiuntiva), `mode` (opzionale: `rebalance` predefinito, `buy_only`, `sell_only`) |
 | `calculate_what_if` | `portfolio_id`, `action` (`buy`/`sell`), `symbol`, `amount_eur` |
 | `calculate_pac_contribution` | `portfolio_id`, `monthly_amount` |
 | `search_asset_info` | `portfolio_id`, `symbol` |
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
+
+`calculate_rebalance_orders` segue queste regole:
+
+- **Totale e pesi:** valore delle posizioni con target + liquidità del portafoglio + `available_cash`
+  (liquidità aggiuntiva, non sostitutiva). Le posizioni senza target non vengono toccate e restano fuori dal totale.
+- **Banda di tolleranza di 0,5 punti percentuali sul peso, usata come soglia di attivazione:** se nessuno
+  strumento si scosta dal target di più di 0,5 pp non viene proposto alcun ordine; se almeno uno la supera,
+  **tutti** gli strumenti vengono riportati al target, anche quelli entro la banda. In questo modo i proventi
+  delle vendite finanziano gli acquisti invece di restare in liquidità.
+- **Modalità `rebalance`:** prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,
+  gli acquisti sono ridotti in proporzione. La liquidità finale non è mai negativa e vale
+  `cash_after = cash_before + extra_cash + sells_eur - buys_eur` (riportato in `totals`).
+- **Nessun importo minimo per ordine; commissioni e imposte non modellate** (importi lordi).
+
+`get_monte_carlo` restituisce esattamente gli anni 1..10 (ordinati) con i percentili P25/P50/P75 espressi
+come **indice base 100** (`unit: "indice_base_100"`, `initial_value: 100`): 120 significa +20% rispetto
+al valore attuale, non 120 €. `get_day_movers` calcola migliore e peggiore dalla variazione giornaliera
+delle posizioni, escludendo quelle con prezzo non aggiornato o assente; senza posizioni valide
+restituisce `best`/`worst` a `null` con un campo `reason`.
+
+Le asset class usate da stress test, salute, X-Ray e reddito vengono da un classificatore unico
+(`app/services/asset_classification.py`: equity, bond, gold, commodity, cash, crypto, `unknown`); un
+ETC tipizzato `stock` (es. un ETC sull'oro) è classificato gold, e un asset non riconosciuto resta
+`unknown`, mai equity per default. Negli scenari a shock `get_stress_test` riporta `affected_classes`,
+`class_breakdown` (per classe: `weight_pct`, `shock_pct`, `contribution_pct`, che sommano all'impatto)
+e `flags` (`unknown_asset_class_equity_shock` quando a un asset `unknown` si applica in via prudenziale
+lo shock equity); `most_impacted` elenca solo perdite effettive, con `asset_class`.
+
+Negli scenari storici (GFC 2008, Dot-com, Covid, Bear market 2022) `get_stress_test` dichiara il
+metodo. `coverage_pct` è il peso delle posizioni con almeno due prezzi reali nella finestra dello
+scenario (la liquidità conta come coperta, rendimento 0). Con copertura ≥ 60% `method` è
+`"historical"`: la parte coperta usa i prezzi reali e la parte scoperta i proxy di classe (flag
+`uncovered_weight_filled_with_class_proxy`). Sotto il 60% `method` è `"proxy"` e l'impatto è
+Σ peso × drawdown proxy della classe (flag `class_proxy_drawdowns`); con portafoglio vuoto è
+`"not_available"`. I proxy (`HISTORICAL_CLASS_PROXIES` in `app/constants/stress_scenarios.py`) sono
+il rendimento approssimato nella finestra di indici noti (MSCI World, Bloomberg Global Aggregate,
+oro LBMA, Bloomberg Commodity, Bitcoin), **in USD**: l'effetto cambio per un investitore in EUR non è
+modellato (es. 2022: MSCI World circa −13% e oro circa +9% in EUR). Un asset `unknown` e le crypto
+negli scenari precedenti alla loro nascita (GFC, Dot-com) usano il proxy equity, con i flag
+`unknown_asset_class_equity_proxy` e `crypto_pre_inception_equity_proxy`. `class_breakdown` riporta
+per classe e fonte (`source`: `historical` o `proxy`) `weight_pct`, `drawdown_pct` e
+`contribution_pct` (la somma dei contributi è l'impatto). Non esiste più il ripiego
+`benchmark_drawdown × 0,8`, uguale per ogni portafoglio.
+
+Le due volatilità hanno metodologie diverse e dichiarate (nessuna è "canonica"), in un oggetto
+`volatility` con `name`, `value_pct`, `method`, `period`, `is_floored` e `floor_pct`:
+- `get_stress_test` → `stress_portfolio_volatility` (= `portfolio_volatility_pct`): volatilità
+  realizzata della serie ponderata del portafoglio nell'ultimo anno (correlazioni incluse), mai sotto
+  la volatilità di lungo periodo del mix di classi (16% equity, 6% bond, 15% commodity/oro, 0% cash).
+  `is_floored: true` indica che vale il pavimento; `unfloored_pct` è il valore realizzato.
+- `get_portfolio_health` → `health_weighted_asset_volatility` (= `portfolio_volatility`): media
+  ponderata della volatilità realizzata a 1 anno dei singoli titoli, **senza correlazioni** (sovrastima
+  il rischio di un portafoglio diversificato), mai con pavimento.
+
+`get_portfolio_health` espone anche `category_scores` (diversificazione 25, rischio 25,
+concentrazione 20, sovrapposizione 15, costi 15; i massimi in `category_max_scores`; lo `score` è la
+somma) e `score_deductions`: le regole che hanno tolto punti (`category`, `code`, `points`, `reason`),
+la cui somma per categoria è la differenza tra massimo e punteggio.
+`get_income_projection` divide il reddito lordo in `equity`, `fixed_income` e `other_or_unknown` (la
+somma è il lordo proiettato), senza crescita sul reddito fisso; elenca `unknown_class_symbols` e
+`missing_yield_symbols` e dichiara l'ipotesi fiscale in `tax_note` (aliquota uniforme, 12,5% sui titoli
+di Stato non modellato).
 
 ## Configurazione del dashboard Clerk
 
@@ -364,8 +426,8 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | Refetch JWKS limitato | Un `kid` sconosciuto provoca al massimo un nuovo download del JWKS ogni 30 s; nel frattempo i `kid` sconosciuti ricevono 401 (o 503 se il JWKS non è mai stato scaricato) | codice |
 | JWT rigorosi | `alg` = RS256 (rifiutati `none`/`HS*`), `crit` rifiutato, `nbf` e `iat` futuri rifiutati (tolleranza 5 s), durata massima del token. All'avvio un warning se `MCP_REQUIRE_AUDIENCE=false` | `MCP_MAX_TOKEN_LIFETIME_SECONDS`, `MCP_REQUIRE_AUDIENCE` |
 | Timeout per tool | Il tool gira in un thread; oltre il timeout il client riceve un errore generico. Il thread non può essere interrotto e termina in background, ma continua a occupare uno slot di concorrenza dell'utente finché non finisce | `MCP_TOOL_TIMEOUT_SECONDS` |
-| Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
-| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` hanno un limite per utente più stretto, in aggiunta a quello generale | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
+| Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" (`code: concurrency_busy`, `retry_after_s: 2`). Il controllo avviene prima della quota dei tool pesanti, quindi una chiamata rifiutata come "busy" non consuma quota | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
+| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
 | Dimensione del risultato | Il JSON del risultato è limitato a 200 KB: oltre, il testo viene tagliato con il marcatore `[risultato troncato: superato il limite di 200 KB]` e `structuredContent` è omesso | codice |
 | Validazione argomenti | Schema JSON rigoroso (`additionalProperties: false`, `portfolio_id` intero positivo, numeri con minimo/massimo, `symbol` max 32 caratteri con charset limitato, NaN/Inf rifiutati), verificato sia dall'SDK sia da `run_tool_sync` prima di eseguire il tool. I batch JSON-RPC (array) non sono accettati dal trasporto dell'SDK (400) | `ARGUMENT_CONSTRAINTS` |
 | Prompt injection | Oltre al troncamento, da tutti i testi (chiavi comprese) vengono rimossi caratteri di controllo, controlli bidirezionali Unicode, caratteri a larghezza zero/invisibili e caratteri "tag" (U+E0000-U+E0FFF); `\n` e `\t` restano. Ogni descrizione di tool e le istruzioni del server avvertono che gli output sono dati, non istruzioni | codice |
@@ -373,6 +435,12 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | Errori generici | 401 con messaggio unico qualunque sia la causa; 403 `Access denied` per gli utenti bloccati e `Insufficient scope` per gli scope mancanti; 429 generico; un portafoglio inesistente o altrui restituisce sempre `Portfolio non trovato` | codice |
 | Rilascio graduale / kill switch | `MCP_ALLOWED_USER_IDS` non vuoto: solo quegli utenti possono usare MCP (gli altri ricevono 403). `MCP_BLOCKED_USER_IDS`: utenti sempre bloccati (403), ha la precedenza. Per spegnere tutto: `MCP_ENABLED=false` (404) | `MCP_ALLOWED_USER_IDS`, `MCP_BLOCKED_USER_IDS` |
 | Audit log | Una riga per richiesta (`mcp request rid=… ip=… method=… status=… outcome=… user=… client=… duration_ms=…`) e una per chiamata a tool (`mcp tool call rid=… user=… client=… ip=… tool=… outcome=… duration_ms=…`), con lo stesso `rid` restituito in `X-Request-ID`. Le autenticazioni fallite sono loggate a livello WARNING con la sola categoria (`mcp auth failed rid=… ip=… reason=expired`). Mai token, argomenti o output | logger `valore365.mcp` |
+
+Errori di limite (concorrenza e tool pesanti) in forma strutturata: il `CallToolResult` ha
+`isError: true`, il testo contiene il messaggio in italiano seguito da `(code=…, retry_after_s=…)` e
+`structuredContent` vale `{"error": {"code": "concurrency_busy" | "heavy_quota", "message": "…",
+"retry_after_s": <secondi interi>}}`. Il client può attendere `retry_after_s` secondi prima di
+riprovare.
 
 ### Dipendenze (pip-audit, novembre 2026)
 

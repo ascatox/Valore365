@@ -945,7 +945,24 @@ export interface StressTestAssetImpact {
   name: string;
   weight_pct: number;
   estimated_loss_pct: number;
+  /** Shared asset class (shock scenarios only). */
+  asset_class?: string | null;
 }
+
+export interface StressTestClassImpact {
+  asset_class: string;
+  weight_pct: number;
+  /** Shock scenarios: base shock of the class. */
+  shock_pct?: number | null;
+  /** Historical scenarios: return of the class over the window (real or proxy). */
+  drawdown_pct?: number | null;
+  /** Historical scenarios: real prices or USD class proxy. */
+  source?: 'historical' | 'proxy' | null;
+  /** weight x applied shock/drawdown, in portfolio percentage points. */
+  contribution_pct: number;
+}
+
+export type StressTestMethod = 'historical' | 'proxy' | 'not_available';
 
 export interface StressTestScenarioResult {
   scenario_id: string;
@@ -958,6 +975,15 @@ export interface StressTestScenarioResult {
   benchmark_drawdown_pct: number | null;
   risk_level: 'low' | 'medium' | 'high' | 'critical';
   most_impacted_assets: StressTestAssetImpact[];
+  /** Historical scenarios only: real prices, USD class proxies or empty portfolio. */
+  method?: StressTestMethod | null;
+  /** Historical scenarios: % of the weight with real prices in the window. */
+  coverage_pct?: number | null;
+  /** Historical scenarios: Italian note when USD class proxies are used (FX not modelled). */
+  methodology_note?: string | null;
+  affected_classes?: string[];
+  class_breakdown?: StressTestClassImpact[];
+  flags?: string[];
 }
 
 export interface StressTestResponse {
