@@ -119,3 +119,9 @@ Tutti e 7 gli asset `.L` hanno `quote_currency = EUR` e nessuna borsa (Q1), ment
 - **Q5:** 8 asset con `quote_currency = EUR` su borse non in euro, incluso `IE00B441G979`, registrato con l'ISIN come simbolo.
 
 Conclusione: i duplicati ci sono e la causa è il nuovo upload dello stesso file, senza deduplicazione fra batch. La correzione dei dati richiede un piano approvato, con anteprima delle righe coinvolte.
+
+### Q9 — portata completa del bug ×1000 (2026-11-03)
+
+39 acquisti in Wealth su 9 strumenti; nessuna riga in altri portafogli. Quote mancanti per strumento (quantità corretta − registrata): VWRA.L ~59,9; FRC3.DE ~116,9; IBTM.L ~43,0; IEVL.L ~30,0; SE15.L ~29,0; EUN5.DE ~20,0; DBXP.DE ~12,0; IHYG.L ~12,0; EQQQ.DE ~1,0. Il costo totale è corretto; quantità, costo medio e valore di mercato no.
+
+Correzione proposta: `backlog/docs/AUDIT_MCP_2026-11_CORREZIONE_DATI.sql`, PARTE A (anteprima, copia di sicurezza, modifica con ROLLBACK di prova, annullamento). Da eseguire solo dopo l'approvazione del proprietario.
