@@ -306,6 +306,9 @@ class Position(BaseModel):
     unrealized_pl_pct: float
     weight: float
     day_change_pct: float = 0.0
+    # True only when a previous close was found: without it day_change_pct is
+    # the 0.0 default, not a flat day (TASK-44).
+    previous_close_available: bool = False
     first_trade_at: datetime | None = None
     investment_focus: str | None = None
     price_stale: bool = False

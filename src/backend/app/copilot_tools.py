@@ -637,13 +637,15 @@ def _get_day_movers(
     """Best/worst daily change among the portfolio positions.
 
     Computed from repo.get_positions (day_change_pct = current price vs
-    previous close, in quote currency). Positions with a stale price or no
-    price at all are excluded: their day_change_pct is the 0.0 default, not
-    a real change. A 0.0 on a fresh price is valid data (flat day).
+    previous close, in quote currency). Positions with a stale price, no
+    price at all or no previous close are excluded: their day_change_pct is
+    the 0.0 default, not a real change. A 0.0 on a fresh price with a
+    previous close is valid data (flat day).
     """
     positions = repo.get_positions(portfolio_id, user_id) or []
     valid = []
     excluded = 0
+    excluded_no_prev = 0
     for p in positions:
         change = p.day_change_pct
         if (
@@ -654,20 +656,28 @@ def _get_day_movers(
         ):
             excluded += 1
             continue
+        if not getattr(p, "previous_close_available", False):
+            excluded_no_prev += 1
+            continue
         valid.append(p)
 
     if not valid:
-        reason = (
-            "Nessuna posizione nel portafoglio."
-            if not positions
-            else "Nessuna posizione con prezzo aggiornato: variazione giornaliera non disponibile."
-        )
+        if not positions:
+            reason = "Nessuna posizione nel portafoglio."
+        elif excluded_no_prev:
+            reason = (
+                "Nessuna posizione con prezzo aggiornato e chiusura precedente: "
+                "variazione giornaliera non disponibile."
+            )
+        else:
+            reason = "Nessuna posizione con prezzo aggiornato: variazione giornaliera non disponibile."
         return {
             "best": None,
             "worst": None,
             "reason": reason,
             "valid_positions": 0,
             "excluded_stale": excluded,
+            "excluded_no_previous_close": excluded_no_prev,
         }
 
     def _mover(p: Any) -> dict:
@@ -686,6 +696,7 @@ def _get_day_movers(
         "worst": _mover(worst),
         "valid_positions": len(valid),
         "excluded_stale": excluded,
+        "excluded_no_previous_close": excluded_no_prev,
     }
 
 
@@ -1017,31 +1028,76 @@ def _calculate_pac_contribution(
     }
 
 
+def _held_asset_id(repo: PortfolioRepository, portfolio_id: int, user_id: str, symbol: str) -> int | None:
+    """asset_id of a symbol held or traded in the portfolio (exact, case-insensitive)."""
+    wanted = symbol.strip().upper()
+    try:
+        for p in repo.get_positions(portfolio_id, user_id) or []:
+            if str(p.symbol).upper() == wanted:
+                return int(p.asset_id)
+    except Exception:
+        pass
+    try:
+        for t in repo.list_transactions(portfolio_id, user_id) or []:
+            t_symbol = getattr(t, "symbol", None)
+            t_asset = getattr(t, "asset_id", None)
+            if t_symbol and t_asset and str(t_symbol).upper() == wanted:
+                return int(t_asset)
+    except Exception:
+        pass
+    return None
+
+
 def _search_asset_info(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
-    _portfolio_id: int, _user_id: str, **_kw: Any,
+    portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T13: Search asset info by symbol — returns rich metadata from DB."""
-    symbol = args.get("symbol", "")
+    """T13: Search asset info by symbol — returns rich metadata from DB.
+
+    A symbol held (or traded) in the portfolio is resolved by exact symbol
+    to its asset_id. Only other symbols go through get_asset_by_symbol,
+    whose base-ticker match can return another listing: that case is
+    flagged (match=different_listing + warning), never silent (TASK-44).
+    """
+    symbol = str(args.get("symbol", "") or "").strip()
     if not symbol:
         return {"error": "Simbolo mancante"}
 
-    asset = repo.get_asset_by_symbol(symbol)
-    if not asset:
-        return {"error": f"Asset non trovato per il simbolo: {symbol}"}
+    asset_id = _held_asset_id(repo, portfolio_id, user_id, symbol)
+    if asset_id is not None:
+        asset = {"id": asset_id, "symbol": symbol.upper(), "name": ""}
+        match = "portfolio"
+    else:
+        asset = repo.get_asset_by_symbol(symbol)
+        if not asset:
+            return {"error": f"Asset non trovato per il simbolo: {symbol}"}
+        match = "exact" if str(asset["symbol"]).upper() == symbol.upper() else "different_listing"
 
     result: dict = {
         "symbol": asset["symbol"],
         "name": asset["name"],
+        "match": match,
     }
 
     try:
         asset_detail = repo.get_asset(asset["id"])
+        result["symbol"] = asset_detail.symbol or result["symbol"]
+        if getattr(asset_detail, "name", None):
+            result["name"] = asset_detail.name
         result["type"] = asset_detail.asset_type
+        # Quote currency of the listing as stored for the asset (not the
+        # currency of an amount: this tool returns no amounts).
         result["currency"] = asset_detail.quote_currency
         result["isin"] = asset_detail.isin
     except Exception:
         pass
+
+    if match == "different_listing":
+        result["requested_symbol"] = symbol
+        result["warning"] = (
+            f"Nessun asset con simbolo esatto {symbol}: i dati si riferiscono a "
+            f"{result['symbol']}, un altro listing con lo stesso ticker base."
+        )
 
     # Fetch stored metadata (TER, sector, etc.)
     try:
@@ -1078,21 +1134,37 @@ def _get_dividend_summary(
     """T14: Dividend analysis — received dividends, yield, income projection."""
     from datetime import date, timedelta
 
-    # 1. Aggregate received dividends from transactions
+    # 1. Aggregate received dividends from transactions, per currency: no FX
+    # helper is available here, so amounts in different currencies are never
+    # summed together (TASK-44).
     txns = repo.list_transactions(portfolio_id, user_id)
     dividend_txns = [t for t in txns if t.side == "dividend"]
-
-    total_dividends = sum(float(t.quantity) * float(t.price) for t in dividend_txns)
-
-    # Last 12 months
     one_year_ago = date.today() - timedelta(days=365)
-    recent_divs = [
-        t for t in dividend_txns
-        if t.trade_at and t.trade_at.date() >= one_year_ago
-    ]
-    dividends_last_12m = sum(float(t.quantity) * float(t.price) for t in recent_divs)
 
-    # 2. Expected yield from metadata
+    by_currency: dict[str, dict] = {}
+    for t in dividend_txns:
+        ccy = str(getattr(t, "trade_currency", None) or "").upper() or "N/D"
+        amount = float(t.quantity) * float(t.price)
+        bucket = by_currency.setdefault(ccy, {"total": 0.0, "last_12m": 0.0, "count": 0})
+        bucket["total"] += amount
+        bucket["count"] += 1
+        if t.trade_at and t.trade_at.date() >= one_year_ago:
+            bucket["last_12m"] += amount
+    dividends_by_currency = {
+        ccy: {"total": round(v["total"], 2), "last_12m": round(v["last_12m"], 2), "count": v["count"]}
+        for ccy, v in sorted(by_currency.items())
+    }
+    mixed_currencies = len(by_currency) > 1
+    if mixed_currencies:
+        total_dividends: float | None = None
+        dividends_last_12m: float | None = None
+    else:
+        only = next(iter(by_currency.values()), {"total": 0.0, "last_12m": 0.0})
+        total_dividends = only["total"]
+        dividends_last_12m = only["last_12m"]
+
+    # 2. Expected yield from metadata, matched by the position's asset_id
+    # (not by the loose base-ticker symbol lookup).
     positions = repo.get_positions(portfolio_id, user_id)
     summary = repo.get_summary(portfolio_id, user_id)
     total_mv = summary.market_value
@@ -1101,10 +1173,7 @@ def _get_dividend_summary(
     position_yields: list[dict] = []
     for p in positions:
         try:
-            asset = repo.get_asset_by_symbol(p.symbol)
-            if not asset:
-                continue
-            meta = repo.get_asset_metadata(asset["id"])
+            meta = repo.get_asset_metadata(p.asset_id)
             if meta and meta.dividend_yield:
                 dy = float(meta.dividend_yield)
                 weighted_yield += dy * (p.weight / 100.0)
@@ -1122,15 +1191,24 @@ def _get_dividend_summary(
 
     projected_annual_income = total_mv * weighted_yield / 100.0
 
-    return {
-        "total_dividends_received": round(total_dividends, 2),
-        "dividends_last_12m": round(dividends_last_12m, 2),
+    result = {
+        "total_dividends_received": round(total_dividends, 2) if total_dividends is not None else None,
+        "dividends_last_12m": round(dividends_last_12m, 2) if dividends_last_12m is not None else None,
+        "dividends_currency": None if mixed_currencies else next(iter(by_currency), None),
+        "dividends_by_currency": dividends_by_currency,
+        "mixed_currencies": mixed_currencies,
         "dividend_transactions_count": len(dividend_txns),
         "portfolio_weighted_yield_pct": round(weighted_yield, 2),
         "projected_annual_income_eur": round(projected_annual_income, 2),
         "projected_monthly_income_eur": round(projected_annual_income / 12, 2),
         "top_yielding_positions": position_yields[:10],
     }
+    if mixed_currencies:
+        result["currency_note"] = (
+            "Dividendi in più valute: i totali non sono sommati senza conversione FX; "
+            "usa dividends_by_currency (importi nella valuta di ciascuna transazione)."
+        )
+    return result
 
 
 def _get_cost_breakdown(
