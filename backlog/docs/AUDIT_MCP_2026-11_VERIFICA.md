@@ -87,3 +87,26 @@ Ancora aperte (da decidere prima del task indicato): banda di tolleranza, ordine
 
 - **Tabella proxy degli stress storici (TASK-38):** valori approvati, a condizione che l'utente veda nell'interfaccia che sono basati su indici in USD e non includono l'effetto cambio EUR/USD.
 - **Banda di ribilanciamento (TASK-39):** 0,5 pp usata come soglia di attivazione (se uno strumento la supera, tutti tornano al target). Documentata nell'output del tool (`notes`), in `docs/mcp.md` e in `docs/mcp-guida-utente.md`.
+
+## TASK-41 — Riconciliazione sui dati (2026-11-03)
+
+Risultati delle query Q1–Q4 di `AUDIT_MCP_2026-11_QUERY_DATI.sql` forniti dal proprietario.
+
+### Causa 1 (confermata): prezzo ×1000 e quantità ÷1000 nelle righe importate di Wealth
+
+In Wealth (portafoglio 26), 17 acquisti di IBTM.L e SE15.L hanno prezzo moltiplicato per 1000 e quantità divisa per 1000 (es. id 5718: `0.005 × 157608` invece di `5 × 157.608`). Il controvalore è corretto, quindi il costo totale è giusto ma la quantità è troppo bassa.
+
+- **Riguarda solo i prezzi con esattamente 3 decimali** (157.608, 105.568…): `_parse_italian_number` legge un punto seguito da 3 cifre come separatore delle migliaia. Il file XLSX conteneva celle numeriche, convertite con `str(105.123)`, e l'import ricalcola la quantità come `controvalore / prezzo`.
+- **Il parser è già stato corretto** nel commit `b655330` (2026-10-23, `_xlsx_cell_to_str`); le righe di Wealth sono precedenti e restano errate nel database.
+- **Effetto su IBTM.L in Wealth:** circa 43 quote mancanti (49,04 registrate contro circa 92 reali); costo medio implicito ~297,79 € invece di ~159 €.
+- **Effetto su SE15.L in Wealth:** circa 29 quote mancanti (477,03 contro circa 506); costo medio ~112 € invece di ~105,6 €.
+- **Il valore di mercato di Wealth è sottostimato** di circa 43 × 125 + 29 × 88 ≈ **7.900 €**: le quote mancanti non sono valorizzate.
+- Parent non ha righe errate.
+
+### Causa 2 (ipotesi forte, da confermare): valuta di quotazione dei listing di Londra
+
+Tutti e 7 gli asset `.L` hanno `quote_currency = EUR` e nessuna borsa (Q1), mentre su Londra queste linee possono essere quotate in GBP o USD. I prezzi di carico di Parent sono coerenti con gli euro (SE15 105–110 €, IBTM 148–164 €), mentre i prezzi correnti scaricati da Yahoo (SE15.L 87,73; IBTM.L 123–125) sono compatibili con una quotazione in sterline letta come euro. Per confermare servono la Q2 estesa (ultimi prezzi di tutti i `.L`) e la valuta indicata dal broker.
+
+### Altri controlli
+
+- **Q4:** nessuna transazione in valuta estera senza tasso di cambio: il fallback a 1.0 non è mai scattato.

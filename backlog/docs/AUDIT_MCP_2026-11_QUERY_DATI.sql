@@ -169,3 +169,25 @@ where t.portfolio_id = 26 and t.side = 'dividend'
 group by t.trade_currency
 order by righe desc;
 rollback;
+
+
+-- ---------------------------------------------------------------------
+-- Q9. Righe con prezzo gonfiato ×1000 (bug di import dei prezzi a 3 decimali)
+--     Tutti i portafogli. Una riga è sospetta se il suo prezzo è più di 500
+--     volte la mediana dei prezzi dello stesso strumento.
+-- ---------------------------------------------------------------------
+begin transaction read only;
+with med as (
+  select asset_id, percentile_cont(0.5) within group (order by price) as mediana
+  from transactions where side in ('buy','sell') and asset_id is not null
+  group by asset_id
+)
+select t.portfolio_id, t.id, a.symbol, t.side, t.trade_at::date as data,
+       t.quantity, t.price, t.quantity * t.price as controvalore,
+       t.price / 1000 as prezzo_corretto, t.quantity * 1000 as quantita_corretta
+from transactions t
+join med m on m.asset_id = t.asset_id
+join assets a on a.id = t.asset_id
+where t.side in ('buy','sell') and t.price > 500 * m.mediana
+order by t.portfolio_id, a.symbol, t.trade_at;
+rollback;
