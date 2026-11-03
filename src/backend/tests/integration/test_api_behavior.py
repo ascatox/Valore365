@@ -966,3 +966,31 @@ def test_csv_import_template_route(monkeypatch):
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
     assert 'valore365-generic-import-template.xlsx' in response.headers['content-disposition']
+
+
+def test_csv_import_commit_forwards_the_duplicate_options_and_maps_conflict_to_409(monkeypatch):
+    from app.errors import AppError
+    from app.models import CsvImportCommitResponse
+
+    calls = []
+
+    def fake_commit_batch(batch_id, user_id, options=None):
+        calls.append(options)
+        if len(calls) == 3:
+            raise AppError(code='conflict', message='Questo import è già stato confermato', status_code=409)
+        return CsvImportCommitResponse(batch_id=batch_id, committed_transactions=1, skipped_duplicates=2, errors=[])
+
+    monkeypatch.setattr(api_main.csv_import_service, 'commit_batch', fake_commit_batch)
+    client = TestClient(api_main.app)
+
+    no_body = client.post('/api/csv-import/5/commit')
+    with_body = client.post('/api/csv-import/5/commit', json={'include_row_numbers': [2]})
+    conflict = client.post('/api/csv-import/5/commit', json={})
+
+    assert no_body.status_code == 200
+    assert no_body.json()['skipped_duplicates'] == 2
+    assert calls[0] is None
+    assert with_body.status_code == 200
+    assert calls[1].include_row_numbers == [2] and calls[1].include_duplicates is False
+    assert conflict.status_code == 409
+    assert conflict.json()['error']['code'] == 'conflict'

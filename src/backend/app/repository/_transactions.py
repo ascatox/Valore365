@@ -42,6 +42,11 @@ def _transaction_list_item(row) -> TransactionListItem:
 
 class TransactionsMixin:
     def create_transaction(self, payload: TransactionCreate, user_id: str) -> TransactionRead:
+        with self.engine.begin() as conn:
+            return self._insert_transaction(conn, payload, user_id)
+
+    def _insert_transaction(self, conn, payload: TransactionCreate, user_id: str) -> TransactionRead:
+        """Validate and insert one transaction on an open connection (the caller owns the DB transaction)."""
         side = payload.side.lower().strip()
         currency = payload.trade_currency.upper().strip()
         valid_sides = {"buy", "sell", "deposit", "withdrawal", "dividend", "fee", "interest"}
@@ -50,64 +55,63 @@ class TransactionsMixin:
 
         is_cash_movement = side in {"deposit", "withdrawal", "dividend", "fee", "interest"}
 
-        with self.engine.begin() as conn:
-            portfolio = self._get_portfolio_for_user(conn, payload.portfolio_id, user_id)
-            if portfolio is None:
-                raise ValueError("Portfolio non trovato")
+        portfolio = self._get_portfolio_for_user(conn, payload.portfolio_id, user_id)
+        if portfolio is None:
+            raise ValueError("Portfolio non trovato")
 
-            if payload.asset_id is not None:
-                if not self._asset_exists(conn, payload.asset_id):
-                    raise ValueError("Asset non trovato")
-                # Validate fraction support
-                if side in {"buy", "sell"}:
-                    asset_row = conn.execute(
-                        text("select supports_fractions from assets where id = :id"),
-                        {"id": payload.asset_id},
-                    ).mappings().fetchone()
-                    if asset_row and not asset_row["supports_fractions"]:
-                        if payload.quantity != int(payload.quantity):
-                            raise ValueError("Questo asset non supporta quote frazionate")
-            elif not is_cash_movement:
-                raise ValueError("asset_id obbligatorio per transazioni buy/sell")
+        if payload.asset_id is not None:
+            if not self._asset_exists(conn, payload.asset_id):
+                raise ValueError("Asset non trovato")
+            # Validate fraction support
+            if side in {"buy", "sell"}:
+                asset_row = conn.execute(
+                    text("select supports_fractions from assets where id = :id"),
+                    {"id": payload.asset_id},
+                ).mappings().fetchone()
+                if asset_row and not asset_row["supports_fractions"]:
+                    if payload.quantity != int(payload.quantity):
+                        raise ValueError("Questo asset non supporta quote frazionate")
+        elif not is_cash_movement:
+            raise ValueError("asset_id obbligatorio per transazioni buy/sell")
 
-            if side == "sell" and payload.asset_id is not None:
-                self._assert_non_negative_inventory_timeline(
-                    conn,
-                    payload.portfolio_id,
-                    payload.asset_id,
-                    candidate={
-                        "id": None,
-                        "trade_at": payload.trade_at,
-                        "side": side,
-                        "quantity": float(payload.quantity),
-                    },
-                )
-
-            row = conn.execute(
-                text(
-                    """
-                    insert into transactions (
-                        portfolio_id, asset_id, side, trade_at, quantity, price, fees, taxes, trade_currency, notes, owner_user_id
-                    ) values (
-                        :portfolio_id, :asset_id, :side, :trade_at, :quantity, :price, :fees, :taxes, :trade_currency, :notes, :owner_user_id
-                    )
-                    returning id
-                    """
-                ),
-                {
-                    "portfolio_id": payload.portfolio_id,
-                    "asset_id": payload.asset_id,
-                    "side": side,
+        if side == "sell" and payload.asset_id is not None:
+            self._assert_non_negative_inventory_timeline(
+                conn,
+                payload.portfolio_id,
+                payload.asset_id,
+                candidate={
+                    "id": None,
                     "trade_at": payload.trade_at,
-                    "quantity": payload.quantity,
-                    "price": payload.price,
-                    "fees": payload.fees,
-                    "taxes": payload.taxes,
-                    "trade_currency": currency,
-                    "notes": payload.notes,
-                    "owner_user_id": user_id,
+                    "side": side,
+                    "quantity": float(payload.quantity),
                 },
-            ).fetchone()
+            )
+
+        row = conn.execute(
+            text(
+                """
+                insert into transactions (
+                    portfolio_id, asset_id, side, trade_at, quantity, price, fees, taxes, trade_currency, notes, owner_user_id
+                ) values (
+                    :portfolio_id, :asset_id, :side, :trade_at, :quantity, :price, :fees, :taxes, :trade_currency, :notes, :owner_user_id
+                )
+                returning id
+                """
+            ),
+            {
+                "portfolio_id": payload.portfolio_id,
+                "asset_id": payload.asset_id,
+                "side": side,
+                "trade_at": payload.trade_at,
+                "quantity": payload.quantity,
+                "price": payload.price,
+                "fees": payload.fees,
+                "taxes": payload.taxes,
+                "trade_currency": currency,
+                "notes": payload.notes,
+                "owner_user_id": user_id,
+            },
+        ).fetchone()
 
         if row is None:
             raise ValueError("Impossibile creare la transazione")

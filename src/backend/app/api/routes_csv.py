@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Form, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 
@@ -7,6 +7,7 @@ from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
 from ..models import (
     CsvColumnMapping,
+    CsvImportCommitRequest,
     CsvImportCommitResponse,
     CsvImportPreviewResponse,
     ErrorResponse,
@@ -131,11 +132,15 @@ def register_csv_routes(
     @router.post(
         "/csv-import/{batch_id}/commit",
         response_model=CsvImportCommitResponse,
-        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+        responses={400: {"model": ErrorResponse}, 404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
     )
-    def csv_import_commit(batch_id: int, _auth: AuthContext = Depends(require_auth_rate_limited)) -> CsvImportCommitResponse:
+    def csv_import_commit(
+        batch_id: int,
+        payload: CsvImportCommitRequest | None = Body(None),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> CsvImportCommitResponse:
         try:
-            return csv_import_service.commit_batch(batch_id, _auth.user_id)
+            return csv_import_service.commit_batch(batch_id, _auth.user_id, payload)
         except ValueError as exc:
             message = str(exc)
             status_code = 404 if "non trovato" in message.lower() else 400

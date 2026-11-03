@@ -254,11 +254,9 @@ class _CommitRepo:
     def get_csv_import_batch(self, batch_id, user_id):
         return {"status": "pending", "portfolio_id": 1, "preview_data": self.preview_data}
 
-    def create_transaction(self, payload, user_id):
-        self.transactions.append(payload)
-
-    def commit_csv_import_batch(self, batch_id, user_id):
-        pass
+    def commit_csv_import_batch(self, batch_id, user_id, rows):
+        self.transactions.extend(payload for _, payload in rows)
+        return list(range(1, len(rows) + 1))
 
 
 def test_commit_batch_stores_timezone_aware_trade_at():
@@ -306,12 +304,22 @@ class _ImportRepo:
     def search_assets(self, query):
         return []
 
+    def get_portfolio_base_currency(self, portfolio_id, user_id=None):
+        return "EUR"
+
+    def list_transactions(self, portfolio_id, user_id):
+        return []
+
+    def find_committed_csv_import_batches(self, portfolio_id, user_id, filename, source_sha256):
+        return []
+
     def create_csv_import_batch(self, **kwargs):
         self.batches.append(kwargs)
         return len(self.batches)
 
-    def commit_csv_import_batch(self, batch_id, user_id):
+    def commit_csv_import_batch(self, batch_id, user_id, rows):
         self.committed_batches.append(batch_id)
+        return []
 
 
 class _FakeProvider:

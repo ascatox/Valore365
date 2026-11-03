@@ -1,22 +1,24 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Avatar,
   Badge,
   Button,
   Card,
+  Checkbox,
   Group,
   List,
   Modal,
   Select,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
   Alert,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
-import { IconFileImport, IconCheck, IconX, IconChartPie } from '@tabler/icons-react';
+import { IconFileImport, IconCheck, IconX, IconChartPie, IconCopy, IconAlertTriangle } from '@tabler/icons-react';
 import { formatNum } from '../../dashboard/formatters';
 import {
   downloadCsvImportTemplate,
@@ -46,6 +48,10 @@ const GENERIC_OPTIONAL_COLUMNS = [
   'spese fondi sgr',
   'commissioni amministrato',
 ];
+
+function isDuplicateRow(row: CsvImportPreviewResponse['rows'][number]): boolean {
+  return row.valid && (row.duplicate_of?.length ?? 0) > 0;
+}
 
 function isSameMapping(a: CsvColumnMapping, b: CsvColumnMapping): boolean {
   return (Object.keys(a) as (keyof CsvColumnMapping)[]).every((key) => a[key] === b[key]);
@@ -87,6 +93,10 @@ export function CsvImportModal({
   const [applyingMapping, setApplyingMapping] = useState(false);
   const [mappingError, setMappingError] = useState<string | null>(null);
   const [result, setResult] = useState<CsvImportCommitResponse | null>(null);
+  // Rows flagged as already present that the user chose to import anyway (row numbers).
+  const [includedDuplicates, setIncludedDuplicates] = useState<Set<number>>(() => new Set());
+  const [committing, setCommitting] = useState(false);
+  const commitInFlight = useRef(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [downloadingTemplate, setDownloadingTemplate] = useState(false);
@@ -101,6 +111,26 @@ export function CsvImportModal({
   const selectedBroker = BROKER_OPTIONS.find((b) => b.value === broker);
   const mappingInfo = preview?.column_mapping ?? null;
   const mappingDirty = !!mappingInfo && !!mappingDraft && !isSameMapping(mappingDraft, mappingInfo.mapping);
+  const duplicateRowNumbers = useMemo(
+    () => (preview?.rows ?? []).filter(isDuplicateRow).map((row) => row.row_number),
+    [preview],
+  );
+  const excludedDuplicates = duplicateRowNumbers.filter((n) => !includedDuplicates.has(n)).length;
+  const rowsToImport = (preview?.valid_rows ?? 0) - excludedDuplicates;
+  const allDuplicatesIncluded = duplicateRowNumbers.length > 0 && excludedDuplicates === 0;
+
+  const toggleDuplicate = (rowNumber: number, include: boolean) => {
+    setIncludedDuplicates((current) => {
+      const next = new Set(current);
+      if (include) next.add(rowNumber);
+      else next.delete(rowNumber);
+      return next;
+    });
+  };
+
+  const toggleAllDuplicates = (include: boolean) => {
+    setIncludedDuplicates(include ? new Set(duplicateRowNumbers) : new Set());
+  };
 
   useEffect(() => {
     if (!opened) {
@@ -119,6 +149,7 @@ export function CsvImportModal({
     setMappingDraft(null);
     setMappingError(null);
     setResult(null);
+    setIncludedDuplicates(new Set());
     setError(null);
     setResolvedPortfolioId(portfolioId);
     onClose();
@@ -171,6 +202,7 @@ export function CsvImportModal({
       const data = await uploadCsvImportPreview(resolvedPortfolioId, selectedFile, broker);
       setFile(selectedFile);
       setPreview(data);
+      setIncludedDuplicates(new Set());
       setMappingDraft(data.column_mapping?.mapping ?? null);
       setMappingError(null);
       setStep('preview');
@@ -190,6 +222,7 @@ export function CsvImportModal({
       const data = await uploadCsvImportPreview(resolvedPortfolioId, file, broker, mappingDraft);
       cancelCsvImport(preview.batch_id).catch(() => {});
       setPreview(data);
+      setIncludedDuplicates(new Set());
       setMappingDraft(data.column_mapping?.mapping ?? null);
     } catch (err) {
       setMappingError(err instanceof Error ? err.message : 'Impossibile applicare l’associazione');
@@ -199,20 +232,25 @@ export function CsvImportModal({
   };
 
   const handleCommit = async () => {
-    if (!preview) return;
+    // Guard against double clicks: a batch can be confirmed only once.
+    if (!preview || commitInFlight.current) return;
+    commitInFlight.current = true;
     try {
-      setLoading(true);
+      setCommitting(true);
       setError(null);
-      const commitResult = await commitCsvImport(preview.batch_id);
+      const commitResult = await commitCsvImport(preview.batch_id, {
+        include_row_numbers: duplicateRowNumbers.filter((n) => includedDuplicates.has(n)),
+      });
       setResult(commitResult);
       setStep('done');
       if (resolvedPortfolioId) {
         onImportComplete?.(resolvedPortfolioId);
       }
     } catch (err) {
-      setError(String(err));
+      setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      commitInFlight.current = false;
+      setCommitting(false);
     }
   };
 
@@ -396,7 +434,40 @@ export function CsvImportModal({
               {preview.error_rows > 0 && (
                 <Badge color="red" size="lg">Errori: {preview.error_rows}</Badge>
               )}
+              {duplicateRowNumbers.length > 0 && (
+                <Badge color="orange" size="lg">Già presenti: {duplicateRowNumbers.length}</Badge>
+              )}
             </Group>
+
+            {(preview.warnings ?? []).map((warning) => (
+              <Alert
+                key={warning}
+                color="yellow"
+                variant="light"
+                title="File già importato"
+                icon={<IconAlertTriangle size={16} />}
+              >
+                {warning}
+              </Alert>
+            ))}
+
+            {duplicateRowNumbers.length > 0 && (
+              <Alert color="orange" variant="light" icon={<IconCopy size={16} />}>
+                <Stack gap="xs">
+                  <Text size="sm">
+                    {duplicateRowNumbers.length === 1
+                      ? '1 riga è già presente nel portafoglio (stesso titolo, tipo, data, quantità, prezzo, commissioni e valuta) ed è esclusa dall’importazione.'
+                      : `${duplicateRowNumbers.length} righe sono già presenti nel portafoglio (stesso titolo, tipo, data, quantità, prezzo, commissioni e valuta) e sono escluse dall’importazione.`}
+                    {' '}Includile solo se sono davvero operazioni distinte.
+                  </Text>
+                  <Switch
+                    label="Includi le righe già presenti"
+                    checked={allDuplicatesIncluded}
+                    onChange={(event) => toggleAllDuplicates(event.currentTarget.checked)}
+                  />
+                </Stack>
+              </Alert>
+            )}
 
             {mappingInfo && mappingDraft && (
               <CsvColumnMappingEditor
@@ -426,28 +497,48 @@ export function CsvImportModal({
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {preview.rows.map((row) => (
-                    <Table.Tr key={row.row_number} bg={row.valid ? undefined : 'red.0'}>
-                      <Table.Td>{row.row_number}</Table.Td>
-                      <Table.Td>
-                        {row.valid
-                          ? <IconCheck size={16} color="green" />
-                          : <IconX size={16} color="red" />
-                        }
-                      </Table.Td>
-                      <Table.Td>{row.trade_at ? new Date(row.trade_at).toLocaleDateString('it-IT') : '-'}</Table.Td>
-                      <Table.Td>{row.isin || '-'}</Table.Td>
-                      <Table.Td>{row.titolo || row.asset_name || '-'}</Table.Td>
-                      <Table.Td>{row.side || '-'}</Table.Td>
-                      <Table.Td style={{ textAlign: 'right' }}>{row.quantity != null ? formatNum(row.quantity, 4) : '-'}</Table.Td>
-                      <Table.Td style={{ textAlign: 'right' }}>{row.price != null ? formatNum(row.price, 4) : '-'}</Table.Td>
-                      <Table.Td>
-                        {row.errors.length > 0 && (
-                          <Text size="xs" c="red">{row.errors.join('; ')}</Text>
-                        )}
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
+                  {preview.rows.map((row) => {
+                    const duplicate = isDuplicateRow(row);
+                    const excluded = duplicate && !includedDuplicates.has(row.row_number);
+                    return (
+                      <Table.Tr
+                        key={row.row_number}
+                        bg={!row.valid ? 'red.0' : excluded ? 'orange.0' : undefined}
+                        data-duplicate={duplicate || undefined}
+                      >
+                        <Table.Td>{row.row_number}</Table.Td>
+                        <Table.Td>
+                          {!row.valid ? (
+                            <IconX size={16} color="red" />
+                          ) : duplicate ? (
+                            <Stack gap={4}>
+                              <Badge color="orange" variant="light" size="sm">Già presente</Badge>
+                              <Checkbox
+                                size="xs"
+                                label="Includi"
+                                aria-label={`Includi riga ${row.row_number}`}
+                                checked={!excluded}
+                                onChange={(event) => toggleDuplicate(row.row_number, event.currentTarget.checked)}
+                              />
+                            </Stack>
+                          ) : (
+                            <IconCheck size={16} color="green" />
+                          )}
+                        </Table.Td>
+                        <Table.Td>{row.trade_at ? new Date(row.trade_at).toLocaleDateString('it-IT') : '-'}</Table.Td>
+                        <Table.Td>{row.isin || '-'}</Table.Td>
+                        <Table.Td>{row.titolo || row.asset_name || '-'}</Table.Td>
+                        <Table.Td>{row.side || '-'}</Table.Td>
+                        <Table.Td style={{ textAlign: 'right' }}>{row.quantity != null ? formatNum(row.quantity, 4) : '-'}</Table.Td>
+                        <Table.Td style={{ textAlign: 'right' }}>{row.price != null ? formatNum(row.price, 4) : '-'}</Table.Td>
+                        <Table.Td>
+                          {row.errors.length > 0 && (
+                            <Text size="xs" c="red">{row.errors.join('; ')}</Text>
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </Table>
             </Table.ScrollContainer>
@@ -455,14 +546,14 @@ export function CsvImportModal({
             {error && <Text c="red" size="sm">{error}</Text>}
 
             <Group justify="flex-end">
-              <Button variant="outline" onClick={handleClose}>Annulla</Button>
+              <Button variant="outline" onClick={handleClose} disabled={committing}>Annulla</Button>
               <Button
                 onClick={handleCommit}
-                loading={loading}
-                disabled={preview.valid_rows === 0 || mappingDirty || applyingMapping}
+                loading={committing}
+                disabled={rowsToImport <= 0 || mappingDirty || applyingMapping || committing}
                 leftSection={<IconFileImport size={16} />}
               >
-                Importa {preview.valid_rows} transazioni
+                Importa {rowsToImport} transazioni
               </Button>
             </Group>
           </>
@@ -472,6 +563,12 @@ export function CsvImportModal({
           <>
             <Text size="lg" fw={600} c="green">Importazione completata</Text>
             <Text>Transazioni create: {result.committed_transactions}</Text>
+            {(result.skipped_duplicates ?? 0) > 0 && (
+              <Text c="orange">Righe già presenti non importate: {result.skipped_duplicates}</Text>
+            )}
+            {(result.skipped_invalid ?? 0) > 0 && (
+              <Text c="dimmed">Righe con errori non importate: {result.skipped_invalid}</Text>
+            )}
             {result.errors.length > 0 && (
               <Stack gap="xs">
                 <Text fw={500} c="red">Errori:</Text>

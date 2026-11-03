@@ -1,9 +1,10 @@
 import csv
+import hashlib
 import io
 import logging
 import re
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 import openpyxl
@@ -13,6 +14,7 @@ from ..models import (
     AssetEnsureRequest,
     AssetProviderSymbolCreate,
     CsvColumnMapping,
+    CsvImportCommitRequest,
     CsvImportCommitResponse,
     CsvImportMappingInfo,
     CsvImportPreviewResponse,
@@ -20,6 +22,7 @@ from ..models import (
     TransactionCreate,
 )
 from ..config import get_settings
+from ..errors import AppError
 from ..copilot.config import CopilotConfig, resolve_copilot_config
 from ..finance_client import make_finance_client
 from ..repository import PortfolioRepository
@@ -430,6 +433,108 @@ def _apply_column_mapping(mapping: CsvColumnMapping, rows: list[dict[str, str]])
     return mapped_rows
 
 
+# --- Cross-batch duplicate detection (TASK-42) ---
+
+DUPLICATE_REL_TOLERANCE = 1e-6
+DUPLICATE_ABS_TOLERANCE = 1e-8  # numeric(28,10) rounding
+CASH_SIDES = {"deposit", "withdrawal", "dividend", "fee", "interest"}
+
+
+def _source_sha256(file_content: str | None, file_bytes: bytes | None) -> str | None:
+    if file_bytes is not None:
+        return hashlib.sha256(file_bytes).hexdigest()
+    if file_content is not None:
+        return hashlib.sha256(file_content.encode("utf-8")).hexdigest()
+    return None
+
+
+def _numbers_match(a: float | None, b: float | None) -> bool:
+    x = float(a or 0.0)
+    y = float(b or 0.0)
+    return abs(x - y) <= max(DUPLICATE_REL_TOLERANCE * max(abs(x), abs(y)), DUPLICATE_ABS_TOLERANCE)
+
+
+def _utc_trade_date(value: Any) -> date | None:
+    """Day of a trade as stored: naive values are UTC (commit_batch stores them so)."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(timezone.utc)
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return None
+
+
+def _flag_duplicate_rows(
+    rows: list[CsvImportPreviewRow],
+    existing: list[Any],
+    base_currency: str,
+) -> int:
+    """Set ``duplicate_of`` on the valid rows already present among ``existing`` transactions.
+
+    Multiset matching: every existing transaction can justify only one file row,
+    so N identical file rows against M (< N) identical existing transactions
+    flag M rows and leave the other N - M importable (e.g. split fills).
+    Identical rows within the same file are never flagged against each other.
+    Returns the number of flagged rows.
+    """
+    base = (base_currency or "").upper()
+    pool: dict[tuple, list[Any]] = {}
+    for tx in sorted(existing, key=lambda t: int(t.id)):
+        day = _utc_trade_date(getattr(tx, "trade_at", None))
+        if day is None:
+            continue
+        key = (
+            getattr(tx, "asset_id", None),
+            str(getattr(tx, "side", "")).lower(),
+            day,
+            str(getattr(tx, "trade_currency", "") or base).upper(),
+        )
+        pool.setdefault(key, []).append(tx)
+
+    flagged = 0
+    for row in rows:
+        if not row.valid or row.side is None:
+            continue
+        day = _utc_trade_date(row.trade_at)
+        if day is None:
+            continue
+        side = row.side.lower()
+        if row.asset_id is None and side not in CASH_SIDES:
+            continue  # unknown instrument: nothing in the portfolio can match it
+        key = (row.asset_id, side, day, (row.trade_currency or base).upper())
+        candidates = pool.get(key)
+        if not candidates:
+            continue
+        for i, tx in enumerate(candidates):
+            if (
+                _numbers_match(row.quantity, tx.quantity)
+                and _numbers_match(row.price, tx.price)
+                and _numbers_match(row.fees, tx.fees)
+            ):
+                row.duplicate_of = [int(tx.id)]
+                del candidates[i]
+                flagged += 1
+                break
+    return flagged
+
+
+def _preview_rows_from_batch(preview_data: Any) -> list[dict] | None:
+    """Rows of a stored preview: a list (older batches) or {"rows": [...], ...}."""
+    if isinstance(preview_data, dict):
+        preview_data = preview_data.get("rows")
+    if not isinstance(preview_data, list):
+        return None
+    return preview_data
+
+
 class CsvImportService:
     def __init__(self, repo: PortfolioRepository) -> None:
         self.repo = repo
@@ -836,8 +941,19 @@ class CsvImportService:
                 asset_name=asset_name,
             ))
 
+        # Rows already in the portfolio (e.g. the same file uploaded again): flagged, skipped on commit.
+        base_currency = self.repo.get_portfolio_base_currency(portfolio_id, user_id)
+        existing_transactions = self.repo.list_transactions(portfolio_id, user_id)
+        duplicate_count = _flag_duplicate_rows(rows, existing_transactions, base_currency)
+
+        source_sha256 = _source_sha256(file_content, file_bytes)
+        warnings = self._previous_import_warnings(portfolio_id, user_id, filename, source_sha256)
+
         # Save batch to DB
-        preview_data = [r.model_dump() for r in rows]
+        preview_data = {
+            "rows": [r.model_dump() for r in rows],
+            "source_sha256": source_sha256,
+        }
         batch_id = self.repo.create_csv_import_batch(
             portfolio_id=portfolio_id,
             user_id=user_id,
@@ -856,7 +972,34 @@ class CsvImportService:
             error_rows=error_count,
             rows=rows,
             column_mapping=mapping_info,
+            duplicate_rows=duplicate_count,
+            warnings=warnings,
         )
+
+    def _previous_import_warnings(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        filename: str | None,
+        source_sha256: str | None,
+    ) -> list[str]:
+        previous = self.repo.find_committed_csv_import_batches(portfolio_id, user_id, filename, source_sha256)
+        if not previous:
+            return []
+        same_content = [b for b in previous if b.get("same_content")]
+        latest = (same_content or previous)[0]
+        committed_at = latest.get("committed_at")
+        when = f" il {committed_at.strftime('%d/%m/%Y %H:%M')}" if isinstance(committed_at, datetime) else ""
+        times = f" ({len(previous)} volte)" if len(previous) > 1 else ""
+        if same_content:
+            return [
+                f"Questo file è già stato importato in questo portafoglio{when}{times}. "
+                "Le righe già presenti sono escluse per default."
+            ]
+        return [
+            f"Un file con lo stesso nome ({latest.get('original_filename')}) è già stato importato "
+            f"in questo portafoglio{when}{times}. Controlla le righe prima di confermare."
+        ]
 
     def parse_public_portfolio_file(
         self,
@@ -1001,116 +1144,171 @@ class CsvImportService:
             raw_text=raw_text,
         )
 
-    def commit_batch(self, batch_id: int, user_id: str) -> CsvImportCommitResponse:
+    def _resolve_asset_for_commit(self, row_data: dict, portfolio_id: int) -> int | None:
+        """Find (or create) the asset of a preview row whose ISIN was unknown at preview time."""
+        isin = str(row_data.get("isin", "") or "").strip().upper()
+        asset_id = row_data.get("asset_id")
+        if asset_id is not None or not isin:
+            return asset_id
+
+        matches = self.repo.search_assets(isin)
+        exact = next(
+            (m for m in matches if str(m.get("isin", "")).upper() == isin),
+            None,
+        )
+        if exact:
+            asset_id = int(exact["id"])
+            provider_symbol = self._resolve_provider_symbol_from_isin(isin)
+            if provider_symbol:
+                self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
+            return asset_id
+
+        # Auto-create asset. Prefer resolved provider ticker; fallback to ISIN.
+        base_ccy = self.repo.get_portfolio_base_currency(portfolio_id)
+        titolo = row_data.get("titolo") or isin
+        provider_symbol = self._resolve_provider_symbol_from_isin(isin)
+        symbol_for_asset = provider_symbol or isin
+        existing_by_symbol = self.repo.find_asset_by_symbol(symbol_for_asset)
+        if existing_by_symbol:
+            asset_id = int(existing_by_symbol["id"])
+        else:
+            try:
+                asset = self.repo.create_asset(AssetCreate(
+                    symbol=symbol_for_asset,
+                    name=titolo,
+                    asset_type="stock",
+                    quote_currency=base_ccy,
+                    isin=isin,
+                ))
+                asset_id = asset.id
+            except ValueError:
+                # Asset may have been created by a previous row
+                matches = self.repo.search_assets(isin)
+                exact = next(
+                    (m for m in matches if str(m.get("isin", "")).upper() == isin),
+                    None,
+                )
+                if exact:
+                    asset_id = int(exact["id"])
+                else:
+                    existing_by_symbol = self.repo.find_asset_by_symbol(symbol_for_asset)
+                    if not existing_by_symbol:
+                        return None
+                    asset_id = int(existing_by_symbol["id"])
+        if provider_symbol:
+            self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
+        return asset_id
+
+    def commit_batch(
+        self,
+        batch_id: int,
+        user_id: str,
+        options: CsvImportCommitRequest | None = None,
+    ) -> CsvImportCommitResponse:
+        """Import the rows of a pending batch, all or nothing.
+
+        Rows flagged as already present in the portfolio are skipped unless
+        ``options`` includes them. The batch is claimed and the transactions
+        inserted in one database transaction: a second commit of the same batch
+        fails with a 409, a failing row rolls everything back (batch still pending).
+        """
+        options = options or CsvImportCommitRequest()
         batch = self.repo.get_csv_import_batch(batch_id, user_id)
         if batch is None:
             raise ValueError("Batch CSV non trovato")
         if batch["status"] != "pending":
-            raise ValueError(f"Batch non in stato pending (stato attuale: {batch['status']})")
+            raise self._batch_not_pending_error(batch["status"])
 
-        preview_data = batch["preview_data"]
-        if not isinstance(preview_data, list):
+        preview_rows = _preview_rows_from_batch(batch["preview_data"])
+        if preview_rows is None:
             raise ValueError("Dati preview non validi")
 
         portfolio_id = int(batch["portfolio_id"])
-        committed = 0
+        forced_rows = set(options.include_row_numbers)
         errors: list[str] = []
+        skipped_duplicate_rows: list[int] = []
+        skipped_invalid = 0
+        prepared: list[tuple[int, int, TransactionCreate]] = []
 
-        for row_data in preview_data:
+        for position, row_data in enumerate(preview_rows):
             if not row_data.get("valid", False):
+                skipped_invalid += 1
+                continue
+            row_number = row_data.get("row_number")
+            if (
+                row_data.get("duplicate_of")
+                and not options.include_duplicates
+                and row_number not in forced_rows
+            ):
+                skipped_duplicate_rows.append(row_number)
                 continue
 
+            # Nothing is written here except missing assets (shared, reusable):
+            # a row that cannot be prepared is reported and left out.
             try:
-                # Resolve asset by ISIN
-                isin = str(row_data.get("isin", "")).strip().upper()
-                asset_id = row_data.get("asset_id")
-                side = str(row_data.get("side", "")).lower()
-
+                asset_id = self._resolve_asset_for_commit(row_data, portfolio_id)
+                isin = str(row_data.get("isin", "") or "").strip().upper()
                 if asset_id is None and isin:
-                    # Try to find asset by ISIN
-                    matches = self.repo.search_assets(isin)
-                    exact = next(
-                        (m for m in matches if str(m.get("isin", "")).upper() == isin),
-                        None,
-                    )
-                    if exact:
-                        asset_id = int(exact["id"])
-                        provider_symbol = self._resolve_provider_symbol_from_isin(isin)
-                        if provider_symbol:
-                            self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                    else:
-                        # Auto-create asset. Prefer resolved provider ticker; fallback to ISIN.
-                        base_ccy = self.repo.get_portfolio_base_currency(portfolio_id)
-                        titolo = row_data.get("titolo") or isin
-                        provider_symbol = self._resolve_provider_symbol_from_isin(isin)
-                        symbol_for_asset = provider_symbol or isin
-                        existing_by_symbol = self.repo.find_asset_by_symbol(symbol_for_asset)
-                        if existing_by_symbol:
-                            asset_id = int(existing_by_symbol["id"])
-                            if provider_symbol:
-                                self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                        else:
-                            try:
-                                asset = self.repo.create_asset(AssetCreate(
-                                    symbol=symbol_for_asset,
-                                    name=titolo,
-                                    asset_type="stock",
-                                    quote_currency=base_ccy,
-                                    isin=isin,
-                                ))
-                                asset_id = asset.id
-                                if provider_symbol:
-                                    self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                            except ValueError:
-                                # Asset may have been created by a previous row
-                                matches = self.repo.search_assets(isin)
-                                exact = next(
-                                    (m for m in matches if str(m.get("isin", "")).upper() == isin),
-                                    None,
-                                )
-                                if exact:
-                                    asset_id = int(exact["id"])
-                                    if provider_symbol:
-                                        self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                                else:
-                                    existing_by_symbol = self.repo.find_asset_by_symbol(symbol_for_asset)
-                                    if existing_by_symbol:
-                                        asset_id = int(existing_by_symbol["id"])
-                                        if provider_symbol:
-                                            self._ensure_provider_symbol_mapping(asset_id, provider_symbol)
-                                    else:
-                                        errors.append(f"Riga {row_data.get('row_number')}: impossibile risolvere asset ISIN {isin}")
-                                        continue
+                    errors.append(f"Riga {row_number}: impossibile risolvere asset ISIN {isin}")
+                    continue
 
-                trade_at_str = row_data.get("trade_at", "")
-                trade_at = datetime.fromisoformat(trade_at_str)
+                trade_at = datetime.fromisoformat(row_data.get("trade_at", ""))
                 if trade_at.tzinfo is None:
                     trade_at = trade_at.replace(tzinfo=timezone.utc)
                 trade_currency = row_data.get("trade_currency") or self.repo.get_portfolio_base_currency(portfolio_id)
 
-                self.repo.create_transaction(
-                    TransactionCreate(
-                        portfolio_id=portfolio_id,
-                        asset_id=asset_id,
-                        side=side,
-                        trade_at=trade_at,
-                        quantity=float(row_data["quantity"]),
-                        price=float(row_data["price"]),
-                        fees=float(row_data.get("fees") or 0),
-                        taxes=float(row_data.get("taxes") or 0),
-                        trade_currency=trade_currency,
-                        notes=row_data.get("notes"),
-                    ),
-                    user_id,
+                payload = TransactionCreate(
+                    portfolio_id=portfolio_id,
+                    asset_id=asset_id,
+                    side=str(row_data.get("side", "")).lower(),
+                    trade_at=trade_at,
+                    quantity=float(row_data["quantity"]),
+                    price=float(row_data["price"]),
+                    fees=float(row_data.get("fees") or 0),
+                    taxes=float(row_data.get("taxes") or 0),
+                    trade_currency=trade_currency,
+                    notes=row_data.get("notes"),
                 )
-                committed += 1
             except Exception as exc:
-                errors.append(f"Riga {row_data.get('row_number')}: {exc}")
+                errors.append(f"Riga {row_number}: {exc}")
+                continue
+            prepared.append((position, row_number, payload))
 
-        self.repo.commit_csv_import_batch(batch_id, user_id)
+        # Chronological insertion (buys first on the same instant) so that a sell
+        # listed before its buy in a newest-first export passes the inventory check.
+        prepared.sort(key=lambda item: (item[2].trade_at, 0 if item[2].side == "buy" else 1, item[0]))
+
+        try:
+            inserted_ids = self.repo.commit_csv_import_batch(
+                batch_id,
+                user_id,
+                [(row_number, payload) for _, row_number, payload in prepared],
+            )
+        except ValueError as exc:
+            raise AppError(
+                code="bad_request",
+                message=f"Import non riuscito, nessuna transazione salvata. {exc}",
+                status_code=400,
+            ) from exc
+        if inserted_ids is None:
+            current = self.repo.get_csv_import_batch(batch_id, user_id)
+            raise self._batch_not_pending_error(current["status"] if current else "committed")
 
         return CsvImportCommitResponse(
             batch_id=batch_id,
-            committed_transactions=committed,
+            committed_transactions=len(inserted_ids),
+            skipped_duplicates=len(skipped_duplicate_rows),
+            skipped_duplicate_rows=skipped_duplicate_rows,
+            skipped_invalid=skipped_invalid,
             errors=errors,
         )
+
+    @staticmethod
+    def _batch_not_pending_error(status: str) -> AppError:
+        if status == "committed":
+            message = "Questo import è già stato confermato: le transazioni non sono state inserite di nuovo."
+        elif status == "cancelled":
+            message = "Questo import è stato annullato: carica di nuovo il file."
+        else:
+            message = f"Batch non in stato pending (stato attuale: {status})"
+        return AppError(code="conflict", message=message, status_code=409)
