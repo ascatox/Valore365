@@ -1,9 +1,10 @@
 ---
 id: TASK-48
 title: 'X-Ray: copertura e denominatori trasparenti'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-03T10:53:00Z'
+updated_date: '2026-11-03T13:01:00Z'
 labels:
   - audit-mcp
   - backend
