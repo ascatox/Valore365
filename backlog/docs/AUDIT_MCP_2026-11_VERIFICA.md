@@ -110,3 +110,12 @@ Tutti e 7 gli asset `.L` hanno `quote_currency = EUR` e nessuna borsa (Q1), ment
 ### Altri controlli
 
 - **Q4:** nessuna transazione in valuta estera senza tasso di cambio: il fallback a 1.0 non è mai scattato.
+
+## TASK-42 — Riconciliazione sui dati (2026-11-03)
+
+- **Q6:** in Wealth ci sono 7 gruppi di righe identiche, ciascuno ripetuto 4 volte, con id in 4 blocchi consecutivi nello stesso ordine (5806–5812, 5814–5820, 5821–5827, 5837–5843). Oltre a 6 dividendi (918,29 € per copia) è quadruplicato anche un acquisto di 31 EUN5.DE del 2026-08-04.
+- **Q7:** il file `Lista Titoli (2).xlsx` è stato confermato 4 volte il 2026-10-23 (batch 31, 34, 35, 36; 19/19/18/18 righe; altri 2 batch annullati). La data coincide con il fix del parser `b655330`: probabilmente import di prova sui dati reali. Essendo cambiato il parser fra un import e l'altro, alcune copie potrebbero non essere identiche e quindi sfuggire alla Q6: serve l'elenco completo degli id 5790–5870.
+- **Q8:** tutti i dividendi di Wealth sono in EUR (64 righe, 6.876,59 € lordi, ritenute a 0), quindi il problema delle valute miste in `get_dividend_summary` qui non ha effetti. Il totale include almeno 3 × 918,29 ≈ 2.755 € di duplicati.
+- **Q5:** 8 asset con `quote_currency = EUR` su borse non in euro, incluso `IE00B441G979`, registrato con l'ISIN come simbolo.
+
+Conclusione: i duplicati ci sono e la causa è il nuovo upload dello stesso file, senza deduplicazione fra batch. La correzione dei dati richiede un piano approvato, con anteprima delle righe coinvolte.
