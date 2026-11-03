@@ -139,6 +139,18 @@ I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma 
   `cash_after = cash_before + extra_cash + sells_eur - buys_eur` (riportato in `totals`).
 - **Nessun importo minimo per ordine; commissioni e imposte non modellate** (importi lordi).
 
+**Liquidità (TASK-49).** `cash_balance` di `get_portfolio_summary` / `get_aggregate_summary`,
+`total_cash` di `get_cash_balance` e la liquidità del portafoglio in `calculate_rebalance_orders`
+seguono lo stesso modello di liquidità della performance: saldo iniziale (liquidità prima della prima
+transazione) + depositi, dividendi netti, interessi e proventi netti delle vendite − prelievi,
+commissioni e acquisti (commissioni e imposte incluse), al cambio della data del movimento; la
+liquidità non è mai negativa e lo scoperto è un apporto implicito. Quindi `market_value +
+cash_balance` coincide con il valore attuale di `get_performance`. I tool espongono
+`implicit_contributions_total` (apporti impliciti cumulati) e `cash_model_note` (spiegazione in
+italiano); `get_cash_balance` anche `cash_breakdown` (saldo iniziale, depositi, prelievi, dividendi,
+interessi, commissioni, acquisti, vendite, apporti impliciti; con il segno, la somma è `total_cash`).
+Dettagli in [audit-mcp-2026-11/methodology.md](audit-mcp-2026-11/methodology.md) §9.
+
 `get_monte_carlo` restituisce esattamente gli anni 1..10 (ordinati) con i percentili P25/P50/P75 espressi
 come **indice base 100** (`unit: "indice_base_100"`, `initial_value: 100`): 120 significa +20% rispetto
 al valore attuale, non 120 €. `get_day_movers` calcola migliore e peggiore dalla variazione giornaliera

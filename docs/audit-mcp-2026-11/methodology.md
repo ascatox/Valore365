@@ -163,12 +163,13 @@ non toglie punti.
 - **Limiti:**
   - la liquidità storica è un unico saldo in valuta base (importi al cambio del giorno del
     movimento), non un saldo per valuta;
-  - il saldo iniziale `portfolios.cash_balance` (senza data) non entra nella serie storica, come
-    prima;
-  - la serie storica **differisce** da `summary.cash_balance`, che conta solo i movimenti di cassa
-    (depositi/prelievi/dividendi/interessi/commissioni + saldo iniziale), ignora acquisti e vendite
-    e può essere negativo: la semantica del summary non è stata cambiata (TASK-46); analisi e
-    opzioni in §9.1;
+  - il saldo iniziale `portfolios.cash_balance` (senza data) è liquidità disponibile **prima della
+    prima transazione** (TASK-49): entra nel fold il giorno della prima transazione (prima della
+    chiusura di quel giorno) e, nei flussi, come `deposit` esterno di quel giorno (solo nella storia
+    completa, cioè `get_external_cashflows` senza `start_date`, quella letta dalla performance).
+    Prima di TASK-49 era escluso dalla serie storica;
+  - dal TASK-49 `summary.cash_balance` è la fine di questo stesso fold (§9, §9.1): summary e serie
+    storica non differiscono più;
   - l'ordine infragiornaliero non conta (chiusura a fine giornata): un deposito registrato dopo
     un acquisto nello stesso giorno lo copre;
   - le vendite oltre la quantità detenuta (bloccate in inserimento) azzerano la posizione ma
@@ -176,12 +177,21 @@ non toglie punti.
 
 ## 9. Liquidità, prezzi e variazione giornaliera
 
-- **Liquidità (TASK-47, una sola regola):** `summary.cash_balance`, `GET /portfolios/{id}/cash-balance`
-  (`total_cash`, sezione Cash del frontend) e i tool copilot/MCP `get_cash_balance` /
-  `get_portfolio_summary` usano lo stesso helper `_cash_balance_detail`
-  (`repository/_utilities.py`): saldo iniziale `portfolios.cash_balance` + depositi, interessi e
-  dividendi **netti** (importo − `taxes`) − prelievi e commissioni (`fee`); acquisti e vendite
-  ignorati (vedi §9.1); data = `trade_at::date`.
+- **Liquidità (TASK-47 + TASK-49, una sola regola, la stessa della performance):**
+  `summary.cash_balance`, `GET /portfolios/{id}/cash-balance` (`total_cash`, sezione Cash del
+  frontend), i tool copilot/MCP `get_cash_balance` / `get_portfolio_summary` /
+  `get_aggregate_summary`, la lista dei portafogli (`current_cash_balance`), il valore intraday, il
+  capitale iniziale del Monte Carlo e la liquidità disponibile del ribilanciamento usano lo stesso
+  helper `_cash_balance_detail` (`repository/_utilities.py`), che ripiega **tutte** le transazioni
+  con le regole di `_cash_model` (§8): saldo iniziale (liquidità prima della prima transazione) +
+  depositi, interessi, dividendi **netti** e proventi netti delle vendite − prelievi, commissioni
+  (`fee`) e acquisti (commissioni e imposte incluse); chiusura a fine giornata, scoperto = apporto
+  implicito, liquidità mai negativa; data = `trade_at::date`. Espone anche
+  `implicit_contributions_total` (summary, `GET /cash-balance`, tool MCP), la scomposizione
+  `cash_breakdown` (saldo iniziale, depositi, prelievi, dividendi, interessi, commissioni, acquisti,
+  vendite, apporti impliciti; somma = `total_cash`) e una `cash_model_note` in italiano. Una sola
+  query sulle transazioni per l'insieme dei portafogli, fold O(n). Invariante: `market_value +
+  cash_balance` del summary = ultimo valore della performance (`current_value`).
 - **Cambio della liquidità in valuta estera:** ogni movimento non in valuta base è convertito al
   cambio **della sua data** (ultimo cambio disponibile ≤ data del movimento). È la regola del
   summary, del modello di liquidità della performance (TASK-46, §8) e del costo delle posizioni.
@@ -222,9 +232,31 @@ non toglie punti.
 - **Quantità:** nessun arrotondamento all'origine; output arrotondato a 8 decimali; nessuna
   tolleranza contabile (un residuo resta una posizione). Costo medio ponderato (non FIFO).
 
-### 9.1 Liquidità del summary vs modello della performance (TASK-47, decisione del proprietario)
+### 9.1 Liquidità del summary vs modello della performance (TASK-47 → decisione TASK-49)
 
-**Come è calcolato oggi `summary.cash_balance`.** `SummaryMixin.get_summary` →
+**Decisione applicata (TASK-49, 2026-11-03): opzione 1.** Il summary adotta il modello di liquidità
+della performance (una sola verità, §9). Dettagli dell'implementazione:
+- `_cash_balance_detail` ripiega tutte le transazioni con `_cash_model.cash_delta` / `fold_cash`
+  (cambio della data del movimento, chiusura a fine giornata, liquidità mai negativa);
+- **saldo iniziale:** `portfolios.cash_balance` non ha data ed è trattato come liquidità disponibile
+  prima della prima transazione, in modo identico nella liquidità corrente e nella storia della
+  performance (il fold dei valori parte da quel saldo il giorno della prima transazione; i flussi
+  esterni lo contano come `deposit` di quel giorno, quindi è capitale versato e non rendimento). Un
+  portafoglio senza transazioni ha come liquidità il solo saldo iniziale. Modificare il saldo
+  iniziale (PATCH del portafoglio) cambia retroattivamente la storia;
+- `implicit_contributions_total` dice da dove è venuto il denaro degli acquisti non coperti dalla
+  liquidità registrata (portafogli di sole operazioni: ogni acquisto oltre i proventi delle vendite);
+- invariato: nessuna migrazione dello schema; `cash-flow-timeline` (`cumulative_cash`) resta il
+  cumulato dei soli movimenti di cassa (non usato dal frontend).
+
+Esempio sintetico qui sotto dopo TASK-49: liquidità 544,80, totale del summary 1094,80 = valore della
+performance (`tests/unit/test_cash_model_task49.py`); portafoglio di sole operazioni (acquisto
+10 × 100, vendita 4 × 110, acquisto 1 × 110, prezzo 110): liquidità 330, apporti impliciti 1000,
+totale 1100 = valore della performance.
+
+Analisi originale (TASK-47), che descrive lo stato **prima** di TASK-49:
+
+**Come era calcolato `summary.cash_balance` prima di TASK-49.** `SummaryMixin.get_summary` →
 `get_current_cash_balance_detail` → `_cash_balance_detail`: saldo iniziale della colonna
 `portfolios.cash_balance` + depositi + interessi + dividendi netti − prelievi − commissioni `fee`.
 Acquisti e vendite sono **ignorati**, e non c'è alcun meccanismo che li compensi:
@@ -261,7 +293,7 @@ acquisto 10 × 100, vendita 4 × 110 → summary: liquidità 0, totale 660; perf
 (i 1000 dell'acquisto sono un apporto implicito), valore 1100 — la performance supera il summary
 dei proventi delle vendite, come annotato in TASK-46.
 
-**Opzioni (da decidere, nessuna implementata):**
+**Opzioni (decisa e implementata la 1 in TASK-49):**
 
 1. **Il summary adotta il modello della performance** (stessa funzione di `_cash_model`: acquisti −,
    vendite +, scoperto a 0 come apporto implicito; il saldo iniziale come deposito alla data di

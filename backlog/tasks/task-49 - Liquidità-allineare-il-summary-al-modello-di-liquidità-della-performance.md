@@ -4,7 +4,7 @@ title: 'Liquidità: allineare il summary al modello di liquidità della performa
 status: In Progress
 assignee: []
 created_date: '2026-11-03T11:40:00Z'
-updated_date: '2026-11-03T12:32:00Z'
+updated_date: '2026-11-03T12:44:00Z'
 labels:
   - backend
   - dati
@@ -23,13 +23,15 @@ Emerso in TASK-47 (methodology.md §9.1). summary.cash_balance = cash_balance in
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Decisione del proprietario registrata (opzione 1, 2 o transizione 2 -> 1)
-- [ ] #2 Summary, hero, totale aggregato, Monte Carlo e ribilanciamento usano la liquidità decisa
-- [ ] #3 Test con l'esempio sintetico: totale del summary = valore della performance
+- [x] #1 Decisione del proprietario registrata (opzione 1, 2 o transizione 2 -> 1)
+- [x] #2 Summary, hero, totale aggregato, Monte Carlo e ribilanciamento usano la liquidità decisa
+- [x] #3 Test con l'esempio sintetico: totale del summary = valore della performance
 <!-- AC:END -->
 
 ## Implementation Notes
 
 <!-- SECTION:NOTES:BEGIN -->
 2026-11-03 decisione del proprietario: opzione 1 (il summary adotta il modello di liquidità della performance, una sola verità).
+
+2026-11-03 implementato (in attesa di verifica sui dati reali prima del rilascio): _cash_balance_detail applica il modello di liquidità della performance; il cash_balance iniziale è liquidità disponibile prima della prima transazione (anche nello storico della performance); nuovi campi implicit_contributions_total, cash_breakdown, cash_model_note. Esempio §9.1: totale del summary da 1564,80 a 1094,80 = valore della performance. Test: test_cash_model_task49.py (11); 858 passed. Rischio: se cash_balance è stato aggiornato a mano per allinearlo al broker, gli acquisti verrebbero sottratti due volte.
 <!-- SECTION:NOTES:END -->

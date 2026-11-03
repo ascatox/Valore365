@@ -267,7 +267,10 @@ def test_batch_valuation_before_first_transaction_matches_empty_portfolio_rule()
 
     assert values[yesterday] == 0.0
     assert values[date.today()] == 500.0
-    assert values[future] == 1000.0
+    # TASK-49: the opening cash_balance (500) is cash available before the
+    # first transaction, so it is still there on the first transaction day
+    # (was 1000: the opening balance was dropped from the history).
+    assert values[future] == 1500.0
 
 
 def test_batch_valuation_returns_empty_for_no_dates():
@@ -307,12 +310,16 @@ def test_batch_valuation_pins_absolute_values():
 
     # Cash model of TASK-46: buys are paid from cash, sell proceeds go to cash
     # (before TASK-46 trades did not touch cash: 1200 / 1335 / 1060.5 / 1061.62).
-    # 1000 deposited, 10 units of asset 1 bought at 20.00 EUR: cash 800 + 200.
-    assert values[date(2026, 1, 12)] == 1000.0
+    # TASK-49: the opening cash_balance (500) is cash available before the
+    # first transaction, so every value carries it (before TASK-49 it was left
+    # out of the history: 1000 / 1000 / 3200.5 / 3201.62).
+    # 500 opening + 1000 deposited, 10 units of asset 1 bought at 20.00 EUR:
+    # cash 1300 + 200.
+    assert values[date(2026, 1, 12)] == 1500.0
     # 5 units of asset 2 at 30.00 USD (14 Jan rate 0.90 = 135) paid from cash.
-    assert values[date(2026, 1, 15)] == 1000.0
-    # Cash 665 + 12.00 dividend + the clamped sell's proceeds 99 x 25 - 100.00
-    # withdrawal = 3052.00, + 5 units of asset 2 at 33.00 USD x 0.90 = 148.50.
-    assert values[date(2026, 1, 25)] == 3200.5
+    assert values[date(2026, 1, 15)] == 1500.0
+    # Cash 1165 + 12.00 dividend + the clamped sell's proceeds 99 x 25 - 100.00
+    # withdrawal = 3552.00, + 5 units of asset 2 at 33.00 USD x 0.90 = 148.50.
+    assert values[date(2026, 1, 25)] == 3700.5
     # 26 Jan revalues asset 2 at 31.50 USD and picks up the 24 Jan rate of 0.95.
-    assert values[date(2026, 1, 26)] == 3201.62
+    assert values[date(2026, 1, 26)] == 3701.62

@@ -403,6 +403,12 @@ export interface PortfolioSummary {
   fx_missing_currencies?: string[];
   /** TASK-47: positions valued at average cost (no price or no FX). */
   price_fallback_symbols?: string[];
+  /**
+   * TASK-49: cash_balance follows the performance cash model (buys debit,
+   * sells credit, never negative); cumulative implicit contributions that
+   * covered buys/outflows beyond the cash available.
+   */
+  implicit_contributions_total?: number;
 }
 
 export interface TWRResult {
@@ -1120,6 +1126,23 @@ export interface CashCurrencyBreakdown {
   balance: number;
 }
 
+/**
+ * TASK-49: components of total_cash in base currency (all positive):
+ * total_cash = opening_balance + deposits - withdrawals + dividends + interest
+ *   - fees - buys + sells + implicit_contributions.
+ */
+export interface CashBreakdown {
+  opening_balance: number;
+  deposits: number;
+  withdrawals: number;
+  dividends: number;
+  interest: number;
+  fees: number;
+  buys: number;
+  sells: number;
+  implicit_contributions: number;
+}
+
 export interface CashBalanceResponse {
   portfolio_id: number;
   total_cash: number;
@@ -1127,6 +1150,11 @@ export interface CashBalanceResponse {
   recent_movements: TransactionListItem[];
   /** TASK-47: currencies converted at 1.0 for lack of a trade-date FX rate. */
   fx_missing_currencies?: string[];
+  /** TASK-49: cumulative implicit contributions (money not recorded as a deposit). */
+  implicit_contributions_total?: number;
+  cash_breakdown?: CashBreakdown | null;
+  /** TASK-49: Italian explanation of the cash model. */
+  cash_model_note?: string | null;
 }
 
 export interface CashFlowTimelinePoint {

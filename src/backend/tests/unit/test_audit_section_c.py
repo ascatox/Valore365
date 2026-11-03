@@ -19,7 +19,7 @@ import pytest
 
 import app.copilot_tools as copilot_tools
 from app.models import CashFlowEntry
-from app.repository._utilities import _compute_cash_balance_base
+from app.repository._utilities import _cash_balance_detail
 from app.services.performance_service import PerformanceService
 from tests.unit.test_summary_day_change import TODAY, _bar, _Position, _Repo as _SummaryRepo
 from tests.unit.test_transactions_repository import _scripted_repo, _tx
@@ -160,7 +160,8 @@ def test_cash_balance_signs_and_trade_date_fx():
         {"side": "fee", "trade_date": _d(3), "trade_currency": "EUR", "quantity": 1, "price": 2},
         # USD dividend: converted at the rate of its trade date (0.90), not the latest (0.95).
         {"side": "dividend", "trade_date": _d(4), "trade_currency": "USD", "quantity": 1, "price": 100},
-        # Trades never move the cash balance in this model.
+        # TASK-49: trades move cash (performance cash model); this buy exceeds
+        # the cash available, so the shortfall is an implicit contribution.
         {"side": "buy", "trade_date": _d(5), "trade_currency": "EUR", "quantity": 1, "price": 999},
     ]
     fx = [
@@ -168,9 +169,13 @@ def test_cash_balance_signs_and_trade_date_fx():
         {"from_ccy": "USD", "price_date": _d(9), "rate": 0.95},
     ]
 
-    cash = _compute_cash_balance_base(base_currency="EUR", opening_cash_balance=0.0, rows=rows, fx_rows=fx)
+    detail = _cash_balance_detail(base_currency="EUR", opening_cash_balance=0.0, rows=rows, fx_rows=fx)
 
-    assert cash == pytest.approx(1000 - 300 + 5 - 2 + 90.0)
+    # Before TASK-49 the buy was ignored: cash = 793. Now the buy takes the 793
+    # and the remaining 206 came from outside: cash floors at 0.
+    before_buy = 1000 - 300 + 5 - 2 + 90.0
+    assert detail.balance == 0.0
+    assert detail.implicit_contributions == pytest.approx(999 - before_buy)
 
 
 # --- C3: day change summary vs positions -----------------------------------------

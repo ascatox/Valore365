@@ -22,11 +22,23 @@ withdrawal or fee larger than the cash: the uncovered part is money that was
 never recorded as entering the portfolio, so it is contributed implicitly and
 the net external outflow of the day equals the cash actually there.
 
-The opening ``portfolios.cash_balance`` is not part of the history (it has no
-date) and is not used here, as before.
+Opening balance (TASK-49): ``portfolios.cash_balance`` has no date. It is
+treated as cash already available before the first transaction: it enters the
+fold on the day of the first transaction (before that day's settlement) as an
+explicit deposit of that day, both in the current cash (``fold_cash`` via
+``_cash_balance_detail``) and in the history (valuation fold and external
+flows). A portfolio with no transactions holds just the opening balance.
+
+The current cash shown by the summary, ``GET /cash-balance``, the MCP tools,
+the aggregates, Monte Carlo and the rebalance is the end of this same fold
+over every transaction (TASK-49, option 1: one truth), so summary
+``market_value + cash_balance`` equals the last value of the performance
+series.
 """
 
 from __future__ import annotations
+
+from collections.abc import Hashable, Iterable
 
 # Below this, a negative end-of-day balance is float noise, not a shortfall.
 _EPS = 1e-6
@@ -78,3 +90,27 @@ def settle_day(cash: float) -> tuple[float, float]:
         shortfall = -cash
         return 0.0, (shortfall if shortfall > _EPS else 0.0)
     return cash, 0.0
+
+
+def fold_cash(
+    deltas: Iterable[tuple[Hashable, float]], opening: float = 0.0
+) -> tuple[float, float]:
+    """Fold (day, cash delta) pairs, in date order, into (cash, implicit total).
+
+    Same settlement as the valuation fold and the performance flows: all the
+    movements of a day first, then a negative balance becomes an implicit
+    contribution and cash restarts from 0. ``opening`` is the cash available
+    before the first movement (it is settled with the first day's movements).
+    """
+    cash = float(opening)
+    implicit_total = 0.0
+    open_day = None
+    for day, delta in deltas:
+        if open_day is not None and day != open_day:
+            cash, implicit = settle_day(cash)
+            implicit_total += implicit
+        open_day = day
+        cash += delta
+    cash, implicit = settle_day(cash)
+    implicit_total += implicit
+    return cash, implicit_total

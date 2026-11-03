@@ -29,9 +29,11 @@ def test_build_cash_breakdown_creates_base_currency_row_when_only_opening_cash_e
     assert [(item.currency, item.balance) for item in breakdown] == [("EUR", 2500.0)]
 
 
-def test_compute_cash_balance_base_only_cash_movements():
-    """Cash is only affected by explicit cash movements (deposit/withdrawal/dividend/fee/interest).
-    Buy/sell transactions do NOT affect the cash balance."""
+def test_compute_cash_balance_base_follows_the_cash_model():
+    """TASK-49: cash follows the performance cash model (buys debit cash incl.
+    fees, sells credit net proceeds at the trade-date FX, end-of-day shortfall
+    = implicit contribution, cash floored at 0). Before TASK-49 buys/sells were
+    ignored and this test expected 400 (deposit 500 - withdrawal 100)."""
     total = _compute_cash_balance_base(
         base_currency="EUR",
         opening_cash_balance=0.0,
@@ -82,5 +84,7 @@ def test_compute_cash_balance_base_only_cash_movements():
         ],
     )
 
-    # Only deposit (500) - withdrawal (100) = 400. Buy/sell ignored.
-    assert total == 400.0
+    # 2 Jan buy 20 x 100 + 5 fees = 2005 with no cash: implicit 2005, cash 0.
+    # 3 Jan deposit 500. 4 Jan sell 2 x 120 USD - 1 fee = 239 USD x 0.9 = 215.10.
+    # 5 Jan withdrawal 100: 500 + 215.10 - 100 = 615.10.
+    assert total == 615.1

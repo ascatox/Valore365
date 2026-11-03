@@ -349,9 +349,16 @@ def test_aggregated_summary_is_the_sum_of_the_single_summaries():
 def test_aggregated_cash_is_the_sum_of_the_balances():
     repo = _repo()
 
-    assert repo.get_current_cash_balance_value(1, USER) == 1000.0
-    assert repo.get_current_cash_balance_value(2, USER) == 512.0
-    assert repo.get_current_cash_balance_value_multi([1, 2], USER) == 1512.0
+    # TASK-49: cash follows the performance cash model (buys debit, sells
+    # credit, floored at 0). Before: 1000 / 512 / 1512 (trades ignored).
+    # P1: 1000 - 10 x 50 - 5 x 20 = 400.
+    assert repo.get_current_cash_balance_value(1, USER) == 400.0
+    # P2: 500 - 300 = 200; D2 buy 500 -> -300, implicit contribution 300,
+    # cash 0; D3 sell 5 x 90 + dividend 12 = 462.
+    assert repo.get_current_cash_balance_value(2, USER) == 462.0
+    assert repo.get_current_cash_balance_value_multi([1, 2], USER) == 862.0
+    assert repo.get_current_cash_balance_detail(2, USER).implicit_contributions == 300.0
+    assert repo.get_current_cash_balance_detail_multi([1, 2], USER).implicit_contributions == 300.0
 
 
 def test_aggregated_allocation_weights_sum_to_100():
@@ -414,7 +421,9 @@ def test_aggregated_intraday_value_combines_holdings_and_cash():
 
     assert len(agg) == 1
     assert agg[0].market_value == pytest.approx(i1[0].market_value + i2[0].market_value, abs=0.01)
-    assert agg[0].market_value == 1620.0 + 1512.0
+    # Holdings 1620 + cash 862 (TASK-49 cash model; was 1512 when buys and
+    # sells did not move cash, i.e. the 800 + 300 invested counted twice).
+    assert agg[0].market_value == 1620.0 + 862.0
 
 
 def test_aggregated_cashflows_merge_in_date_order():

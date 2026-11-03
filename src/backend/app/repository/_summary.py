@@ -33,6 +33,7 @@ class SummaryMixin:
         positions = self.get_positions(portfolio_id, user_id)
         return self._summary_from_positions(
             portfolio_id, portfolio.base_currency, positions, cash.balance, cash.fx_missing_currencies,
+            implicit_contributions_total=cash.implicit_contributions,
         )
 
     def get_summary_multi(self, portfolio_ids: list[int], user_id: str) -> PortfolioSummary:
@@ -52,12 +53,15 @@ class SummaryMixin:
             positions = self.get_positions_multi(ids, user_id)
             summary = self._summary_from_positions(
                 ids[0], scope.base_currency, positions, cash.balance, cash.fx_missing_currencies,
+                implicit_contributions_total=cash.implicit_contributions,
             )
         return summary.model_copy(update=aggregate_identity(ids))
 
     def _summary_from_positions(
         self, portfolio_id: int, base_currency: str, positions, current_cash_balance: float,
         cash_fx_missing: list[str] | None = None,
+        *,
+        implicit_contributions_total: float = 0.0,
     ) -> PortfolioSummary:
         market_value = sum(p.market_value for p in positions)
         cost_basis = sum(p.quantity * p.avg_cost for p in positions)
@@ -264,7 +268,10 @@ class SummaryMixin:
             unrealized_pl_pct=round(_finite(pl_pct), 2),
             day_change=round(_finite(day_change), 2),
             day_change_pct=round(_finite(day_change_pct), 2),
+            # TASK-49: the performance cash model (one truth), so
+            # market_value + cash_balance is the last performance value.
             cash_balance=current_cash_balance,
+            implicit_contributions_total=round(_finite(float(implicit_contributions_total or 0.0)), 2),
             # TASK-47: data gaps of cash and positions, reported not hidden.
             fx_missing_currencies=sorted(
                 set(cash_fx_missing or [])

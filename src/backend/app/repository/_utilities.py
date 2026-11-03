@@ -8,6 +8,7 @@ from sqlalchemy import text
 
 from ..models import (
     CashBalanceResponse,
+    CashBreakdown,
     CashCurrencyBreakdown,
     CashFlowTimelinePoint,
     CashFlowTimelineResponse,
@@ -17,7 +18,7 @@ from ..models import (
     TransactionRead,
 )
 from ._base import PortfolioData
-from ._cash_model import cash_delta
+from ._cash_model import cash_delta, fold_cash
 from ._scope import load_scope_portfolios
 
 
@@ -45,35 +46,74 @@ def _build_cash_breakdown(
     ]
 
 
-CASH_MOVEMENT_SIDES = ("deposit", "withdrawal", "dividend", "fee", "interest")
+# Short Italian explanation of the cash model, for the API and the MCP tools.
+CASH_MODEL_NOTE = (
+    "Liquidita' calcolata con lo stesso modello della performance: saldo iniziale + depositi "
+    "+ dividendi netti + interessi + vendite (netto di commissioni/imposte) - prelievi - "
+    "commissioni - acquisti (comprese commissioni/imposte), al cambio della data del movimento. "
+    "La liquidita' non va mai sotto zero: un acquisto o un'uscita oltre la liquidita' disponibile "
+    "e' coperto da un apporto implicito (implicit_contributions_total)."
+)
+
+# Components of the cash fold, in the order the breakdown lists them. Every
+# amount is positive; the sign is in CASH_COMPONENT_SIGNS.
+CASH_COMPONENT_SIGNS: dict[str, int] = {
+    "opening_balance": 1,
+    "deposits": 1,
+    "withdrawals": -1,
+    "dividends": 1,
+    "interest": 1,
+    "fees": -1,
+    "buys": -1,
+    "sells": 1,
+    "implicit_contributions": 1,
+}
+_SIDE_COMPONENT = {
+    "deposit": "deposits",
+    "withdrawal": "withdrawals",
+    "dividend": "dividends",
+    "interest": "interest",
+    "fee": "fees",
+    "buy": "buys",
+    "sell": "sells",
+}
 
 
 @dataclass(frozen=True)
 class CashBalanceDetail:
     """Cash of one portfolio (or a sum of portfolios) in its base currency.
 
-    ``balance``: opening ``cash_balance`` + every cash movement, each converted
-    at the FX rate of its trade date. ``fx_missing_currencies``: currencies of
-    movements with no rate on or before their trade date (converted at 1.0, so
-    the balance is approximate). ``nominal_by_currency``: the same movements
-    summed per currency without conversion (opening cash in the base currency).
+    ``balance``: the TASK-46 cash model folded over every transaction
+    (TASK-49): opening ``cash_balance`` (cash before the first transaction) +
+    deposits, net dividends, interest and net sell proceeds - withdrawals,
+    fees and buys (fees/taxes included), each converted at the FX rate of its
+    trade date, settled at the end of every day: a shortfall is an implicit
+    contribution and cash never goes below 0. ``implicit_contributions``: the
+    cumulative implicit contributions. ``components``: the positive amount of
+    every component in base currency (signs in CASH_COMPONENT_SIGNS), adding
+    up to ``balance``. ``fx_missing_currencies``: currencies of transactions
+    with no rate on or before their trade date (converted at 1.0, so the
+    balance is approximate). ``nominal_by_currency``: the same deltas summed
+    per currency without conversion (opening cash and implicit contributions
+    in the base currency).
     """
 
     balance: float
     fx_missing_currencies: list[str] = field(default_factory=list)
     nominal_by_currency: dict[str, float] = field(default_factory=dict)
+    implicit_contributions: float = 0.0
+    components: dict[str, float] = field(default_factory=dict)
 
 
-def _cash_movement_nominal(side: str, quantity: float, price: float, taxes: float) -> float:
-    """Signed change of cash of one cash movement, in its own currency.
+def _cash_movement_nominal(side: str, quantity: float, price: float, taxes: float, fees: float = 0.0) -> float:
+    """Signed change of cash of one transaction, in its own currency.
 
-    Same rule as the TASK-46 cash model (``_cash_model.cash_delta``) for the
-    cash sides: dividends are net of withholding taxes. Buys and sells never
-    move this balance (summary semantics, see methodology section 9).
+    The TASK-46 cash model (``_cash_model.cash_delta``): buys cost price x
+    quantity + fees + taxes, sells bring the net proceeds, dividends are net
+    of withholding taxes, the other cash sides move by their amount.
     """
-    if side not in CASH_MOVEMENT_SIDES:
-        return 0.0
-    return cash_delta(side, quantity * price, 0.0, taxes)
+    costs = (fees + taxes) if side in ("buy", "sell") else 0.0
+    return cash_delta(side, quantity * price, costs, taxes)
 
 
 def _cash_balance_detail(
@@ -83,12 +123,17 @@ def _cash_balance_detail(
     rows: list[dict],
     fx_rows: list[dict],
 ) -> CashBalanceDetail:
-    """The one cash rule shared by summary.cash_balance and get_cash_balance (TASK-47).
+    """The one cash rule (TASK-47, TASK-49): the performance cash model, folded to today.
 
-    Every movement in a non-base currency is converted at the rate of its
-    trade date (last rate on or before it), like the TASK-46 cash model and
-    the cost basis of the positions. A movement without such a rate is
-    converted at 1.0 and its currency is reported, never silently.
+    Shared by summary.cash_balance, GET /cash-balance, the MCP/copilot tools,
+    the aggregates, Monte Carlo and the rebalance. ``rows`` are every
+    transaction of the portfolio in (trade_at, id) order, trades included.
+    The opening balance is cash available before the first transaction (see
+    ``_cash_model``). Every transaction in a non-base currency is converted at
+    the rate of its trade date (last rate on or before it), like the
+    valuation fold and the cost basis of the positions. A transaction without
+    such a rate is converted at 1.0 and its currency is reported, never
+    silently. O(n) in the number of transactions.
     """
     fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
     for row in fx_rows:
@@ -109,30 +154,47 @@ def _cash_balance_detail(
             return None
         return series[idx][1]
 
-    cash_balance = float(opening_cash_balance)
+    opening = float(opening_cash_balance)
     nominal: dict[str, float] = defaultdict(float)
-    if opening_cash_balance:
-        nominal[base_currency] += float(opening_cash_balance)
+    if opening:
+        nominal[base_currency] += opening
+    components: dict[str, float] = {key: 0.0 for key in CASH_COMPONENT_SIGNS}
+    components["opening_balance"] = opening
     missing: set[str] = set()
+    deltas: list[tuple[date | None, float]] = []
     for row in rows:
         side = str(row["side"])
-        if side not in CASH_MOVEMENT_SIDES:
+        component = _SIDE_COMPONENT.get(side)
+        if component is None:
             continue
         trade_ccy = str(row["trade_currency"])
         amount = _cash_movement_nominal(
-            side, float(row["quantity"]), float(row["price"]), float(row.get("taxes") or 0.0)
+            side,
+            float(row["quantity"]),
+            float(row["price"]),
+            float(row.get("taxes") or 0.0),
+            float(row.get("fees") or 0.0),
         )
         nominal[trade_ccy] += amount
         fx_rate = fx_rate_on_or_before(trade_ccy, row.get("trade_date"))
         if fx_rate is None:
             missing.add(trade_ccy)
             fx_rate = 1.0
-        cash_balance += amount * fx_rate
+        delta = amount * fx_rate
+        components[component] += delta * CASH_COMPONENT_SIGNS[component]
+        deltas.append((row.get("trade_date"), delta))
+
+    cash, implicit = fold_cash(deltas, opening)
+    components["implicit_contributions"] = implicit
+    if implicit:
+        nominal[base_currency] += implicit
 
     return CashBalanceDetail(
-        balance=round(cash_balance, 2),
+        balance=round(cash, 2),
         fx_missing_currencies=sorted(missing),
         nominal_by_currency={ccy: round(v, 2) for ccy, v in nominal.items()},
+        implicit_contributions=round(implicit, 2),
+        components={key: round(value, 2) for key, value in components.items()},
     )
 
 
@@ -314,8 +376,9 @@ class UtilitiesMixin:
             if portfolio is None:
                 raise ValueError("Portfolio non trovato")
 
-            # One rule with summary.cash_balance (TASK-47): movements at
-            # their trade-date FX, dividends net of taxes, buys/sells ignored.
+            # One rule with summary.cash_balance and the performance (TASK-47,
+            # TASK-49): the cash model folded over every transaction, at the
+            # trade-date FX, dividends net of taxes, cash floored at 0.
             detail = self._cash_balance_details(conn, [portfolio])[portfolio.id]
             breakdown = _build_cash_breakdown(
                 base_currency=portfolio.base_currency,
@@ -372,6 +435,9 @@ class UtilitiesMixin:
             currency_breakdown=breakdown,
             recent_movements=recent,
             fx_missing_currencies=detail.fx_missing_currencies,
+            implicit_contributions_total=detail.implicit_contributions,
+            cash_breakdown=CashBreakdown(**detail.components),
+            cash_model_note=CASH_MODEL_NOTE,
         )
 
     def get_current_cash_balance_value(self, portfolio_id: int, user_id: str) -> float:
@@ -399,10 +465,18 @@ class UtilitiesMixin:
         for p in portfolios:
             for ccy, value in details[p.id].nominal_by_currency.items():
                 nominal[ccy] += value
+        components: dict[str, float] = defaultdict(float)
+        for p in portfolios:
+            for key, value in details[p.id].components.items():
+                components[key] += value
+        # Each portfolio keeps its own cash (the aggregate value is the sum of
+        # the single-portfolio folds), so balances and implicit contributions add up.
         return CashBalanceDetail(
             balance=round(sum(details[p.id].balance for p in portfolios), 2),
             fx_missing_currencies=sorted({c for p in portfolios for c in details[p.id].fx_missing_currencies}),
             nominal_by_currency={ccy: round(v, 2) for ccy, v in nominal.items()},
+            implicit_contributions=round(sum(details[p.id].implicit_contributions for p in portfolios), 2),
+            components={key: round(value, 2) for key, value in components.items()},
         )
 
     def _cash_balance_values(self, conn, portfolios: list[PortfolioData]) -> dict[int, float]:
@@ -412,9 +486,10 @@ class UtilitiesMixin:
         """Cash balance for several portfolios from one connection.
 
         Computing them one at a time cost a checkout and three queries each, so
-        listing N portfolios opened 1+N connections. The cash movements and FX
-        rates for the whole set come back in two queries here, and each
-        portfolio is folded from its own slice.
+        listing N portfolios opened 1+N connections. The transactions (every
+        side: the cash model of TASK-49 includes buys and sells) and FX rates
+        for the whole set come back in two queries here, and each portfolio is
+        folded from its own slice (O(n)).
         """
         if not portfolios:
             return {}
@@ -434,7 +509,6 @@ class UtilitiesMixin:
                        trade_currency
                 from transactions
                 where portfolio_id = any(:portfolio_ids)
-                  and side in ('deposit', 'withdrawal', 'dividend', 'fee', 'interest')
                 order by trade_at asc, id asc
                 """
             ),
