@@ -40,31 +40,37 @@ class PriceIngestionService:
         user_id: str | None = None,
         prefer_symbol_then_isin: bool = False,
         market_hours_at: datetime | None = None,
+        assets: list | None = None,
     ) -> PriceRefreshResponse:
         """Scarica le quotazioni e le salva come price tick.
 
         ``market_hours_at`` lo passa solo lo scheduler: salta gli asset la cui
         borsa è chiusa in quell'istante. I refresh manuali aggiornano tutto.
+        ``assets`` (PricingAsset già letti, TASK-54: sincronizzazione dei dati
+        di mercato) sostituisce la lettura dal repository.
         """
         provider = self.settings.finance_provider.strip().lower()
         client = make_finance_client(self.settings)
 
-        try:
-            pricing_assets = self.repository.get_assets_for_price_refresh(
-                provider=provider,
-                portfolio_id=portfolio_id,
-                asset_scope=asset_scope,
-                user_id=user_id,
-                prefer_symbol_then_isin=prefer_symbol_then_isin,
-            )
-        except TypeError:
-            # Backward compatibility for test doubles/older repository signatures.
-            pricing_assets = self.repository.get_assets_for_price_refresh(
-                provider=provider,
-                portfolio_id=portfolio_id,
-                asset_scope=asset_scope,
-                user_id=user_id,
-            )
+        if assets is not None:
+            pricing_assets = list(assets)
+        else:
+            try:
+                pricing_assets = self.repository.get_assets_for_price_refresh(
+                    provider=provider,
+                    portfolio_id=portfolio_id,
+                    asset_scope=asset_scope,
+                    user_id=user_id,
+                    prefer_symbol_then_isin=prefer_symbol_then_isin,
+                )
+            except TypeError:
+                # Backward compatibility for test doubles/older repository signatures.
+                pricing_assets = self.repository.get_assets_for_price_refresh(
+                    provider=provider,
+                    portfolio_id=portfolio_id,
+                    asset_scope=asset_scope,
+                    user_id=user_id,
+                )
 
         requested_count = len(pricing_assets)
         errors: list[str] = []

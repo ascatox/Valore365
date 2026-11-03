@@ -23,12 +23,16 @@ class PriceRefreshScheduler:
         pac_service: PacExecutionService | None = None,
         historical_service: HistoricalIngestionService | None = None,
         repository: PortfolioRepository | None = None,
+        market_data_sync=None,
     ) -> None:
         self.settings = settings
         self.pricing_service = pricing_service
         self.pac_service = pac_service
         self.historical_service = historical_service
         self.repository = repository
+        # TASK-54: when set, the daily bars job runs the full market data sync
+        # (quotes, bars, FX) through the same lock as the other triggers.
+        self.market_data_sync = market_data_sync
         self._scheduler = BackgroundScheduler(timezone='UTC')
 
     def start(self) -> None:
@@ -78,7 +82,7 @@ class PriceRefreshScheduler:
             )
             logger.info('Benchmark backfill scheduler started at 06:30 UTC')
 
-        if self._daily_bars_enabled() and self.historical_service is not None:
+        if self._daily_bars_enabled() and (self.historical_service is not None or self.market_data_sync is not None):
             hour = int(getattr(self.settings, 'daily_bars_scheduler_hour', 22))
             minute = int(getattr(self.settings, 'daily_bars_scheduler_minute', 30))
             self._scheduler.add_job(
@@ -161,7 +165,23 @@ class PriceRefreshScheduler:
                 logger.exception('Benchmark backfill failed symbol=%s: %s', symbol, exc)
 
     def _run_daily_bars(self) -> None:
-        """Daily closes of every active asset held in any portfolio (TASK-53)."""
+        """Daily closes of every active asset held in any portfolio (TASK-53).
+
+        With a market data sync service (the app wiring, TASK-54) this is
+        run_sync(trigger='scheduler'): same steps, lock and run record as the
+        external trigger and the startup catch-up.
+        """
+        if self.market_data_sync is not None:
+            try:
+                outcome = self.market_data_sync.run_sync('scheduler')
+            except Exception as exc:  # nosec B110
+                logger.exception('Scheduled market data sync failed: %s', exc)
+                return
+            logger.info(
+                'Scheduled market data sync run_id=%s status=%s',
+                getattr(outcome, 'run_id', None), getattr(outcome, 'status', None),
+            )
+            return
         if self.historical_service is None:
             return
         days = int(getattr(self.settings, 'daily_bars_lookback_days', 10))

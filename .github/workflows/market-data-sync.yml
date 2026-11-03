@@ -1,0 +1,179 @@
+name: Market Data Sync
+
+# TASK-54: trigger esterno della sincronizzazione dei dati di mercato
+# (quotazioni, chiusure giornaliere, cambi) del backend su Render.
+# Lo scheduler interno non basta: l'istanza può essere sospesa. Questo job
+# sveglia il servizio, avvia la sincronizzazione e ne attende l'esito.
+# Setup e verifica: docs/market-data-sync.md.
+#
+# Secrets richiesti:
+#   VALORE365_API_BASE_URL  es. https://valore365.onrender.com (senza /api)
+#   MARKET_DATA_SYNC_TOKEN  stesso valore della variabile su Render
+#
+# Esito: job fallito se la run è 'failed' (o il servizio non risponde),
+# warning se 'partial', ok se 'success' o se i dati sono già aggiornati.
+
+on:
+  schedule:
+    # Dopo la chiusura USA (21:00 UTC in inverno, 20:00 in estate) più il
+    # margine di pubblicazione delle barre giornaliere.
+    - cron: "40 22 * * 1-5"
+    # Recupero del mattino: barre pubblicate in ritardo o run serale saltata.
+    - cron: "15 6 * * 2-6"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Esegui anche se i dati risultano già aggiornati"
+        type: boolean
+        default: false
+
+concurrency:
+  group: market-data-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      API_BASE_URL: ${{ secrets.VALORE365_API_BASE_URL }}
+      SYNC_TOKEN: ${{ secrets.MARKET_DATA_SYNC_TOKEN }}
+      FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force && 'true' || 'false' }}
+
+    steps:
+      - name: Check configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${API_BASE_URL}" || -z "${SYNC_TOKEN}" ]]; then
+            echo "::error::Secrets VALORE365_API_BASE_URL e MARKET_DATA_SYNC_TOKEN obbligatori (docs/market-data-sync.md)"
+            exit 1
+          fi
+
+      - name: Wake up the API (Render cold start)
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${API_BASE_URL%/}"
+          delay=5
+          deadline=$((SECONDS + 180))
+          attempt=1
+          while true; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${base}/api/health" || true)"
+            if [[ "${code}" == "200" ]]; then
+              echo "API raggiungibile (tentativo ${attempt})"
+              break
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "::error::API non raggiungibile dopo circa 3 minuti (ultimo HTTP ${code})"
+              exit 1
+            fi
+            echo "health HTTP ${code}: nuovo tentativo tra ${delay}s"
+            sleep "${delay}"
+            delay=$(( delay * 2 > 40 ? 40 : delay * 2 ))
+            attempt=$(( attempt + 1 ))
+          done
+
+      - name: Trigger sync
+        id: trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${API_BASE_URL%/}"
+          url="${base}/api/internal/market-data/sync"
+          if [[ "${FORCE}" == "true" ]]; then
+            url="${url}?force=true"
+          fi
+          # Il token passa a curl da stdin (-K -): mai sulla riga di comando né nel log.
+          code="$(printf 'header = "Authorization: Bearer %s"\n' "${SYNC_TOKEN}" \
+            | curl -sS -K - -X POST --max-time 60 -o response.json -w '%{http_code}' "${url}" || true)"
+          echo "POST sync: HTTP ${code}"
+          case "${code}" in
+            202)
+              run_id="$(jq -r '.run_id' response.json)"
+              echo "Sincronizzazione avviata run_id=${run_id}"
+              echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+              echo "mode=poll" >> "$GITHUB_OUTPUT"
+              ;;
+            409)
+              run_id="$(jq -r '.run_id // empty' response.json)"
+              echo "::notice::Sincronizzazione già in corso (run_id=${run_id:-?}): attendo quella"
+              echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+              echo "mode=poll" >> "$GITHUB_OUTPUT"
+              ;;
+            200)
+              last="$(jq -r '.last_successful_price_sync // "-"' response.json)"
+              echo "::notice::Dati già aggiornati (ultima sincronizzazione riuscita: ${last})"
+              echo "mode=done" >> "$GITHUB_OUTPUT"
+              ;;
+            401) echo "::error::Token rifiutato (401): MARKET_DATA_SYNC_TOKEN diverso da quello su Render"; exit 1 ;;
+            404) echo "::error::Endpoint disattivato (404): MARKET_DATA_SYNC_TOKEN non impostato su Render"; exit 1 ;;
+            429) echo "::error::Rate limit dell'endpoint interno (429)"; exit 1 ;;
+            *)
+              echo "::error::Risposta inattesa dal POST sync (HTTP ${code})"
+              jq -c '.error // .' response.json 2>/dev/null || true
+              exit 1
+              ;;
+          esac
+
+      - name: Wait for the sync to finish
+        if: steps.trigger.outputs.mode == 'poll'
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          base="${API_BASE_URL%/}"
+          deadline=$((SECONDS + 900))
+          while true; do
+            sleep 20
+            code="$(printf 'header = "Authorization: Bearer %s"\n' "${SYNC_TOKEN}" \
+              | curl -sS -K - --max-time 60 -o status.json -w '%{http_code}' "${base}/api/internal/market-data/sync/status" || true)"
+            if [[ "${code}" != "200" ]]; then
+              echo "status HTTP ${code}: riprovo"
+            else
+              if [[ -n "${RUN_ID}" ]]; then
+                run="$(jq -c --argjson id "${RUN_ID}" 'if .last_run.run_id == $id then .last_run else (.running // .last_run) end' status.json)"
+              else
+                run="$(jq -c '.running // .last_run' status.json)"
+              fi
+              status="$(jq -r '.status // "unknown"' <<< "${run}")"
+              id="$(jq -r '.run_id // "?"' <<< "${run}")"
+              echo "run_id=${id} status=${status}"
+              if [[ "${status}" != "running" && ( -z "${RUN_ID}" || "${id}" == "${RUN_ID}" ) ]]; then
+                break
+              fi
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "::error::La sincronizzazione non è terminata entro 15 minuti"
+              exit 1
+            fi
+          done
+
+          lagging="$(jq -r '[.lagging[]?.symbol] | join(", ")' status.json)"
+          last_ok="$(jq -r '.last_successful_price_sync // "-"' status.json)"
+          {
+            echo "### Market data sync"
+            echo ""
+            echo "- run: ${id} (${status})"
+            echo "- asset aggiornati/non aggiornati: $(jq -r '"\(.assets_updated // 0)/\(.assets_failed // 0) su \(.assets_requested // 0)"' <<< "${run}")"
+            echo "- ultima sincronizzazione riuscita: ${last_ok}"
+            echo "- asset in ritardo: ${lagging:-nessuno}"
+            echo "- passi: $(jq -r '[.steps[]? | "\(.name)=\(.status)"] | join(", ")' <<< "${run}")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case "${status}" in
+            success)
+              echo "::notice::Sincronizzazione completata (run ${id})"
+              ;;
+            partial)
+              echo "::warning::Sincronizzazione parziale (run ${id}): $(jq -r '.error // "-"' <<< "${run}")"
+              ;;
+            *)
+              echo "::error::Sincronizzazione ${status} (run ${id}): $(jq -r '.error // "-"' <<< "${run}")"
+              exit 1
+              ;;
+          esac

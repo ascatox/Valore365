@@ -84,6 +84,24 @@ class Settings(BaseSettings):
     # mercato (a borsa aperta, o per N refresh di fila); uno per asset al giorno.
     price_unchanged_ts_warn_after: int = 3
 
+    # TASK-54: sincronizzazione dei dati di mercato (services/market_data_sync.py,
+    # docs/market-data-sync.md). Token Bearer degli endpoint interni
+    # /api/internal/market-data/sync (vuoto = endpoint disattivati, 404).
+    market_data_sync_token: str = ""
+    # Recupero all'avvio, in background, se l'ultima sincronizzazione riuscita
+    # è precedente all'ultima seduta conclusa delle borse degli asset in portafoglio.
+    market_data_sync_on_startup: bool = True
+    # Finestra massima (giorni di calendario) delle barre e dei cambi recuperati.
+    market_data_sync_max_lookback_days: int = 30
+    # Minuti dopo la chiusura di una borsa prima che la seduta conti come conclusa
+    # (il provider pubblica la barra giornaliera con qualche minuto di ritardo).
+    market_data_sync_grace_minutes: int = 60
+    # Limiti degli endpoint interni (per IP del chiamante, finestra in secondi).
+    market_data_sync_rate_limit_requests: int = 10
+    market_data_sync_status_rate_limit_requests: int = 240
+    market_data_sync_auth_failure_limit_requests: int = 30
+    market_data_sync_rate_limit_window_seconds: int = 3600
+
     clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""

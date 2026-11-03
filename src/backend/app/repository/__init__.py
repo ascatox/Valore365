@@ -18,6 +18,7 @@ from ._summary import SummaryMixin
 from ._search_pricing import SearchPricingMixin
 from ._utilities import UtilitiesMixin
 from ._pac import PacMixin
+from ._market_data_sync import MarketDataSyncMixin
 from ._scope import (
     AGGREGATE_PORTFOLIO_ID,
     PortfolioScope,
@@ -39,6 +40,7 @@ class PortfolioRepository(
     SearchPricingMixin,
     UtilitiesMixin,
     PacMixin,
+    MarketDataSyncMixin,
     ScopeMixin,
     BaseRepositoryMixin,
 ):

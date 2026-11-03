@@ -276,6 +276,11 @@ non toglie punti.
     borsa aperta, o per `PRICE_UNCHANGED_TS_WARN_AFTER` (default 3) refresh di fila, logga
     `price_unchanged_ts ... symbol=... ts=... stored_ts=... source=...` (una volta per asset al
     giorno) e lo riporta in `PriceRefreshResponse.unchanged_ts_symbols`. Upsert invariato.
+  - *Sincronizzazione e freschezza globale (TASK-54):* quotazioni, barre e cambi arrivano da
+    un'unica procedura con lock (trigger esterno GitHub Actions, recupero all'avvio, scheduler);
+    `last_successful_price_sync` avanza solo se ogni asset ha la barra dell'ultima seduta conclusa
+    della sua borsa (stessi calendari). I tool con valori riportano `data_freshness` e
+    `get_data_freshness` il dettaglio per posizione: vedi `docs/market-data-sync.md`.
 - **Ritenute sui dividendi (decisione TASK-47):** la liquidità riceve il dividendo **netto**
   (`quantity × price − taxes`) nel summary, in `get_cash_balance` (totale e `currency_breakdown`), nel
   `cash-flow-timeline` e nel modello di liquidità della performance (§8). `get_dividend_summary`

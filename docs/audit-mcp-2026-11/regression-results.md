@@ -320,3 +320,35 @@ Casi verificati:
 Da verificare in produzione dopo il deploy: righe `Daily bars scheduler started at 22:30 UTC`,
 `Daily bars job completed ...` dopo le 22:30 UTC, e per XAD1.DE `daily_bars_partial_rows` (causa
 confermata) oppure `daily_bars_no_new_bar ... symbol=XAD1` / `price_unchanged_ts ... symbol=XAD1.DE`.
+
+## Run TASK-54 (2026-11-03) — Sincronizzazione affidabile dei dati di mercato
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_task54_market_data_sync.py -q
+# 33 passed   (test nuovi)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 1020 passed (prima: 986; +33 test nuovi in test_task54, +1 in test_mcp_server; 2 aspettative
+#              cambiate: l'elenco dei tool MCP include get_data_freshness)
+```
+
+Frontend non toccato (nessun tipo cambiato). Verifica aggiuntiva su un Postgres 16 locale (schema,
+seed e tutte le migrazioni, poi la nuova rieseguita: idempotente), backend avviato con uvicorn e passi
+del workflow eseguiti in locale contro di esso.
+
+| Caso | Risultato |
+|---|---|
+| Due trigger contemporanei (stesso processo e processo diverso, lock condiviso) | il primo `202 run_id=1`, gli altri `already_running run_id=1`; una sola run, lock rilasciato a fine run |
+| Lock reale su Postgres | `pg_try_advisory_xact_lock`: seconda connessione `false` finché la prima non fa rollback |
+| Run con un asset senza barra dell'ultima seduta | `partial`, `last_successful_price_sync` invariato, stato per asset aggiornato (`last_error` "barre: ...") |
+| Provider giù per tutti gli asset / passo che solleva | `failed`, nessun avanzamento; run interrotta (`running` orfana) chiusa come `failed` alla run successiva |
+| Tutti gli asset alla seduta 03/11 | `success`, `needs_sync` falso subito dopo |
+| Sabato con barre di venerdì; Xetra 27/12 con barra del 23/12 | `success`, nessun asset in ritardo; lunedì 28/12 sera XAD1 in ritardo |
+| Run riuscita alle 21:40 UTC (NYSE chiusa alle 21:00, margine 60') | `needs_sync` falso alle 21:50, vero il mattino dopo (barra USA del giorno da recuperare) |
+| Avvio dell'app | thread in background; esegue solo se `needs_sync` (pausa di 3 ore dall'ultima run); `MARKET_DATA_SYNC_ON_STARTUP=false` lo spegne |
+| Endpoint interni | token non configurato 404; mancante/errato 401; corretto 202/409/200 `up_to_date`; `force=true`; 429 oltre il limite; fuori da OpenAPI |
+| Workflow in locale (servizio senza accesso a Yahoo) | health ok, `POST 202`, polling, run `failed` → job con exit 1 e riepilogo; token errato → `::error::` 401 |
+| MCP `get_portfolio_summary` / `get_aggregate_summary` | blocco `data_freshness` (ultima riuscita, stato `partial`, `stale_symbols` [XAD1], `oldest_price_at`, nota); posizioni calcolate una volta sola |
+| MCP con tabelle di sincronizzazione mancanti | campi `null` e nota "non disponibile", tool comunque riuscito |
+| MCP `get_data_freshness` | per posizione `last_price_at`, `last_bar_date`, `stale`, `stale_reason`, ultimo errore di sincronizzazione; portafoglio altrui → errore |

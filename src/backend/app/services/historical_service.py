@@ -52,6 +52,18 @@ class DailyBarsJobResult:
     skipped: list[str] = field(default_factory=list)
 
 
+@dataclass
+class FxRatesJobResult:
+    """Outcome of refresh_recent_fx_rates (TASK-54 market data sync)."""
+
+    requested: int = 0
+    updated: list[str] = field(default_factory=list)
+    no_data: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    last_dates: dict[str, date] = field(default_factory=dict)
+
+
 def log_bars_outcome(
     *,
     asset_id: int,
@@ -572,7 +584,9 @@ class HistoricalIngestionService:
             errors=errors,
         )
 
-    def refresh_recent_daily_bars(self, *, days: int = 10, now: datetime | None = None) -> DailyBarsJobResult:
+    def refresh_recent_daily_bars(
+        self, *, days: int = 10, now: datetime | None = None, assets: list | None = None,
+    ) -> DailyBarsJobResult:
         """Daily bars of the last ``days`` calendar days for every active asset held in any portfolio.
 
         Run by the scheduler after the markets close (TASK-53): until then bars
@@ -580,7 +594,9 @@ class HistoricalIngestionService:
         page. Today's session is included (the job runs after the close). DB
         access is two short reads up front and one short write per asset;
         provider calls run on price_backfill_max_workers threads with no
-        connection held. Prices only: FX rates keep their own paths.
+        connection held. Prices only: FX rates keep their own paths
+        (refresh_recent_fx_rates). ``assets`` (from get_held_assets_for_daily_bars,
+        TASK-54) skips that read.
         """
         now = now or _now_utc()
         provider = self.settings.finance_provider.strip().lower()
@@ -590,7 +606,9 @@ class HistoricalIngestionService:
         # Yahoo's end bound is exclusive: tomorrow, so today's close is included.
         fetch_end = today + timedelta(days=1)
 
-        assets = self.repository.get_held_assets_for_daily_bars(provider)
+        if assets is None:
+            assets = self.repository.get_held_assets_for_daily_bars(provider)
+        assets = list(assets)
         result = DailyBarsJobResult(requested=len(assets))
         skipped = [a for a in assets if is_unpriceable_on_yahoo(provider, a.provider_symbol)]
         if skipped:
@@ -646,4 +664,53 @@ class HistoricalIngestionService:
                 {'updated': result.updated, 'lagging': result.lagging}.get(outcome, result.no_new_bar).append(
                     asset.provider_symbol
                 )
+        return result
+
+    def refresh_recent_fx_rates(
+        self, pairs: list[tuple[str, str]], *, days: int = 10, now: datetime | None = None,
+    ) -> FxRatesJobResult:
+        """Daily FX rates of the last ``days`` calendar days for each (from, to) pair (TASK-54).
+
+        Same validation and upsert as backfill_daily (_validate_fx_rows,
+        batch_upsert_fx_rates_1d); provider calls run concurrently with no
+        connection held, then one short write per pair.
+        """
+        now = now or _now_utc()
+        provider = self.settings.finance_provider.strip().lower()
+        window = max(2, int(days))
+        today = now.astimezone(UTC).date()
+        start_date = today - timedelta(days=window - 1)
+        fetch_end = today + timedelta(days=1)
+        result = FxRatesJobResult(requested=len(pairs))
+        if not pairs:
+            return result
+        client = make_finance_client(self.settings)
+
+        def fetch(pair):
+            from_ccy, to_ccy = pair
+            return client.get_daily_fx_rates(
+                from_ccy, to_ccy, outputsize=window,
+                start_date=start_date.isoformat(), end_date=fetch_end.isoformat(),
+            )
+
+        max_workers = max(1, int(self.settings.price_backfill_max_workers))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [(pair, pool.submit(fetch, pair)) for pair in pairs]
+            for (from_ccy, to_ccy), future in futures:
+                label = f"{from_ccy}/{to_ccy}"
+                try:
+                    rows = self._validate_fx_rows(future.result(), from_ccy, to_ccy, start_date, today)
+                    self.repository.batch_upsert_fx_rates_1d(
+                        from_ccy=from_ccy, to_ccy=to_ccy, provider=provider, rows=rows,
+                    )
+                except Exception as exc:
+                    result.failed.append(label)
+                    result.errors.append(f"{label}: {str(exc)[:200]}")
+                    logger.warning('fx_rates_failed context=market_data_sync pair=%s error=%s', label, exc)
+                    continue
+                if rows:
+                    result.updated.append(label)
+                    result.last_dates[label] = max(r["price_date"] for r in rows)
+                else:
+                    result.no_data.append(label)
         return result

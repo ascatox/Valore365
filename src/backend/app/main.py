@@ -57,6 +57,7 @@ from .repository import PortfolioRepository
 from .scheduler import PriceRefreshScheduler
 from .services.csv_service import CsvImportService
 from .services.historical_service import HistoricalIngestionService
+from .services.market_data_sync import MarketDataSyncService, launch_startup_catch_up
 from .services.pac_service import PacExecutionService
 from .services.performance_service import PerformanceService
 from .services.pricing_service import PriceIngestionService
@@ -77,6 +78,7 @@ from .api.routes_cash import register_cash_routes
 from .api.routes_csv import register_csv_routes
 from .api.routes_pac import register_pac_routes
 from .api.routes_copilot import register_copilot_routes
+from .api.routes_internal import register_internal_routes
 from .mcp_server import register_mcp_routes
 
 # ---------------------------------------------------------------------------
@@ -115,7 +117,12 @@ historical_service = HistoricalIngestionService(settings, repo)
 csv_import_service = CsvImportService(repo)
 pac_service = PacExecutionService(engine)
 performance_service = PerformanceService(repo)
-scheduler = PriceRefreshScheduler(settings, pricing_service, pac_service, historical_service, repo)
+# TASK-54: one sync service for every trigger (startup catch-up, GitHub
+# Actions via /api/internal/market-data/sync, the scheduler's daily job).
+market_data_sync = MarketDataSyncService(settings, repo, pricing_service, historical_service)
+scheduler = PriceRefreshScheduler(
+    settings, pricing_service, pac_service, historical_service, repo, market_data_sync=market_data_sync,
+)
 finance_client = make_finance_client(settings)
 justetf_client = JustEtfClient(settings=settings)
 
@@ -163,6 +170,14 @@ def _apply_pending_migrations():
         logging.getLogger(__name__).info("asset_metadata, etf_enrichment and fire settings migrations ensured")
     except Exception as exc:
         logging.getLogger(__name__).warning("Migration check failed: %s", exc)
+    # Separate transaction: a failure here must not roll back the ones above.
+    try:
+        with _engine.begin() as conn:
+            from .sql import load_sql
+            conn.execute(text(load_sql("migrations/create_market_data_sync")))
+        logging.getLogger(__name__).info("market data sync tables ensured")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Market data sync migration check failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +193,8 @@ async def lifespan(_: FastAPI):
     anyio.to_thread.current_default_thread_limiter().total_tokens = settings.request_threadpool_size
     _apply_pending_migrations()
     scheduler.start()
+    # Non-blocking: needs_sync() and the sync itself run in a daemon thread.
+    launch_startup_catch_up(market_data_sync, settings)
     try:
         yield
     finally:
@@ -337,6 +354,12 @@ register_copilot_routes(
     performance_service=RuntimeDependencyProxy(lambda: performance_service),
     finance_client=RuntimeDependencyProxy(lambda: finance_client),
     justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
+)
+
+register_internal_routes(
+    router,
+    settings=settings,
+    market_data_sync=RuntimeDependencyProxy(lambda: market_data_sync),
 )
 
 app.include_router(router, prefix="/api")
