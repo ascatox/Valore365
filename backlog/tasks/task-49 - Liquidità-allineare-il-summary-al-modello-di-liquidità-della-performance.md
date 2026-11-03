@@ -1,10 +1,10 @@
 ---
 id: TASK-49
 title: 'Liquidità: allineare il summary al modello di liquidità della performance'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-11-03T11:40:00Z'
-updated_date: '2026-11-03T12:44:00Z'
+updated_date: '2026-11-03T12:52:00Z'
 labels:
   - backend
   - dati
@@ -35,3 +35,9 @@ Emerso in TASK-47 (methodology.md §9.1). summary.cash_balance = cash_balance in
 
 2026-11-03 implementato (in attesa di verifica sui dati reali prima del rilascio): _cash_balance_detail applica il modello di liquidità della performance; il cash_balance iniziale è liquidità disponibile prima della prima transazione (anche nello storico della performance); nuovi campi implicit_contributions_total, cash_breakdown, cash_model_note. Esempio §9.1: totale del summary da 1564,80 a 1094,80 = valore della performance. Test: test_cash_model_task49.py (11); 858 passed. Rischio: se cash_balance è stato aggiornato a mano per allinearlo al broker, gli acquisti verrebbero sottratti due volte.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Opzione 1 applicata (PR #67): la liquidità di summary, sezione Cash, tool MCP, aggregati, Monte Carlo e ribilanciamento segue il modello di liquidità della performance. Verifica sui dati reali del 2026-11-03: cash_balance iniziale = 0 per i portafogli 19, 24, 26 e 33, quindi nessun rischio di doppia sottrazione; i vecchi valori (175,78 e 819,59) erano depositi − prelievi + dividendi, non saldi del broker. Perché la liquidità coincida con il broker vanno registrati i depositi e i prelievi reali, oppure una rettifica.
+<!-- SECTION:FINAL_SUMMARY:END -->
