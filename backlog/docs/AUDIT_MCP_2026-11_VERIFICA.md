@@ -125,3 +125,9 @@ Conclusione: i duplicati ci sono e la causa è il nuovo upload dello stesso file
 39 acquisti in Wealth su 9 strumenti; nessuna riga in altri portafogli. Quote mancanti per strumento (quantità corretta − registrata): VWRA.L ~59,9; FRC3.DE ~116,9; IBTM.L ~43,0; IEVL.L ~30,0; SE15.L ~29,0; EUN5.DE ~20,0; DBXP.DE ~12,0; IHYG.L ~12,0; EQQQ.DE ~1,0. Il costo totale è corretto; quantità, costo medio e valore di mercato no.
 
 Correzione proposta: `backlog/docs/AUDIT_MCP_2026-11_CORREZIONE_DATI.sql`, PARTE A (anteprima, copia di sicurezza, modifica con ROLLBACK di prova, annullamento). Da eseguire solo dopo l'approvazione del proprietario.
+
+### Elenco degli id 5790–5870 (2026-11-03)
+
+- In Wealth restano 4 copie dello stesso blocco di 7 righe: 5806–5812, 5814–5820, 5821–5827 e 5837–5843. Le altre righe dell'intervallo (5801 deposito, 5805 acquisto SE15, 5828–5836 vendite VWRA/EQQQ, 5844 prelievo) compaiono una volta sola. Le righe mancanti nell'intervallo (5790–5800, 5802–5804, 5813) non esistono più: probabilmente sono state cancellate a mano o non sono mai state confermate.
+- Correzione proposta: PARTE B di `AUDIT_MCP_2026-11_CORREZIONE_DATI.sql` (elimina le 21 copie, tiene 5806–5812). Effetto: −2.754,87 € di dividendi (totale 4.121,72 €), −93 quote EUN5.DE.
+- **Nuova anomalia (TASK-45):** l'import Fineco sembra contare due volte le commissioni. Le vendite di VWRA dello stesso ordine sono a 172,89, tranne quella con commissione (id 5828), che è a 153,89 = 172,89 − 19 ma registra anche `fees = 19`.

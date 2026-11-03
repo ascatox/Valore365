@@ -105,6 +105,92 @@ rollback;   -- <-- sostituisci con "commit;" per salvare
 
 
 -- =====================================================================
--- PARTE B: duplicati dell'import del 2026-10-23 (TASK-42) — da preparare
--- dopo l'elenco completo degli id 5790–5870.
+-- PARTE B: duplicati dell'import del 2026-10-23 (TASK-42, V365-009)
+--
+-- "Lista Titoli (2).xlsx" è stato confermato 4 volte (batch 31, 34, 35, 36).
+-- Nel database restano 4 copie dello stesso blocco di 7 righe:
+--   5806–5812 (si tiene), 5814–5820, 5821–5827, 5837–5843 (da eliminare).
+-- Ogni blocco contiene: dividendi IHYG, EQQQ, TDIV, FRC3, EUN5, SE15
+-- (918,29 € in tutto) e l'acquisto di 31 EUN5.DE del 2026-08-04.
+-- Le altre righe dell'intervallo (5801, 5805, 5828–5836, 5844) compaiono una
+-- volta sola e NON vengono toccate.
+-- Effetto atteso: −21 righe, −2.754,87 € di dividendi, −93 quote EUN5.DE,
+-- −57 € di commissioni.
+-- Stesse istruzioni della parte A: passo 1, poi 2, poi 3 con ROLLBACK di
+-- prova, infine COMMIT.
 -- =====================================================================
+
+
+-- ---------------------------------------------------------------------
+-- PASSO B1 — Anteprima (sola lettura). Attese: 21 righe da eliminare, ognuna
+-- con una gemella identica nel blocco 5806–5812 (colonna "originale").
+-- ---------------------------------------------------------------------
+begin transaction read only;
+select d.id as id_da_eliminare, o.id as originale, a.symbol, d.side, d.trade_at::date as data,
+       d.quantity, d.price, d.fees
+from transactions d
+join transactions o
+  on o.portfolio_id = d.portfolio_id and o.id between 5806 and 5812
+ and o.asset_id is not distinct from d.asset_id and o.side = d.side
+ and o.trade_at = d.trade_at and o.quantity = d.quantity and o.price = d.price
+ and o.fees = d.fees and o.taxes = d.taxes and o.trade_currency = d.trade_currency
+left join assets a on a.id = d.asset_id
+where d.portfolio_id = 26
+  and (d.id between 5814 and 5820 or d.id between 5821 and 5827 or d.id between 5837 and 5843)
+order by o.id, d.id;
+rollback;
+
+
+-- ---------------------------------------------------------------------
+-- PASSO B2 — Copia di sicurezza delle 21 righe (tabella separata).
+-- ---------------------------------------------------------------------
+create table if not exists backup_tx_dup_import_20261103 as
+select d.* from transactions d
+where d.portfolio_id = 26
+  and (d.id between 5814 and 5820 or d.id between 5821 and 5827 or d.id between 5837 and 5843)
+  and exists (
+    select 1 from transactions o
+    where o.portfolio_id = d.portfolio_id and o.id between 5806 and 5812
+      and o.asset_id is not distinct from d.asset_id and o.side = d.side
+      and o.trade_at = d.trade_at and o.quantity = d.quantity and o.price = d.price
+      and o.fees = d.fees and o.taxes = d.taxes and o.trade_currency = d.trade_currency);
+
+select count(*) as righe_in_backup from backup_tx_dup_import_20261103;  -- attese: 21
+
+
+-- ---------------------------------------------------------------------
+-- PASSO B3 — Eliminazione. Finisce con ROLLBACK: per salvare, sostituisci
+-- l'ultima riga con COMMIT dopo aver controllato le verifiche.
+-- ---------------------------------------------------------------------
+begin;
+
+delete from transactions t
+using backup_tx_dup_import_20261103 b
+where t.id = b.id;
+
+-- Verifica 1: nessun gruppo di righe identiche rimasto in Wealth (attese: 0 righe).
+select a.symbol, t.side, t.trade_at::date, t.quantity, t.price, count(*) as righe
+from transactions t left join assets a on a.id = t.asset_id
+where t.portfolio_id = 26
+group by a.symbol, t.side, t.trade_at::date, t.quantity, t.price, t.fees, t.taxes, t.trade_currency
+having count(*) > 1;
+
+-- Verifica 2: totale dividendi di Wealth (atteso: 4.121,72 € invece di 6.876,59 €).
+select count(*) as righe, sum(quantity * price) as dividendi_lordi
+from transactions where portfolio_id = 26 and side = 'dividend';
+
+-- Verifica 3: quantità di EUN5.DE (93 quote in meno di prima).
+select sum(case when t.side = 'buy' then t.quantity when t.side = 'sell' then -t.quantity else 0 end) as quantita_eun5
+from transactions t join assets a on a.id = t.asset_id
+where t.portfolio_id = 26 and a.symbol = 'EUN5.DE';
+
+rollback;   -- <-- sostituisci con "commit;" per salvare
+
+
+-- ---------------------------------------------------------------------
+-- PASSO B4 — Annullamento (solo se serve dopo il commit): reinserisce le
+-- righe eliminate con gli stessi id.
+-- ---------------------------------------------------------------------
+-- begin;
+-- insert into transactions select * from backup_tx_dup_import_20261103;
+-- commit;
