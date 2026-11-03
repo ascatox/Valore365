@@ -1,10 +1,10 @@
 ---
 id: TASK-47
 title: 'Liquidità e prezzi: cambio usato in modo incoerente e fallback silenziosi'
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-11-03T10:53:00Z'
-updated_date: '2026-11-03T11:09:00Z'
+updated_date: '2026-11-03T11:31:00Z'
 labels:
   - audit-mcp
   - backend
