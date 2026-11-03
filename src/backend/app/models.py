@@ -347,6 +347,10 @@ class PortfolioSummary(BaseModel):
     # positions whose price fell back to the average cost.
     fx_missing_currencies: list[str] = Field(default_factory=list)
     price_fallback_symbols: list[str] = Field(default_factory=list)
+    # TASK-49: cash_balance follows the performance cash model (buys debit,
+    # sells credit, cash floored at 0); this is the cumulative money that
+    # entered implicitly to cover buys/outflows beyond the cash available.
+    implicit_contributions_total: float = 0.0
 
 
 class TimeSeriesPoint(BaseModel):
@@ -776,6 +780,25 @@ class CashCurrencyBreakdown(BaseModel):
     balance: float
 
 
+class CashBreakdown(BaseModel):
+    """TASK-49: components of total_cash in base currency (trade-date FX).
+
+    All amounts are positive; total_cash = opening_balance + deposits
+    - withdrawals + dividends + interest - fees - buys + sells
+    + implicit_contributions (up to rounding).
+    """
+
+    opening_balance: float = 0.0
+    deposits: float = 0.0
+    withdrawals: float = 0.0
+    dividends: float = 0.0
+    interest: float = 0.0
+    fees: float = 0.0
+    buys: float = 0.0
+    sells: float = 0.0
+    implicit_contributions: float = 0.0
+
+
 class CashBalanceResponse(BaseModel):
     portfolio_id: int
     total_cash: float
@@ -783,6 +806,10 @@ class CashBalanceResponse(BaseModel):
     recent_movements: list[TransactionListItem]
     # TASK-47: currencies converted at 1.0 for lack of a trade-date FX rate.
     fx_missing_currencies: list[str] = Field(default_factory=list)
+    # TASK-49: same cash model as the performance (see CASH_MODEL_NOTE).
+    implicit_contributions_total: float = 0.0
+    cash_breakdown: CashBreakdown | None = None
+    cash_model_note: str | None = None
 
 
 class CashFlowTimelinePoint(BaseModel):

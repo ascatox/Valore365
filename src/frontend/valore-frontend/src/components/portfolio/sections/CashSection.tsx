@@ -20,6 +20,7 @@ import {
   createCashMovement,
   getPortfolioCashBalance,
   type CashBalanceResponse,
+  type CashBreakdown,
   type CashMovementCreateInput,
 } from '../../../services/api';
 
@@ -44,6 +45,23 @@ const SIDE_COLORS: Record<string, string> = {
   fee: 'orange',
   interest: 'teal',
 };
+
+// TASK-49: composition of the cash (same model as the performance), in the
+// order of the fold. sign: +1 adds to the cash, -1 takes from it.
+const BREAKDOWN_LINES: { key: keyof CashBreakdown; label: string; sign: 1 | -1 }[] = [
+  { key: 'opening_balance', label: 'Saldo iniziale', sign: 1 },
+  { key: 'deposits', label: 'Depositi', sign: 1 },
+  { key: 'withdrawals', label: 'Prelievi', sign: -1 },
+  { key: 'dividends', label: 'Dividendi netti', sign: 1 },
+  { key: 'interest', label: 'Interessi', sign: 1 },
+  { key: 'fees', label: 'Commissioni', sign: -1 },
+  { key: 'buys', label: 'Acquisti', sign: -1 },
+  { key: 'sells', label: 'Vendite', sign: 1 },
+  { key: 'implicit_contributions', label: 'Apporti impliciti', sign: 1 },
+];
+
+const formatAmount = (value: number) =>
+  value.toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreated }: CashSectionProps) {
   const isMobile = useMediaQuery('(max-width: 48em)');
@@ -148,6 +166,29 @@ export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreat
                 </div>
               ))}
             </Group>
+
+            {cashData.cash_breakdown && (
+              <Stack gap={2} mb="md" data-testid="cash-breakdown">
+                {BREAKDOWN_LINES.filter(({ key }) => Math.abs(cashData.cash_breakdown?.[key] ?? 0) >= 0.005).map(
+                  ({ key, label, sign }) => (
+                    <Group key={key} justify="space-between" gap="xs">
+                      <Text size="sm" c="dimmed">{label}</Text>
+                      <Text size="sm" fw={500}>
+                        {sign < 0 ? '−' : '+'}
+                        {formatAmount(cashData.cash_breakdown?.[key] ?? 0)}
+                      </Text>
+                    </Group>
+                  ),
+                )}
+                <Group justify="space-between" gap="xs">
+                  <Text size="sm" fw={600}>= Liquidità</Text>
+                  <Text size="sm" fw={700}>{formatAmount(cashData.total_cash)}</Text>
+                </Group>
+                {cashData.cash_model_note && (
+                  <Text size="xs" c="dimmed" mt={4}>{cashData.cash_model_note}</Text>
+                )}
+              </Stack>
+            )}
 
             {cashData.recent_movements.length > 0 && (
               <Table.ScrollContainer minWidth={400}>

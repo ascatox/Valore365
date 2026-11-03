@@ -32,6 +32,7 @@ from typing import Any, Callable
 
 from ..copilot_tools import _TOOL_HANDLERS as COPILOT_HANDLERS
 from ..copilot_tools import position_row, positions_data_note, summary_data_flags
+from ..repository._utilities import CASH_MODEL_NOTE
 from ..repository._scope import EMPTY_SCOPE_MESSAGE, MIXED_CURRENCY_MESSAGE, NOT_FOUND_MESSAGE
 
 MIN_AGGREGATE_PORTFOLIOS = 2
@@ -100,6 +101,8 @@ def _summary(deps: Any, ids: list[int], user_id: str) -> dict[str, Any]:
         "day_change": round(s.day_change, 2),
         "day_change_pct": round(s.day_change_pct, 2),
         "cash_balance": round(s.cash_balance, 2),
+        "implicit_contributions_total": round(float(getattr(s, "implicit_contributions_total", 0.0) or 0.0), 2),
+        "cash_model_note": CASH_MODEL_NOTE,
         **summary_data_flags(s),
     }
 

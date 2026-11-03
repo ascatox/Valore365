@@ -13,6 +13,7 @@ from typing import Any
 
 from .services.performance_service import PerformanceService
 from .repository import PortfolioRepository
+from .repository._utilities import CASH_MODEL_NOTE
 from .services.portfolio_doctor import (
     analyze_portfolio_health,
     run_monte_carlo_projection,
@@ -44,7 +45,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "get_portfolio_summary",
         "description": (
             "Ottieni il riepilogo del portafoglio: valore di mercato, costo, "
-            "P&L, variazione giornaliera, cash disponibile e valuta base."
+            "P&L, variazione giornaliera, cash disponibile (modello di liquidita' della "
+            "performance: acquisti scalati, vendite accreditate, mai negativa) e valuta base."
         ),
         "parameters": {
             "type": "object",
@@ -97,8 +99,8 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_cash_balance",
         "description": (
-            "Ottieni il saldo cash disponibile nel portafoglio, "
-            "con la valuta base."
+            "Ottieni il saldo cash disponibile nel portafoglio, con la valuta base, "
+            "gli apporti impliciti cumulati e la scomposizione (depositi, acquisti, vendite...)."
         ),
         "parameters": {
             "type": "object",
@@ -536,6 +538,8 @@ def _get_portfolio_summary(
         "day_change": round(summary.day_change, 2),
         "day_change_pct": round(summary.day_change_pct, 2),
         "cash_balance": round(summary.cash_balance, 2),
+        "implicit_contributions_total": round(float(getattr(summary, "implicit_contributions_total", 0.0) or 0.0), 2),
+        "cash_model_note": CASH_MODEL_NOTE,
         "base_currency": summary.base_currency,
         **summary_data_flags(summary),
     }
@@ -611,15 +615,18 @@ def _get_cash_balance(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    summary = repo.get_summary(portfolio_id, user_id)
-    # Same number and rule as summary.cash_balance and GET /cash-balance
-    # total_cash (TASK-47): movements at their trade-date FX, dividends net.
+    # Same number and rule as summary.cash_balance, GET /cash-balance
+    # total_cash and the performance (TASK-47, TASK-49): the cash model folded
+    # over every transaction at the trade-date FX, never negative.
+    cash = repo.get_current_cash_balance_detail(portfolio_id, user_id)
     out: dict[str, Any] = {
-        "total_cash": round(summary.cash_balance, 2),
-        "base_currency": summary.base_currency,
+        "total_cash": round(cash.balance, 2),
+        "base_currency": repo.get_portfolio_base_currency(portfolio_id, user_id),
+        "implicit_contributions_total": round(float(getattr(cash, "implicit_contributions", 0.0) or 0.0), 2),
+        "cash_breakdown": dict(getattr(cash, "components", None) or {}),
+        "cash_model_note": CASH_MODEL_NOTE,
     }
     # Only the cash gaps here (the summary also lists the positions' ones).
-    cash = repo.get_current_cash_balance_detail(portfolio_id, user_id)
     missing = list(cash.fx_missing_currencies)
     out["fx_missing_currencies"] = missing
     if missing:
@@ -878,7 +885,8 @@ def _calculate_rebalance_orders(
         "Le commissioni e le imposte non sono modellate: importi lordi.",
         f"Banda di tolleranza {DEFAULT_TOLERANCE_PP} pp sul peso: se nessuno strumento la supera "
         "non ci sono ordini; altrimenti tutti gli strumenti tornano al target.",
-        "La liquidita' del portafoglio e available_cash (liquidita' aggiuntiva) entrano nel totale e nei pesi.",
+        "La liquidita' del portafoglio (stesso modello della performance: acquisti scalati, vendite "
+        "accreditate) e available_cash (liquidita' aggiuntiva) entrano nel totale e nei pesi.",
     ]
     if portfolio_cash < 0:
         notes.append("Saldo di liquidita' negativo considerato pari a 0.")

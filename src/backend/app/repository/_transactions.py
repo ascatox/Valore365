@@ -405,8 +405,27 @@ class TransactionsMixin:
             ).mappings().all()
 
             selected = [row for row in rows if str(row["side"]) in external_sides]
+
+            # TASK-49: the undated opening portfolios.cash_balance is cash
+            # available before the first transaction, i.e. an external deposit
+            # on the first transaction day (the valuation fold adds it to cash
+            # that same day). Only the full history (no start_date) knows that
+            # day, and the performance always reads the full history.
+            openings: list[tuple[int, date, float]] = []
+            if start_date is None:
+                first_day: dict[int, date] = {}
+                for row in rows:
+                    first_day.setdefault(row_portfolio_id(row, scope_ids), row["trade_at"].date())
+                for pid, portfolio in zip(scope_ids, portfolios):
+                    opening = float(portfolio.cash_balance or 0.0)
+                    if opening and pid in first_day:
+                        openings.append((pid, first_day[pid], opening))
+
             if not selected:
-                return []
+                return [
+                    (pid, CashFlowEntry(date=day.isoformat(), side="deposit", amount=round(amount, 8)))
+                    for pid, day, amount in sorted(openings, key=lambda o: o[1])
+                ]
 
             max_day = max(row["trade_at"].date() for row in selected)
             currencies = sorted(
@@ -478,6 +497,11 @@ class TransactionsMixin:
                     ),
                 )
             )
+        for pid, day, amount in openings:
+            # Before every entry of that day (out is in date order).
+            iso = day.isoformat()
+            idx = next((i for i, (_, entry) in enumerate(out) if entry.date >= iso), len(out))
+            out.insert(idx, (pid, CashFlowEntry(date=iso, side="deposit", amount=round(amount, 8))))
         return out
 
     def get_portfolio_value_at_date(self, portfolio_id: int, user_id: str, target_date: date) -> float:
@@ -622,8 +646,11 @@ class TransactionsMixin:
             # negative is topped up by an implicit contribution (cash floors at
             # 0). PerformanceService derives the same contributions from the
             # same rows, so values and external flows stay consistent.
+            # The undated opening portfolios.cash_balance is cash available
+            # before the first transaction (TASK-49): it enters on the first
+            # transaction day, where the external flows carry it as a deposit.
             holdings: dict[int, float] = defaultdict(float)
-            cash_balance = 0.0
+            cash_balance = float(portfolio.cash_balance or 0.0)
             applied = 0
             open_day: date | None = None
             values: dict[date, float] = {}
@@ -661,8 +688,11 @@ class TransactionsMixin:
                         holdings[int(aid)] = max(0.0, holdings[int(aid)] - qty)
 
                 # Every row dated <= target_date is in, so the last day folded
-                # is complete and can be settled (idempotent).
-                cash_balance, _ = settle_day(cash_balance)
+                # is complete and can be settled (idempotent). Before the first
+                # transaction there is nothing to settle (the opening balance
+                # is settled with the first day's movements).
+                if applied:
+                    cash_balance, _ = settle_day(cash_balance)
 
                 if applied == 0:
                     # No transaction on or before this day: same answer the

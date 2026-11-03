@@ -137,3 +137,47 @@ Prima → dopo su dati sintetici (`tests/unit/test_cash_fx_task47.py`):
 
 Test esistente adattato: `tests/unit/test_summary_day_change.py` (il finto repository espone anche
 `get_current_cash_balance_detail`, usato ora dal summary).
+
+## TASK-49 — liquidità del summary = modello di liquidità della performance (2026-11-03)
+
+Decisione del proprietario: opzione 1 (methodology §9.1). Saldo iniziale `portfolios.cash_balance`
+= liquidità disponibile prima della prima transazione, sia nella liquidità corrente sia nella storia
+della performance (fold dei valori + `deposit` esterno nel giorno della prima transazione).
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_cash_model_task49.py -q
+# 11 passed   (test nuovi)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 858 passed  (prima: 847 passed; +11 test nuovi, 6 aspettative aggiornate, sotto)
+```
+
+Frontend (`src/frontend/valore-frontend`): `npm run lint` pulito; `npx vitest run` 136 passed
+(26 file, +2 test `CashSection.test.tsx`); `npx tsc -b` 140 errori (baseline invariata, nessuno nei
+file toccati).
+
+Prima → dopo (`tests/unit/test_cash_model_task49.py`, prezzo finale 110):
+
+| Caso | Liquidità prima | Liquidità dopo | Totale summary prima | Totale summary dopo = valore performance |
+|---|---|---|---|---|
+| §9.1: deposito 1000, acquisto 8 × 100, vendita 3 × 110, dividendo 20 (ritenuta 5,20) | 1014,80 | 544,80 | 1564,80 | 1094,80 |
+| Solo operazioni: acquisto 10 × 100, vendita 4 × 110, acquisto 1 × 110 | 0 | 330 (apporti impliciti 1000) | 770 | 1100 |
+| §9.1 con saldo iniziale 200 | 1214,80 | 744,80 | 1764,80 | 1294,80 (prima la performance dava 1094,80: saldo iniziale escluso) |
+| Deposito 100, prelievo 150, deposito 20 | −30 | 20 (apporto implicito 50) | — | — |
+
+Test esistenti aggiornati (codificavano la vecchia semantica):
+- `test_aggregate_repository.py::test_aggregated_cash_is_the_sum_of_the_balances`: 1000 / 512 /
+  1512 → 400 / 462 / 862 (acquisti scalati, vendite accreditate, scoperto di 300 del portafoglio 2
+  come apporto implicito, verificato).
+- `test_aggregate_repository.py::test_aggregated_intraday_value_combines_holdings_and_cash`: il
+  valore intraday somma la nuova liquidità (1620 + 862 invece di 1620 + 1512).
+- `test_audit_section_c.py::test_cash_balance_signs_and_trade_date_fx`: l'acquisto di 999 oltre la
+  liquidità (793) ora porta la liquidità a 0 con 206 di apporto implicito (prima ignorato: 793).
+- `test_cash_utilities.py::test_compute_cash_balance_base_only_cash_movements` →
+  `test_compute_cash_balance_base_follows_the_cash_model`: 400 → 615,10 (acquisto coperto da apporto
+  implicito, vendita USD al cambio della data accreditata).
+- `test_transactions_repository.py::test_batch_valuation_pins_absolute_values` e
+  `::test_batch_valuation_before_first_transaction_matches_empty_portfolio_rule`: il saldo iniziale
+  (500 nei dati finti) è ora parte della storia dal giorno della prima transazione (+500 su ogni
+  valore).
