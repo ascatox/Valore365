@@ -521,6 +521,76 @@ def register_assets_routes(
             raise AppError(code="internal_error", message="ETF enrichment non salvato", status_code=500)
         return result
 
+    @router.post("/portfolios/{portfolio_id}/etf-enrichment/backfill")
+    def backfill_portfolio_etf_enrichment(
+        portfolio_id: int,
+        limit: int = Query(default=50, ge=1, le=200),
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> dict:
+        """Fetch justETF enrichment for the portfolio's assets that lack it (TASK-50).
+
+        Same path as /assets/{id}/etf-enrichment/refresh, applied to every asset
+        of the portfolio without an etf_enrichment row (cash, crypto and direct
+        bonds are skipped). The stored investment_focus / index_tracked / name
+        are then read by the shared asset-class classifier; the MCP and the
+        analyses never fetch it themselves (read-only).
+        """
+        try:
+            asset_ids = repo.get_portfolio_asset_ids(portfolio_id, _auth.user_id)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+        existing = repo.get_etf_enrichment_bulk(asset_ids) if asset_ids else {}
+        enriched: list[dict] = []
+        skipped: list[dict] = []
+        failed: list[dict] = []
+        attempted = 0
+        for asset_id in asset_ids:
+            if asset_id in existing:
+                continue
+            try:
+                asset = repo.get_asset(asset_id)
+            except ValueError:
+                continue
+            if (asset.asset_type or "").lower() in {"cash", "crypto", "bond"}:
+                skipped.append({"asset_id": asset_id, "symbol": asset.symbol, "reason": "asset_type"})
+                continue
+            isin = _resolve_asset_isin(asset_id)
+            if not isin:
+                skipped.append({"asset_id": asset_id, "symbol": asset.symbol, "reason": "missing_isin"})
+                continue
+            if attempted >= limit:
+                skipped.append({"asset_id": asset_id, "symbol": asset.symbol, "reason": "limit"})
+                continue
+            attempted += 1
+            try:
+                data = justetf_client.fetch_profile(isin, symbol=_resolve_asset_symbol(asset_id))
+            except ProviderError as exc:
+                failed.append({"asset_id": asset_id, "symbol": asset.symbol, "isin": isin, "reason": exc.reason})
+                continue
+            except Exception as exc:  # noqa: BLE001 - one asset must not stop the backfill
+                failed.append({"asset_id": asset_id, "symbol": asset.symbol, "isin": isin, "reason": type(exc).__name__})
+                continue
+            if not data:
+                failed.append({"asset_id": asset_id, "symbol": asset.symbol, "isin": isin, "reason": "no_data"})
+                continue
+            repo.upsert_etf_enrichment(asset_id, isin, data)
+            enriched.append({
+                "asset_id": asset_id,
+                "symbol": asset.symbol,
+                "isin": isin,
+                "investment_focus": data.get("investment_focus"),
+                "name": data.get("name"),
+            })
+        return {
+            "portfolio_id": portfolio_id,
+            "total_assets": len(asset_ids),
+            "already_enriched": len(existing),
+            "enriched": enriched,
+            "skipped": skipped,
+            "failed": failed,
+        }
+
     @router.post(
         "/asset-provider-symbols",
         response_model=AssetProviderSymbolRead,
