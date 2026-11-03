@@ -1150,6 +1150,8 @@ export interface CsvImportPreviewRow {
   notes: string | null;
   asset_id: number | null;
   asset_name: string | null;
+  // Ids of existing portfolio transactions this row repeats: skipped on commit unless included.
+  duplicate_of?: number[];
 }
 
 export type CsvDateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD' | 'DD-MM-YYYY' | 'DD.MM.YYYY' | 'YYYY/MM/DD';
@@ -1181,11 +1183,23 @@ export interface CsvImportPreviewResponse {
   error_rows: number;
   rows: CsvImportPreviewRow[];
   column_mapping: CsvImportMappingInfo | null;
+  // Valid rows already present in the portfolio (excluded by default).
+  duplicate_rows?: number;
+  // Non-blocking notices, e.g. the same file was already imported.
+  warnings?: string[];
+}
+
+export interface CsvImportCommitRequest {
+  include_duplicates?: boolean;
+  include_row_numbers?: number[];
 }
 
 export interface CsvImportCommitResponse {
   batch_id: number;
   committed_transactions: number;
+  skipped_duplicates?: number;
+  skipped_duplicate_rows?: number[];
+  skipped_invalid?: number;
   errors: string[];
 }
 

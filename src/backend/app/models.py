@@ -797,6 +797,10 @@ class CsvImportPreviewRow(BaseModel):
     notes: str | None = None
     asset_id: int | None = None
     asset_name: str | None = None
+    # Ids of existing portfolio transactions this row repeats (same asset, type,
+    # day, quantity, price, fees, currency). Such rows are skipped on commit
+    # unless explicitly included.
+    duplicate_of: list[int] = Field(default_factory=list)
 
 
 CsvDateFormat = Literal['DD/MM/YYYY', 'MM/DD/YYYY', 'YYYY-MM-DD', 'DD-MM-YYYY', 'DD.MM.YYYY', 'YYYY/MM/DD']
@@ -832,11 +836,29 @@ class CsvImportPreviewResponse(BaseModel):
     error_rows: int
     rows: list[CsvImportPreviewRow]
     column_mapping: CsvImportMappingInfo | None = None
+    # Valid rows already present in the portfolio (excluded from the commit by default).
+    duplicate_rows: int = 0
+    # Non-blocking notices, e.g. the same file was already imported into this portfolio.
+    warnings: list[str] = Field(default_factory=list)
+
+
+class CsvImportCommitRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    # Import also the rows flagged as already present in the portfolio.
+    include_duplicates: bool = False
+    # Row numbers of flagged rows to import anyway (ignored when include_duplicates is true).
+    include_row_numbers: list[int] = Field(default_factory=list, max_length=10000)
 
 
 class CsvImportCommitResponse(BaseModel):
     batch_id: int
     committed_transactions: int
+    # Rows not imported because already present in the portfolio.
+    skipped_duplicates: int = 0
+    skipped_duplicate_rows: list[int] = Field(default_factory=list)
+    # Rows invalid in the preview (never imported).
+    skipped_invalid: int = 0
     errors: list[str]
 
 

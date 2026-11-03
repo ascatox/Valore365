@@ -111,8 +111,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "get_recent_transactions",
         "description": (
             "Ottieni le ultime transazioni del portafoglio (massimo 20). "
-            "Mostra data, tipo (buy/sell/deposit/withdrawal), simbolo, "
-            "quantita', prezzo e importo totale."
+            "Mostra id della transazione, data, tipo (buy/sell/deposit/withdrawal), simbolo, "
+            "quantita', prezzo e importo totale. Righe identiche con id diversi "
+            "sono transazioni distinte (es. possibili duplicati da import)."
         ),
         "parameters": {
             "type": "object",
@@ -570,6 +571,7 @@ def _get_recent_transactions(
     return {
         "transactions": [
             {
+                "id": t.id,
                 "date": t.trade_at.isoformat() if t.trade_at else None,
                 "type": t.side,
                 "symbol": t.symbol or "CASH",

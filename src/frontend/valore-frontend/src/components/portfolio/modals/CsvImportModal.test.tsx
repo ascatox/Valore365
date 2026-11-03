@@ -186,3 +186,85 @@ describe('CsvImportModal column mapping', () => {
     expect(screen.getByRole('button', { name: /Importa 1 transazioni/ })).toBeDisabled();
   }, 15000);
 });
+
+describe('CsvImportModal duplicates', () => {
+  const baseRow = previewResponse({}).rows[0];
+  const duplicatePreview = () =>
+    previewResponse({
+      total_rows: 3,
+      valid_rows: 3,
+      duplicate_rows: 2,
+      warnings: ['Questo file è già stato importato in questo portafoglio il 23/10/2026 10:00.'],
+      rows: [
+        { ...baseRow, row_number: 1, duplicate_of: [5806] },
+        { ...baseRow, row_number: 2, duplicate_of: [5807] },
+        { ...baseRow, row_number: 3, isin: 'IE00BK5BQT80', duplicate_of: [] },
+      ],
+    });
+
+  beforeEach(() => {
+    uploadCsvImportPreviewMock.mockReset();
+    commitCsvImportMock.mockReset();
+    cancelCsvImportMock.mockReset().mockResolvedValue({ status: 'ok' });
+  });
+
+  it('flags rows already present, excludes them by default and shows the re-import warning', async () => {
+    uploadCsvImportPreviewMock.mockResolvedValue(duplicatePreview());
+    renderModal();
+
+    await uploadFile();
+
+    expect(await screen.findByText('File già importato')).toBeInTheDocument();
+    expect(screen.getByText(/già stato importato in questo portafoglio/)).toBeInTheDocument();
+    expect(screen.getAllByText('Già presente')).toHaveLength(2);
+    expect(screen.getByLabelText('Includi riga 1')).not.toBeChecked();
+    expect(screen.getByLabelText('Includi riga 2')).not.toBeChecked();
+    expect(screen.queryByLabelText('Includi riga 3')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Importa 1 transazioni/ })).toBeEnabled();
+  });
+
+  it('lets the user include a duplicate row, sends it on commit and reports the counts', async () => {
+    const user = userEvent.setup({ delay: null });
+    uploadCsvImportPreviewMock.mockResolvedValue(duplicatePreview());
+    let resolveCommit: (value: unknown) => void = () => {};
+    commitCsvImportMock.mockReturnValue(new Promise((resolve) => { resolveCommit = resolve; }));
+    renderModal();
+    await uploadFile();
+    await screen.findByText('File già importato');
+
+    await user.click(screen.getByLabelText('Includi riga 2'));
+    const commitButton = screen.getByRole('button', { name: /Importa 2 transazioni/ });
+    await user.click(commitButton);
+
+    // While the commit is pending the button cannot be pressed again.
+    await waitFor(() => expect(screen.getByRole('button', { name: /Importa 2 transazioni/ })).toBeDisabled());
+    await user.click(screen.getByRole('button', { name: /Importa 2 transazioni/ }));
+    expect(commitCsvImportMock).toHaveBeenCalledTimes(1);
+    expect(commitCsvImportMock).toHaveBeenCalledWith(10, { include_row_numbers: [2] });
+
+    resolveCommit({
+      batch_id: 10,
+      committed_transactions: 2,
+      skipped_duplicates: 1,
+      skipped_duplicate_rows: [1],
+      skipped_invalid: 0,
+      errors: [],
+    });
+    expect(await screen.findByText('Transazioni create: 2')).toBeInTheDocument();
+    expect(screen.getByText('Righe già presenti non importate: 1')).toBeInTheDocument();
+  });
+
+  it('includes every duplicate with the global toggle', async () => {
+    const user = userEvent.setup({ delay: null });
+    uploadCsvImportPreviewMock.mockResolvedValue(duplicatePreview());
+    renderModal();
+    await uploadFile();
+    await screen.findByText('File già importato');
+
+    await user.click(screen.getByLabelText('Includi le righe già presenti'));
+
+    expect(screen.getByLabelText('Includi riga 1')).toBeChecked();
+    expect(screen.getByLabelText('Includi riga 2')).toBeChecked();
+    expect(screen.getByRole('button', { name: /Importa 3 transazioni/ })).toBeEnabled();
+  });
+});

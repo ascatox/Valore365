@@ -3,6 +3,7 @@ import type { ApiErrorPayload } from './client';
 import type {
   CsvColumnMapping,
   CsvImportPreviewResponse,
+  CsvImportCommitRequest,
   CsvImportCommitResponse,
 } from './types';
 
@@ -61,9 +62,13 @@ export const downloadCsvImportTemplate = async (
   };
 };
 
-export const commitCsvImport = async (batchId: number): Promise<CsvImportCommitResponse> => {
+export const commitCsvImport = async (
+  batchId: number,
+  options: CsvImportCommitRequest = {},
+): Promise<CsvImportCommitResponse> => {
   return apiFetch<CsvImportCommitResponse>(`/csv-import/${batchId}/commit`, {
     method: 'POST',
+    body: JSON.stringify(options),
   });
 };
 

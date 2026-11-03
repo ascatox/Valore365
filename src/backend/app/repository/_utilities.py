@@ -564,18 +564,77 @@ class UtilitiesMixin:
             return None
         return dict(row)
 
-    def commit_csv_import_batch(self, batch_id: int, user_id: str) -> None:
+    def commit_csv_import_batch(
+        self,
+        batch_id: int,
+        user_id: str,
+        rows: list[tuple[int, TransactionCreate]],
+    ) -> list[int] | None:
+        """Claim a pending batch and insert its transactions in ONE database transaction.
+
+        The claim is a conditional update (status pending -> committed): of two
+        concurrent or repeated commits only one can win, the other gets None
+        and inserts nothing. Any failure while inserting rolls back everything,
+        claim included, so the batch stays pending. ``rows`` pairs each payload
+        with its row number in the file, used in the error message.
+        """
         with self.engine.begin() as conn:
-            conn.execute(
+            claimed = conn.execute(
                 text(
                     """
                     update csv_import_batches
                     set status = 'committed', committed_at = now()
                     where id = :batch_id and owner_user_id = :user_id and status = 'pending'
+                    returning id
                     """
                 ),
                 {"batch_id": batch_id, "user_id": user_id},
-            )
+            ).fetchone()
+            if claimed is None:
+                return None
+            inserted_ids: list[int] = []
+            for row_number, payload in rows:
+                try:
+                    inserted_ids.append(self._insert_transaction(conn, payload, user_id).id)
+                except ValueError as exc:
+                    raise ValueError(f"Riga {row_number}: {exc}") from exc
+            return inserted_ids
+
+    def find_committed_csv_import_batches(
+        self,
+        portfolio_id: int,
+        user_id: str,
+        filename: str | None,
+        source_sha256: str | None,
+    ) -> list[dict]:
+        """Committed batches of this portfolio with the same file name or the same content hash."""
+        with self.engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    select id, original_filename, committed_at,
+                           (jsonb_typeof(preview_data) = 'object'
+                            and preview_data->>'source_sha256' = :source_sha256) as same_content
+                    from csv_import_batches
+                    where portfolio_id = :portfolio_id
+                      and owner_user_id = :user_id
+                      and status = 'committed'
+                      and (
+                        original_filename = :filename
+                        or (jsonb_typeof(preview_data) = 'object' and preview_data->>'source_sha256' = :source_sha256)
+                      )
+                    order by committed_at desc nulls last, id desc
+                    limit 20
+                    """
+                ),
+                {
+                    "portfolio_id": portfolio_id,
+                    "user_id": user_id,
+                    "filename": filename,
+                    "source_sha256": source_sha256,
+                },
+            ).mappings().all()
+        return [dict(row) for row in rows]
 
     def cancel_csv_import_batch(self, batch_id: int, user_id: str) -> None:
         with self.engine.begin() as conn:
