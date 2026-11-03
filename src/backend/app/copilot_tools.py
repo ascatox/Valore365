@@ -24,7 +24,8 @@ from .services.portfolio_doctor._health import (
     health_volatility_info,
     resolve_holding_ters,
 )
-from .services.asset_classification import classify_asset_class
+from .services.asset_classification import classify_asset, classify_asset_class
+from .services.portfolio_doctor._holdings import load_classification_inputs
 from .services.rebalance import (
     DEFAULT_TOLERANCE_PP,
     REBALANCE_MODES,
@@ -251,7 +252,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "Cerca informazioni dettagliate su un asset per simbolo. "
             "Restituisce: nome, tipo, valuta, ISIN, TER (expense_ratio), settore, "
             "industria, paese, market cap, P/E, dividend yield, beta, 52w high/low, "
-            "volumi, margini, fund family, categoria e descrizione."
+            "volumi, margini, fund family, categoria e descrizione. "
+            "Classificazione: asset_class (equity/bond/gold/commodity/cash/crypto/unknown, "
+            "dal classificatore usato da stress test, salute, X-Ray e reddito) è il campo da usare "
+            "per allocazione e rischio; instrument_type indica il veicolo (etc/etn/etf/fund/stock/"
+            "bond/crypto/cash, null se non determinabile); classification_source la fonte della "
+            "classe; type è il tipo tecnico salvato in anagrafica (es. un ETC sull'oro può avere "
+            "type=stock)."
         ),
         "parameters": {
             "type": "object",
@@ -1192,9 +1199,49 @@ def _search_asset_info(
                 # Truncate description to save tokens
                 result["description"] = meta.description[:300]
     except Exception:
-        pass
+        meta = None
 
+    result.update(_asset_info_classification(repo, asset["id"], result, meta))
     return result
+
+
+ASSET_CLASS_NOTE = (
+    "Per allocazione e rischio usa asset_class (stessa classificazione di stress test, "
+    "salute, X-Ray e reddito). type è il tipo tecnico salvato in anagrafica e può "
+    "differire (es. un ETC sull'oro registrato come stock)."
+)
+
+
+def _asset_info_classification(repo: PortfolioRepository, asset_id: int, info: dict, meta: Any) -> dict:
+    """asset_class / instrument_type / classification_source for
+    search_asset_info (TASK-51), from the shared classifier and the stored
+    justETF enrichment. Read-only: nothing is fetched from providers."""
+    try:
+        enrichment = repo.get_etf_enrichment(asset_id)
+    except Exception:
+        enrichment = None
+    if not isinstance(enrichment, dict):
+        enrichment = {}
+
+    def _text(value: Any) -> str | None:
+        return value if isinstance(value, str) and value.strip() else None
+
+    classification = classify_asset(
+        asset_type=_text(info.get("type")),
+        name=_text(info.get("name")),
+        symbol=_text(info.get("symbol")),
+        isin=_text(info.get("isin")) or _text(enrichment.get("isin")),
+        investment_focus=_text(enrichment.get("investment_focus")),
+        index_tracked=_text(enrichment.get("index_tracked")),
+        category=_text(getattr(meta, "category", None)),
+        enrichment_name=_text(enrichment.get("name")),
+    )
+    return {
+        "asset_class": classification.asset_class,
+        "instrument_type": classification.instrument_type,
+        "classification_source": classification.source,
+        "classification_note": ASSET_CLASS_NOTE,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1577,18 +1624,28 @@ def _get_income_projection(
         metadata_by_asset = repo.get_asset_metadata_bulk([p.asset_id for p in positions])
     except Exception:
         metadata_by_asset = {}
+    # Same stored inputs as the Doctor holdings (TASK-50): ISIN and justETF
+    # enrichment (investment_focus, index_tracked, official name).
+    try:
+        inputs_by_asset = load_classification_inputs(repo, [p.asset_id for p in positions])
+    except Exception:
+        inputs_by_asset = {}
 
     bucket_dividends = {"equity": 0.0, "fixed_income": 0.0, "other_or_unknown": 0.0}
     unknown_symbols: list[str] = []
     missing_yield_symbols: list[str] = []
     for p in positions:
         meta = metadata_by_asset.get(p.asset_id)
+        inputs = inputs_by_asset.get(p.asset_id, {})
         asset_class = classify_asset_class(
             asset_type=getattr(p, "asset_type", None),
             name=p.name,
             symbol=p.symbol,
-            investment_focus=getattr(p, "investment_focus", None),
-            category=meta.category if meta else None,
+            isin=inputs.get("isin"),
+            investment_focus=getattr(p, "investment_focus", None) or inputs.get("investment_focus"),
+            index_tracked=inputs.get("index_tracked"),
+            category=(meta.category if meta else None) or inputs.get("category"),
+            enrichment_name=inputs.get("enrichment_name"),
         )
         if asset_class == "unknown":
             unknown_symbols.append(p.symbol)

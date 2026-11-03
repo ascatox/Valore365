@@ -323,6 +323,7 @@ def build_analyzed_holdings(resolved_positions: list[ResolvedCatalogPosition], t
             quote_currency=position.asset.quote_currency,
             market_value=position.value,
             weight_pct=round(position.value / total_value * 100.0, 2),
+            isin=position.asset.isin,
         )
         for position in resolved_positions
     ]
@@ -384,7 +385,7 @@ def build_normalized_assets(
                 ticker=position.asset.symbol,
                 name=position.asset.name,
                 weight=position.value / total_value,
-                asset_class=map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol),
+                asset_class=map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol, position.asset.isin),
                 geo_exposure=geo_exposure,
                 top_holdings=top_holdings,
                 geo_confidence=geo_confidence,
@@ -464,7 +465,7 @@ def compute_asset_allocation_from_catalog(resolved_positions: list[ResolvedCatal
 
     allocation: dict[str, float] = defaultdict(float)
     for position in resolved_positions:
-        asset_class = map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol)
+        asset_class = map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol, position.asset.isin)
         allocation[asset_class] += position.value / total_value
 
     return {asset_class: round(weight * 100.0, 1) for asset_class, weight in allocation.items() if weight > 0}
@@ -477,7 +478,7 @@ def compute_risk_score_from_catalog(resolved_positions: list[ResolvedCatalogPosi
 
     score = 0.0
     for position in resolved_positions:
-        asset_class = map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol)
+        asset_class = map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol, position.asset.isin)
         score += (position.value / total_value) * RISK_SCORES.get(asset_class, 3.0)
     return round(score, 2)
 
@@ -489,7 +490,7 @@ def compute_drawdown_from_catalog(resolved_positions: list[ResolvedCatalogPositi
 
     drawdown = 0.0
     for position in resolved_positions:
-        asset_class = map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol)
+        asset_class = map_asset_class(position.asset.asset_type, position.asset.name, position.asset.symbol, position.asset.isin)
         drawdown += (position.value / total_value) * DRAWDOWN_SCORES.get(asset_class, 0.2)
     return round(drawdown * 100.0, 1)
 
@@ -708,8 +709,8 @@ _INSTANT_CLASS_LABELS = {
 }
 
 
-def map_asset_class(asset_type: str, name: str, symbol: str) -> str:
-    asset_class = classify_asset_class(asset_type=asset_type, name=name, symbol=symbol)
+def map_asset_class(asset_type: str, name: str, symbol: str, isin: str | None = None) -> str:
+    asset_class = classify_asset_class(asset_type=asset_type, name=name, symbol=symbol, isin=isin)
     return _INSTANT_CLASS_LABELS.get(asset_class, "Equity")
 
 

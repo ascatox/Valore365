@@ -213,3 +213,34 @@ Casi verificati (`tests/unit/test_xray_coverage.py`):
 Test esistente aggiornato: `test_audit_section_c.py::test_xray_coverage_is_weight_with_any_top_holdings_and_exposures_are_on_total`
 → `::test_xray_coverage_has_explicit_denominators_and_exposures_sum_to_100` (la geografia ora include
 "Non classificato" 50; `lookthrough_coverage_pct` 10; `data_as_of` presente).
+
+## Run TASK-50 / TASK-51 (2026-11-03) — Nomi abbreviati del broker e classificazione in `search_asset_info`
+
+```bash
+cd src/backend
+python -m pytest tests/unit/test_asset_classification_broker_names.py -q
+# 62 passed   (test nuovi)
+
+python -m pytest tests/unit tests/integration/test_mcp_server.py tests/integration/test_api_behavior.py -q
+# 932 passed  (prima: 870 passed; +62 test nuovi, nessuna aspettativa esistente modificata)
+```
+
+Frontend non toccato (nessun tipo cambiato).
+
+Casi verificati (`tests/unit/test_asset_classification_broker_names.py`):
+
+| Caso | Risultato |
+|---|---|
+| `XTR2 EGB13 1CC` (DBXP.DE, LU0290356871, etf) | bond, fonte `name_abbrev` (prima `unknown`) |
+| `Azioni Europa` (VEUR, etf) | equity, fonte `name_abbrev` (prima `unknown`) |
+| Stesso DBXP con nome justETF salvato | bond, fonte `enrichment_name` (dato strutturato prima del nome) |
+| `Europa`, `Europe 1C`, `XTR EQ BD MIX`, `EGBERT FUND` | `unknown` (nessun segnale o segnali in conflitto) |
+| `Barrick Gold Corp`, `Treasury Wine Estates`, `BD Bancorp` (stock) | equity (nome di un'azione non letto) |
+| US Tech Crash con DBXP 50% + VEUR 50% | DBXP con lo shock bond, VEUR con lo shock equity, nessun flag `unknown` |
+| Health | DBXP fuori dal peso azionario, VEUR dentro |
+| X-Ray senza dati | DBXP nel bucket "Obbligazioni (asset class)" (40%) |
+| Reddito | dividendi DBXP in `fixed_income`, VEUR in `equity`; con nome justETF salvato, classificato dall'arricchimento |
+| Loader holdings | ISIN e `etf_enrichment.name` arrivano al classificatore |
+| `search_asset_info` XAD1.DE (`GOLD/DB ETC 60`, type stock) | `type` stock, `asset_class` gold, `instrument_type` etc |
+| `search_asset_info` VWCE / DBXP / ETN Brent / Apple | etf-equity / etf-bond / etn-commodity / stock-equity |
+| `POST /api/portfolios/{id}/etf-enrichment/backfill` | arricchisce solo gli asset senza `etf_enrichment`; salta cash e asset senza ISIN; errori del provider in `failed` |

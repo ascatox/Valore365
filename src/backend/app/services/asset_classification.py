@@ -8,10 +8,18 @@ EQUITY) and its asset class is derived here, without schema changes.
 Resolution order (first match wins):
 1. ``asset_type`` when it is already a class: cash, bond, crypto.
 2. ETF enrichment and metadata: justETF ``investment_focus`` /
-   ``index_tracked`` and yFinance ``asset_metadata.category``.
-3. Keywords in the instrument name.
-4. Known symbol / ISIN hints (for instruments stored without a name).
-5. Fallback: ``stock`` -> equity (the type itself declares a share), unless
+   ``index_tracked`` and yFinance ``asset_metadata.category`` (source
+   ``enrichment``), then the official fund name stored by justETF for the
+   ISIN (``etf_enrichment.name``, source ``enrichment_name``).
+3. Keywords in the instrument name (source ``name``).
+4. Broker abbreviations in the name (source ``name_abbrev``, TASK-50): the
+   names stored from broker imports are often short codes such as
+   ``XTR2 EGB13 1CC`` (Euro Government Bond) or ``Azioni Europa``. They are
+   read only with the explicit tables ``_BOND_ABBREVIATIONS`` /
+   ``_EQUITY_ABBREVIATIONS`` and only when one class matches: a name with
+   both bond and equity cues stays unresolved.
+5. Known symbol / ISIN hints (for instruments stored without a name).
+6. Fallback: ``stock`` -> equity (the type itself declares a share), unless
    the name says it is an exchange-traded product (ETC/ETN/ETF), in which case
    the class is ``unknown``; every other type -> ``unknown``.
 
@@ -22,7 +30,7 @@ treat it and says so (approved decision, TASK-37).
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 EQUITY = "equity"
 BOND = "bond"
@@ -38,10 +46,15 @@ ASSET_CLASSES: tuple[str, ...] = (EQUITY, BOND, GOLD, COMMODITY, CASH, CRYPTO, U
 @dataclass(frozen=True)
 class AssetClassification:
     asset_class: str
-    # asset_type | enrichment | name | symbol | isin | default | none
+    # asset_type | enrichment | enrichment_name | name | name_abbrev | symbol
+    # | isin | default | none
     source: str
     # ETF/ETC/ETN/fund-like vehicle (not a single company share).
     is_exchange_traded_product: bool
+    # Kind of vehicle (TASK-51): etc | etn | etf | fund | stock | bond |
+    # crypto | cash, or None when it cannot be determined. Independent of the
+    # asset class: an ETC on gold is instrument_type etc, asset_class gold.
+    instrument_type: str | None = None
 
 
 def _compile(patterns: tuple[str, ...]) -> re.Pattern[str]:
@@ -79,6 +92,41 @@ _ETP = _compile((
     r"\bphysical\b", r"xetra-gold",
 ))
 _ETC = _compile((r"\betc\b",))
+_ETN = _compile((r"\betn\b",))
+
+# Broker abbreviations (TASK-50). Fineco and other brokers store short names
+# ("XTR2 EGB13 1CC", "Azioni Europa", "ISH EUR GOVT BD"): the full-name rules
+# above do not see them. Each entry is a whole token (word boundaries, digits
+# allowed after the code, e.g. EGB13 = Euro Government Bond 1-3y). Words that
+# only name a region ("Europa", "Europe", "USA") are deliberately absent: they
+# say nothing about the class.
+_BOND_ABBREVIATIONS: tuple[str, ...] = (
+    r"\begb\d*\b",                 # Euro Government Bond (EGB, EGB13, EGB310)
+    r"\beur\s+govt?\b",            # EUR GOV / EUR GOVT
+    r"\bgovt?\s*bds?\b",           # GOV BD / GOVT BD / GOVBD
+    r"\bgov\b",                     # GOV token
+    r"\bgovies\b",
+    r"\btreas\b", r"\btrsy\b", r"\btsy\b",
+    r"\bcorp\s*bds?\b",            # CORP BD
+    r"\bbds?\b",                    # BD token (bond)
+    r"\bagg\b",                     # aggregate
+    r"\bobbl(?:ig)?\w*",            # obbl, obblig, obbligazionario
+    r"titoli\s+di\s+stato",
+    r"\binfl\b",                    # inflation-linked
+    r"\bbund\b",
+    r"\bt-?bills?\b",
+)
+_EQUITY_ABBREVIATIONS: tuple[str, ...] = (
+    r"\bazioni\b",                  # Italian for shares ("Azioni Europa")
+    r"\bazion\w*",                  # azionario, azionaria
+    r"\beq\b", r"\bequ\b",          # EQ / EQU
+    r"\bwrld\b", r"\bwld\b",        # world
+    r"\bsp\s?500\b",               # SP500 / SP 500
+    r"\bstx\b",                     # STOXX
+    r"\bshs\b",                     # shares
+)
+_BOND_ABBREV = _compile(_BOND_ABBREVIATIONS)
+_EQUITY_ABBREV = _compile(_EQUITY_ABBREVIATIONS)
 
 # Known listings stored without a meaningful name (base symbol, exchange
 # suffix stripped). Kept short on purpose: names and enrichment come first.
@@ -123,6 +171,15 @@ def _match_text(text: str) -> str | None:
     return None
 
 
+def _match_abbreviations(text: str) -> str | None:
+    """Bond or equity from broker abbreviations; None when none or both match."""
+    is_bond = bool(_BOND_ABBREV.search(text))
+    is_equity = bool(_EQUITY_ABBREV.search(text))
+    if is_bond == is_equity:
+        return None
+    return BOND if is_bond else EQUITY
+
+
 def _base_symbol(symbol: str) -> str:
     return symbol.strip().upper().split(".")[0]
 
@@ -136,8 +193,64 @@ def classify_asset(
     investment_focus: str | None = None,
     index_tracked: str | None = None,
     category: str | None = None,
+    enrichment_name: str | None = None,
 ) -> AssetClassification:
     """Classify one instrument; see the module docstring for the order."""
+    result = _classify(
+        asset_type=asset_type, name=name, symbol=symbol, isin=isin,
+        investment_focus=investment_focus, index_tracked=index_tracked,
+        category=category, enrichment_name=enrichment_name,
+    )
+    return replace(
+        result,
+        instrument_type=_instrument_type(
+            asset_type=asset_type, name=name, enrichment_name=enrichment_name, isin=isin, result=result,
+        ),
+    )
+
+
+def _instrument_type(
+    *,
+    asset_type: str | None,
+    name: str | None,
+    enrichment_name: str | None,
+    isin: str | None,
+    result: AssetClassification,
+) -> str | None:
+    """Vehicle of the instrument (TASK-51), from the stored type, the name
+    tokens (ETC/ETN) and the ISIN hints of physical gold ETCs."""
+    normalized_type = (asset_type or "").strip().lower()
+    if normalized_type in {CASH, BOND, CRYPTO}:
+        return normalized_type
+    text = " ".join(part for part in (name, enrichment_name) if part)
+    if _ETN.search(text):
+        return "etn"
+    if _ETC.search(text) or "xetra-gold" in text.lower():
+        return "etc"
+    if result.asset_class == GOLD and (isin or "").strip().upper() in _ISIN_HINTS:
+        return "etc"  # known physical gold ETCs
+    if normalized_type in {"etf", "fund"}:
+        return normalized_type
+    if normalized_type == "stock":
+        if result.is_exchange_traded_product:
+            # A share whose name/enrichment says ETF/UCITS: a fund vehicle;
+            # a commodity without an ETC/ETN token cannot be told apart.
+            return None if result.asset_class in {GOLD, COMMODITY} else "etf"
+        return "stock"
+    return None
+
+
+def _classify(
+    *,
+    asset_type: str | None,
+    name: str | None,
+    symbol: str | None,
+    isin: str | None,
+    investment_focus: str | None,
+    index_tracked: str | None,
+    category: str | None,
+    enrichment_name: str | None,
+) -> AssetClassification:
     normalized_type = (asset_type or "").strip().lower()
     name_text = (name or "").strip()
     is_etp = normalized_type in {"etf", "fund"} or bool(_ETP.search(name_text))
@@ -151,6 +264,12 @@ def classify_asset(
     matched = _match_text(enrichment_text)
     if matched:
         return AssetClassification(matched, "enrichment", is_etp)
+    # Official fund name from justETF for this ISIN: structured data, read
+    # with the full-name rules only (no abbreviations needed).
+    if enrichment_name and enrichment_name.strip():
+        matched = _match_text(enrichment_name)
+        if matched:
+            return AssetClassification(matched, "enrichment_name", True)
 
     # A name equal to the symbol carries no information. For a share
     # (asset_type stock) the name is read only when it says the instrument is
@@ -160,6 +279,9 @@ def classify_asset(
         matched = _match_text(name_text)
         if matched:
             return AssetClassification(matched, "name", is_etp or matched in {GOLD, COMMODITY})
+        matched = _match_abbreviations(name_text)
+        if matched:
+            return AssetClassification(matched, "name_abbrev", is_etp)
 
     if symbol:
         matched = _SYMBOL_HINTS.get(_base_symbol(symbol))

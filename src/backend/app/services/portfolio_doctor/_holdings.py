@@ -29,6 +29,8 @@ class AnalyzedHolding:
     investment_focus: str | None = None
     index_tracked: str | None = None
     category: str | None = None
+    # Official fund name stored by justETF for the ISIN (TASK-50).
+    enrichment_name: str | None = None
 
 
 def holding_classification(holding: AnalyzedHolding) -> AssetClassification:
@@ -41,7 +43,47 @@ def holding_classification(holding: AnalyzedHolding) -> AssetClassification:
         investment_focus=holding.investment_focus,
         index_tracked=holding.index_tracked,
         category=holding.category,
+        enrichment_name=holding.enrichment_name,
     )
+
+
+def load_classification_inputs(repo: PortfolioRepository, asset_ids: Sequence[int]) -> dict[int, dict]:
+    """Stored inputs of the shared classifier for each asset (TASK-50).
+
+    One query: asset_type, ISIN, yFinance category and the justETF enrichment
+    (investment_focus, index_tracked, official name). Read-only: a missing
+    enrichment is not fetched here (see docs/mcp.md, ETF enrichment backfill).
+    """
+    ids = sorted({int(asset_id) for asset_id in asset_ids})
+    if not ids:
+        return {}
+    with repo.engine.begin() as conn:
+        rows = conn.execute(
+            text(
+                """
+                select a.id, a.asset_type, a.quote_currency, a.isin,
+                       am.category, ee.index_tracked, ee.investment_focus,
+                       ee.name as enrichment_name
+                from assets a
+                left join asset_metadata am on am.asset_id = a.id
+                left join etf_enrichment ee on ee.asset_id = a.id
+                where a.id = any(:asset_ids)
+                """
+            ),
+            {"asset_ids": ids},
+        ).mappings().all()
+    return {
+        int(row["id"]): {
+            "asset_type": str(row["asset_type"] or ""),
+            "quote_currency": str(row["quote_currency"] or ""),
+            "isin": row.get("isin"),
+            "category": row.get("category"),
+            "index_tracked": row.get("index_tracked"),
+            "investment_focus": row.get("investment_focus"),
+            "enrichment_name": row.get("enrichment_name"),
+        }
+        for row in rows
+    }
 
 
 def holding_asset_class(holding: AnalyzedHolding) -> str:
@@ -86,33 +128,7 @@ def _holdings_from_positions(repo: PortfolioRepository, positions) -> list[Analy
     if not positions:
         return []
 
-    asset_ids = [position.asset_id for position in positions]
-    with repo.engine.begin() as conn:
-        rows = conn.execute(
-            text(
-                """
-                select a.id, a.asset_type, a.quote_currency, a.isin,
-                       am.category, ee.index_tracked, ee.investment_focus
-                from assets a
-                left join asset_metadata am on am.asset_id = a.id
-                left join etf_enrichment ee on ee.asset_id = a.id
-                where a.id = any(:asset_ids)
-                """
-            ),
-            {"asset_ids": asset_ids},
-        ).mappings().all()
-
-    meta_by_asset = {
-        int(row["id"]): {
-            "asset_type": str(row["asset_type"] or ""),
-            "quote_currency": str(row["quote_currency"] or ""),
-            "isin": row.get("isin"),
-            "category": row.get("category"),
-            "index_tracked": row.get("index_tracked"),
-            "investment_focus": row.get("investment_focus"),
-        }
-        for row in rows
-    }
+    meta_by_asset = load_classification_inputs(repo, [position.asset_id for position in positions])
 
     holdings: list[AnalyzedHolding] = []
     for position in positions:
@@ -130,6 +146,7 @@ def _holdings_from_positions(repo: PortfolioRepository, positions) -> list[Analy
                 investment_focus=getattr(position, "investment_focus", None) or meta.get("investment_focus"),
                 index_tracked=meta.get("index_tracked"),
                 category=meta.get("category"),
+                enrichment_name=meta.get("enrichment_name"),
             )
         )
     return holdings
@@ -195,6 +212,7 @@ def _rebalance_holdings_by_market_value(holdings: list[AnalyzedHolding]) -> list
                 investment_focus=holding.investment_focus,
                 index_tracked=holding.index_tracked,
                 category=holding.category,
+                enrichment_name=holding.enrichment_name,
             )
         )
     return rebalanced

@@ -320,10 +320,42 @@ transizione per confrontare i due valori sui dati reali).
 
 ## 10. Classificazione delle asset class (`services/asset_classification.py`)
 
-Ordine (vince la prima regola): (1) `asset_type` già di classe (cash, bond, crypto); (2) dati ETF
-(justETF `investment_focus`/`index_tracked`, yfinance `category`); (3) parole chiave nel nome;
-(4) simbolo/ISIN noti; (5) `stock` → equity, salvo nomi da ETP (ETC/ETN/ETF) → `unknown`; ogni altro
-tipo → `unknown`. Classi: equity, bond, gold, commodity, cash, crypto, unknown. `unknown` non diventa
+Ordine (vince la prima regola), con la fonte riportata in `source`: (1) `asset_type` già di classe
+(cash, bond, crypto) → `asset_type`; (2) dati ETF strutturati: justETF `investment_focus`/
+`index_tracked` e yfinance `category` → `enrichment`, poi il nome ufficiale salvato da justETF per
+l'ISIN (`etf_enrichment.name`) → `enrichment_name`; (3) parole chiave nel nome → `name`;
+(4) abbreviazioni del broker (TASK-50) → `name_abbrev`; (5) simbolo/ISIN noti → `symbol`/`isin`;
+(6) `stock` → equity (`default`), salvo nomi da ETP (ETC/ETN/ETF) → `unknown`; ogni altro
+tipo → `unknown`.
+
+**Abbreviazioni del broker (TASK-50, fallback motivato).** I nomi importati da Fineco sono codici
+brevi (`XTR2 EGB13 1CC` = Xtrackers Euro Government Bond 1-3, `Azioni Europa`). Due tabelle
+esplicite in `asset_classification.py`, solo token interi (confini di parola):
+`_BOND_ABBREVIATIONS` (EGB/EGBnn, EUR GOV/GOVT, GOV/GOVT BD, GOV, govies, TREAS/TRSY/TSY, CORP BD,
+BD, AGG, obbl/obblig*, titoli di stato, INFL, BUND, T-BILL) e `_EQUITY_ABBREVIATIONS` (azioni,
+azion*, EQ/EQU, WRLD/WLD, SP500, STX, SHS). Se il nome contiene segnali di entrambe le classi resta
+`unknown`; parole solo geografiche ("Europa", "Europe") non sono segnali. Come per le parole chiave,
+il nome di un asset `stock` non è letto (salvo che dica ETC/ETN/ETF): "Barrick Gold" e "Treasury
+Wine" restano equity.
+
+**Dati che arrivano al classificatore.** Holdings del Doctor (stress, salute, X-Ray, Monte Carlo) e
+proiezione del reddito leggono con una sola query (`load_classification_inputs` in `_holdings.py`)
+`asset_type`, ISIN, `asset_metadata.category` e da `etf_enrichment` `investment_focus`,
+`index_tracked` e `name`. Prima del TASK-50 il reddito non riceveva ISIN, `index_tracked` né il nome
+justETF. L'analizzatore pubblico passa l'ISIN del catalogo. Nessuna lettura chiama provider esterni.
+
+**Arricchimento mancante.** Le analisi e l'MCP non scaricano dati (sola lettura). Per popolare
+`etf_enrichment` degli asset di un portafoglio che ne sono privi: `POST
+/api/portfolios/{id}/etf-enrichment/backfill` (stesso percorso di `POST
+/api/assets/{id}/etf-enrichment/refresh`, che resta per un singolo asset); salta cash/crypto/bond
+diretti e asset senza ISIN e riporta `enriched`/`skipped`/`failed`. L'X-Ray web lo fa da solo solo
+con `JUSTETF_XRAY_AUTO_ENRICH_ENABLED` (default: solo in dev); non c'è un job schedulato.
+
+**`instrument_type` (TASK-51).** Veicolo, distinto dalla classe: `etc` (token ETC, Xetra-Gold o ISIN
+noto di ETC fisico sull'oro), `etn` (token ETN), `etf`/`fund` (tipo salvato, o `stock` con nome da
+ETF/UCITS), `stock`, `bond`, `crypto`, `cash`; `null` se non determinabile. `search_asset_info`
+espone `type` (tipo tecnico salvato), `asset_class`, `instrument_type`, `classification_source` e una
+nota: per allocazione e rischio si usa `asset_class`. Classi: equity, bond, gold, commodity, cash, crypto, unknown. `unknown` non diventa
 mai equity nel classificatore: ogni consumatore lo dichiara (flag/bucket). Il refresh prezzi non
 cambia un etf/fund in stock né in bond (TASK-44). Schema invariato (ETC restano `etf`/`stock`).
 

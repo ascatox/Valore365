@@ -159,14 +159,21 @@ precedente (`previous_close_available: false` sulla posizione, contate in `exclu
 senza posizioni valide restituisce `best`/`worst` a `null` con un campo `reason`.
 `get_dividend_summary` e `search_asset_info` risolvono i simboli del portafoglio per asset_id (simbolo
 esatto); per un simbolo non presente `search_asset_info` segnala con `match: "different_listing"` e
-`warning` quando trova solo un altro listing con lo stesso ticker base. `get_dividend_summary` non somma
+`warning` quando trova solo un altro listing con lo stesso ticker base. `search_asset_info` riporta
+`type` (tipo tecnico salvato in anagrafica) e, dal classificatore condiviso, `asset_class` (il campo da
+usare per allocazione e rischio), `instrument_type` (`etc`/`etn`/`etf`/`fund`/`stock`/`bond`/`crypto`/
+`cash`, `null` se non determinabile) e `classification_source`: un ETC sull'oro salvato come `stock`
+risulta `asset_class: "gold"`, `instrument_type: "etc"`. `get_dividend_summary` non somma
 dividendi in valute diverse: `dividends_by_currency` riporta i totali per valuta e, se le valute sono più
 di una (`mixed_currencies: true`), `total_dividends_received` e `dividends_last_12m` sono `null`.
 
 Le asset class usate da stress test, salute, X-Ray e reddito vengono da un classificatore unico
 (`app/services/asset_classification.py`: equity, bond, gold, commodity, cash, crypto, `unknown`); un
 ETC tipizzato `stock` (es. un ETC sull'oro) è classificato gold, e un asset non riconosciuto resta
-`unknown`, mai equity per default. Negli scenari a shock `get_stress_test` riporta `affected_classes`,
+`unknown`, mai equity per default. Il classificatore usa prima i dati justETF salvati per l'ISIN
+(`etf_enrichment`), poi il nome e le abbreviazioni dei broker (es. `XTR2 EGB13 1CC` → bond,
+`Azioni Europa` → equity). L'MCP non scarica l'arricchimento mancante: lo popola
+`POST /api/portfolios/{id}/etf-enrichment/backfill` (API web, autenticata). Negli scenari a shock `get_stress_test` riporta `affected_classes`,
 `class_breakdown` (per classe: `weight_pct`, `shock_pct`, `contribution_pct`, che sommano all'impatto)
 e `flags` (`unknown_asset_class_equity_shock` quando a un asset `unknown` si applica in via prudenziale
 lo shock equity); `most_impacted` elenca solo perdite effettive, con `asset_class`.
