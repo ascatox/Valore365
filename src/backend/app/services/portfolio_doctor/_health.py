@@ -24,7 +24,7 @@ from ...constants.geo_classification import (
     EMERGING_CURRENCIES,
     EUROPE_CURRENCIES,
 )
-from ...finance_client import normalize_expense_ratio_pct
+from ...finance_client import extract_expense_ratio_pct, normalize_expense_ratio_pct
 from ._holdings import (
     AnalyzedHolding,
     PortfolioRef,
@@ -476,7 +476,8 @@ def resolve_holding_ters(
     """Single source of truth for per-holding TER, in percentage points.
 
     Priority: justETF enrichment (already a percentage) → yFinance metadata
-    (normalized with ``normalize_expense_ratio_pct``) → ``infer_ter`` pattern
+    (``expense_ratio`` column, else the expense-ratio keys kept in ``raw_info``,
+    normalized with ``normalize_expense_ratio_pct``) → ``infer_ter`` pattern
     matching. Returns ``{asset_id: (ter_pct, ter_source)}`` where ter_source is
     one of ``"justetf"``, ``"yfinance"``, ``"inferred"`` or ``"none"``.
     """
@@ -494,10 +495,15 @@ def resolve_holding_ters(
         try:
             meta_map = repo.get_asset_metadata_bulk(asset_ids)
             for aid, meta in meta_map.items():
+                normalized = None
                 if meta.expense_ratio is not None:
                     normalized = normalize_expense_ratio_pct(meta.expense_ratio)
-                    if normalized is not None:
-                        yfinance[aid] = normalized
+                if normalized is None:
+                    # TASK-52: metadata stored before the key fix keep the value
+                    # only in raw_info (e.g. annualReportExpenseRatio). Read-only.
+                    normalized, _key = extract_expense_ratio_pct(getattr(meta, "raw_info", None))
+                if normalized is not None:
+                    yfinance[aid] = normalized
         except Exception:
             pass
 

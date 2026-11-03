@@ -41,6 +41,38 @@ def normalize_expense_ratio_pct(value: float | None) -> float | None:
     return value
 
 
+# yFinance expense-ratio keys, most reliable first (TASK-52). ``netExpenseRatio``
+# is the current key (percent points, e.g. 0.15 for TLT); ``annualReportExpenseRatio``
+# (a fraction, e.g. 0.0015) and ``expenseRatio`` are older keys still returned
+# for some funds. Every value goes through normalize_expense_ratio_pct.
+EXPENSE_RATIO_KEYS: tuple[str, ...] = ("netExpenseRatio", "annualReportExpenseRatio", "expenseRatio")
+
+
+def extract_expense_ratio_pct(info: dict | None) -> tuple[float | None, str | None]:
+    """Expense ratio in percentage points from a yFinance info dict, and the key it came from.
+
+    Accepts plain numbers or Yahoo ``{"raw": ...}`` objects; non-numeric,
+    negative or non-finite values are skipped. Returns ``(None, None)`` when no
+    key holds a usable value: nothing is ever estimated here.
+    """
+    if not isinstance(info, dict):
+        return None, None
+    for key in EXPENSE_RATIO_KEYS:
+        value = info.get(key)
+        if isinstance(value, dict):
+            value = value.get("raw")
+        if value is None or isinstance(value, bool):
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        normalized = normalize_expense_ratio_pct(number)
+        if normalized is not None:
+            return normalized, key
+    return None, None
+
+
 @dataclass
 class ProviderQuote:
     symbol: str
@@ -153,6 +185,8 @@ class ProviderAssetInfo:
     quote_type: str | None = None
     # ETF/Fund specific
     expense_ratio: float | None = None
+    # yFinance key the expense ratio was read from (TASK-52), None without one.
+    expense_ratio_source_key: str | None = None
     fund_family: str | None = None
     total_assets: float | None = None
     category: str | None = None
@@ -1076,6 +1110,8 @@ class YahooFinanceClient:
         elif _num('regularMarketPrice') is not None:
             current_price_source = 'regularMarketPrice'
 
+        expense_ratio, expense_ratio_key = extract_expense_ratio_pct(info)
+
         metadata_status = "complete"
         if not info:
             metadata_status = "missing"
@@ -1101,7 +1137,8 @@ class YahooFinanceClient:
             previous_close=_num('previousClose') or _num('regularMarketPreviousClose'),
             description=info.get('longBusinessSummary'),
             quote_type=info.get('quoteType'),
-            expense_ratio=normalize_expense_ratio_pct(_num('netExpenseRatio') or _num('expenseRatio')),
+            expense_ratio=expense_ratio,
+            expense_ratio_source_key=expense_ratio_key,
             fund_family=info.get('fundFamily'),
             total_assets=_num('totalAssets'),
             category=info.get('category'),
@@ -1119,10 +1156,28 @@ class YahooFinanceClient:
         )
 
     def get_etf_top_holdings(self, symbol: str) -> list[ProviderEtfHolding]:
+        """Top holdings of a fund; weights are fractions of the fund (0.065 = 6.5%).
+
+        ``[]`` when Yahoo has no fund data for the symbol (a share, or a fund
+        without holdings): a stable answer the X-Ray may cache. A network or
+        provider error raises ProviderError instead (TASK-52), so a transient
+        failure is not cached as "no holdings" for an hour.
+        """
         import yfinance as yf
+        no_data_types: tuple[type[BaseException], ...] = ()
+        exceptions_module = getattr(yf, "exceptions", None)
+        yf_data_exception = getattr(exceptions_module, "YFDataException", None)
+        if isinstance(yf_data_exception, type):
+            no_data_types = (yf_data_exception,)
         try:
             ticker = yf.Ticker(symbol)
             holdings = ticker.funds_data.top_holdings
+        except Exception as exc:
+            if (no_data_types and isinstance(exc, no_data_types)) or "no fund data" in str(exc).lower():
+                return []
+            logger.debug("Failed to fetch ETF holdings for %s: %s", symbol, exc)
+            raise _provider_error('yfinance', 'etf_top_holdings', symbol, exc) from exc
+        try:
             if holdings is None or holdings.empty:
                 return []
             result = []
@@ -1138,7 +1193,7 @@ class YahooFinanceClient:
                 ))
             return result
         except Exception:
-            logger.debug("Failed to fetch ETF holdings for %s", symbol)
+            logger.debug("Unexpected ETF holdings payload for %s", symbol)
             return []
 
     def get_intraday_bars(self, symbol: str, period: str = '5d', interval: str = '1h') -> list[ProviderIntradayBar]:

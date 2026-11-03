@@ -307,7 +307,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "esposizione geografica e settoriale, concentrazione su singoli titoli. "
             "Utile per capire cosa si possiede realmente attraverso gli ETF. "
             "lookthrough_coverage_pct è la quota del portafoglio (liquidità esclusa) davvero scomposta; "
-            "le esposizioni sommano a 100 con la quota 'Non classificato'; data_as_of è la data dei dati."
+            "le esposizioni sommano a 100 con la quota 'Non classificato'; data_as_of è la data dei dati. "
+            "applicable_lookthrough_coverage_pct è la quota scomposta della sola parte azionaria "
+            "(applicable_denominator); not_applicable_pct (oro, materie prime, obbligazioni, monetario, cripto) "
+            "e missing_pct (fondi azionari senza dati) distinguono 'non applicabile' da 'dati mancanti'; "
+            "ogni fondo ha lookthrough_status (available/not_applicable/missing) e lookthrough_reason."
         ),
         "parameters": {
             "type": "object",
@@ -1482,6 +1486,12 @@ def _get_xray_summary(
         # Legacy: same as funds_with_holdings_pct (weight of funds with some top holdings).
         "coverage_pct": round(xray.coverage_pct, 1),
         "lookthrough_coverage_pct": xray.lookthrough_coverage_pct,
+        # TASK-52: coverage of the applicable (equity) part and status shares.
+        "applicable_lookthrough_coverage_pct": xray.applicable_lookthrough_coverage_pct,
+        "applicable_denominator": xray.applicable_denominator,
+        "available_pct": xray.available_pct,
+        "not_applicable_pct": xray.not_applicable_pct,
+        "missing_pct": xray.missing_pct,
         "funds_with_holdings_pct": xray.funds_with_holdings_pct,
         "classified_country_pct": xray.classified_country_pct,
         "classified_sector_pct": xray.classified_sector_pct,
@@ -1497,6 +1507,8 @@ def _get_xray_summary(
                 "symbol": d.symbol,
                 "portfolio_weight_pct": d.portfolio_weight_pct,
                 "lookthrough_kind": d.lookthrough_kind,
+                "lookthrough_status": d.lookthrough_status,
+                "lookthrough_reason": d.lookthrough_reason,
                 "listed_holdings_pct": d.listed_holdings_pct,
                 "source": d.data_source,
                 "data_as_of": d.data_as_of,
@@ -1504,8 +1516,13 @@ def _get_xray_summary(
             for d in xray.etf_details[:20]
         ],
         "coverage_issues": [
-            {"symbol": ci.symbol, "reason": ci.reason}
-            for ci in xray.coverage_issues[:5]
+            {
+                "symbol": ci.symbol,
+                "reason": ci.reason,
+                "lookthrough_status": ci.lookthrough_status,
+            }
+            # Missing data first: not_applicable positions are not a data gap.
+            for ci in sorted(xray.coverage_issues, key=lambda ci: ci.lookthrough_status != "missing")[:5]
         ],
         "coverage_issues_total": len(xray.coverage_issues),
     }

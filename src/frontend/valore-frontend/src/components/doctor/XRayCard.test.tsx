@@ -3,7 +3,13 @@ import { render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { XRayResponse } from '../../services/api';
 import { XRayCard } from './XRayCard';
-import { exposureRows, formatIsoDateIt, lookthroughCoverageText } from './xrayFormat';
+import {
+  applicableCoverageText,
+  exposureRows,
+  formatIsoDateIt,
+  lookthroughCoverageText,
+  lookthroughStatusBadge,
+} from './xrayFormat';
 
 let response: XRayResponse;
 
@@ -70,6 +76,51 @@ describe('XRayCard', () => {
     expect(screen.getByText('Top holdings: 45% del fondo')).toBeInTheDocument();
   });
 
+  it('separates not applicable positions from missing data (TASK-52)', () => {
+    response.etf_details.push(
+      {
+        symbol: 'GLD',
+        name: 'SPDR Gold Shares',
+        portfolio_weight_pct: 20,
+        holdings_available: false,
+        holdings_source: 'missing',
+        failure_reason: 'asset class gold: no underlying securities to look through',
+        top_holdings: [],
+        lookthrough_kind: 'no_lookthrough',
+        lookthrough_status: 'not_applicable',
+        lookthrough_reason: 'Oro: non ha titoli azionari sottostanti da scomporre.',
+      },
+      {
+        symbol: 'VEUR',
+        name: 'Vanguard FTSE Developed Europe UCITS ETF',
+        portfolio_weight_pct: 30,
+        holdings_available: false,
+        holdings_source: 'missing',
+        failure_reason: 'yfinance returned no top holdings',
+        top_holdings: [],
+        lookthrough_kind: 'missing',
+        lookthrough_status: 'missing',
+        lookthrough_reason: 'Dati mancanti: nessun arricchimento justETF salvato.',
+      },
+    );
+    response.applicable_lookthrough_coverage_pct = 28.1;
+    response.not_applicable_pct = 20;
+    response.missing_pct = 30;
+    response.coverage_issues = [
+      { asset_id: 5, symbol: 'GLD', name: 'SPDR Gold Shares', reason: 'asset class gold', lookthrough_status: 'not_applicable' },
+      { asset_id: 6, symbol: 'VEUR', name: 'VEUR', reason: 'yfinance returned no top holdings', lookthrough_status: 'missing' },
+    ];
+    renderCard();
+
+    expect(
+      screen.getByText('Scomposto il 28,1% della parte azionaria; 20% non applicabile (oro); 30% con dati mancanti'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('non applicabile')).toBeInTheDocument();
+    expect(screen.getByText('dati mancanti')).toBeInTheDocument();
+    // Only the missing position is a coverage problem.
+    expect(screen.getByText('Un ETF/fondo non ha holdings affidabili disponibili.')).toBeInTheDocument();
+  });
+
   it('falls back to the legacy coverage badge for an older response', () => {
     delete response.lookthrough_coverage_pct;
     renderCard();
@@ -82,6 +133,28 @@ describe('xrayFormat', () => {
   it('formats coverage and dates in Italian', () => {
     expect(lookthroughCoverageText(22.5)).toBe('Scomposto il 22,5% del portafoglio');
     expect(formatIsoDateIt('2026-09-30')).toBe('30/09/2026');
+  });
+
+  it('describes the applicable coverage and the per-position status', () => {
+    expect(
+      applicableCoverageText({
+        applicable_lookthrough_coverage_pct: 30,
+        not_applicable_pct: 70,
+        missing_pct: 0,
+        etf_details: [
+          { lookthrough_status: 'not_applicable', lookthrough_reason: 'Oro: non ha titoli.' },
+          { lookthrough_status: 'not_applicable', lookthrough_reason: 'Obbligazioni: non modellato.' },
+          { lookthrough_status: 'not_applicable', lookthrough_reason: 'Obbligazioni: non modellato.' },
+        ],
+      }),
+    ).toBe('Scomposto il 30% della parte azionaria; 70% non applicabile (oro, obbligazioni)');
+    expect(applicableCoverageText({ applicable_lookthrough_coverage_pct: null, not_applicable_pct: 100, missing_pct: 0, etf_details: [] }))
+      .toBe('Look-through azionario non applicabile; 100% non applicabile');
+    expect(applicableCoverageText({ etf_details: [] })).toBeNull();
+    expect(lookthroughStatusBadge('not_applicable')).toEqual({ label: 'non applicabile', color: 'gray' });
+    expect(lookthroughStatusBadge('missing')).toEqual({ label: 'dati mancanti', color: 'orange' });
+    expect(lookthroughStatusBadge('available')).toBeNull();
+    expect(lookthroughStatusBadge(undefined)).toBeNull();
   });
 
   it('groups the rest and keeps the unclassified share last so rows sum to 100', () => {

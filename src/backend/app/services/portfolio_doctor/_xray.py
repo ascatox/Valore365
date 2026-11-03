@@ -21,7 +21,30 @@ from ._holdings import (
     resolve_doctor_scope,
 )
 
-_NO_LOOK_THROUGH_CLASSES = {"gold", "commodity", "crypto"}
+_NO_LOOK_THROUGH_CLASSES = {"gold", "commodity", "crypto", "cash"}
+
+# TASK-52: the X-Ray is an equity look-through (underlying shares, their
+# countries and sectors). These asset classes (shared classifier) have no
+# equity basket to decompose: their positions are "not_applicable", never
+# "missing". Bond funds hold bonds, not shares: their look-through is not
+# modelled (any listed bond holdings are still shown, but they stay outside
+# the applicable coverage).
+NOT_APPLICABLE_CLASSES = {"gold", "commodity", "crypto", "cash", "bond"}
+NOT_APPLICABLE_REASONS: dict[str, str] = {
+    "gold": "Oro: non ha titoli azionari sottostanti da scomporre.",
+    "commodity": "Materie prime: lo strumento replica future/indici di commodity, non un paniere di azioni.",
+    "crypto": "Cripto: non ha titoli sottostanti da scomporre.",
+    "cash": "Monetario/liquidità: non ha titoli azionari sottostanti da scomporre.",
+    "bond": (
+        "Obbligazioni: lo X-Ray scompone la parte azionaria; il look-through dei titoli "
+        "obbligazionari non è modellato."
+    ),
+}
+APPLICABLE_DENOMINATOR = (
+    "Valore di mercato delle posizioni per cui il look-through azionario è applicabile (azioni "
+    "singole, ETF/fondi azionari e strumenti non classificati); esclusi oro, materie prime, "
+    "obbligazioni, monetario, cripto e liquidità."
+)
 
 # TASK-48: the share of a distribution (countries, sectors) that no source
 # attributes to a named country/sector. Every distribution sums to 100 over
@@ -198,6 +221,8 @@ def compute_portfolio_xray(
     # Skip candidates that already have justETF enrichment holdings
     etf_raw_holdings: dict[int, list] = {}
     yfinance_failures: dict[int, str] = {}
+    # Assets whose Yahoo request failed (not cached, retried next time).
+    yahoo_errors: set[int] = set()
     # Gold/commodity/crypto products (shared classifier) have no basket of
     # securities to look through: no Yahoo call, an explicit coverage reason.
     no_look_through: dict[int, str] = {}
@@ -210,6 +235,8 @@ def compute_portfolio_xray(
     needs_yfinance = [
         h for h in candidates
         if h.asset_id not in no_look_through
+        # Bond funds: equity look-through not applicable, no Yahoo call (TASK-52).
+        and holding_asset_class(h) != "bond"
         and (h.asset_id not in enrichment_map or not enrichment_map[h.asset_id].get("top_holdings"))
     ]
 
@@ -239,6 +266,7 @@ def compute_portfolio_xray(
             except Exception as exc:
                 asset = futures[future]
                 yfinance_failures[asset.asset_id] = f"yfinance holdings fetch failed: {exc}"
+                yahoo_errors.add(asset.asset_id)
 
     # TASK-48: denominator of every coverage/exposure metric = the non-cash
     # positions (the cash balance is not a position at all).
@@ -286,6 +314,10 @@ def compute_portfolio_xray(
     classified_sector = 0.0
     lookthrough_share = 0.0
     funds_with_holdings_share = 0.0
+    # TASK-52: shares of the denominator by look-through status, and the
+    # decomposed part of the applicable positions.
+    status_share: dict[str, float] = {"available": 0.0, "not_applicable": 0.0, "missing": 0.0}
+    applicable_decomposed = 0.0
 
     for h in etf_holdings:
         enrich = enrichment_map.get(h.asset_id)
@@ -312,6 +344,19 @@ def compute_portfolio_xray(
         if is_direct_stock:
             # A single share is its own underlying holding.
             lookthrough_share += share
+        listed_for_status = _listed_pct(h, enrich, etf_raw_holdings)
+        status, status_reason = _lookthrough_status(
+            asset_class=asset_class,
+            is_direct_stock=is_direct_stock,
+            listed_pct=listed_for_status,
+            has_enrichment=enrich is not None,
+            fetch_error=h.asset_id in yahoo_errors,
+        )
+        status_share[status] += share
+        if status == "available":
+            applicable_decomposed += (
+                share if is_direct_stock else share * min(max(listed_for_status or 0.0, 0.0), 100.0) / 100.0
+            )
         if (
             not is_fund_candidate
             and h.asset_id not in yfinance_failures
@@ -376,6 +421,8 @@ def compute_portfolio_xray(
                     symbol=h.symbol,
                     name=h.name,
                     reason=failure_reason,
+                    lookthrough_status=status,
+                    lookthrough_reason=status_reason,
                 )
             )
 
@@ -421,6 +468,8 @@ def compute_portfolio_xray(
             failure_reason=failure_reason,
             top_holdings=detail_holdings,
             lookthrough_kind=kind,
+            lookthrough_status=status,
+            lookthrough_reason=status_reason,
             listed_holdings_pct=round(listed_pct, 2) if detail_holdings else None,
             data_source=data_source,
             data_as_of=oldest[0].isoformat() if oldest else None,
@@ -452,6 +501,14 @@ def compute_portfolio_xray(
     funds_pct = _pct(funds_with_holdings_share)
     country_pct = _pct(classified_country)
     sector_pct = _pct(classified_sector)
+    available_pct = _pct(status_share["available"])
+    not_applicable_pct = _pct(status_share["not_applicable"])
+    missing_pct = _pct(status_share["missing"])
+    applicable_share = status_share["available"] + status_share["missing"]
+    applicable_pct = (
+        _pct(applicable_decomposed / applicable_share * 100.0) if applicable_share > 1e-9 else None
+    )
+    not_applicable_labels = _not_applicable_labels(etf_details)
 
     return XRayResponse(
         **identity,
@@ -468,6 +525,11 @@ def compute_portfolio_xray(
         classified_sector_pct=sector_pct,
         unclassified_country_pct=agg_countries.get(UNCLASSIFIED_LABEL, 0.0),
         unclassified_sector_pct=agg_sectors.get(UNCLASSIFIED_LABEL, 0.0),
+        applicable_lookthrough_coverage_pct=applicable_pct,
+        available_pct=available_pct,
+        not_applicable_pct=not_applicable_pct,
+        missing_pct=missing_pct,
+        applicable_denominator=APPLICABLE_DENOMINATOR,
         coverage_denominator=COVERAGE_DENOMINATOR,
         coverage_note=_coverage_note(
             has_positions=denominator_weight > 0,
@@ -476,9 +538,86 @@ def compute_portfolio_xray(
             country_pct=country_pct,
             sector_pct=sector_pct,
             data_as_of=data_as_of,
+            applicable_pct=applicable_pct,
+            not_applicable_pct=not_applicable_pct,
+            missing_pct=missing_pct,
+            not_applicable_labels=not_applicable_labels,
         ),
         data_as_of=data_as_of,
     )
+
+
+# --- TASK-52 helpers -----------------------------------------------------------------
+
+_CLASS_LABELS_IT = {
+    "gold": "oro",
+    "commodity": "materie prime",
+    "bond": "obbligazioni",
+    "cash": "monetario",
+    "crypto": "cripto",
+}
+
+
+def _listed_pct(h: AnalyzedHolding, enrich: dict | None, etf_raw_holdings: dict[int, list]) -> float | None:
+    """Sum of the listed top-holding weights in % of the fund (None without holdings)."""
+    if enrich and enrich.get("top_holdings"):
+        values = [
+            float(th["percentage"]) for th in enrich["top_holdings"]
+            if isinstance(th, dict) and isinstance(th.get("percentage"), (int, float))
+        ]
+        if values:
+            return sum(values)
+    raw = etf_raw_holdings.get(h.asset_id)
+    if raw:
+        return sum(rh.weight * 100.0 for rh in raw)
+    return None
+
+
+def _lookthrough_status(
+    *,
+    asset_class: str,
+    is_direct_stock: bool,
+    listed_pct: float | None,
+    has_enrichment: bool,
+    fetch_error: bool = False,
+) -> tuple[str, str]:
+    """available | not_applicable | missing, with the reason in Italian (TASK-52)."""
+    if asset_class in NOT_APPLICABLE_CLASSES:
+        return "not_applicable", NOT_APPLICABLE_REASONS[asset_class]
+    if is_direct_stock:
+        return "available", "Titolo singolo: è esso stesso il sottostante."
+    if listed_pct is not None:
+        return "available", f"Top holdings note per il {_fmt_it(min(max(listed_pct, 0.0), 100.0))}% del fondo."
+    if fetch_error:
+        return "missing", (
+            "Dati mancanti: errore temporaneo di Yahoo nel recupero delle top holdings "
+            "(non memorizzato, riprovato alla prossima richiesta)."
+        )
+    if asset_class == "unknown":
+        return "missing", (
+            "Dati mancanti: classe dello strumento non determinata e nessuna top holding disponibile."
+        )
+    if has_enrichment:
+        return "missing", (
+            "Dati mancanti: il profilo justETF salvato non contiene top holdings e Yahoo non le fornisce."
+        )
+    return "missing", (
+        "Dati mancanti: nessun arricchimento justETF salvato e Yahoo non fornisce top holdings "
+        "per questo strumento."
+    )
+
+
+def _not_applicable_labels(details: list[XRayEtfDetail]) -> list[str]:
+    seen: list[str] = []
+    for d in details:
+        if d.lookthrough_status != "not_applicable":
+            continue
+        for cls, reason in NOT_APPLICABLE_REASONS.items():
+            if d.lookthrough_reason == reason:
+                label = _CLASS_LABELS_IT[cls]
+                if label not in seen:
+                    seen.append(label)
+    return seen
 
 
 # --- TASK-48 helpers -----------------------------------------------------------------
@@ -586,10 +725,15 @@ def _coverage_note(
     country_pct: float,
     sector_pct: float,
     data_as_of: str | None,
+    applicable_pct: float | None = None,
+    not_applicable_pct: float = 0.0,
+    missing_pct: float = 0.0,
+    not_applicable_labels: list[str] | None = None,
 ) -> str:
     if not has_positions:
         return "Nessuna posizione esclusa la liquidità: niente da scomporre."
-    note = (
+    note = _applicable_sentence(applicable_pct, not_applicable_pct, missing_pct, not_applicable_labels or [])
+    note += (
         f"Scomposto il {_fmt_it(lookthrough_pct)}% del portafoglio (liquidità esclusa) nei titoli "
         f"sottostanti: peso di ogni fondo × quota del fondo coperta dalle top holdings note, più i "
         f"titoli singoli. Il {_fmt_it(funds_pct)}% è in fondi con almeno una top holding nota "
@@ -603,3 +747,22 @@ def _coverage_note(
     else:
         note += " Nessun dato del provider disponibile."
     return note
+
+
+def _applicable_sentence(
+    applicable_pct: float | None,
+    not_applicable_pct: float,
+    missing_pct: float,
+    labels: list[str],
+) -> str:
+    """First sentence of the coverage note: the applicable (equity) part (TASK-52)."""
+    if applicable_pct is None:
+        text = "Look-through azionario non applicabile a nessuna posizione"
+    else:
+        text = f"Scomposto il {_fmt_it(applicable_pct)}% della parte azionaria (applicable_lookthrough_coverage_pct)"
+    if not_applicable_pct > 0:
+        detail = f" ({', '.join(labels)})" if labels else ""
+        text += f"; {_fmt_it(not_applicable_pct)}% del portafoglio non applicabile{detail}"
+    if missing_pct > 0:
+        text += f"; {_fmt_it(missing_pct)}% con dati mancanti"
+    return text + ". "

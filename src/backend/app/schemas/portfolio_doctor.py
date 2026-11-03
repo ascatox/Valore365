@@ -293,6 +293,11 @@ class XRayEtfDetail(BaseModel):
     # fund: a fund with listed top holdings; direct_stock: a single share (its own
     # underlying); no_lookthrough: gold/commodity/crypto; missing: no data.
     lookthrough_kind: Literal["fund", "direct_stock", "no_lookthrough", "missing"] = "missing"
+    # TASK-52: available (holdings known / single share), not_applicable (gold,
+    # commodity, bond, money market, crypto: no equity basket to decompose),
+    # missing (equity or unclassified fund without holdings data). Reason in Italian.
+    lookthrough_status: Literal["available", "not_applicable", "missing"] = "missing"
+    lookthrough_reason: str | None = None
     # Sum of the listed top-holding weights, in % of the fund (None without holdings).
     listed_holdings_pct: float | None = None
     # Provider of the data used for this position and its reference date (ISO).
@@ -308,6 +313,9 @@ class XRayCoverageIssue(BaseModel):
     symbol: str
     name: str
     reason: str
+    # TASK-52: a not_applicable position is listed here too (no holdings), but it is not missing data.
+    lookthrough_status: Literal["available", "not_applicable", "missing"] = "missing"
+    lookthrough_reason: str | None = None
 
 
 class XRayResponse(BaseModel):
@@ -328,6 +336,14 @@ class XRayResponse(BaseModel):
     classified_sector_pct: float = Field(default=0.0, ge=0, le=100)
     unclassified_country_pct: float = Field(default=0.0, ge=0, le=100)
     unclassified_sector_pct: float = Field(default=0.0, ge=0, le=100)
+    # TASK-52 — decomposed value of the applicable positions / their value
+    # (applicable_denominator); None when no position is applicable.
+    applicable_lookthrough_coverage_pct: float | None = Field(default=None, ge=0, le=100)
+    # Shares of coverage_denominator by lookthrough_status (they sum to 100).
+    available_pct: float = Field(default=0.0, ge=0, le=100)
+    not_applicable_pct: float = Field(default=0.0, ge=0, le=100)
+    missing_pct: float = Field(default=0.0, ge=0, le=100)
+    applicable_denominator: str = ""
     coverage_denominator: str = ""
     coverage_note: str = ""
     # Oldest reference date (ISO) of the provider data used; None without data.

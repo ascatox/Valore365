@@ -27,7 +27,14 @@ import { AssetInfoModal } from '../dashboard/holdings/AssetInfoModal';
 import type { XRayEtfDetail, XRayHolding } from '../../services/api';
 import { formatXrayFailureReason } from '../../services/dataQuality';
 import type { PortfolioScopeInput } from '../../scope/portfolioScope';
-import { exposureRows, formatIsoDateIt, formatPctIt, lookthroughCoverageText } from './xrayFormat';
+import {
+  applicableCoverageText,
+  exposureRows,
+  formatIsoDateIt,
+  formatPctIt,
+  lookthroughCoverageText,
+  lookthroughStatusBadge,
+} from './xrayFormat';
 
 const PRIVACY_MASK = '******';
 
@@ -167,12 +174,23 @@ export function XRayCard({ scope }: Props) {
           </ThemeIcon>
           <Title order={4}>X-Ray: Titoli Sottostanti</Title>
         </Group>
-        {xray?.coverage_issues?.length ? (
+        {xray && applicableCoverageText(xray) && (
+          <Text size="sm" mb="sm">
+            {privacy ? 'Copertura X-Ray nascosta.' : applicableCoverageText(xray)}
+          </Text>
+        )}
+        {xray?.coverage_issues?.some((issue) => issue.lookthrough_status !== 'not_applicable') ? (
           <Alert color="yellow" variant="light" icon={<IconAlertTriangle size={18} />}>
             L&apos;X-Ray ha rilevato strumenti candidati, ma nessuno con holdings sufficienti. {xray.coverage_issues
+              .filter((issue) => issue.lookthrough_status !== 'not_applicable')
               .slice(0, 2)
               .map((issue) => `${issue.symbol}: ${formatXrayFailureReason(issue.reason)}`)
               .join(' • ')}
+          </Alert>
+        ) : xray?.coverage_issues?.length ? (
+          <Alert color="blue" variant="light">
+            Le posizioni del portafoglio (oro, materie prime, obbligazioni, monetario…) non hanno titoli azionari
+            sottostanti da scomporre: look-through non applicabile, non dati mancanti.
           </Alert>
         ) : (
           <Alert color="blue" variant="light">
@@ -182,6 +200,10 @@ export function XRayCard({ scope }: Props) {
       </Card>
     );
   }
+
+  const applicableText = applicableCoverageText(xray);
+  // TASK-52: a not-applicable position (gold, bonds, ...) is not a data gap.
+  const missingIssues = xray.coverage_issues.filter((issue) => issue.lookthrough_status !== 'not_applicable');
 
   return (
     <>
@@ -218,6 +240,20 @@ export function XRayCard({ scope }: Props) {
             </Group>
           </Group>
 
+          {applicableText && (
+            <Tooltip
+              label={xray.applicable_denominator || xray.coverage_note}
+              multiline
+              w={320}
+              withArrow
+              disabled={!xray.applicable_denominator && !xray.coverage_note}
+            >
+              <Text size="sm" fw={500}>
+                {privacy ? 'Copertura della parte azionaria nascosta.' : applicableText}
+              </Text>
+            </Tooltip>
+          )}
+
           {xray.lookthrough_coverage_pct != null && (
             <Text size="xs" c="dimmed">
               {privacy
@@ -230,7 +266,7 @@ export function XRayCard({ scope }: Props) {
             </Text>
           )}
 
-          {xray.coverage_issues.length > 0 && (
+          {missingIssues.length > 0 && (
             <Alert
               color="yellow"
               variant="light"
@@ -238,12 +274,12 @@ export function XRayCard({ scope }: Props) {
               title="Copertura X-Ray parziale"
             >
               <Text size="sm">
-                {xray.coverage_issues.length === 1
+                {missingIssues.length === 1
                   ? 'Un ETF/fondo non ha holdings affidabili disponibili.'
-                  : `${xray.coverage_issues.length} ETF/fondi non hanno holdings affidabili disponibili.`}
+                  : `${missingIssues.length} ETF/fondi non hanno holdings affidabili disponibili.`}
               </Text>
               <Text size="xs" c="dimmed" mt={4}>
-                {xray.coverage_issues
+                {missingIssues
                   .slice(0, 3)
                   .map((issue) => `${issue.symbol}: ${formatXrayFailureReason(issue.reason)}`)
                   .join(' • ')}
@@ -438,11 +474,24 @@ export function XRayCard({ scope }: Props) {
                                 {DATA_SOURCE_LABEL[etf.data_source ?? ''] ?? 'Dati'} al {formatIsoDateIt(etf.data_as_of)}
                               </Badge>
                             )}
-                            {!etf.holdings_available && (
-                              <Badge size="sm" variant="light" color="orange">
-                                {etf.lookthrough_kind === 'direct_stock' ? 'Titolo singolo' : 'Dati non disponibili'}
-                              </Badge>
-                            )}
+                            {(() => {
+                              const statusBadge = lookthroughStatusBadge(etf.lookthrough_status);
+                              if (statusBadge) {
+                                return (
+                                  <Tooltip label={etf.lookthrough_reason ?? statusBadge.label} multiline w={280} withArrow>
+                                    <Badge size="sm" variant="light" color={statusBadge.color}>
+                                      {statusBadge.label}
+                                    </Badge>
+                                  </Tooltip>
+                                );
+                              }
+                              if (etf.holdings_available) return null;
+                              return (
+                                <Badge size="sm" variant="light" color="orange">
+                                  {etf.lookthrough_kind === 'direct_stock' ? 'Titolo singolo' : 'Dati non disponibili'}
+                                </Badge>
+                              );
+                            })()}
                           </Group>
                         </Group>
                       </UnstyledButton>
@@ -484,7 +533,9 @@ export function XRayCard({ scope }: Props) {
                         ) : (
                           <Box px="sm" py="xs">
                             <Text size="xs" c="dimmed">
-                              {formatXrayFailureReason(etf.failure_reason) ?? 'Dati sulle posizioni sottostanti non disponibili per questo ETF.'}
+                              {etf.lookthrough_reason
+                                ?? formatXrayFailureReason(etf.failure_reason)
+                                ?? 'Dati sulle posizioni sottostanti non disponibili per questo ETF.'}
                             </Text>
                           </Box>
                         )}
