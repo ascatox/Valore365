@@ -137,8 +137,10 @@ non toglie punti.
   - acquisto: liquidità − (prezzo × quantità + commissioni + imposte), al cambio del giorno;
   - vendita: liquidità + (prezzo × quantità − commissioni − imposte); i proventi restano in
     liquidità (non sono un prelievo) finché non c'è un prelievo registrato;
-  - deposito, dividendo, interesse: +importo; prelievo, commissione (movimento `fee`): −importo
-    (per questi lati `fees`/`taxes` non sono applicati, come nel saldo di cassa del summary).
+  - deposito, interesse: +importo; dividendo: +(importo − `taxes`), cioè netto della ritenuta
+    (TASK-47); prelievo, commissione (movimento `fee`): −importo (per questi lati `fees` non è
+    applicato e `taxes` solo sui dividendi, come nel saldo di cassa del summary). La voce
+    `dividend` di `get_external_cashflows` porta già l'importo netto.
 - **Apporti impliciti:** la liquidità si chiude a fine giornata (tutti i movimenti del giorno,
   poi il saldo); se è negativa, lo scoperto è un **apporto esterno implicito** datato quel giorno
   (`implicit_contribution`) e la liquidità riparte da 0: non va mai sotto zero. Vale per un
@@ -165,7 +167,8 @@ non toglie punti.
     prima;
   - la serie storica **differisce** da `summary.cash_balance`, che conta solo i movimenti di cassa
     (depositi/prelievi/dividendi/interessi/commissioni + saldo iniziale), ignora acquisti e vendite
-    e può essere negativo: la semantica del summary non è stata cambiata (TASK-46);
+    e può essere negativo: la semantica del summary non è stata cambiata (TASK-46); analisi e
+    opzioni in §9.1;
   - l'ordine infragiornaliero non conta (chiusura a fine giornata): un deposito registrato dopo
     un acquisto nello stesso giorno lo copre;
   - le vendite oltre la quantità detenuta (bloccate in inserimento) azzerano la posizione ma
@@ -173,12 +176,42 @@ non toglie punti.
 
 ## 9. Liquidità, prezzi e variazione giornaliera
 
-- **Liquidità:** deposito/interessi/dividendi +, prelievo/commissione −, buy/sell ignorati; data =
-  `trade_at::date`; FX alla data del movimento in `summary.cash_balance`, FX più recente in
-  `get_cash_balance.total_cash` (issue aperta C2-CASH-FX); FX mancante → 1,0.
+- **Liquidità (TASK-47, una sola regola):** `summary.cash_balance`, `GET /portfolios/{id}/cash-balance`
+  (`total_cash`, sezione Cash del frontend) e i tool copilot/MCP `get_cash_balance` /
+  `get_portfolio_summary` usano lo stesso helper `_cash_balance_detail`
+  (`repository/_utilities.py`): saldo iniziale `portfolios.cash_balance` + depositi, interessi e
+  dividendi **netti** (importo − `taxes`) − prelievi e commissioni (`fee`); acquisti e vendite
+  ignorati (vedi §9.1); data = `trade_at::date`.
+- **Cambio della liquidità in valuta estera:** ogni movimento non in valuta base è convertito al
+  cambio **della sua data** (ultimo cambio disponibile ≤ data del movimento). È la regola del
+  summary, del modello di liquidità della performance (TASK-46, §8) e del costo delle posizioni.
+  Prima `total_cash` usava il cambio più recente sui saldi per valuta: i due numeri divergevano.
+  Perché non il cambio corrente: il codice non tiene una liquidità in valuta estera come saldo
+  autonomo (non esiste un'operazione di cambio valuta; un acquisto in USD non scala un saldo USD;
+  il modello della performance tiene un unico saldo in valuta base), quindi ogni movimento è
+  trattato come convertito in valuta base alla sua data. `currency_breakdown` di `get_cash_balance`
+  resta un riepilogo **nominale** per valuta (senza conversione, saldo iniziale nella valuta
+  base). Se il proprietario tiene davvero conti multi-valuta, la valutazione corretta di un saldo
+  estero è al cambio corrente: richiederebbe saldi per valuta anche nel modello della performance
+  (fuori perimetro; oggi tutti i movimenti sono in EUR).
+- **Cambio mancante (non più silenzioso):** il calcolo non si interrompe (cambio 1,0) ma la valuta è
+  riportata in `fx_missing_currencies` di `CashBalanceResponse` e di `PortfolioSummary` (quest'ultimo
+  include anche le valute mancanti delle posizioni); un cambio esistente solo dopo la data del
+  movimento conta come mancante.
 - **Prezzo di mercato delle posizioni:** ultima chiusura giornaliera × FX della valuta di quotazione
-  alla data del prezzo; `price_date` e `price_stale` esposti. Senza FX il prezzo resta il costo
-  medio (issue aperta C4-FX-FALLBACK). `quote_currency` dei listing `.L` da riconciliare (TASK-41).
+  alla data del prezzo; `price_date` e `price_stale` esposti. Senza prezzo, o senza cambio della
+  valuta di quotazione, il prezzo resta il costo medio (P/L 0) ma ora è segnalato:
+  `Position.price_fallback = 'avg_cost'`, `Position.fx_missing` / `fx_missing_currencies` (anche per
+  il cambio mancante di una transazione nel costo medio, convertita a 1,0);
+  `PortfolioSummary.price_fallback_symbols`. I tool `get_positions`, `get_portfolio_summary`,
+  `get_cash_balance` (e gli aggregati `get_aggregate_summary` / `get_aggregate_positions`) espongono
+  i campi e una `data_quality_note` in italiano solo quando c'è qualcosa da segnalare.
+  `quote_currency` dei listing `.L` da riconciliare (TASK-41).
+- **Ritenute sui dividendi (decisione TASK-47):** la liquidità riceve il dividendo **netto**
+  (`quantity × price − taxes`) nel summary, in `get_cash_balance` (totale e `currency_breakdown`), nel
+  `cash-flow-timeline` e nel modello di liquidità della performance (§8). `get_dividend_summary`
+  continua a riportare i dividendi **lordi** (analisi del reddito). Con i dati attuali (ritenute a
+  0) nessun numero cambia.
 - **Variazione giornaliera della posizione:** (ultimo prezzo / chiusura precedente − 1) × 100 in
   **valuta di quotazione** (senza FX), arrotondata a 2 decimali; chiusura precedente dal tick Yahoo,
   altrimenti penultima barra giornaliera. `previous_close_available` (TASK-44) dice se esiste.
@@ -188,6 +221,70 @@ non toglie punti.
   delle percentuali arrotondate delle posizioni non ricostruisce il summary (atteso).
 - **Quantità:** nessun arrotondamento all'origine; output arrotondato a 8 decimali; nessuna
   tolleranza contabile (un residuo resta una posizione). Costo medio ponderato (non FIFO).
+
+### 9.1 Liquidità del summary vs modello della performance (TASK-47, decisione del proprietario)
+
+**Come è calcolato oggi `summary.cash_balance`.** `SummaryMixin.get_summary` →
+`get_current_cash_balance_detail` → `_cash_balance_detail`: saldo iniziale della colonna
+`portfolios.cash_balance` + depositi + interessi + dividendi netti − prelievi − commissioni `fee`.
+Acquisti e vendite sono **ignorati**, e non c'è alcun meccanismo che li compensi:
+- `create_transaction` (`repository/_transactions.py`) inserisce solo la riga: non aggiorna
+  `portfolios.cash_balance` e non genera prelievi/depositi automatici; lo stesso vale per gli
+  acquisti del PAC (`routes_pac.py`), per il commit del ribilanciamento (`routes_rebalancing.py`) e
+  per l'import CSV (solo le righe del file);
+- `portfolios.cash_balance` cambia solo alla creazione o con la modifica manuale del portafoglio
+  (`_portfolio_crud.py`, PATCH); non ha data;
+- i movimenti di cassa arrivano da `POST /cash-movements` (sezione Cash) o dall'import CSV.
+
+Il frontend mostra `total_cash` nella sezione Cash, `summary.cash_balance` nella Panoramica e nel
+selettore dei portafogli, e somma `market_value + cash_balance` come valore totale (hero mobile,
+vista aggregata); Monte Carlo usa lo stesso totale come capitale iniziale, il ribilanciamento
+copilot usa `cash_balance` come liquidità disponibile.
+
+La performance (TASK-46, §8) usa invece il modello di liquidità: acquisti pagati dalla liquidità,
+proventi delle vendite in liquidità, scoperto = apporto implicito, saldo iniziale escluso.
+
+**Esempio sintetico** (EUR, saldo iniziale 0, prezzo finale 110):
+
+| Movimento | Summary: liquidità | Modello performance: liquidità |
+|---|---|---|
+| g1 deposito 1000 | 1000 | 1000 |
+| g2 acquisto 8 × 100 | 1000 (ignorato) | 200 |
+| g3 vendita 3 × 110 | 1000 (ignorata) | 530 |
+| g4 dividendo 20, ritenuta 5,20 | 1014,80 | 544,80 |
+| **Valore totale** (5 titoli × 110 = 550 + liquidità) | **1564,80** | **1094,80** |
+
+Il valore reale è 1094,80 (1000 versati + 80 di plusvalenza + 14,80 di dividendo netto): il
+summary conta due volte gli 800 investiti e non vede i 330 incassati (scarto = acquisti − vendite =
+470). Senza depositi registrati (portafogli di sole operazioni, come quelli del proprietario):
+acquisto 10 × 100, vendita 4 × 110 → summary: liquidità 0, totale 660; performance: liquidità 440
+(i 1000 dell'acquisto sono un apporto implicito), valore 1100 — la performance supera il summary
+dei proventi delle vendite, come annotato in TASK-46.
+
+**Opzioni (da decidere, nessuna implementata):**
+
+1. **Il summary adotta il modello della performance** (stessa funzione di `_cash_model`: acquisti −,
+   vendite +, scoperto a 0 come apporto implicito; il saldo iniziale come deposito alla data di
+   creazione del portafoglio). *Pro:* una sola liquidità ovunque, totale del summary = ultimo
+   valore della performance, niente doppio conteggio nel totale, Monte Carlo e ribilanciamento.
+   *Contro:* cambia la liquidità mostrata di ogni portafoglio con acquisti/vendite (con depositi:
+   cala degli acquisti netti; senza depositi: compaiono i proventi delle vendite); chi ha usato
+   `cash_balance` come saldo reale aggiornato a mano vedrebbe gli acquisti scalati due volte.
+   *Dati:* nessuna migrazione dello schema; ricalcolo puro, da verificare portafoglio per
+   portafoglio con le query in sola lettura prima del rilascio.
+2. **Due grandezze esplicite** (nessun numero esistente cambia): `cash_balance` resta il "saldo dei
+   movimenti di cassa" ed è etichettato così in UI e MCP; si aggiunge `cash_balance_model` (liquidità
+   del modello della performance) e `total_value` = `market_value + cash_balance_model`, usato per
+   i totali del frontend, Monte Carlo e ribilanciamento. *Pro:* additivo, reversibile, trasparente.
+   *Contro:* due numeri di liquidità da spiegare; finché i totali usano `cash_balance` il doppio
+   conteggio resta. *Dati:* nessun impatto.
+3. **La performance torna alla semantica del summary** (liquidità solo dai movimenti di cassa,
+   acquisti/vendite come flussi esterni). *Pro:* summary invariato. *Contro:* reintroduce
+   l'errore C1-TWR-MIXED corretto in TASK-46 (con depositi e acquisti nello stesso periodo il
+   capitale è contato due volte); sconsigliata. *Dati:* nessuno.
+
+Raccomandazione tecnica: opzione 1 (eventualmente preceduta dalla 2 come passaggio di
+transizione per confrontare i due valori sui dati reali).
 
 ## 10. Classificazione delle asset class (`services/asset_classification.py`)
 

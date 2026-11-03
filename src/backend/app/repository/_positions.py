@@ -315,6 +315,8 @@ class PositionsMixin:
             # Lots are folded per (portfolio, asset): average cost and sell
             # clamping are per portfolio, exactly as for a single portfolio.
             grouped: dict[tuple[int, int], dict[str, float]] = defaultdict(lambda: {"quantity": 0.0, "cost": 0.0})
+            # Currencies whose FX rate was missing, per asset (TASK-47: reported, not hidden).
+            fx_missing_by_asset: dict[int, set[str]] = defaultdict(set)
             first_trade_at_by_asset: dict[int, datetime] = {}
             fx_series: dict[str, list[tuple[date, float]]] = defaultdict(list)
             for row in fx_rows:
@@ -350,7 +352,10 @@ class PositionsMixin:
                 taxes = float(tx["taxes"])
                 trade_day = tx["trade_date"]
                 trade_ccy = str(tx["trade_currency"])
-                tx_fx = fx_rate_on_or_before(trade_ccy, trade_day) or 1.0
+                tx_fx = fx_rate_on_or_before(trade_ccy, trade_day)
+                if tx_fx is None:
+                    fx_missing_by_asset[aid].add(trade_ccy)
+                    tx_fx = 1.0
                 gross_cost_base = qty * price * tx_fx
                 fees_taxes_base = (fees + taxes) * tx_fx
 
@@ -384,7 +389,11 @@ class PositionsMixin:
                 avg_cost = lot["cost"] / qty if qty else 0.0
                 price_info = daily_prices.get(aid)
                 meta = asset_meta.get(aid)
+                # Without a price, or without the FX rate of the quote currency,
+                # the position is still valued (at avg cost, P/L 0), but the
+                # fallback is flagged on the position (TASK-47).
                 market_price = avg_cost
+                price_fallback: str | None = "avg_cost"
                 raw_price: float | None = None  # price in quote currency (no FX)
                 price_day_val: date | None = None
                 if price_info and meta is not None:
@@ -394,6 +403,10 @@ class PositionsMixin:
                     quote_fx = fx_rate_on_or_before(meta.quote_currency, price_day)
                     if quote_fx is not None:
                         market_price = latest_close * quote_fx
+                        price_fallback = None
+                    else:
+                        fx_missing_by_asset[aid].add(meta.quote_currency)
+                missing_ccys = sorted(fx_missing_by_asset.get(aid, ()))
                 market_value = qty * market_price
                 cost_basis = qty * avg_cost
                 pl = market_value - cost_basis
@@ -442,6 +455,9 @@ class PositionsMixin:
                         first_trade_at=first_trade_at_by_asset.get(aid),
                         price_stale=stale,
                         price_date=price_day_val,
+                        price_fallback=price_fallback,
+                        fx_missing=bool(missing_ccys),
+                        fx_missing_currencies=missing_ccys,
                     )
                 )
 

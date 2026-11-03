@@ -399,6 +399,10 @@ export interface PortfolioSummary {
   day_change: number;
   day_change_pct: number;
   cash_balance: number;
+  /** TASK-47: currencies without FX rate (amounts converted at 1.0). */
+  fx_missing_currencies?: string[];
+  /** TASK-47: positions valued at average cost (no price or no FX). */
+  price_fallback_symbols?: string[];
 }
 
 export interface TWRResult {
@@ -479,6 +483,10 @@ export interface Position {
   first_trade_at?: string | null;
   price_stale?: boolean;
   price_date?: string | null;
+  /** TASK-47: 'avg_cost' when market_price is the average cost (no price or no FX). */
+  price_fallback?: 'avg_cost' | null;
+  fx_missing?: boolean;
+  fx_missing_currencies?: string[];
 }
 
 export interface AssetInfoPricePoint {
@@ -1117,6 +1125,8 @@ export interface CashBalanceResponse {
   total_cash: number;
   currency_breakdown: CashCurrencyBreakdown[];
   recent_movements: TransactionListItem[];
+  /** TASK-47: currencies converted at 1.0 for lack of a trade-date FX rate. */
+  fx_missing_currencies?: string[];
 }
 
 export interface CashFlowTimelinePoint {

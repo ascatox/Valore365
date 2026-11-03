@@ -463,6 +463,66 @@ def execute_tool(
 # T1-T9: Informational tool handlers
 # ---------------------------------------------------------------------------
 
+# TASK-47: data gaps are reported in the tool output, never hidden.
+FX_MISSING_NOTE = (
+    "Cambio mancante per {ccys}: gli importi in queste valute sono convertiti a 1,0 "
+    "(liquidita'/costo) o le posizioni valutate al costo medio; i totali sono approssimati."
+)
+CASH_FX_MISSING_NOTE = (
+    "Liquidita' approssimata: manca il cambio per {ccys} alla data dei movimenti, "
+    "convertiti a 1,0."
+)
+PRICE_FALLBACK_NOTE = (
+    "Prezzo non disponibile (o senza cambio) per {symbols}: valore di mercato pari al "
+    "costo medio, P/L non significativo."
+)
+
+
+def summary_data_flags(summary: Any) -> dict:
+    """fx_missing_currencies / price_fallback_symbols of a summary, with an Italian note when non-empty."""
+    fx_missing = list(getattr(summary, "fx_missing_currencies", None) or [])
+    fallback = list(getattr(summary, "price_fallback_symbols", None) or [])
+    out: dict[str, Any] = {"fx_missing_currencies": fx_missing, "price_fallback_symbols": fallback}
+    notes = []
+    if fx_missing:
+        notes.append(FX_MISSING_NOTE.format(ccys=", ".join(fx_missing)))
+    if fallback:
+        notes.append(PRICE_FALLBACK_NOTE.format(symbols=", ".join(fallback)))
+    if notes:
+        out["data_quality_note"] = " ".join(notes)
+    return out
+
+
+def position_row(p: Any) -> dict:
+    """One position as the get_positions tools return it (shared with the aggregate MCP tool)."""
+    return {
+        "symbol": p.symbol,
+        "name": p.name,
+        "weight": round(p.weight, 2),
+        "market_value": round(p.market_value, 2),
+        "cost_basis": round(p.avg_cost * p.quantity, 2) if p.avg_cost else 0,
+        "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
+        "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
+        "quantity": float(p.quantity),
+        "market_price": round(p.market_price, 4) if p.market_price else 0,
+        "price_fallback": getattr(p, "price_fallback", None),
+        "fx_missing": bool(getattr(p, "fx_missing", False)),
+    }
+
+
+def positions_data_note(rows: list[dict]) -> dict:
+    """Italian note for the positions whose price fell back to the average cost."""
+    fallback = [r["symbol"] for r in rows if r.get("price_fallback")]
+    if not fallback:
+        return {}
+    return {
+        "data_quality_note": (
+            PRICE_FALLBACK_NOTE.format(symbols=", ".join(fallback))
+            + " Per le posizioni con fx_missing manca il cambio della valuta di quotazione o di acquisto."
+        )
+    }
+
+
 def _get_portfolio_summary(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
@@ -477,6 +537,7 @@ def _get_portfolio_summary(
         "day_change_pct": round(summary.day_change_pct, 2),
         "cash_balance": round(summary.cash_balance, 2),
         "base_currency": summary.base_currency,
+        **summary_data_flags(summary),
     }
 
 
@@ -486,22 +547,8 @@ def _get_positions(
 ) -> dict:
     positions = repo.get_positions(portfolio_id, user_id)
     sorted_pos = sorted(positions, key=lambda p: p.weight, reverse=True)[:30]
-    return {
-        "positions": [
-            {
-                "symbol": p.symbol,
-                "name": p.name,
-                "weight": round(p.weight, 2),
-                "market_value": round(p.market_value, 2),
-                "cost_basis": round(p.avg_cost * p.quantity, 2) if p.avg_cost else 0,
-                "unrealized_pl_pct": round(p.unrealized_pl_pct, 2),
-                "day_change_pct": round(p.day_change_pct, 2) if p.day_change_pct else 0,
-                "quantity": float(p.quantity),
-                "market_price": round(p.market_price, 4) if p.market_price else 0,
-            }
-            for p in sorted_pos
-        ],
-    }
+    rows = [position_row(p) for p in sorted_pos]
+    return {"positions": rows, **positions_data_note(rows)}
 
 
 def _get_target_drift(
@@ -565,10 +612,19 @@ def _get_cash_balance(
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     summary = repo.get_summary(portfolio_id, user_id)
-    return {
+    # Same number and rule as summary.cash_balance and GET /cash-balance
+    # total_cash (TASK-47): movements at their trade-date FX, dividends net.
+    out: dict[str, Any] = {
         "total_cash": round(summary.cash_balance, 2),
         "base_currency": summary.base_currency,
     }
+    # Only the cash gaps here (the summary also lists the positions' ones).
+    cash = repo.get_current_cash_balance_detail(portfolio_id, user_id)
+    missing = list(cash.fx_missing_currencies)
+    out["fx_missing_currencies"] = missing
+    if missing:
+        out["data_quality_note"] = CASH_FX_MISSING_NOTE.format(ccys=", ".join(missing))
+    return out
 
 
 def _get_recent_transactions(
