@@ -151,6 +151,28 @@ eseguita e verificata: [market-data-sync.md](market-data-sync.md).
   `cash_after = cash_before + extra_cash + sells_eur - buys_eur` (riportato in `totals`).
 - **Nessun importo minimo per ordine; commissioni e imposte non modellate** (importi lordi).
 
+**Performance TWR e MWR (TASK-PERF-01).** `get_performance` e `get_aggregate_performance` restituiscono,
+con una sola lettura del riepilogo per periodo (`1m`, `3m`, `ytd`, `1y`):
+
+- `twr_1m`, `twr_3m`, `twr_ytd`, `twr_1y` (invariati): TWR di **periodo** in %, non annualizzato;
+- `mwr_1m`, `mwr_3m`, `mwr_ytd`, `mwr_1y`: MWR (XIRR money-weighted, ACT/365) di **periodo** in %, non
+  annualizzato; `null` se non calcolabile;
+- `twr_annualized_pct`, `mwr_annualized_pct`: `{periodo: valore|null}`, valorizzati dal servizio solo per
+  finestre di almeno 365 giorni (le finestre brevi non vengono annualizzate);
+- `mwr_converged` (`{periodo: bool|null}`), `mwr_null_reason` (`{periodo: "non_convergente" |
+  "non_calcolabile" | "errore_calcolo" | null}`), `mwr_multiple_roots` (`{periodo: bool|null}`, `null` se
+  il servizio non lo fornisce);
+- `calculation_windows`: `{periodo: {start_date, end_date, period_days, twr_start_date, twr_end_date,
+  mwr_start_date, mwr_end_date}}` (`null` se il periodo è in errore), per verificare che TWR e MWR usino la
+  stessa finestra;
+- `implicit_contributions_eur` e `implicit_contributions_note` (invariati);
+- `performance_note`: spiegazione in italiano. Valori di fine giornata; i flussi del giorno di inizio sono
+  inclusi nel valore iniziale; gli apporti impliciti sono trattati come versamenti esterni; l'aggregato è
+  calcolato su valori e flussi combinati, non come media dei singoli portafogli.
+
+Se il calcolo di un periodo fallisce, tutti i campi di quel periodo valgono `null`
+(`mwr_null_reason: "errore_calcolo"`).
+
 **Liquidità (TASK-49).** `cash_balance` di `get_portfolio_summary` / `get_aggregate_summary`,
 `total_cash` di `get_cash_balance` e la liquidità del portafoglio in `calculate_rebalance_orders`
 seguono lo stesso modello di liquidità della performance: saldo iniziale (liquidità prima della prima
@@ -257,7 +279,7 @@ singolo non cambiano.
   (`get_summary_multi`, `get_positions_multi`, `get_allocation_multi`, `list_transactions_multi`) o lo
   stesso servizio con la lista di id (`get_performance_summary`, `analyze_portfolio_health`,
   `run_monte_carlo_projection`, `run_stress_test`, `compute_portfolio_xray`); il formato dell'output è
-  quello del tool singolo corrispondente. La performance è il **TWR sul perimetro combinato**
+  quello del tool singolo corrispondente. La performance è il **TWR (e l'MWR) sul perimetro combinato**
   (valori e flussi sommati), mai la media dei TWR dei singoli portafogli. Le posizioni dello stesso
   titolo in più portafogli diventano una riga (quantità e costi sommati, pesi sul totale).
 - **Output:** ogni risultato contiene `portfolio_ids`, `base_currency` e `aggregate_note` (vista
