@@ -17,7 +17,6 @@ from app.services.doctor_policy.errors import (
     ConfirmationInvalid,
     InvalidRequest,
     NotFound,
-    NotImplementedYet,
     PolicyValidationFailed,
 )
 from app.services.doctor_policy.service import DoctorPolicyService
@@ -202,11 +201,12 @@ def test_policy_by_id_unreadable_if_member_not_owned(svc):
         service.list_versions(USER, 7)
 
 
-def test_scenario_methods_are_placeholders(svc):
+def test_scenario_methods_validate_the_body(svc):
+    # Scenario Lab is wired (tests/unit/test_doctor_scenario*.py): an empty body is a 400.
     service, *_ = svc
-    with pytest.raises(NotImplementedYet):
+    with pytest.raises(InvalidRequest):
         service.preview_scenario(USER, {})
-    with pytest.raises(NotImplementedYet):
+    with pytest.raises(InvalidRequest):
         service.compare_scenarios(USER, {})
 
 

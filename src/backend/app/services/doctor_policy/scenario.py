@@ -81,6 +81,7 @@ from .validator import normalize_policy_document
 
 MONEY_TOL = 1e-6  # base currency
 WEIGHT_TOL = 1e-6  # percentage points
+MIN_TRADE = 0.01  # a purchase below one cent is not an operation (water-filling)
 MAX_FIXED_POINT_ITERATIONS = 200
 
 VOLATILITY_BEFORE_REASON = (
@@ -405,7 +406,7 @@ def _water_fill(amount: float, weights: dict[str, float], capacity: dict[str, fl
     """
     alloc = {k: 0.0 for k in weights}
     remaining = amount
-    active = sorted(k for k, w in weights.items() if w > 0 and capacity.get(k, math.inf) > MONEY_TOL)
+    active = sorted(k for k, w in weights.items() if w > 0 and capacity.get(k, math.inf) >= MIN_TRADE)
     while remaining > MONEY_TOL and active:
         total_w = sum(weights[k] for k in active)
         saturated = []

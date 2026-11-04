@@ -97,10 +97,8 @@ def test_policy_flag_off_is_404_feature_disabled(setup):
     assert service.calls == []
 
 
-def test_simulator_flag_off_and_not_implemented(setup):
+def test_simulator_flag_off(setup):
     client, _service, settings = setup
-    r = client.post("/api/doctor/scenarios/preview", json={"portfolio_ids": [1]})
-    assert r.status_code == 501 and r.json()["error"]["code"] == "not_implemented"
     settings.doctor_simulator_enabled = False
     for path in ("/api/doctor/scenarios/preview", "/api/doctor/scenarios/compare"):
         r = client.post(path, json={"portfolio_ids": [1]})

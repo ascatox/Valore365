@@ -40,7 +40,7 @@ from mcp.server.lowlevel import Server
 from ..copilot_doctor_tools import (
     DOCTOR_TOOL_NAMES,
     policy_document_schema,
-    scenario_operation_schema,
+    scenario_properties,
     scenario_schema,
 )
 from ..copilot_tools import TOOL_DEFINITIONS, execute_tool
@@ -138,30 +138,13 @@ ARGUMENT_CONSTRAINTS: dict[str, dict[str, Any]] = {
     "document": policy_document_schema(),
     "metric_codes": {"maxItems": 8},
     "new_cash": {"minimum": 0, "maximum": _MAX_AMOUNT},
-    "operations": {"type": "array", "maxItems": 20, "items": scenario_operation_schema()},
+    "operations": scenario_properties()["operations"],
     "target_weights": {
-        "type": "object",
-        "maxProperties": 50,
+        **scenario_properties()["target_weights"],
         "propertyNames": {"pattern": r"^[1-9][0-9]{0,9}$", "maxLength": 10},
-        "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100},
     },
-    "constraints": {
-        "type": "object",
-        "properties": {
-            "no_sell": {"type": "boolean"},
-            "max_turnover_pct": {"type": "number", "minimum": 0, "maximum": 100},
-            "keep_equity_total": {"type": "boolean"},
-        },
-        "additionalProperties": False,
-    },
-    "fee_model": {
-        "type": "object",
-        "properties": {
-            "pct": {"type": "number", "minimum": 0, "maximum": 10},
-            "fixed": {"type": "number", "minimum": 0, "maximum": 10_000},
-        },
-        "additionalProperties": False,
-    },
+    "constraints": scenario_properties()["constraints"],
+    "fee_model": scenario_properties()["fee_model"],
     "label": {"maxLength": 80},
     "scenarios": {"type": "array", "minItems": 2, "maxItems": 3, "items": scenario_schema()},
 }

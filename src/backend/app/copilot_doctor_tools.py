@@ -167,7 +167,10 @@ def scenario_properties() -> dict[str, dict[str, Any]]:
             "type": "object",
             "maxProperties": MAX_TARGET_WEIGHTS,
             "additionalProperties": {"type": "number", "minimum": 0, "maximum": 100},
-            "description": "Solo mode rebalance: asset_id (come stringa) -> peso complessivo in %.",
+            "description": (
+                "asset_id (come stringa) -> peso in %: rebalance = peso obiettivo complessivo; "
+                "new_cash_only = peso massimo per posizione."
+            ),
         },
         "constraints": {
             "type": "object",
@@ -175,6 +178,9 @@ def scenario_properties() -> dict[str, dict[str, Any]]:
                 "no_sell": {"type": "boolean"},
                 "max_turnover_pct": {"type": "number", "minimum": 0, "maximum": 100},
                 "keep_equity_total": {"type": "boolean"},
+                "use_cash_balance": {
+                    "type": "boolean", "description": "Usa anche la liquidita' gia' presente (default false).",
+                },
             },
             "additionalProperties": False,
         },
@@ -674,18 +680,104 @@ def _scenario_input(raw: Any) -> dict[str, Any]:
     return out
 
 
+def _dump(value: Any) -> Any:
+    return value.model_dump(mode="json") if hasattr(value, "model_dump") else copy.deepcopy(value)
+
+
+def _compact_side(side: Any) -> dict[str, Any] | None:
+    """Scenario side for the LLM: totals, metric values, rule states (no evidence)."""
+    if side is None:
+        return None
+    d = _dump(side) or {}
+    metrics = d.get("metrics") or {}
+    if isinstance(metrics, list):
+        metrics = {m.get("code"): m for m in metrics if isinstance(m, dict)}
+    return {
+        "invested_value": _round(d.get("invested_value")),
+        "cash_value": _round(d.get("cash_value")),
+        "total_value": _round(d.get("total_value")),
+        "evaluation_status": d.get("evaluation_status"),
+        "evaluation_summary": d.get("evaluation_summary"),
+        "metrics": {
+            code: {
+                "value": _round(m.get("value")), "lower": _round(m.get("lower")), "upper": _round(m.get("upper")),
+                "coverage_pct": _round(m.get("coverage_pct")), "quality": m.get("quality"),
+            }
+            for code, m in metrics.items() if isinstance(m, dict)
+        },
+        "rule_results": [
+            {
+                "rule_id": r.get("rule_id"), "metric_code": r.get("metric_code"), "status": r.get("status"),
+                "near_limit": r.get("near_limit"), "actual": _round(r.get("actual")), "reason": r.get("reason"),
+            }
+            for r in (d.get("rule_results") or []) if isinstance(r, dict)
+        ],
+        "volatility": d.get("volatility"),
+    }
+
+
+_CHANGE_KEYS = (
+    "asset_id", "symbol", "name", "asset_class", "action", "before_value", "after_value", "delta_value",
+    "before_weight", "after_weight", "delta_weight", "fees",
+)
+
+
+def _compact_scenario(d: dict[str, Any], *, include_before: bool = True) -> dict[str, Any]:
+    out = {
+        k: d.get(k) for k in (
+            "label", "mode", "feasible", "infeasible_code", "infeasible_reason", "warnings",
+            "violations_resolved", "violations_new", "required_new_cash", "total_before", "total_after",
+            "cash_in", "costs", "turnover_pct", "tax_model", "disclaimer",
+        ) if k in d
+    }
+    if include_before:
+        out["before"] = _compact_side(d.get("before"))
+    out["after"] = _compact_side(d.get("after"))
+    out["changes"] = [
+        {k: _round(c.get(k)) for k in _CHANGE_KEYS if k in c}
+        for c in (d.get("changes") or [])[:30] if isinstance(c, dict)
+    ]
+    return out
+
+
+def _scenario_common(d: dict[str, Any], ids: list[int]) -> dict[str, Any]:
+    scope = d.get("scope") or {}
+    out = {
+        "scope": _scope_block(list(scope.get("portfolio_ids") or ids)),
+        "policy_id": d.get("policy_id"),
+        "policy_version": d.get("policy_version"),
+        "snapshot_id": d.get("snapshot_id"),
+        "methodology_version": d.get("methodology_version"),
+        "executed": False,
+    }
+    if d.get("data_quality"):
+        out.update(_data_quality(d["data_quality"]))
+    return out
+
+
 def _scenario_result(result: Any, ids: list[int]) -> dict[str, Any]:
-    d = result.model_dump(mode="json") if hasattr(result, "model_dump") else copy.deepcopy(result)
+    d = _dump(result)
     if not isinstance(d, dict):
-        d = {"result": d}
-    if isinstance(d.get("changes"), list):
-        d["changes"] = d["changes"][:30]
-    dq = d.get("data_quality")
-    out = {"scope": _scope_block(ids), **d, "executed": False}
-    if dq:
-        out.update({k: v for k, v in _data_quality(dq).items() if k == "data_quality_warning"})
+        return {"scope": _scope_block(ids), "result": d, "executed": False}
+    out = {**_scenario_common(d, ids), **_compact_scenario(d)}
     out.setdefault("disclaimer", "Simulazione teorica; nessun ordine eseguito.")
     return out
+
+
+def _comparison_result(result: Any, ids: list[int]) -> dict[str, Any]:
+    d = _dump(result)
+    if not isinstance(d, dict):
+        return {"scope": _scope_block(ids), "result": d, "executed": False}
+    return {
+        **_scenario_common(d, ids),
+        "current": _compact_side(d.get("current")),
+        # "before" of every scenario is "current": not repeated.
+        "scenarios": [_compact_scenario(sc, include_before=False) for sc in (d.get("scenarios") or [])],
+        "ranking": d.get("ranking") or [],
+        "best_index": d.get("best_index"),
+        "explanation": d.get("explanation"),
+        "disclaimer": d.get("disclaimer") or "Simulazione teorica; nessun ordine eseguito.",
+    }
 
 
 def _build_doctor_scenario(service: Any, ids: list[int], user_id: str, args: dict, kw: dict) -> dict:
@@ -701,7 +793,7 @@ def _compare_doctor_scenarios(service: Any, ids: list[int], user_id: str, args: 
         "portfolio_ids": list(ids), "snapshot_id": None, "policy_version": None,
         "scenarios": [_scenario_input(s) for s in scenarios],
     }
-    return _scenario_result(service.compare_scenarios(user_id, payload), ids)
+    return _comparison_result(service.compare_scenarios(user_id, payload), ids)
 
 
 _IMPLEMENTATIONS: dict[str, Callable[[Any, list[int], str, dict, dict], dict]] = {
