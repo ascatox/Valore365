@@ -69,7 +69,7 @@ def test_legacy_keys_unchanged_and_mwr_fields_added_with_one_call_per_period():
     assert (out["mwr_1m"], out["mwr_3m"], out["mwr_ytd"], out["mwr_1y"]) == (1.46, 2.11, 6.79, 11.12)
     assert out["mwr_converged"] == dict.fromkeys(PERIODS, True)
     assert out["mwr_null_reason"] == dict.fromkeys(PERIODS)
-    assert out["mwr_multiple_roots"] == dict.fromkeys(PERIODS)  # field absent on MWRResult
+    assert out["mwr_multiple_roots"] == dict.fromkeys(PERIODS, False)  # MWRResult default
     assert out["mwr_annualized_pct"] == {"1m": None, "3m": None, "ytd": None, "1y": 11.12}
     assert out["twr_annualized_pct"] == {"1m": None, "3m": None, "ytd": None, "1y": 10.0}
     assert out["calculation_windows"]["1m"] == {
@@ -85,7 +85,7 @@ def test_legacy_keys_unchanged_and_mwr_fields_added_with_one_call_per_period():
 
 def test_multiple_roots_is_read_when_the_service_provides_it():
     ps = _summary("1m", 1.0, 2.0)
-    ps_ns = SimpleNamespace(**{**ps.__dict__, "mwr": SimpleNamespace(**ps.mwr.__dict__, multiple_roots=True)})
+    ps_ns = SimpleNamespace(**{**ps.__dict__, "mwr": SimpleNamespace(**{**ps.mwr.__dict__, "multiple_roots": True})})
     perf = _FakePerf({p: ps_ns for p in PERIODS})
 
     out = copilot_tools._get_performance({}, None, perf, 1, "u")

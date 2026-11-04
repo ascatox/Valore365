@@ -385,6 +385,9 @@ class MWRResult(BaseModel):
     start_date: str
     end_date: str
     converged: bool
+    # True when the NPV has more than one root in [-99%, +1000%]: the returned
+    # rate is one valid IRR but not the only one (mixed-sign cashflows).
+    multiple_roots: bool = False
 
 
 class PerformanceSummary(BaseModel):

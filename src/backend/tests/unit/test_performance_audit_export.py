@@ -254,11 +254,6 @@ def test_flow_on_end_date_auditor_independent_value():
     assert result["rows"][1]["ok"] is True
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AUDIT-F1: calculate_twr subtracts a flow dated exactly on end_date twice "
-           "(end is both an event day and the closing [end] iteration)",
-)
 def test_flow_on_end_date_service_twr_matches_auditor():
     export = _end_flow_export()
     result = auditor.audit(export)

@@ -475,16 +475,32 @@ def test_f_window_flows_start_inside_value_end_once_after_ignored():
     assert twr.end_date == mwr.end_date == F_END.isoformat()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AUDIT-F1: calculate_twr loops over event_days + [end]; with a flow on `end` the end day "
-           "is processed twice and the second pass subtracts the flow again (r = -cf / V_end)",
-)
 def test_f_twr_counts_end_day_flow_exactly_once():
+    # AUDIT-F1 (fixed): a flow dated `end` used to make calculate_twr process
+    # `end` twice, the second pass subtracting the flow again (r = -cf / V_end).
     svc = _svc(_fixture_f())
     twr = svc.calculate_twr(1, UID, F_START, F_END)
     exp = _ref_twr(1000.0, [(F_END, 100.0, 1200.0)], 1200.0)
     assert exp == pytest.approx(10.0, abs=1e-9)
+    assert twr.twr_pct == pytest.approx(exp, abs=PCT_TOL)
+
+
+def test_f_twr_with_end_day_flow_matches_daily_timeseries():
+    # Daily values over the whole window and a flow on `end`: the subperiod
+    # TWR must equal the last point of the daily-chained timeseries.
+    values = {}
+    v = 1000.0
+    for i in range((F_END - F_START).days + 1):
+        values[F_START + timedelta(days=i)] = round(v, 6)
+        v *= 1.0003
+    values[F_END] = values[F_END] + 100.0  # deposit on end, inside values[end]
+    repo = _FakeRepo(F_START, values, [_cf(F_START, "deposit", 1000.0), _cf(F_END, "deposit", 100.0)])
+    svc = _svc(repo)
+    twr = svc.calculate_twr(1, UID, F_START, F_END)
+    series = svc.get_twr_timeseries(1, UID, F_START, F_END)
+    assert series[-1].date == F_END.isoformat()
+    assert twr.twr_pct == pytest.approx(series[-1].cumulative_twr_pct, abs=1e-4)
+    exp = _ref_twr(1000.0, [(F_END, 100.0, values[F_END])], values[F_END])
     assert twr.twr_pct == pytest.approx(exp, abs=PCT_TOL)
 
 
@@ -497,31 +513,26 @@ def _fixture_f2():
     return _FakeRepo(F2_START, {F2_DEP: 1000.0, F2_END: 1100.0}, [_cf(F2_DEP, "deposit", 1000.0)])
 
 
-def test_f_zero_start_value_actual_behavior():
+def test_f_zero_start_value_moves_both_windows_to_first_flow():
     svc = _svc(_fixture_f2())
     twr = svc.calculate_twr(1, UID, F2_START, F2_END)
     mwr = svc.calculate_mwr(1, UID, F2_START, F2_END)
 
-    # TWR moves its start to the first positive flow; MWR keeps the window start.
-    assert twr.start_date == F2_DEP.isoformat()
-    assert twr.period_days == (F2_END - F2_DEP).days
-    assert mwr.start_date == F2_START.isoformat()
-    assert mwr.period_days == (F2_END - F2_START).days
+    # Both TWR and MWR move their start to the first positive flow.
+    assert twr.start_date == mwr.start_date == F2_DEP.isoformat()
+    assert twr.period_days == mwr.period_days == (F2_END - F2_DEP).days
 
     assert twr.twr_pct == pytest.approx(_ref_twr(1000.0, [], 1100.0), abs=PCT_TOL)
     ref_flows = [(F2_DEP, -1000.0), (F2_END, 1100.0)]
     r = _ref_xirr(ref_flows)
-    # mwr_pct compounds the rate over the full window (incl. the 59 idle days).
-    assert mwr.mwr_pct == pytest.approx(_cum_pct(r, (F2_END - F2_START).days), abs=PCT_TOL)
-    assert abs(_ref_npv(_service_rate(mwr), ref_flows)) < EUR_TOL
+    # mwr_pct compounds the rate over the invested days only: 10% earned.
+    assert mwr.mwr_pct == pytest.approx(_cum_pct(r, (F2_END - F2_DEP).days), abs=PCT_TOL)
+    assert mwr.mwr_pct == pytest.approx(10.0, abs=PCT_TOL)
+    _assert_npv_residual(mwr, ref_flows)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AUDIT-F2: with start value 0 calculate_twr shifts start to the first positive flow "
-           "while calculate_mwr keeps the requested start, so start_date/period_days differ",
-)
 def test_f_twr_and_mwr_windows_are_aligned_when_start_value_is_zero():
+    # AUDIT-F2 (fixed): MWR used to keep the requested start.
     svc = _svc(_fixture_f2())
     twr = svc.calculate_twr(1, UID, F2_START, F2_END)
     mwr = svc.calculate_mwr(1, UID, F2_START, F2_END)
@@ -580,14 +591,33 @@ def test_g_multiple_roots_returns_one_of_the_independent_roots():
     _assert_npv_residual(mwr, G_FLOWS)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="AUDIT-G1: _solve_irr only logs a warning on multiple NPV sign changes; calculate_mwr "
-           "returns one root with converged=True and no ambiguity flag",
-)
 def test_g_multiple_roots_is_flagged_ambiguous():
+    # AUDIT-G1 (fixed): the ambiguity is now exposed as multiple_roots.
     mwr = _svc(_fixture_g_multi()).calculate_mwr(1, UID, G_START, G_Y2)
-    assert getattr(mwr, "multiple_roots", False) is True or mwr.converged is False
+    assert mwr.multiple_roots is True
+    assert mwr.converged is True
+    roots = _ref_xirr_roots(G_FLOWS)
+    assert any(mwr.mwr_annualized_pct == pytest.approx(r * 100.0, abs=PCT_TOL) for r in roots)
+    _assert_npv_residual(mwr, G_FLOWS)
+
+
+def test_g_single_root_cases_are_not_flagged():
+    svc_a = _svc(_fixture_a())
+    mwr_a = svc_a.calculate_mwr(1, UID, A_START, A_END)
+    assert mwr_a.multiple_roots is False
+    _assert_npv_residual(mwr_a, [(A_START, -1000.0), (A_END, 1100.0)])
+
+    svc_b = _svc(_fixture_b())
+    mwr_b = svc_b.calculate_mwr(1, UID, B_START, B_END)
+    assert mwr_b.multiple_roots is False
+    _assert_npv_residual(mwr_b, [(B_START, -1000.0), (B_DEP, -100.0), (B_END, 1210.0)])
+
+
+def test_g_root_count_helper_matches_reference():
+    to_days = lambda fl: [(float((d - fl[0][0]).days), cf) for d, cf in fl]  # noqa: E731
+    assert PerformanceService._irr_root_count(to_days(G_FLOWS)) == len(_ref_xirr_roots(G_FLOWS)) == 2
+    single = [(A_START, -1000.0), (A_END, 1100.0)]
+    assert PerformanceService._irr_root_count(to_days(single)) == len(_ref_xirr_roots(single)) == 1
 
 
 # --------------------------------------------------------------------------
@@ -640,9 +670,11 @@ def test_x_first_investment_from_zero_funded_by_deposit():
     ref_flows = [(dep, -1000.0), (end, 1100.0)]
     r = _ref_xirr(ref_flows)
     assert r == pytest.approx(0.10, abs=1e-9)
-    assert mwr.period_days == (end - X_START).days == 375
+    # Zero start value: the window starts on the funding deposit (as TWR).
+    assert mwr.start_date == dep.isoformat()
+    assert mwr.period_days == (end - dep).days == 365
     assert mwr.mwr_annualized_pct == pytest.approx(r * 100.0, abs=PCT_TOL)
-    assert mwr.mwr_pct == pytest.approx(_cum_pct(r, 375), abs=PCT_TOL)
+    assert mwr.mwr_pct == pytest.approx(_cum_pct(r, 365), abs=PCT_TOL)
     _assert_npv_residual(mwr, ref_flows)
 
 
