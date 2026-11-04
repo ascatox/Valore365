@@ -413,7 +413,10 @@ class PerformanceService:
         linked = 1.0
         subperiod_start_value = start_value
 
-        for day in event_days + [end]:
+        # A flow dated `end` already makes `end` an event day: processing it a
+        # second time would subtract that flow again (AUDIT-F1).
+        subperiod_ends = event_days if event_days and event_days[-1] == end else event_days + [end]
+        for day in subperiod_ends:
             end_value = values[day]
             cf_amount = cashflow_by_day.get(day, 0.0) if day in event_days else 0.0
             if subperiod_start_value > 0:
@@ -448,7 +451,18 @@ class PerformanceService:
         period_days = max((end - start).days, 1)
 
         cashflows, _ = self._get_cashflows_with_fallback(portfolio_id, user_id, start, end, cache=cache)
-        values = self._values(portfolio_id, user_id, {start, end}, cache)
+        cashflow_by_day: dict[date, float] = {}
+        for cf in cashflows:
+            day = date.fromisoformat(cf.date)
+            cashflow_by_day[day] = cashflow_by_day.get(day, 0.0) + float(cf.amount)
+        # Same valuation days as calculate_twr (start, end and the flow days in
+        # between), so the start may move to a flow day without a new query.
+        values = self._values(
+            portfolio_id,
+            user_id,
+            {start, end} | {d for d in cashflow_by_day if start <= d <= end},
+            cache,
+        )
         start_value = values[start]
         end_value = values[end]
 
@@ -460,6 +474,19 @@ class PerformanceService:
                 end_date=end.isoformat(),
                 converged=True,
             )
+
+        # Same window rule as calculate_twr (AUDIT-F2): with nothing invested at
+        # the start, the period begins on the first day with a positive net
+        # flow, so period_days and mwr_pct cover only the invested days.
+        if start_value <= 0:
+            first_positive_cf_day = next(
+                (d for d in sorted(cashflow_by_day) if start <= d <= end and cashflow_by_day[d] > 0),
+                None,
+            )
+            if first_positive_cf_day is not None:
+                start = first_positive_cf_day
+                period_days = max((end - start).days, 1)
+                start_value = values[start]
 
         flows: list[tuple[float, float]] = []
         # Investor perspective: initial portfolio value is an outflow.
@@ -508,6 +535,16 @@ class PerformanceService:
                 converged=False,
             )
 
+        # Dense scan only here (not in the timeseries loops): the solver's
+        # coarse probe misses close roots such as 10% / 20% (AUDIT-G1).
+        root_count = self._irr_root_count(flows)
+        multiple_roots = root_count > 1
+        if multiple_roots:
+            logger.warning(
+                "MWR: NPV has %d roots in [-0.99, 10]; IRR is ambiguous, returning %.6f.",
+                root_count, rate,
+            )
+
         # Same convention as TWR: mwr_pct is the period return, the
         # annualized rate is exposed separately only for periods >= 1 year.
         mwr_ann: float | None = None
@@ -521,6 +558,7 @@ class PerformanceService:
             start_date=start.isoformat(),
             end_date=end.isoformat(),
             converged=True,
+            multiple_roots=multiple_roots,
         )
 
     def get_performance_summary(
@@ -1276,6 +1314,42 @@ class PerformanceService:
         """Convert an annualized IRR into the cumulative return (%) over the
         elapsed period, using the same ACT/365 day count as the solver."""
         return round(((1.0 + rate) ** (float(elapsed_days) / 365.0) - 1.0) * 100.0, 4)
+
+    @staticmethod
+    def _irr_root_count(flows: list[tuple[float, float]], low: float = -0.99, high: float = 10.0) -> int:
+        """Number of real NPV roots in [low, high], scanned on a dense grid.
+
+        ~400 points, densest in [-0.5, 1] where realistic rates live. A grid
+        point with NPV exactly 0 counts once; the sign change around it is not
+        counted again.
+        """
+        def npv(rate: float) -> float:
+            return sum(cf / ((1.0 + rate) ** (days / 365.0)) for days, cf in flows)
+
+        def segment(a: float, b: float, n: int) -> list[float]:
+            return [a + (b - a) * i / n for i in range(n)]
+
+        grid = segment(low, -0.5, 60) + segment(-0.5, 1.0, 240) + segment(1.0, high, 100) + [high]
+        roots = 0
+        last_sign = 0  # sign of the last non-zero finite NPV
+        zero_since_last = False
+        for x in grid:
+            try:
+                f = npv(x)
+            except (OverflowError, ZeroDivisionError):
+                continue
+            if not isfinite(f):
+                continue
+            if f == 0.0:
+                roots += 1
+                zero_since_last = True
+                continue
+            sign = 1 if f > 0 else -1
+            if last_sign and sign != last_sign and not zero_since_last:
+                roots += 1
+            last_sign = sign
+            zero_since_last = False
+        return roots
 
     def _solve_irr(self, flows: list[tuple[float, float]]) -> float | None:
         def npv(rate: float) -> float:

@@ -87,8 +87,12 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "get_performance",
         "description": (
-            "Ottieni la performance del portafoglio (TWR) per diversi periodi: "
-            "1 mese, 3 mesi, da inizio anno (YTD) e 1 anno."
+            "Ottieni la performance del portafoglio, TWR (time-weighted) e MWR (money-weighted, "
+            "XIRR ACT/365), per 1 mese, 3 mesi, da inizio anno (YTD) e 1 anno. twr_<periodo> e "
+            "mwr_<periodo> sono rendimenti di periodo in % (non annualizzati); include anche "
+            "twr_annualized_pct, mwr_annualized_pct (solo finestre >= 365 giorni), mwr_converged, "
+            "mwr_null_reason, mwr_multiple_roots, calculation_windows, implicit_contributions_eur "
+            "e performance_note."
         ),
         "parameters": {
             "type": "object",
@@ -637,13 +641,38 @@ def _get_target_drift(
     return {"drift": drift_list}
 
 
+PERFORMANCE_PERIODS: tuple[str, ...] = ("1m", "3m", "ytd", "1y")
+
+PERFORMANCE_NOTE = (
+    "twr_* e mwr_* sono rendimenti di PERIODO in percentuale (non annualizzati). "
+    "TWR = time-weighted (neutralizza i flussi); MWR = money-weighted (XIRR, convenzione ACT/365). "
+    "Le versioni annualizzate (twr_annualized_pct, mwr_annualized_pct) sono valorizzate solo per "
+    "finestre di almeno 365 giorni. I valori sono di fine giornata: i flussi del giorno di inizio "
+    "sono inclusi nel valore iniziale. Gli apporti impliciti sono trattati come versamenti esterni. "
+    "Per piu' portafogli il calcolo avviene sui valori e flussi combinati, non come media dei singoli. "
+    "mwr_null_reason spiega un MWR nullo ('non_convergente', 'non_calcolabile', 'errore_calcolo'); "
+    "calculation_windows riporta le finestre effettive di TWR e MWR."
+)
+
+
+def _round2(value: Any) -> float | None:
+    return round(float(value), 2) if value is not None else None
+
+
 def _get_performance(
     _args: dict, _repo: PortfolioRepository, perf_service: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
     result: dict = {}
     implicit: dict[str, float | None] = {}
-    for period in ("1m", "3m", "ytd", "1y"):
+    twr_annualized: dict[str, float | None] = {}
+    mwr_annualized: dict[str, float | None] = {}
+    mwr_converged: dict[str, bool | None] = {}
+    mwr_null_reason: dict[str, str | None] = {}
+    mwr_multiple_roots: dict[str, bool | None] = {}
+    windows: dict[str, dict[str, Any] | None] = {}
+    for period in PERFORMANCE_PERIODS:
+        # One summary per period: TWR, MWR and windows all come from it.
         try:
             ps = perf_service.get_performance_summary(portfolio_id, user_id, period)
             result[f"twr_{period}"] = round(ps.twr.twr_pct, 2) if ps.twr.twr_pct is not None else None
@@ -651,11 +680,53 @@ def _get_performance(
         except Exception:
             result[f"twr_{period}"] = None
             implicit[period] = None
+            result[f"mwr_{period}"] = None
+            twr_annualized[period] = None
+            mwr_annualized[period] = None
+            mwr_converged[period] = None
+            mwr_null_reason[period] = "errore_calcolo"
+            mwr_multiple_roots[period] = None
+            windows[period] = None
+            continue
+
+        twr = getattr(ps, "twr", None)
+        mwr = getattr(ps, "mwr", None)
+        twr_annualized[period] = _round2(getattr(twr, "twr_annualized_pct", None))
+        mwr_pct = getattr(mwr, "mwr_pct", None)
+        converged = getattr(mwr, "converged", None)
+        result[f"mwr_{period}"] = _round2(mwr_pct)
+        mwr_annualized[period] = _round2(getattr(mwr, "mwr_annualized_pct", None))
+        mwr_converged[period] = bool(converged) if converged is not None else None
+        mwr_multiple_roots[period] = getattr(mwr, "multiple_roots", None)
+        if mwr_pct is not None:
+            mwr_null_reason[period] = None
+        elif mwr is None:
+            mwr_null_reason[period] = "errore_calcolo"
+        elif converged is False:
+            mwr_null_reason[period] = "non_convergente"
+        else:
+            mwr_null_reason[period] = "non_calcolabile"
+        windows[period] = {
+            "start_date": getattr(ps, "start_date", None),
+            "end_date": getattr(ps, "end_date", None),
+            "period_days": getattr(ps, "period_days", None),
+            "twr_start_date": getattr(twr, "start_date", None),
+            "twr_end_date": getattr(twr, "end_date", None),
+            "mwr_start_date": getattr(mwr, "start_date", None),
+            "mwr_end_date": getattr(mwr, "end_date", None),
+        }
     result["implicit_contributions_eur"] = implicit
     result["implicit_contributions_note"] = (
         "Apporti impliciti per periodo (valuta base): acquisti o uscite oltre la liquidita' "
         "registrata, trattati come versamenti esterni nel TWR/MWR (non come rendimento)."
     )
+    result["twr_annualized_pct"] = twr_annualized
+    result["mwr_annualized_pct"] = mwr_annualized
+    result["mwr_converged"] = mwr_converged
+    result["mwr_null_reason"] = mwr_null_reason
+    result["mwr_multiple_roots"] = mwr_multiple_roots
+    result["calculation_windows"] = windows
+    result["performance_note"] = PERFORMANCE_NOTE
     return result
 
 

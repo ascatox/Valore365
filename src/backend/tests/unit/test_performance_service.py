@@ -209,14 +209,15 @@ def test_mwr_trade_fallback_buy_on_start_day():
 
 
 def test_mwr_trade_fallback_mid_period_buy():
-    # Buy 1000 after 182 days, worth 1200 at the end of the year:
-    # 1200/1000 = (1+r)^(183/365) -> r = 1.2^(365/183) - 1 ~ 43.86%
+    # Buy 1000 after 182 days, worth 1200 at the end of the year. With a zero
+    # start value the MWR window starts on the buy (same rule as TWR), so the
+    # period return is the 20% earned over the 183 invested days.
     start = date(2025, 1, 1)
     buy_day = date(2025, 7, 2)
     end = date(2026, 1, 1)
     repo = _FakeRepo(
         created=start,
-        values={start: 0.0, end: 1200.0},
+        values={start: 0.0, buy_day: 1000.0, end: 1200.0},
         cashflows=[CashFlowEntry(date=buy_day.isoformat(), side='buy', amount=1000.0)],
     )
     service = PerformanceService(repo)
@@ -224,7 +225,9 @@ def test_mwr_trade_fallback_mid_period_buy():
     result = service.calculate_mwr(1, 'u', start, end)
 
     assert result.converged is True
-    assert abs(result.mwr_pct - 43.86) < 0.1
+    assert result.start_date == buy_day.isoformat()
+    assert result.period_days == 183
+    assert abs(result.mwr_pct - 20.0) < 0.05
 
 
 def test_mwr_dividend_stays_internal():

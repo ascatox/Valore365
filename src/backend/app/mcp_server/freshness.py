@@ -40,6 +40,7 @@ FRESHNESS_TOOLS: frozenset[str] = frozenset({
     "get_aggregate_performance",
     "get_aggregate_health",
     "get_aggregate_stress_test",
+    "get_aggregate_performance_audit",
 })
 
 SYNC_UNAVAILABLE_NOTE = "Stato della sincronizzazione dei prezzi non disponibile."

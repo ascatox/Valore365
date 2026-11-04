@@ -153,6 +153,14 @@ succede dietro le quinte.
 | «Dammi il riepilogo complessivo di *Parent* e *Wealth*.» | `list_portfolios`, `get_aggregate_summary` |
 | «Com'è andata la performance di *Parent* e *Wealth* insieme da inizio anno? E le posizioni complessive?» | `get_aggregate_performance`, `get_aggregate_positions` |
 
+> **Come leggere la performance.** `get_performance` e `get_aggregate_performance` riportano per 1 mese,
+> 3 mesi, da inizio anno e 1 anno sia il **TWR** (`twr_1m`...`twr_1y`, rendimento che neutralizza versamenti e
+> prelievi) sia l'**MWR** (`mwr_1m`...`mwr_1y`, rendimento money-weighted calcolato con XIRR, ACT/365, che
+> tiene conto di quando hai versato). Sono rendimenti **del periodo**, non annualizzati: le versioni annue
+> (`twr_annualized_pct`, `mwr_annualized_pct`) compaiono solo per periodi di almeno un anno. Se l'MWR non è
+> calcolabile, `mwr_null_reason` dice perché (ad esempio `non_convergente`); `calculation_windows` mostra
+> le date effettive usate. Per più portafogli il calcolo è fatto sui valori e flussi sommati, non come media.
+
 > **Come vengono calcolati gli ordini di ribilanciamento.** Si ribilancia solo se almeno uno strumento si
 > scosta dal suo peso target di **più di 0,5 punti percentuali**. In quel caso tutti gli strumenti vengono
 > riportati al target, anche quelli che si discostano di meno, così le vendite finanziano gli acquisti. La

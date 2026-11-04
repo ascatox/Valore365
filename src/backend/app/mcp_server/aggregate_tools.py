@@ -173,6 +173,21 @@ def _copilot(name: str) -> Callable[[Any, list[int], str], dict[str, Any]]:
     return handler
 
 
+def _performance_audit(deps: Any, ids: list[int], user_id: str) -> dict[str, Any]:
+    # Read-only diagnostic export (TASK-PERF-02). The aggregate input schema
+    # carries only portfolio_ids, so the window is the default 1y and the
+    # first page of flows (offset 0); the page is capped at
+    # AUDIT_MCP_MAX_FLOWS to stay well below the MCP result size limit.
+    from ..services.performance_audit import build_performance_audit_export
+
+    return build_performance_audit_export(
+        deps.performance_service, list(ids), user_id, period="1y", max_flows=AUDIT_MCP_MAX_FLOWS, offset=0,
+    )
+
+
+AUDIT_MCP_MAX_FLOWS = 200
+
+
 AGGREGATE_TOOLS: dict[str, AggregateTool] = {
     tool.name: tool
     for tool in (
@@ -204,8 +219,12 @@ AGGREGATE_TOOLS: dict[str, AggregateTool] = {
             name="get_aggregate_performance",
             title="Performance aggregata",
             description=(
-                "Performance TWR di più portafogli letti come uno solo (1 mese, 3 mesi, YTD, 1 anno), "
-                "calcolata sui valori e flussi combinati come nell'app, non come media dei singoli."
+                "Performance TWR (time-weighted) e MWR (money-weighted, XIRR ACT/365) di più portafogli "
+                "letti come uno solo (1 mese, 3 mesi, YTD, 1 anno), calcolata sui valori e flussi combinati "
+                "come nell'app, non come media dei singoli. twr_<periodo> e mwr_<periodo> sono rendimenti "
+                "di periodo in % (non annualizzati); include anche twr_annualized_pct, mwr_annualized_pct "
+                "(solo finestre >= 365 giorni), mwr_converged, mwr_null_reason, mwr_multiple_roots, "
+                "calculation_windows, implicit_contributions_eur e performance_note."
             ),
             handler=_copilot("get_performance"),
             heavy=True,
@@ -256,6 +275,21 @@ AGGREGATE_TOOLS: dict[str, AggregateTool] = {
                 "sommano a 100 con 'Non classificato', data dei dati del provider (data_as_of)."
             ),
             handler=_copilot("get_xray_summary"),
+            heavy=True,
+        ),
+        AggregateTool(
+            name="get_aggregate_performance_audit",
+            title="Export diagnostico performance aggregata",
+            description=(
+                "Export diagnostico in sola lettura (ultimo anno) dei dati con cui l'app calcola TWR e MWR "
+                "di più portafogli letti come uno solo: flussi esterni datati (versamenti, prelievi e apporti "
+                "impliciti del modello di cassa, con portafoglio di origine e flag synthetic_flow), flussi "
+                "netti per data, valutazioni di fine giornata all'inizio, alla fine e in ogni data di flusso, "
+                "e i risultati TWR/MWR del servizio. Serve a verificare TWR e XIRR in modo indipendente "
+                "(ACT/365, flussi del giorno iniziale già inclusi nel valore iniziale). Massimo 200 flussi "
+                "(total_flows e truncated indicano se ce ne sono altri)."
+            ),
+            handler=_performance_audit,
             heavy=True,
         ),
     )
