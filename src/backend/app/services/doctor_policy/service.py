@@ -49,7 +49,6 @@ from .errors import (
     ConfirmationInvalid,
     InvalidRequest,
     NotFound,
-    NotImplementedYet,
     PolicyValidationFailed,
     VersionConflict,
 )

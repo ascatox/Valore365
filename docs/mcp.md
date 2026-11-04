@@ -124,12 +124,26 @@ Esempio di Protected Resource Metadata:
 | `calculate_pac_contribution` | `portfolio_id`, `monthly_amount` |
 | `search_asset_info` | `portfolio_id`, `symbol` |
 | `get_aggregate_summary`, `get_aggregate_positions`, `get_aggregate_allocation`, `get_aggregate_performance`, `get_aggregate_recent_transactions`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray`, `get_aggregate_performance_audit` | `portfolio_ids` (da 2 a 20 id distinti, stessa valuta base): vedi [Vista aggregata](#vista-aggregata-più-portafogli) |
+| `read_doctor_policy` | `portfolio_id`, `portfolio_ids` (opzionale, scope aggregato 1-20 id che include `portfolio_id`): policy personale del Portfolio Doctor dello scope (o nessuna) e template illustrativi |
+| `read_doctor_metrics` | `portfolio_id`, `portfolio_ids` (opz.), `metric_codes` (opz., max 8 codici del registry): valori attuali delle 8 metriche Doctor con copertura, qualità e bounds |
+| `read_doctor_violations` | `portfolio_id`, `portfolio_ids` (opz.), `include_passed` (opz.): valutazione della policy (FAIL, UNKNOWN, vicino al limite) con evidenze e qualità dei dati |
+| `validate_policy_draft` | `portfolio_id`, `portfolio_ids` (opz.), `document` (bozza tipizzata: max 20 regole con `rule_id`, `metric_code`, `operator`, soglie 0-100; niente campi extra né espressioni): errori per campo e fattibilità. Non salva |
+| `build_doctor_scenario` | `portfolio_id`, `portfolio_ids` (opz.), `mode` (`manual`/`new_cash_only`/`rebalance`), `new_cash`, `operations` (max 20), `target_weights` (max 50 chiavi `asset_id`), `constraints`, `fee_model`, `label`: Scenario Lab, simulazione pura (nessuna scrittura) |
+| `compare_doctor_scenarios` | `portfolio_id`, `portfolio_ids` (opz.), `scenarios` (2-3 scenari con i campi di `build_doctor_scenario`): confronto con la situazione attuale, simulazione pura |
+
+`preview_policy` (anteprima di una bozza di policy) esiste solo nel Copilot dell'app ed è **escluso** da
+MCP (`MCP_TOOL_EXCLUDED`): emette un confirmation token monouso, registrato nel database, che abilita il
+salvataggio. Da MCP nessuna policy può essere salvata, ripristinata o preparata per il salvataggio;
+`validate_policy_draft` è la verifica in sola lettura. Gli argomenti annidati (`document`, `operations`,
+`target_weights`, `constraints`, `fee_model`, `scenarios`) sono limitati in `ARGUMENT_CONSTRAINTS`
+(lunghezze, minimi/massimi, numero di elementi, nessuna proprietà extra).
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
 
 **Freschezza dei dati (TASK-54).** I tool che restituiscono valori del portafoglio (`get_portfolio_summary`,
 `get_positions`, `get_target_drift`, `get_performance`, `get_portfolio_health`, `get_day_movers`,
-`calculate_rebalance_orders`, `calculate_what_if`, `get_stress_test` e gli aggregati summary, positions,
+`calculate_rebalance_orders`, `calculate_what_if`, `get_stress_test`, i tool Doctor `read_doctor_metrics`,
+`read_doctor_violations`, `build_doctor_scenario`, `compare_doctor_scenarios` e gli aggregati summary, positions,
 allocation, performance, health, stress test) aggiungono un blocco `data_freshness`:
 `last_successful_price_sync` (fine dell'ultima sincronizzazione riuscita), `last_sync_status` e
 `last_sync_finished_at` (ultima esecuzione, anche parziale o fallita), `stale_symbols` (prezzi fermi
@@ -549,7 +563,7 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | JWT rigorosi | `alg` = RS256 (rifiutati `none`/`HS*`), `crit` rifiutato, `nbf` e `iat` futuri rifiutati (tolleranza 5 s), durata massima del token. All'avvio un warning se `MCP_REQUIRE_AUDIENCE=false` | `MCP_MAX_TOKEN_LIFETIME_SECONDS`, `MCP_REQUIRE_AUDIENCE` |
 | Timeout per tool | Il tool gira in un thread; oltre il timeout il client riceve un errore generico. Il thread non può essere interrotto e termina in background, ma continua a occupare uno slot di concorrenza dell'utente finché non finisce | `MCP_TOOL_TIMEOUT_SECONDS` |
 | Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" (`code: concurrency_busy`, `retry_after_s: 2`). Il controllo avviene prima della quota dei tool pesanti, quindi una chiamata rifiutata come "busy" non consuma quota | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
-| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` e gli aggregati `get_aggregate_performance`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray`, `get_aggregate_performance_audit` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
+| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution`, `build_doctor_scenario`, `compare_doctor_scenarios` e gli aggregati `get_aggregate_performance`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray`, `get_aggregate_performance_audit` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
 | Dimensione del risultato | Il JSON del risultato è limitato a 200 KB: oltre, il testo viene tagliato con il marcatore `[risultato troncato: superato il limite di 200 KB]` e `structuredContent` è omesso | codice |
 | Validazione argomenti | Schema JSON rigoroso (`additionalProperties: false`, `portfolio_id` intero positivo, numeri con minimo/massimo, `symbol` max 32 caratteri con charset limitato, NaN/Inf rifiutati), verificato sia dall'SDK sia da `run_tool_sync` prima di eseguire il tool. I batch JSON-RPC (array) non sono accettati dal trasporto dell'SDK (400) | `ARGUMENT_CONSTRAINTS` |
 | Prompt injection | Oltre al troncamento, da tutti i testi (chiavi comprese) vengono rimossi caratteri di controllo, controlli bidirezionali Unicode, caratteri a larghezza zero/invisibili e caratteri "tag" (U+E0000-U+E0FFF); `\n` e `\t` restano. Ogni descrizione di tool e le istruzioni del server avvertono che gli output sono dati, non istruzioni | codice |

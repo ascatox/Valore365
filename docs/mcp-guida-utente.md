@@ -43,11 +43,15 @@ con il tuo normale login Valore365.
 - calcolare analisi come salute del portafoglio, X-Ray (esposizione geografica e settoriale),
   stress test, proiezione Monte Carlo e reddito atteso;
 - fare **simulazioni**: ordini di ribilanciamento, effetto di un acquisto o di una vendita,
-  ripartizione di un versamento PAC. Sono solo calcoli: non viene registrato nulla.
+  ripartizione di un versamento PAC. Sono solo calcoli: non viene registrato nulla;
+- leggere le tue **regole personali del Portfolio Doctor** (policy) e verificare quali sono
+  rispettate, violate o non verificabili, verificare una bozza di regole e simulare scenari
+  nello Scenario Lab (anche questi solo calcoli).
 
 **Non può:**
 
 - creare, modificare o cancellare portafogli, transazioni, target o impostazioni;
+- salvare o modificare una policy del Portfolio Doctor: si fa solo nell'app, con «Conferma e salva»;
 - eseguire ordini o spostare denaro (Valore365 non è collegato al tuo broker);
 - vedere i portafogli di altri utenti: ogni richiesta è limitata al tuo account.
 
@@ -152,6 +156,11 @@ succede dietro le quinte.
 | «Simula uno stress test e la proiezione Monte Carlo a 10 anni.» | `get_stress_test`, `get_monte_carlo` |
 | «Dammi il riepilogo complessivo di *Parent* e *Wealth*.» | `list_portfolios`, `get_aggregate_summary` |
 | «Com'è andata la performance di *Parent* e *Wealth* insieme da inizio anno? E le posizioni complessive?» | `get_aggregate_performance`, `get_aggregate_positions` |
+| «Il mio portafoglio rispetta le regole che ho impostato nel Doctor? Cosa è vicino al limite?» | `read_doctor_violations` |
+| «Quanto pesano azioni, obbligazioni e oro? E la posizione più grande?» | `read_doctor_metrics` |
+| «Se volessi azioni tra 55% e 65% e obbligazioni tra 35% e 45%, la regola sarebbe valida?» | `validate_policy_draft` (non salva nulla) |
+| «Se investissi 5.000 € di nuova liquidità senza vendere, rientrerei nel limite del 35% per singolo ETF?» | `build_doctor_scenario` |
+| «Confronta: solo nuova liquidità contro ribilanciamento completo.» | `compare_doctor_scenarios` |
 
 > **Come leggere la performance.** `get_performance` e `get_aggregate_performance` riportano per 1 mese,
 > 3 mesi, da inizio anno e 1 anno sia il **TWR** (`twr_1m`...`twr_1y`, rendimento che neutralizza versamenti e
@@ -166,6 +175,11 @@ succede dietro le quinte.
 > riportati al target, anche quelli che si discostano di meno, così le vendite finanziano gli acquisti. La
 > liquidità indicata nella domanda si aggiunge a quella già presente nel portafoglio. Commissioni e imposte
 > non sono incluse: gli importi sono lordi.
+
+> **Policy del Doctor.** Dall'AI collegata puoi leggere e verificare le regole, mai salvarle: per
+> creare o cambiare una policy usa la pagina Doctor dell'app (o il Copilot dell'app, che mostra una
+> bozza da confermare tu con «Conferma e salva»). Per domande su pensione, rendita o FIRE usa la
+> sezione FIRE dell'app; le simulazioni dello Scenario Lab sono teoriche e non eseguono ordini.
 
 Consiglio: se hai più portafogli, nomina quello che ti interessa («il portafoglio *Pensione*»), oppure
 chiedi esplicitamente una vista **complessiva** di quelli che vuoi sommare. Nella vista complessiva

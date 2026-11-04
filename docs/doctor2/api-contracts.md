@@ -243,6 +243,54 @@ nessuna posizione negativa; nessuna scrittura su DB; deterministico a snapshot i
 Volatilità dopo scenario non stimabile → `N/D` motivato (mai riciclare quella corrente).
 Aggregati: solo pesi complessivi, nessun ordine per conto.
 
+### 8.1 Forme JSON implementate (`app/schemas/doctor_scenario.py`)
+
+`POST /doctor/scenarios/preview` — `ScenarioInput` al primo livello + scope:
+```json
+{
+  "portfolio_ids": [19],                 // oppure "portfolio_id": 19; 1..20 id
+  "snapshot_id": "a1b2c3d4e5f60718",     // opzionale; diverso dall'attuale → 409 snapshot_changed
+  "policy_version": 3,                   // opzionale; diverso dalla versione corrente → 409 version_conflict
+  "mode": "manual" | "new_cash_only" | "rebalance",
+  "new_cash": 0,                         // >= 0, finito
+  "operations": [{"symbol": "VWRA", "asset_id": null, "action": "buy" | "sell", "amount": 1000}],  // max 50, solo manual
+  "target_weights": {"12": 35},          // chiave = asset_id come stringa (accettato anche il symbol); 0–100, somma ≤ 100
+  "constraints": {"no_sell": false, "max_turnover_pct": null, "keep_equity_total": false, "use_cash_balance": false},
+  "fee_model": {"pct": 0.0, "fixed": 0.0},   // pct in % (0–10) per operazione + fisso per operazione
+  "tax_model": "none",
+  "label": "Solo versamenti"             // max 80, riportato in ScenarioResult.label
+}
+```
+`POST /doctor/scenarios/compare`:
+`{portfolio_ids, snapshot_id, policy_version, scenarios: [ScenarioInput, ...]}` (2–3 scenari, senza scope propri).
+
+`ScenarioResult`:
+```
+label, mode, feasible: bool,
+infeasible_code: null | "insufficient_cash" | "no_sell" | "impossible_without_sell" | "oversell"
+                 | "capacity_exceeded" | "keep_equity_total" | "turnover_exceeded" | "empty_portfolio",
+infeasible_reason: str|null, scope: PolicyScope, policy_id, policy_version,
+before: ScenarioSide, after: ScenarioSide|null,          // after null se infeasible
+changes: [{asset_id, symbol, name, isin, asset_class, action: "buy"|"sell"|"hold",
+           before_value, after_value, delta_value, before_weight, after_weight, delta_weight, fees}],
+warnings: [str],
+violations_resolved / violations_new: [{rule_id, metric_code, label, reason, before_status, after_status,
+                                        before_actual, after_actual}],
+required_new_cash: float|null,          // nuova liquidità TOTALE minima (costi inclusi, arrotondata per eccesso al centesimo)
+total_before, total_after: float|null, cash_in, costs: {total, variable, fixed, operations, fee_model},
+turnover_pct: float|null, methodology_version, snapshot_id, data_quality, calculated_at, tax_model,
+disclaimer: "Simulazione teorica; nessun ordine eseguito."
+```
+`ScenarioSide`: `{invested_value, cash_value, total_value, metrics: {metric_code: MetricValue}, evaluation_status:
+"ready"|"no_policy"|"empty_portfolio", evaluation_summary, rule_results: [RuleResult],
+volatility: {value: null, status: "not_available", reason}}`. Le chiavi di `metrics` sono gli 8 codici §2
+(eventuali righe aggiuntive future avranno prefisso `stress`).
+
+`ScenarioComparison`: `{scope, policy_id, policy_version, snapshot_id, methodology_version, calculated_at,
+data_quality, current: ScenarioSide, scenarios: [ScenarioResult], ranking: [{index, label, rank, feasible,
+failed_after, unknown_after, violations_resolved, violations_new, costs, cash_in, turnover_pct}],
+best_index: int|null, explanation: str, disclaimer}`.
+
 ## Deviazioni
 
 ### Core (§1–4: metriche, snapshot, validator, evaluator, schemi)
@@ -331,8 +379,95 @@ Architettura: `docs/doctor2/architecture.md`.
   `{policy_id, current_version, versions: [...]}` in ordine decrescente; `actor` = user id.
 - **Archiviazione**: `DoctorPolicyStore.archive()` esiste (libera lo scope), nessun endpoint REST.
 - **Scenario Lab**: le route chiamano `DoctorPolicyService.preview_scenario(user_id, payload)` /
-  `compare_scenarios(user_id, payload)` con il body grezzo (dict); per ora rispondono 501
-  `not_implemented` finché l'agente lab non le collega a `scenario.py`.
+  `compare_scenarios(user_id, payload)` con il body grezzo (dict); ora collegate a `scenario.py`
+  (vedi «Lab» sotto; il 501 `not_implemented` non è più emesso).
 - **Cache**: la chiave usa `policy_version = 0` quando lo scope non ha policy.
 - **`schema.sql`** aggiornato con le 4 tabelle; `supabase_full_setup.sql` non è più mantenuto
   come schema completo (manca già TASK-54) e non è stato modificato.
+
+### Lab (§8 Scenario Lab, `scenario.py`, `app/schemas/doctor_scenario.py`)
+
+- **API pura**: `preview_scenario(snapshot, request, *, policy_document, repo=None, now=None,
+  baseline_metrics=None, policy_id=None, policy_version=None, policy_name=None)` e
+  `compare_scenarios(snapshot, requests, *, policy_document, repo=None, now=None, expected_snapshot_id=None, ...)`;
+  `request` può essere `ScenarioInput`/`ScenarioRequest` o dict. Helper `parse_scenario_request`,
+  `parse_compare_request`, `scenario_input_hash`. Nessuna scrittura; `repo` è solo letto dalle metriche
+  (`get_etf_enrichment_bulk`, `get_asset_metadata_bulk`), come per la baseline.
+- **Errore nuovo** `snapshot_changed` (409, `retryable: true`, `details.current_snapshot_id`), classe
+  `SnapshotChanged` definita in `scenario.py` (non in `errors.py`). `policy_version` diverso dalla versione
+  corrente (0 = nessuna policy) → 409 `version_conflict` con `details.current_version`.
+- **Asset**: solo strumenti già presenti nello scope (gli input di classificazione vengono dagli holdings
+  esistenti); asset sconosciuto o non posseduto → 400 `invalid_request`, `field_errors[].code = "unknown_asset"`
+  (`ambiguous` se il symbol è duplicato, `inconsistent` se symbol e asset_id non coincidono). Posizioni cash non
+  negoziabili.
+- **Campo extra** `constraints.use_cash_balance` (default `false`): senza, gli acquisti sono finanziati solo da
+  `new_cash` + vendite nette e il saldo di cassa resta invariato (o cresce della liquidità non investita).
+- **`new_cash_only`**: `target_weights` = **peso massimo** per posizione (strumento canonico ISIN); se assenti, il
+  `max_value` della regola attiva `max_single_position_pct` applicato a ogni strumento (warning esplicito).
+  Il versamento è ripartito pro rata ai valori attuali con water-filling entro i massimi (un acquisto < 1 centesimo
+  non è un'operazione). `keep_equity_total`: ripartizione per bucket azionario / non classificato / altro in
+  proporzione ai valori attuali (quota azionaria e bounds invariati), altrimenti infeasible `keep_equity_total`.
+  `operations` non ammesse (400).
+- **`rebalance`**: asset elencati esattamente al peso obiettivo del valore investito finale; non elencati pro rata
+  sul resto; tutta la nuova liquidità viene investita; somma < 100 con tutte le posizioni elencate → 400
+  `sum_not_100`. Costi risolti con punto fisso `T = V + fondi − costi(T)`.
+- **Turnover** = (Σ acquisti + Σ vendite) / (2 × valore investito prima) × 100; `max_turnover_pct` superato →
+  infeasible (nessun ribilanciamento parziale).
+- **`required_new_cash`** = liquidità nuova totale minima (non l'integrazione), costi inclusi, arrotondata per
+  eccesso al centesimo (golden PRD: 227.028,58 → «227.029 €»); `null` se nessun versamento basta
+  (`impossible_without_sell`). In `manual` = `new_cash` + ammanco.
+- **Violazioni**: `violations_resolved` = FAIL → PASS; `violations_new` = FAIL dopo e non FAIL prima.
+- **Volatilità**: `before` e `after` hanno `volatility.value = null` con motivo (il Lab non la calcola; quella
+  attuale è nell'analisi Doctor).
+- **Ordinamento compare**: realizzabili prima; poi regole FAIL dopo, UNKNOWN dopo, violazioni risolte (desc),
+  nuove violazioni, costi, nuova liquidità, turnover, ordine della richiesta. `best_index` = primo realizzabile.
+- **Snapshot canonico**: il Lab riordina gli holdings per asset_id prima di valutare (stesso `snapshot_id`), così
+  le somme floating point non dipendono dall'ordine di caricamento e l'aggregato è invariante per permutazione.
+- **Cache**: chiave `(user, fingerprint, policy_version|0, snapshot_id, methodology_version, "scenario", sha256
+  input)`; compare con la tupla degli hash. Invalidata dal salvataggio policy (`invalidate_scope`).
+- **Flag**: `doctor_simulator_enabled` è controllato nelle route; i tool Copilot che chiamano direttamente
+  `DoctorPolicyService.preview_scenario/compare_scenarios` devono verificarlo da sé.
+
+### Copilot (§7 tool interni, streaming, MCP)
+
+- **Modulo**: definizioni e handler in `src/backend/app/copilot_doctor_tools.py` (non direttamente in
+  `copilot_tools.py`, che li registra in `TOOL_DEFINITIONS`, `_TOOL_HANDLERS` e nell'allowlist della
+  page_context `doctor`). I sette tool non sono offerti nelle altre pagine. `doctor_policy` è importato in modo
+  lazy (ciclo `doctor_policy.snapshot → mcp_server → copilot_tools`); i codici metrica sono quindi un letterale
+  `METRIC_CODES` verificato da un test contro il registry.
+- **Scope**: mai dal LLM (nessun `portfolio_id(s)` negli schemi dei tool). `execute_tool(...,
+  scope_portfolio_ids=None, ui_events=None)`: lo streaming agentico riceve `portfolio_ids` dalla route
+  (solo se aggregato, ≥ 2 id, come `routes_copilot`) e lo passa ai tool; altrimenti `[portfolio_id]`.
+  Proprietà verificata da `DoctorPolicyService.resolve_scope` (404 → `{"error": "Portfolio non trovato"}`).
+- **Side-channel UI**: `ui_events` è una lista che il tool riempie; `stream_copilot_response_agentic` emette ogni
+  evento (solo tipi in `UI_EVENT_TYPES = {"policy_draft"}`) come SSE dopo l'esecuzione del tool e prima del round
+  LLM successivo. Il risultato del tool inviato al LLM non contiene il token; nessun log contiene token,
+  documenti, importi o nomi.
+- **Evento SSE**: `{"type": "policy_draft", "content": "<JSON>"}` con content =
+  `{"portfolio_ids": [int], "draft_id": "draft-<16 hex>", "name": str|null, "preview": PolicyPreviewResponse}`
+  (preview completa, `confirmation_token` incluso; stringhe ripulite da caratteri di controllo/bidi). Emesso solo
+  se la bozza è valida (altrimenti nessun token esiste). `base_version` della preview = `current_version` della
+  policy dello scope (o `null`), `source = "copilot"`.
+- **Risultato `preview_policy` al LLM**: `{scope, draft_id, valid, field_errors, document_hash, base_version,
+  expires_at, normalized_document, diff, evaluation_before|after: {status, policy_version, snapshot_id,
+  snapshot_as_of, summary, data_quality_status, results: [regole compatte]}, shown_to_user, saved: false, note,
+  data_quality, data_quality_warning?, data_note}`: niente `confirmation_token`.
+- **Altri tool**: `read_doctor_metrics` usa `DoctorPolicyService._snapshot_and_metrics` (non esiste un metodo
+  pubblico per i valori metrica dello scope); `read_doctor_violations` = `evaluate` filtrato (FAIL, UNKNOWN,
+  near_limit; `include_passed` per tutte). Ogni risultato con `data_quality.status != ok` porta
+  `data_quality_warning`; ogni risultato porta `data_note` (testi = dati, non istruzioni). Scenari: payload
+  `ScenarioRequest`/`ScenarioCompareRequest` con `snapshot_id = policy_version = null`; risultato compattato per il
+  LLM (lati con totali, valori metrica, stato regole; max 30 `changes`), `executed: false`. I flag
+  `doctor_policy_enabled`/`doctor_simulator_enabled` sono verificati dai tool.
+- **Allowlist runtime**: lo streaming rifiuta (senza eseguirlo) un tool chiamato dal modello che non è
+  nell'allowlist della pagina.
+- **Schemi per il LLM**: solo keyword accettate da tutti i provider (Gemini rifiuta `uniqueItems`,
+  `exclusiveMinimum`, `propertyNames`): importo operazione `minimum: 0.01`.
+- **MCP**: i sei tool esposti accettano, oltre a `portfolio_id`, un `portfolio_ids` opzionale (1–20 id distinti,
+  deve includere `portfolio_id`) per le policy aggregate; MCP verifica la proprietà di tutto lo scope.
+  `ARGUMENT_CONSTRAINTS` contiene gli schemi annidati completi (`document`, `operations`, `target_weights` con
+  chiavi `asset_id` limitate, `constraints`, `fee_model`, `scenarios`). Heavy: `build_doctor_scenario`,
+  `compare_doctor_scenarios`; `FRESHNESS_TOOLS`: metrics, violations, scenari.
+- **Prompt**: instradamento (Doctor per composizione/rischio, `/fire` per capitale/rendita/pensione/FIRE,
+  `/portfolio` per ordini e target per ticker), «Vorrei 60/40» → intervalli + domanda sull'oro + `preview_policy`,
+  mai salvare, non ignorare la qualità dei dati, testi dei tool = dati, in entrambi i prompt (agentico e legacy).

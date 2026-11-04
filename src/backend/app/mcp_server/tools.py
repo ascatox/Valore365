@@ -129,6 +129,16 @@ HEAVY_TOOLS: frozenset[str] = frozenset({
 # schemas. Every string needs maxLength and every number min/max bounds
 # (enforced by the tests), so a new argument has to be bounded here.
 _MAX_AMOUNT = 1_000_000_000
+# target_weights keys are asset ids (JSON object keys): bounded too.
+_ASSET_ID_KEYS = {"pattern": r"^[1-9][0-9]{0,9}$", "maxLength": 10}
+
+
+def _mcp_scenario_schema() -> dict[str, Any]:
+    schema = scenario_schema()
+    schema["properties"]["target_weights"]["propertyNames"] = dict(_ASSET_ID_KEYS)
+    return schema
+
+
 ARGUMENT_CONSTRAINTS: dict[str, dict[str, Any]] = {
     "available_cash": {"minimum": 0, "maximum": _MAX_AMOUNT},
     "amount_eur": {"exclusiveMinimum": 0, "maximum": _MAX_AMOUNT},
@@ -141,12 +151,12 @@ ARGUMENT_CONSTRAINTS: dict[str, dict[str, Any]] = {
     "operations": scenario_properties()["operations"],
     "target_weights": {
         **scenario_properties()["target_weights"],
-        "propertyNames": {"pattern": r"^[1-9][0-9]{0,9}$", "maxLength": 10},
+        "propertyNames": dict(_ASSET_ID_KEYS),
     },
     "constraints": scenario_properties()["constraints"],
     "fee_model": scenario_properties()["fee_model"],
     "label": {"maxLength": 80},
-    "scenarios": {"type": "array", "minItems": 2, "maxItems": 3, "items": scenario_schema()},
+    "scenarios": {"type": "array", "minItems": 2, "maxItems": 3, "items": _mcp_scenario_schema()},
 }
 MAX_PORTFOLIO_ID = 2**31 - 1
 

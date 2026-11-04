@@ -519,8 +519,27 @@ def _plan_new_cash(book: _Book, req: ScenarioInput, policy_document: Mapping[str
         n = sum(1 for v in buys.values() if v > MONEY_TOL)
         return sum(buys.values()) * (1 + pct) + fixed * n
 
-    # Cash needed to reach the caps (costs included).
+    def invest(cash: float) -> tuple[dict[int, float], float]:
+        """Purchases spending ``cash``: B (1 + pct) + fixed * n = cash, n = purchases made."""
+        buys: dict[int, float] = {}
+        investable = 0.0
+        n = len(book.ids)
+        for _ in range(10):
+            investable = max(0.0, cash - fixed * n) / (1 + pct)
+            buys = allocate(investable) if investable > MONEY_TOL else {}
+            new_n = sum(1 for v in buys.values() if v > MONEY_TOL)
+            if new_n == n:
+                break
+            n = new_n
+        return buys, investable
+
+    # Cash needed to reach the caps (costs included), checked against invest().
     required_cash = cash_for(allocate(required_buys)) if required_buys > MONEY_TOL else 0.0
+    if required_cash > 0:
+        for _ in range(len(book.ids) + 1):
+            if invest(_ceil_cents(required_cash))[1] >= required_buys - MONEY_TOL:
+                break
+            required_cash += max(fixed, 0.01)
     if C + MONEY_TOL < required_cash:
         worst = max(
             (g for g in caps if gvalue[g] > MONEY_TOL and caps[g] > 0 and gvalue[g] / caps[g] >= needed_total - MONEY_TOL),
@@ -538,21 +557,12 @@ def _plan_new_cash(book: _Book, req: ScenarioInput, policy_document: Mapping[str
     if C <= MONEY_TOL:
         plan.cash_after = book.cash
         return plan
-    # Invest all the new cash: B (1 + pct) + fixed * n = C, n = purchases made.
-    buys: dict[int, float] = {}
-    n = len(book.ids)
-    for _ in range(10):
-        investable = max(0.0, C - fixed * n) / (1 + pct)
-        buys = allocate(investable) if investable > MONEY_TOL else {}
-        new_n = sum(1 for v in buys.values() if v > MONEY_TOL)
-        if new_n == n:
-            break
-        n = new_n
+    buys, investable = invest(C)
     if investable < required_buys - MONEY_TOL:
         raise _Infeasible(
             "insufficient_cash",
             "Il versamento, al netto dei costi, non basta a rispettare i pesi massimi.",
-            required_new_cash=_ceil_cents(required_buys * (1 + pct) + fixed * max(n, 1)),
+            required_new_cash=_ceil_cents(required_cash),
         )
     for aid, amount in sorted(buys.items()):
         if amount > MONEY_TOL:
@@ -638,7 +648,10 @@ def _plan_rebalance(book: _Book, req: ScenarioInput) -> _Plan:
             + ([unlisted_value / rest] if unlisted_value > 0 and rest > 0 else [])
         )
         buys = {a: max(0.0, v) for a, v in deltas(needed).items()}
-        costs = pct * sum(buys.values()) + fixed * sum(1 for v in buys.values() if v > MONEY_TOL)
+        # Every asset with a positive target buys once the cash is a cent above the
+        # minimum: count the fixed cost on all of them so the amount is sufficient.
+        n_buys = sum(1 for v in target_values(needed).values() if v > MONEY_TOL)
+        costs = pct * sum(buys.values()) + fixed * n_buys
         required = max(0.0, needed - V + costs - (book.cash if req.constraints.use_cash_balance else 0.0))
         target_pct = targets.get(first_sale)
         goal = f"al {format_threshold_it(target_pct * 100)}%" if target_pct is not None else "ai pesi obiettivo"
@@ -915,6 +928,28 @@ def _run_one(
 # ---------------------------------------------------------------------------
 
 
+def _canonical(snapshot: DoctorSnapshot) -> DoctorSnapshot:
+    """Same snapshot with holdings in asset_id order.
+
+    Float sums (invested value, metric denominators) then do not depend on the
+    order the positions were loaded in, so an aggregate scope gives identical
+    results for any permutation of its portfolio ids/positions. Same snapshot_id.
+    """
+    return snapshot_from_holdings(
+        sorted(snapshot.holdings, key=lambda h: (int(h.asset_id), h.symbol)),
+        portfolio_ids=snapshot.portfolio_ids,
+        base_currency=snapshot.base_currency,
+        cash_value=snapshot.cash_value,
+        price_as_of=dict(snapshot.price_as_of),
+        stale_asset_ids=set(snapshot.stale_asset_ids),
+        missing_price_asset_ids=set(snapshot.missing_price_asset_ids),
+        last_successful_price_sync=snapshot.last_successful_price_sync,
+        last_sync_status=snapshot.last_sync_status,
+        sync_available=snapshot.sync_available,
+        freshness_note=snapshot.freshness_note,
+    )
+
+
 def _check_snapshot(snapshot: DoctorSnapshot, expected: str | None) -> None:
     if expected and expected != snapshot.snapshot_id:
         err = SnapshotChanged(
@@ -948,6 +983,7 @@ def preview_scenario(
     """
     req = _as_input(request)
     _check_snapshot(snapshot, getattr(req, "snapshot_id", None))
+    snapshot = _canonical(snapshot)
     current = _utc(now)
     meta = _meta(policy_id, policy_version, policy_name)
     baseline = _evaluate(snapshot, policy_document, repo, current, baseline_metrics, meta)
@@ -1006,6 +1042,7 @@ def compare_scenarios(
     _check_snapshot(snapshot, expected_snapshot_id)
     for req in inputs:
         _check_snapshot(snapshot, getattr(req, "snapshot_id", None))
+    snapshot = _canonical(snapshot)
     current = _utc(now)
     meta = _meta(policy_id, policy_version, policy_name)
     baseline = _evaluate(snapshot, policy_document, repo, current, baseline_metrics, meta)

@@ -139,7 +139,8 @@ def scenario_operation_schema() -> dict[str, Any]:
             "symbol": {"type": "string", "minLength": 1, "maxLength": 32, "pattern": SYMBOL_PATTERN},
             "asset_id": {"type": "integer", "minimum": 1, "maximum": MAX_ASSET_ID},
             "action": {"type": "string", "enum": ["buy", "sell"]},
-            "amount": {"type": "number", "exclusiveMinimum": 0, "maximum": MAX_AMOUNT},
+            # minimum 0.01 rather than exclusiveMinimum 0: Gemini rejects exclusiveMinimum.
+            "amount": {"type": "number", "minimum": 0.01, "maximum": MAX_AMOUNT},
         },
         "required": ["action", "amount"],
         "additionalProperties": False,
