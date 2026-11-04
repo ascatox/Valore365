@@ -123,7 +123,7 @@ Esempio di Protected Resource Metadata:
 | `calculate_what_if` | `portfolio_id`, `action` (`buy`/`sell`), `symbol`, `amount_eur` |
 | `calculate_pac_contribution` | `portfolio_id`, `monthly_amount` |
 | `search_asset_info` | `portfolio_id`, `symbol` |
-| `get_aggregate_summary`, `get_aggregate_positions`, `get_aggregate_allocation`, `get_aggregate_performance`, `get_aggregate_recent_transactions`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray` | `portfolio_ids` (da 2 a 20 id distinti, stessa valuta base): vedi [Vista aggregata](#vista-aggregata-più-portafogli) |
+| `get_aggregate_summary`, `get_aggregate_positions`, `get_aggregate_allocation`, `get_aggregate_performance`, `get_aggregate_recent_transactions`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray`, `get_aggregate_performance_audit` | `portfolio_ids` (da 2 a 20 id distinti, stessa valuta base): vedi [Vista aggregata](#vista-aggregata-più-portafogli) |
 
 I tool `calculate_*` sono **simulazioni**: calcolano ordini o pesi ipotetici ma non registrano nulla.
 
@@ -549,7 +549,7 @@ Per limiti globali servirebbe uno store condiviso (ad esempio Redis), oggi non p
 | JWT rigorosi | `alg` = RS256 (rifiutati `none`/`HS*`), `crit` rifiutato, `nbf` e `iat` futuri rifiutati (tolleranza 5 s), durata massima del token. All'avvio un warning se `MCP_REQUIRE_AUDIENCE=false` | `MCP_MAX_TOKEN_LIFETIME_SECONDS`, `MCP_REQUIRE_AUDIENCE` |
 | Timeout per tool | Il tool gira in un thread; oltre il timeout il client riceve un errore generico. Il thread non può essere interrotto e termina in background, ma continua a occupare uno slot di concorrenza dell'utente finché non finisce | `MCP_TOOL_TIMEOUT_SECONDS` |
 | Concorrenza per utente | Massimo N chiamate a tool in corso per utente, poi errore "Troppe richieste in corso" (`code: concurrency_busy`, `retry_after_s: 2`). Il controllo avviene prima della quota dei tool pesanti, quindi una chiamata rifiutata come "busy" non consuma quota | `MCP_MAX_CONCURRENT_CALLS_PER_USER` |
-| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` e gli aggregati `get_aggregate_performance`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
+| Rate limit tool pesanti | `get_monte_carlo`, `get_stress_test`, `get_income_projection`, `get_xray_summary`, `calculate_rebalance_orders`, `calculate_what_if`, `calculate_pac_contribution` e gli aggregati `get_aggregate_performance`, `get_aggregate_health`, `get_aggregate_monte_carlo`, `get_aggregate_stress_test`, `get_aggregate_xray`, `get_aggregate_performance_audit` hanno un limite per utente più stretto, in aggiunta a quello generale. Oltre il limite: `code: heavy_quota`, con `retry_after_s` calcolato dalla chiamata più vecchia ancora nella finestra | `MCP_HEAVY_TOOL_RATE_LIMIT_REQUESTS`, `MCP_HEAVY_TOOL_RATE_LIMIT_WINDOW_SECONDS` |
 | Dimensione del risultato | Il JSON del risultato è limitato a 200 KB: oltre, il testo viene tagliato con il marcatore `[risultato troncato: superato il limite di 200 KB]` e `structuredContent` è omesso | codice |
 | Validazione argomenti | Schema JSON rigoroso (`additionalProperties: false`, `portfolio_id` intero positivo, numeri con minimo/massimo, `symbol` max 32 caratteri con charset limitato, NaN/Inf rifiutati), verificato sia dall'SDK sia da `run_tool_sync` prima di eseguire il tool. I batch JSON-RPC (array) non sono accettati dal trasporto dell'SDK (400) | `ARGUMENT_CONSTRAINTS` |
 | Prompt injection | Oltre al troncamento, da tutti i testi (chiavi comprese) vengono rimossi caratteri di controllo, controlli bidirezionali Unicode, caratteri a larghezza zero/invisibili e caratteri "tag" (U+E0000-U+E0FFF); `\n` e `\t` restano. Ogni descrizione di tool e le istruzioni del server avvertono che gli output sono dati, non istruzioni | codice |
@@ -620,3 +620,40 @@ cd src/backend
 pip install pip-audit
 grep -v justetf requirements.txt > /tmp/req.txt && pip-audit -r /tmp/req.txt
 ```
+
+## Export diagnostico della performance (TASK-PERF-02)
+
+Export **in sola lettura** dei dati con cui `PerformanceService` calcola TWR e MWR, per verificarli
+in modo indipendente.
+
+- **Servizio:** `build_performance_audit_export(perf_service, portfolio_ids, user_id, period="1y",
+  start_date=None, end_date=None, max_flows=500, offset=0)` in
+  `src/backend/app/services/performance_audit.py`. Riusa gli interni del servizio (stessa cache,
+  `_resolve_period_range` / `_resolve_date_range`, `_get_cashflows_with_fallback`): i flussi esportati
+  sono quelli letti da TWR/MWR. I flussi sono ricostruiti anche per portafoglio
+  (`_external_flows_from_history`) per attribuirli, e `consistency_check` verifica che l'unione
+  coincida con la lista del servizio (conteggi e totali).
+- **Output:** `portfolio_ids`, `period` (`custom` con date esplicite), `start_date`, `end_date`,
+  `period_days`, `valuation_method` (`end_of_day; flows on start day included in start value; ACT/365`),
+  `generated_at`; `valuation_start`, `valuation_before_start`, `valuation_end`; `external_flows[]`
+  (`date`, `amount_eur`, `side`, `source` = `transaction` | `cash_model`, `portfolio_id`,
+  `synthetic_flow`, `in_twr_mwr` = false per i flussi del giorno iniziale, `reason` =
+  `cash_shortfall_end_of_day` per gli apporti impliciti); `implicit_flows[]` (sottoinsieme della
+  pagina) e `total_implicit_flows`; `net_flows_by_date[]` (somma fra portafogli: i trasferimenti fra
+  portafogli selezionati si annullano); `valuation_on_flow_dates[]` (inizio, fine e ogni data di
+  flusso); `service_results` (`twr`, `mwr` del servizio sullo stesso periodo); `data_quality`
+  (`fx_missing` dal dettaglio della liquidità, `prices_missing` = date con valore nullo e capitale
+  investito, `notes`); paginazione `total_flows`, `offset`, `limit` (max 500), `truncated`. Solo
+  `external_flows` è paginato.
+- **Tool MCP:** `get_aggregate_performance_audit` (pesante, in `HEAVY_TOOLS`, con `data_freshness`).
+  Lo schema dei tool aggregati accetta solo `portfolio_ids`, quindi il tool usa il periodo `1y`,
+  `offset` 0 e al massimo 200 flussi per restare sotto il limite di dimensione del risultato.
+- **Auditor offline:** `scripts/audit/twr_mwr_offline_auditor.py` (solo libreria standard). Legge
+  l'export (file o stdin), ricalcola il TWR (prodotto dei rendimenti dei sottoperiodi sulle date di
+  flusso) e l'XIRR (bisezione propria sull'NPV, ACT/365, prospettiva dell'investitore), stampa il
+  confronto con `service_results` (delta in punti percentuali, residuo NPV), segnala radici multiple
+  dell'NPV ed esce con codice 1 se un delta supera 0,01 pp:
+  `python scripts/audit/twr_mwr_offline_auditor.py export.json`.
+- **Discrepanza nota (AUDIT-F1):** con un flusso datato esattamente `end_date`, `calculate_twr` lo
+  sottrae due volte (il giorno finale è sia un giorno di evento sia l'iterazione di chiusura):
+  l'auditor riporta il valore indipendente e il confronto è marcato `xfail` nei test.

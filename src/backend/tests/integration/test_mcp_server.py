@@ -947,7 +947,7 @@ def test_heavy_tools_have_a_stricter_rate_limit(mcp_on, monkeypatch):
     assert {'get_monte_carlo', 'get_stress_test', 'get_income_projection', 'get_xray_summary',
             'calculate_rebalance_orders', 'calculate_what_if', 'calculate_pac_contribution',
             'get_aggregate_performance', 'get_aggregate_health', 'get_aggregate_monte_carlo',
-            'get_aggregate_stress_test', 'get_aggregate_xray'} == HEAVY_TOOLS
+            'get_aggregate_stress_test', 'get_aggregate_xray', 'get_aggregate_performance_audit'} == HEAVY_TOOLS
 
 
 # --- 6. input validation ------------------------------------------------------
