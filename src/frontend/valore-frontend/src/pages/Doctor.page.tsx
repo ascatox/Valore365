@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
 import {
   ActionIcon,
@@ -14,6 +15,7 @@ import {
   SimpleGrid,
   Stack,
   Table,
+  Tabs,
   Text,
   ThemeIcon,
   Title,
@@ -21,11 +23,14 @@ import {
   useMantineTheme,
 } from '@mantine/core';
 import {
+  IconAdjustments,
   IconAlertTriangle,
   IconBook2,
   IconChartBubble,
+  IconFlask,
   IconRobot,
   IconSparkles,
+  IconStethoscope,
 } from '@tabler/icons-react';
 import { toBlob, toPng } from 'html-to-image';
 import { CopilotChat } from '../components/copilot/CopilotChat';
@@ -47,9 +52,21 @@ import { XRayCard } from '../components/doctor/XRayCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { getCopilotStatus } from '../services/api';
-import type { PortfolioHealthAlert, PortfolioHealthResponse } from '../services/api';
+import type { DoctorPolicyRead, DoctorRuleResult, PortfolioHealthAlert, PortfolioHealthResponse } from '../services/api';
+import { doctorScopeFingerprint } from '../services/api/doctor';
+import { DoctorSectionErrorBoundary } from '../components/doctor/DoctorSectionErrorBoundary';
+import { DoctorPolicySummaryCard } from '../components/doctor/policy/DoctorPolicySummaryCard';
+import { DoctorParametriSection } from '../components/doctor/policy/DoctorParametriSection';
+import { FreshnessIndicator } from '../components/doctor/policy/FreshnessIndicator';
+import { useDoctorFeatures, useDoctorMetrics, useDoctorPolicyState, useInvalidateDoctorPolicy } from '../components/doctor/policy/hooks';
+import { isEvaluation, ruleName } from '../components/doctor/policy/policyFormat';
+import { DoctorLabSection, type LabPrefill } from '../components/doctor/lab/DoctorLabSection';
 
 const PRIVACY_MASK = '******';
+
+/** Doctor areas, deep-linkable with `?section=`. */
+type DoctorSection = 'diagnosi' | 'parametri' | 'laboratorio';
+const DOCTOR_SECTIONS: DoctorSection[] = ['diagnosi', 'parametri', 'laboratorio'];
 const RETURN_VISIT_GAP_MS = 30 * 60 * 1000;
 
 function isPrivacyModeEnabled(): boolean {
@@ -283,6 +300,30 @@ export function DoctorPage() {
   const { data: health, isLoading: healthLoading, error: healthError } = usePortfolioHealth(scope);
   const { data: summary } = usePortfolioSummary(scope);
 
+  // Doctor 2.0: «I miei parametri» and «Laboratorio» next to the diagnosis,
+  // each behind its backend feature flag.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const features = useDoctorFeatures();
+  const availableSections = DOCTOR_SECTIONS.filter((item) => item === 'diagnosi'
+    || (item === 'parametri' && features.policyEnabled)
+    || (item === 'laboratorio' && features.simulatorEnabled));
+  const requestedSection = searchParams.get('section') as DoctorSection | null;
+  const section: DoctorSection = requestedSection && availableSections.includes(requestedSection) ? requestedSection : 'diagnosi';
+  const setSection = useCallback((next: DoctorSection) => {
+    setSearchParams((previous) => {
+      const params = new URLSearchParams(previous);
+      if (next === 'diagnosi') params.delete('section');
+      else params.set('section', next);
+      return params;
+    });
+  }, [setSearchParams]);
+  const policyState = useDoctorPolicyState(scopeIds, features.policyEnabled);
+  const evaluation = isEvaluation(policyState.evaluationQuery.data) ? policyState.evaluationQuery.data : null;
+  const { data: doctorMetrics } = useDoctorMetrics(features.policyEnabled || features.simulatorEnabled);
+  const invalidateDoctorPolicy = useInvalidateDoctorPolicy();
+  const [labPrefill, setLabPrefill] = useState<LabPrefill | null>(null);
+  const privacy = isPrivacyModeEnabled();
+
   useEffect(() => {
     getCopilotStatus().then((status) => setCopilotAvailable(status.available)).catch(() => {});
   }, []);
@@ -421,6 +462,38 @@ export function DoctorPage() {
     });
   }
 
+  function handleExplainRule(rule: DoctorRuleResult) {
+    const name = ruleName(rule, doctorMetrics);
+    setPendingCopilotPrompt({
+      id: Date.now(),
+      text: [
+        `Spiegami la mia regola «${name}» del Doctor.`,
+        `Esito attuale: ${rule.reason}`,
+        'Spiega cosa misura, da quali strumenti dipende e quali dati mancano, in italiano semplice.',
+        'Niente consulenza prescrittiva: è un mio parametro, non una raccomandazione.',
+      ].join('\n'),
+    });
+    openCopilot();
+  }
+
+  function handleSimulateRule(rule: DoctorRuleResult) {
+    setLabPrefill({ id: Date.now(), rule });
+    setSection('laboratorio');
+  }
+
+  function handleAskCopilot(text: string) {
+    setPendingCopilotPrompt({ id: Date.now(), text });
+    openCopilot();
+  }
+
+  function handlePolicySaved(saved: DoctorPolicyRead) {
+    void invalidateDoctorPolicy(saved.scope?.fingerprint ?? doctorScopeFingerprint(saved.scope?.portfolio_ids ?? scopeIds));
+  }
+
+  const scopeLabel = selectedPortfolio?.name ?? 'Portafoglio';
+  const scopeKeyString = scopeIds.join(',');
+  const showSectionTabs = availableSections.length > 1;
+
   async function handleCopyProfileImage() {
     if (!profileCardRef.current || typeof window === 'undefined') {
       setCopyImageState('error');
@@ -511,6 +584,27 @@ export function DoctorPage() {
             </Alert>
           )}
 
+          {showSectionTabs && (
+            <Tabs value={section} onChange={(value) => value && setSection(value as DoctorSection)} keepMounted={false}>
+              <Tabs.List grow={Boolean(isMobile)}>
+                <Tabs.Tab value="diagnosi" leftSection={<IconStethoscope size={16} />}>Diagnosi</Tabs.Tab>
+                {features.policyEnabled && (
+                  <Tabs.Tab value="parametri" leftSection={<IconAdjustments size={16} />}>I miei parametri</Tabs.Tab>
+                )}
+                {features.simulatorEnabled && (
+                  <Tabs.Tab value="laboratorio" leftSection={<IconFlask size={16} />}>Laboratorio</Tabs.Tab>
+                )}
+              </Tabs.List>
+            </Tabs>
+          )}
+
+          {evaluation && (
+            <FreshnessIndicator dataQuality={evaluation.data_quality} snapshotAsOf={evaluation.snapshot_as_of} />
+          )}
+
+          {section === 'diagnosi' && (
+          <DoctorSectionErrorBoundary key={`diagnosi-${scopeKeyString}`} area="Diagnosi">
+          <Stack gap="lg">
           {healthLoading && scope != null && (
             <Card withBorder radius="xl" padding="xl">
               <Group justify="center" py="xl">
@@ -541,14 +635,24 @@ export function DoctorPage() {
                 </Grid.Col>
 
                 <Grid.Col span={{ base: 12, xl: 4 }}>
+                  <Stack gap="lg" h="100%">
+                  {features.policyEnabled && (
+                    <DoctorPolicySummaryCard
+                      evaluation={policyState.evaluationQuery.data}
+                      isLoading={policyState.policyQuery.isLoading || policyState.evaluationQuery.isLoading}
+                      error={policyState.policyQuery.error ?? policyState.evaluationQuery.error}
+                      isAggregate={isAggregate}
+                      scopeLabel={scopeLabel}
+                      onOpenParametri={() => setSection('parametri')}
+                    />
+                  )}
                   <Card
                     ref={signalsRef}
                     withBorder
                     radius="xl"
                     padding="lg"
-                    h="100%"
+                    style={{ flex: 1, overflow: 'hidden', scrollMarginTop: 'calc(var(--app-shell-header-offset, 0px) + 72px)' }}
                     // "Come migliorare" scrolls here; keep it clear of the sticky headers.
-                    style={{ overflow: 'hidden', scrollMarginTop: 'calc(var(--app-shell-header-offset, 0px) + 72px)' }}
                   >
                     <Stack gap="md">
                       <Group gap="sm">
@@ -574,6 +678,7 @@ export function DoctorPage() {
                       ))}
                     </Stack>
                   </Card>
+                  </Stack>
                 </Grid.Col>
               </Grid>
 
@@ -759,6 +864,47 @@ export function DoctorPage() {
               />
             </>
           )}
+          </Stack>
+          </DoctorSectionErrorBoundary>
+          )}
+
+          {section === 'parametri' && scope != null && (
+            <DoctorSectionErrorBoundary key={`parametri-${scopeKeyString}`} area="I miei parametri">
+              <DoctorParametriSection
+                portfolioIds={scopeIds}
+                isAggregate={isAggregate}
+                scopeLabel={scopeLabel}
+                privacy={privacy}
+                currency={baseCurrency}
+                isMobile={Boolean(isMobile)}
+                policyState={policyState}
+                canExplain={copilotAvailable}
+                canSimulate={features.simulatorEnabled}
+                onExplain={handleExplainRule}
+                onSimulate={handleSimulateRule}
+              />
+            </DoctorSectionErrorBoundary>
+          )}
+
+          {section === 'laboratorio' && scope != null && (
+            <DoctorSectionErrorBoundary key={`laboratorio-${scopeKeyString}`} area="Laboratorio">
+              <DoctorLabSection
+                key={`${scopeKeyString}-${labPrefill?.id ?? 'lab'}`}
+                scope={scope}
+                portfolioIds={scopeIds}
+                isAggregate={isAggregate}
+                privacy={privacy}
+                currency={baseCurrency}
+                isMobile={Boolean(isMobile)}
+                evaluation={evaluation}
+                metrics={doctorMetrics}
+                prefill={labPrefill}
+                canAskCopilot={copilotAvailable}
+                onAskCopilot={handleAskCopilot}
+                onSnapshotChanged={() => { void invalidateDoctorPolicy(policyState.fingerprint); }}
+              />
+            </DoctorSectionErrorBoundary>
+          )}
         </Stack>
       </Container>
 
@@ -792,6 +938,7 @@ export function DoctorPage() {
         emptyStateDescription="Interpreto il referto Doctor, spiego rischi e priorita operative del portafoglio."
         pageContext="doctor"
         pendingPrompt={pendingCopilotPrompt}
+        onPolicySaved={handlePolicySaved}
       />
     </PageLayout>
   );

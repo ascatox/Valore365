@@ -17,6 +17,8 @@ import { useMediaQuery } from '@mantine/hooks';
 import { IconArrowRight, IconArrowsHorizontal, IconChevronDown, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { getAuthToken } from '../../services/api';
+import type { DoctorPolicyDraftPayload, DoctorPolicyRead } from '../../services/api/types';
+import { PolicyDraftCard, parsePolicyDraft } from '../doctor/policy/PolicyDraftCard';
 import { useVirtualKeyboard } from '../../hooks/useVirtualKeyboard';
 import { useSwipeToClose } from '../../hooks/useSwipeToClose';
 
@@ -34,6 +36,8 @@ const MAX_MESSAGES_PER_CONV = 50;
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  /** Doctor policy draft from a `policy_draft` SSE event: never persisted (it carries a confirmation token). */
+  policyDraft?: DoctorPolicyDraftPayload;
 }
 
 // Conversations are kept per scope: the portfolio id, or `aggregate_1_2`
@@ -82,7 +86,7 @@ function saveCurrentConversation(
 ): void {
   if (messages.length === 0) return;
   const convs = loadConversations(portfolioId);
-  const trimmedMessages = messages.slice(-MAX_MESSAGES_PER_CONV);
+  const trimmedMessages = messages.slice(-MAX_MESSAGES_PER_CONV).map(({ role, content }) => ({ role, content }));
   const firstUserMsg = messages.find((m) => m.role === 'user');
   const preview = firstUserMsg?.content.slice(0, 80) || 'Conversazione';
 
@@ -128,6 +132,8 @@ interface CopilotChatProps {
   emptyStateDescription?: string;
   pageContext?: string;
   pendingPrompt?: { id: number; text: string } | null;
+  /** Called after the user confirmed and saved a Copilot policy draft. */
+  onPolicySaved?: (policy: DoctorPolicyRead) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -200,6 +206,7 @@ export function CopilotChat({
   emptyStateDescription = 'Chiedimi qualsiasi cosa sul tuo portafoglio. Ecco qualche spunto:',
   pageContext,
   pendingPrompt = null,
+  onPolicySaved,
 }: CopilotChatProps) {
   const aggregateIds = portfolioIds && portfolioIds.length > 1
     ? [...new Set(portfolioIds)].sort((left, right) => left - right)
@@ -318,7 +325,7 @@ export function CopilotChat({
         body: JSON.stringify({
           portfolio_id: portfolioId,
           ...(portfolioIds && portfolioIds.length > 0 ? { portfolio_ids: portfolioIds } : {}),
-          messages: newMessages,
+          messages: newMessages.map(({ role, content }) => ({ role, content })),
           ...(pageContext ? { page_context: pageContext } : {}),
         }),
         signal: controller.signal,
@@ -358,9 +365,19 @@ export function CopilotChat({
               accumulated += event.content;
               setMessages((prev) => {
                 const updated = [...prev];
-                updated[updated.length - 1] = { role: 'assistant', content: accumulated };
+                updated[updated.length - 1] = { ...updated[updated.length - 1], role: 'assistant', content: accumulated };
                 return updated;
               });
+            } else if (event.type === 'policy_draft') {
+              // Shown as a card: nothing is saved until the user clicks «Conferma e salva».
+              const draft = parsePolicyDraft(event.content);
+              if (draft) {
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  updated[updated.length - 1] = { ...updated[updated.length - 1], role: 'assistant', policyDraft: draft };
+                  return updated;
+                });
+              }
             } else if (event.type === 'error') {
               setThinkingStatus(null);
               setError(event.content);
@@ -621,17 +638,19 @@ export function CopilotChat({
         ) : (
           <Stack gap="sm" pb="sm">
             {messages.map((msg, i) => (
-              <MessageBubble
-                key={i}
-                role={msg.role}
-                content={msg.content}
-                streaming={streaming && i === messages.length - 1 && msg.role === 'assistant'}
-                thinkingStatus={
-                  streaming && i === messages.length - 1 && msg.role === 'assistant'
-                    ? thinkingStatus
-                    : null
-                }
-              />
+              <Stack key={i} gap="xs">
+                <MessageBubble
+                  role={msg.role}
+                  content={msg.content}
+                  streaming={streaming && i === messages.length - 1 && msg.role === 'assistant'}
+                  thinkingStatus={
+                    streaming && i === messages.length - 1 && msg.role === 'assistant'
+                      ? thinkingStatus
+                      : null
+                  }
+                />
+                {msg.policyDraft && <PolicyDraftCard draft={msg.policyDraft} onSaved={onPolicySaved} />}
+              </Stack>
             ))}
           </Stack>
         )}

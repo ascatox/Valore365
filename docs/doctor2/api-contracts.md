@@ -242,3 +242,97 @@ Invarianti: valore conservato senza flussi/costi; con cash esterno varia solo di
 nessuna posizione negativa; nessuna scrittura su DB; deterministico a snapshot invariato.
 Volatilità dopo scenario non stimabile → `N/D` motivato (mai riciclare quella corrente).
 Aggregati: solo pesi complessivi, nessun ordine per conto.
+
+## Deviazioni
+
+### Core (§1–4: metriche, snapshot, validator, evaluator, schemi)
+
+Metodologia completa: `docs/doctor2/financial-methodology.md`.
+
+- **Firme**: `compute_metrics(snapshot, repo=None)` (repo opzionale: senza repo
+  solo fallback deterministici `infer_ter`/`infer_region_profile`, `source`
+  `ter_inferred`/`region_inference`); `evaluate_policy(document, metrics, snapshot, *, now=None)`;
+  `build_snapshot(repo, portfolio_ids, user_id)` accetta sempre una lista (anche di 1 id) e
+  solleva `ScopeError` (sottoclasse di `ValueError`) per lista vuota/>20/id ≤ 0 e
+  `ValueError` per portafoglio non posseduto/valute miste.
+  In più: `validate_and_normalize(doc) -> (normalized|None, errors)`,
+  `normalize_policy_document` solleva `PolicyValidationError(errors)` se non valido,
+  `build_evaluation_response(document|None, snapshot, metrics=None, *, repo=None, policy_id=None,
+  policy_version=None, policy_name=None, now=None)`, `scope.build_scope(ids) -> PolicyScope`,
+  `scope.normalize_scope_ids(ids)`, `templates.list_templates()` / `get_template(id)`,
+  `metrics.metric_definitions()`.
+- **Body REST**: in `ValidateRequest`/`PreviewRequest`/`SaveRequest` il campo `document` è
+  `dict` libero: la validazione stretta la fa `validator.py` (errori `FieldError` con path
+  `rules[0].max_value`, risposta 422 `validation_error`), non Pydantic.
+- **Schemi aggiuntivi** in `app/schemas/doctor_policy.py`: `MetricContributor`, `MetricValueRead`,
+  `PolicyReadEnvelope` (`{policy: PolicyRead|null}`), `PolicyVersionsResponse`, `TemplatesResponse`,
+  `MetricsResponse`, `DoctorFeaturesRead`. `MetricDefinitionRead` ha anche `source`,
+  `default_warning_margin`, `methodology_version`. `TemplateRead` = `{template_id, name, description,
+  template_version, illustrative: true, disclaimer, document}`. `PolicyVersionRead` include anche
+  `document` e `document_hash`. Nel `PolicyPreviewResponse` `evaluation_after`, `expires_at`,
+  `document_hash` sono nullable (documento non valido → nessuna valutazione/token).
+- **Default normalizzati di una regola**: `precision` 1 (TER 2), `severity` `medium`,
+  `warning_margin` per metrica (2 pp; TER 0,05; overlap 5), `min_coverage_pct` 80,
+  `max_data_age_days` 5 (ammessi 1–365), `enabled` true, `label` null (stringa vuota → null).
+- **Validazione più stretta**: con `operator: "max"` un `min_value` non nullo è errore `not_allowed`
+  (e viceversa per `min`). Il controllo «`max_single max` × 3 < `top3 min`» è implementato ma
+  irraggiungibile (top3 ammette solo `max`). La fattibilità considera solo le regole attive.
+  Codici errore: `required`, `invalid_type`, `invalid_format`, `invalid_value`, `out_of_range`,
+  `extra_field`, `unknown_metric`, `invalid_operator`, `operator_not_allowed`, `not_allowed`,
+  `min_gt_max`, `invalid_unit`, `duplicate`, `too_many_rules`, `too_long`,
+  `unsupported_version`, `infeasible`, `inconsistent`.
+- **`document_hash`** normalizza il documento (se valido) prima dello sha256 del JSON canonico.
+- **`MetricValue`**: `value` con copertura parziale = quota nota / coverage × 100 (stima sulla parte
+  classificata); i bounds restano `lower`/`upper`. TER parziale: `lower` = costo coperto / 100,
+  `upper = null`. `etf_overlap_pct` con meno di 2 fondi = 0 con nota (non `missing`).
+- **Empty portfolio**: le regole disattivate restano `INACTIVE` (non `NOT_APPLICABLE`).
+- **Prezzi mancanti** (nessuna quota o `price_fallback = avg_cost`): `UNKNOWN` se la loro quota del
+  valore investito supera `100 − min_coverage_pct`; `data_quality.status = partial`.
+- **`data_quality.status = "unknown"`** per snapshot senza alcuna informazione di sync né di prezzo
+  (snapshot simulati / di test).
+- **`snapshot_id`**: 16 caratteri esadecimali.
+- **Cash**: escluse le posizioni `asset_type = "cash"` e il saldo di cassa; un fondo monetario
+  (classe `cash` del classificatore) resta nel denominatore ma fuori da azioni/obbligazioni/oro.
+
+### Persistence (§5 REST, §6 persistenza, store/confirmation/service/cache)
+
+Architettura: `docs/doctor2/architecture.md`.
+
+- **Errori**: classi in `app/services/doctor_policy/errors.py` (nuovo file, non in tabella §1):
+  `InvalidRequest` 400, `PolicyValidationFailed` 422, `NotFound` 404, `VersionConflict` 409,
+  `ConfirmationInvalid` 409, `FeatureDisabled` 404, `NotImplementedYet` 501 (`not_implemented`,
+  usato dai placeholder Scenario Lab). `details` = `{field_errors, retryable, request_id}`;
+  `request_id` = header `X-Request-ID` del client se ben formato (`[A-Za-z0-9._-]{1,64}`),
+  altrimenti uuid4 hex (il middleware esistente non genera request id). Il 409
+  `version_conflict` aggiunge `details.current_version`.
+- **Body malformati** (non oggetto JSON, tipi errati, >20 id, `version_number < 1`): 400
+  `invalid_request` con `field_errors` (path stile `portfolio_ids[0]`), non il 422 generico di
+  FastAPI. Query `portfolio_ids` non numerici → 400. Nei body è accettato anche `portfolio_id`
+  singolo; in query anche `portfolio_ids=19,26`.
+- **`POST /doctor/policies`** senza `confirmation_token` (o stringa vuota) → 409
+  `confirmation_invalid` (prima della validazione Pydantic). Documento non valido → 422
+  `validation_error` con `field_errors`. Ordine dei controlli: scope (400/404) → documento (422)
+  → token (409 `confirmation_invalid`) → versione (409 `version_conflict`). Token consumato
+  nella stessa transazione del salvataggio: se il salvataggio va in conflitto il token resta
+  non usato (ma è comunque legato alla vecchia `base_version`).
+- **`source` della versione**: preso dalla preview che ha emesso il token (colonna aggiuntiva
+  `doctor_confirmation_tokens.source`, default `manual`); il `SaveRequest` non ha `source`.
+  `doctor_confirmation_tokens.created_at` aggiunta. `doctor_policy_sets.name` not null
+  (default applicativo "La mia policy"), `current_version` default 0 prima della prima versione.
+- **Restore**: non richiede token (azione esplicita UI, mai Copilot); `base_version` obbligatoria
+  di fatto (`null` con policy esistente → 409). Documento ripristinato rinormalizzato; diff
+  calcolato rispetto alla versione corrente. Mantiene il nome della policy.
+- **Preview**: `evaluation_before` = `null` se lo scope non ha policy; `evaluation_after` = `null`
+  se la bozza non è valida (nessun token, `expires_at` null). Il token viene emesso anche se
+  `base_version` non è quella corrente (il salvataggio poi risponde 409 `version_conflict`).
+  `evaluation_after.policy_version` = `null` (bozza), `policy_id`/`policy_name` della policy
+  corrente se esiste.
+- **Versioni**: `GET /doctor/policies/{id}/versions` → `PolicyVersionsResponse`
+  `{policy_id, current_version, versions: [...]}` in ordine decrescente; `actor` = user id.
+- **Archiviazione**: `DoctorPolicyStore.archive()` esiste (libera lo scope), nessun endpoint REST.
+- **Scenario Lab**: le route chiamano `DoctorPolicyService.preview_scenario(user_id, payload)` /
+  `compare_scenarios(user_id, payload)` con il body grezzo (dict); per ora rispondono 501
+  `not_implemented` finché l'agente lab non le collega a `scenario.py`.
+- **Cache**: la chiave usa `policy_version = 0` quando lo scope non ha policy.
+- **`schema.sql`** aggiornato con le 4 tabelle; `supabase_full_setup.sql` non è più mantenuto
+  come schema completo (manca già TASK-54) e non è stato modificato.

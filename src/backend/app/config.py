@@ -116,6 +116,11 @@ class Settings(BaseSettings):
     # Keep default=True for backward compatibility; disable explicitly via env.
     enable_target_allocation: bool = True
 
+    # Portfolio Doctor 2.0 (docs/doctor2/api-contracts.md). When False the
+    # matching /api/doctor/... endpoints answer 404 feature_disabled.
+    doctor_policy_enabled: bool = True
+    doctor_simulator_enabled: bool = True
+
     # Copilot (AI assistant) — multi-provider
     # provider: "openai" | "anthropic" | "gemini" | "openrouter" | "local"
     copilot_provider: str = ""

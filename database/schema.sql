@@ -307,3 +307,61 @@ create table if not exists market_data_asset_sync (
   last_error text,
   last_error_at timestamptz
 );
+
+
+-- Portfolio Doctor 2.0: policy personali versionate e token di conferma
+-- (migrations/20261104_01_doctor_policies.sql, che attiva anche la RLS).
+create table if not exists doctor_policy_sets (
+  id bigserial primary key,
+  owner_user_id text not null,
+  scope_type text not null check (scope_type in ('single', 'aggregate')),
+  scope_fingerprint text not null,
+  name text not null,
+  active boolean not null default true,
+  current_version int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  archived_at timestamptz
+);
+
+create unique index if not exists uq_doctor_policy_sets_owner_scope
+  on doctor_policy_sets (owner_user_id, scope_fingerprint)
+  where archived_at is null;
+
+create table if not exists doctor_policy_scope_members (
+  policy_set_id bigint not null references doctor_policy_sets(id) on delete cascade,
+  portfolio_id bigint not null,
+  primary key (policy_set_id, portfolio_id)
+);
+
+create index if not exists idx_doctor_policy_scope_members_portfolio
+  on doctor_policy_scope_members (portfolio_id);
+
+create table if not exists doctor_policy_versions (
+  id bigserial primary key,
+  policy_set_id bigint not null references doctor_policy_sets(id) on delete cascade,
+  version_number int not null check (version_number >= 1),
+  schema_version int not null,
+  constraints jsonb not null,
+  document_hash text not null,
+  source text not null check (source in ('manual', 'copilot', 'template', 'restore')),
+  diff jsonb not null default '[]'::jsonb,
+  confirmed_at timestamptz not null default now(),
+  actor_user_id text not null,
+  unique (policy_set_id, version_number)
+);
+
+create table if not exists doctor_confirmation_tokens (
+  token_hash text primary key,
+  owner_user_id text not null,
+  scope_fingerprint text not null,
+  document_hash text not null,
+  base_version int,
+  source text not null default 'manual' check (source in ('manual', 'copilot', 'template')),
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null,
+  used_at timestamptz
+);
+
+create index if not exists idx_doctor_confirmation_tokens_expires
+  on doctor_confirmation_tokens (expires_at);
