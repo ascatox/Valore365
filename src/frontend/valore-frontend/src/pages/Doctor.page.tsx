@@ -281,6 +281,8 @@ function shareImageFilter(node: HTMLElement): boolean {
 export function DoctorPage() {
   type PendingCopilotPrompt = { id: number; text: string } | null;
   const isMobile = useMediaQuery('(max-width: 48em)');
+  // Copilot: side panel next to the content on desktop (Mantine lg), drawer on tablet, bottom sheet on mobile.
+  const isDesktop = useMediaQuery('(min-width: 75em)');
   // Shared scope: one portfolio or the aggregate of several (every Doctor
   // analysis has an aggregate route on merged holdings).
   const { scope, isAggregate, selectedPortfolios, setSingle, setScope } = usePortfolioScope();
@@ -360,7 +362,8 @@ export function DoctorPage() {
     const suggestions = health.suggestions.slice(0, 2).map((suggestion) => `- ${suggestion.message}`).join('\n');
     return [
       `${selectedPortfolio.name} Portfolio Doctor`,
-      `Score: ${health.score}/100`,
+      // Privacy Mode: the shared text masks the score like the card and the image do.
+      `Score: ${isPrivacyModeEnabled() ? PRIVACY_MASK : health.score}/100`,
       `Rischio: ${summaryLabel('risk_level', health.summary.risk_level)}`,
       `Diversificazione: ${summaryLabel('diversification', health.summary.diversification)}`,
       `Sovrapposizione: ${summaryLabel('overlap', health.summary.overlap)}`,
@@ -436,7 +439,7 @@ export function DoctorPage() {
     ].filter(Boolean).join('\n');
   }
 
-  function handleDoctorPrompt(alert: PortfolioHealthAlert, prompt: string) {
+  function handleDoctorPrompt(prompt: string, alert: PortfolioHealthAlert) {
     updateEducationStats((stats) => {
       stats.totals.educationPromptClicks += 1;
       stats.totals.quickPromptUses += 1;
@@ -545,8 +548,30 @@ export function DoctorPage() {
     }
   }
 
+  const copilotLayout: 'side-panel' | 'drawer' | 'bottom-sheet' = isMobile ? 'bottom-sheet' : isDesktop ? 'side-panel' : 'drawer';
+  const sidePanelOpen = copilotLayout === 'side-panel' && copilotOpened;
+
+  const copilotChat = (
+    <CopilotChat
+      opened={copilotOpened}
+      onClose={closeCopilot}
+      portfolioId={scopeIds[0] ?? null}
+      portfolioIds={isAggregate ? scopeIds : undefined}
+      title="Doctor Copilot"
+      quickPrompts={doctorQuickPrompts}
+      emptyStateDescription="Interpreto il referto Doctor, spiego rischi e priorita operative del portafoglio."
+      pageContext="doctor"
+      pendingPrompt={pendingCopilotPrompt}
+      onPolicySaved={handlePolicySaved}
+      layout={copilotLayout}
+      drawerSize="md"
+    />
+  );
+
   return (
     <PageLayout>
+      <Box style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      <Box style={{ flex: 1, minWidth: 0 }}>
       <Container fluid px={0}>
         <Stack gap="lg">
           <PageHeader
@@ -700,7 +725,7 @@ export function DoctorPage() {
                     {Object.keys(health.metrics.sector_exposure).length > 0 && (
                       <>
                         <Title order={5} mt="md" mb="xs">Esposizione Settoriale</Title>
-                        <Table withTableBorder withColumnBorders highlightOnHover size="sm" style={{ tableLayout: 'fixed' }}>
+                        <Table withTableBorder withColumnBorders highlightOnHover style={{ tableLayout: 'fixed' }}>
                           <Table.Tbody>
                             {Object.entries(health.metrics.sector_exposure).slice(0, 10).map(([sector, weight]) => (
                               <Table.Tr key={sector}>
@@ -907,8 +932,25 @@ export function DoctorPage() {
           )}
         </Stack>
       </Container>
+      </Box>
+      {copilotLayout === 'side-panel' && (
+        <Box
+          data-testid="doctor-copilot-panel"
+          style={{
+            display: sidePanelOpen ? 'block' : 'none',
+            flex: '0 0 380px',
+            width: 380,
+            position: 'sticky',
+            top: 'calc(var(--app-shell-header-offset, 0px) + 16px)',
+            height: 'calc(100dvh - var(--app-shell-header-offset, 0px) - 32px)',
+          }}
+        >
+          {copilotChat}
+        </Box>
+      )}
+      </Box>
 
-      {copilotAvailable && (
+      {copilotAvailable && !sidePanelOpen && (
         <ActionIcon
           variant="filled"
           color="teal"
@@ -928,18 +970,7 @@ export function DoctorPage() {
         </ActionIcon>
       )}
 
-      <CopilotChat
-        opened={copilotOpened}
-        onClose={closeCopilot}
-        portfolioId={scopeIds[0] ?? null}
-        portfolioIds={isAggregate ? scopeIds : undefined}
-        title="Doctor Copilot"
-        quickPrompts={doctorQuickPrompts}
-        emptyStateDescription="Interpreto il referto Doctor, spiego rischi e priorita operative del portafoglio."
-        pageContext="doctor"
-        pendingPrompt={pendingCopilotPrompt}
-        onPolicySaved={handlePolicySaved}
-      />
+      {copilotLayout !== 'side-panel' && copilotChat}
     </PageLayout>
   );
 }

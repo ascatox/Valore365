@@ -4,8 +4,10 @@ import {
   Badge,
   Box,
   Button,
+  CloseButton,
   Drawer,
   Group,
+  Paper,
   ScrollArea,
   Stack,
   Text,
@@ -16,6 +18,7 @@ import {
 import { useMediaQuery } from '@mantine/hooks';
 import { IconArrowRight, IconArrowsHorizontal, IconChevronDown, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
+import { BottomSheet } from '../mobile/BottomSheet';
 import { getAuthToken } from '../../services/api';
 import type { DoctorPolicyDraftPayload, DoctorPolicyRead } from '../../services/api/types';
 import { PolicyDraftCard, parsePolicyDraft } from '../doctor/policy/PolicyDraftCard';
@@ -134,6 +137,14 @@ interface CopilotChatProps {
   pendingPrompt?: { id: number; text: string } | null;
   /** Called after the user confirmed and saved a Copilot policy draft. */
   onPolicySaved?: (policy: DoctorPolicyRead) => void;
+  /**
+   * How the chat is shown. Default `drawer` (today's behaviour on every page);
+   * `side-panel` renders an inline panel the page places next to its content;
+   * `bottom-sheet` uses the mobile BottomSheet.
+   */
+  layout?: 'drawer' | 'side-panel' | 'bottom-sheet';
+  /** Drawer width at the default panel size (e.g. 'md' on tablets). Default: today's size. */
+  drawerSize?: string;
 }
 
 const QUICK_PROMPTS = [
@@ -207,6 +218,8 @@ export function CopilotChat({
   pageContext,
   pendingPrompt = null,
   onPolicySaved,
+  layout = 'drawer',
+  drawerSize,
 }: CopilotChatProps) {
   const aggregateIds = portfolioIds && portfolioIds.length > 1
     ? [...new Set(portfolioIds)].sort((left, right) => left - right)
@@ -214,7 +227,7 @@ export function CopilotChat({
   const conversationKey: ConversationScopeKey | null = aggregateIds && aggregateIds.length > 1
     ? `aggregate_${aggregateIds.join('_')}`
     : portfolioId;
-  const resolvedQuickPrompts = quickPrompts ?? (pageContext && PAGE_QUICK_PROMPTS[pageContext]) ?? QUICK_PROMPTS;
+  const resolvedQuickPrompts = quickPrompts ?? (pageContext ? PAGE_QUICK_PROMPTS[pageContext] : undefined) ?? QUICK_PROMPTS;
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
@@ -467,58 +480,27 @@ export function CopilotChat({
   const keyboardOpen = useVirtualKeyboard(Boolean(isMobile) && opened);
   const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
 
-  return (
-    <Drawer
-      opened={opened}
-      onClose={onClose}
-      position="right"
-      size={isMobile ? '100%' : PANEL_SIZE_MAP[panelSize]}
-      title={
-        <Group gap="xs">
-          <IconRobot size={20} />
-          <Text fw={700}>{title}</Text>
-          <Badge size="xs" variant="light" color="teal">AI</Badge>
-          {!isMobile && (
-            <ActionIcon
-              variant="subtle"
-              color="gray"
-              size="sm"
-              onClick={cyclePanelSize}
-              title={PANEL_LABELS[panelSize]}
-            >
-              {panelSize === 'wide' ? <IconArrowRight size={16} /> : <IconArrowsHorizontal size={16} />}
-            </ActionIcon>
-          )}
-        </Group>
-      }
-      styles={{
-        body: {
-          display: 'flex',
-          flexDirection: 'column',
-          // On mobile the header grows with the safe-area inset, so let the body
-          // take the remaining space instead of assuming a 60px header.
-          ...(isMobile ? { flex: 1, minHeight: 0 } : { height: 'calc(100% - 60px)' }),
-          padding: 0,
-          overflowX: 'hidden',
-        },
-        content: {
-          display: 'flex',
-          flexDirection: 'column',
-          overflowX: 'hidden',
-          height: isMobile ? '100dvh' : undefined,
-          paddingBottom: isMobile ? 'var(--safe-area-bottom)' : undefined,
-        },
-        header: {
-          zIndex: 10,
-          position: 'sticky' as const,
-          top: 0,
-          paddingTop: isMobile ? 'calc(var(--mantine-spacing-xs) + var(--safe-area-top))' : undefined,
-        },
-        close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
-      }}
-      onTouchStart={isMobile ? swipeHandlers.onTouchStart : undefined}
-      onTouchEnd={isMobile ? swipeHandlers.onTouchEnd : undefined}
-    >
+  const headerTitle = (
+    <Group gap="xs">
+      <IconRobot size={20} />
+      <Text fw={700}>{title}</Text>
+      <Badge size="xs" variant="light" color="teal">AI</Badge>
+      {!isMobile && (
+        <ActionIcon
+          variant="subtle"
+          color="gray"
+          size="sm"
+          onClick={cyclePanelSize}
+          title={PANEL_LABELS[panelSize]}
+        >
+          {panelSize === 'wide' ? <IconArrowRight size={16} /> : <IconArrowsHorizontal size={16} />}
+        </ActionIcon>
+      )}
+    </Group>
+  );
+
+  const chatBody = (
+    <>
       {/* Messages */}
       <ScrollArea
         flex={1}
@@ -667,6 +649,7 @@ export function CopilotChat({
       <Box
         px={isMobile ? 'xs' : 'md'}
         py="sm"
+        data-copilot-layout={layout}
         style={{
           borderTop: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}`,
           background: isDark ? theme.colors.dark[7] : '#fff',
@@ -755,6 +738,85 @@ export function CopilotChat({
           </ActionIcon>
         </Group>
       </Box>
+    </>
+  );
+
+  if (layout === 'side-panel') {
+    // Contextual panel next to the page content: no overlay, the page stays usable.
+    if (!opened) return null;
+    return (
+      <Paper
+        component="aside"
+        aria-label={title}
+        withBorder
+        radius="lg"
+        style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}
+      >
+        <Group
+          justify="space-between"
+          wrap="nowrap"
+          px="md"
+          py="xs"
+          style={{ borderBottom: `1px solid ${isDark ? theme.colors.dark[4] : theme.colors.gray[2]}` }}
+        >
+          <Group gap="xs" wrap="nowrap">
+            <IconRobot size={20} />
+            <Text fw={700}>{title}</Text>
+            <Badge size="xs" variant="light" color="teal">AI</Badge>
+          </Group>
+          <CloseButton onClick={onClose} aria-label="Chiudi copilot" />
+        </Group>
+        {chatBody}
+      </Paper>
+    );
+  }
+
+  if (layout === 'bottom-sheet') {
+    return (
+      <BottomSheet opened={opened} onClose={onClose} title={title}>
+        <Box style={{ display: 'flex', flexDirection: 'column', height: '75dvh', overflowX: 'hidden' }}>
+          {chatBody}
+        </Box>
+      </BottomSheet>
+    );
+  }
+
+  return (
+    <Drawer
+      opened={opened}
+      onClose={onClose}
+      position="right"
+      size={isMobile ? '100%' : (drawerSize && panelSize === 'default' ? drawerSize : PANEL_SIZE_MAP[panelSize])}
+      title={headerTitle}
+      styles={{
+        body: {
+          display: 'flex',
+          flexDirection: 'column',
+          // On mobile the header grows with the safe-area inset, so let the body
+          // take the remaining space instead of assuming a 60px header.
+          ...(isMobile ? { flex: 1, minHeight: 0 } : { height: 'calc(100% - 60px)' }),
+          padding: 0,
+          overflowX: 'hidden',
+        },
+        content: {
+          display: 'flex',
+          flexDirection: 'column',
+          overflowX: 'hidden',
+          height: isMobile ? '100dvh' : undefined,
+          paddingBottom: isMobile ? 'var(--safe-area-bottom)' : undefined,
+        },
+        header: {
+          zIndex: 10,
+          position: 'sticky' as const,
+          top: 0,
+          paddingTop: isMobile ? 'calc(var(--mantine-spacing-xs) + var(--safe-area-top))' : undefined,
+        },
+        close: { minWidth: 36, minHeight: 36, width: 36, height: 36 },
+      }}
+      onTouchStart={isMobile ? swipeHandlers.onTouchStart : undefined}
+      onTouchEnd={isMobile ? swipeHandlers.onTouchEnd : undefined}
+    >
+      {chatBody}
     </Drawer>
   );
 }

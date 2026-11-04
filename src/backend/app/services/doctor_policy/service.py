@@ -458,11 +458,87 @@ class DoctorPolicyService:
     # Scenario Lab (filled by app/services/doctor_policy/scenario.py)
     # ------------------------------------------------------------------
 
+    def _scenario_context(self, user_id: str, portfolio_ids: Iterable[Any], policy_version: int | None):
+        """Authorized scope, current policy and ONE snapshot for the Lab (read-only)."""
+        ids = self.resolve_scope(portfolio_ids, user_id)
+        fingerprint = build_scope(ids).fingerprint
+        record = self.store.get_policy_set(user_id, fingerprint)
+        current_version = record.current_version if record else None
+        if policy_version is not None and policy_version != (current_version or 0):
+            err = VersionConflict("La policy è stata modificata nel frattempo: ricarica e riprova")
+            err.details["current_version"] = current_version
+            raise err
+        try:
+            snapshot = build_snapshot(self.repo, ids, user_id)
+        except ScopeError as exc:
+            raise InvalidRequest(str(exc)) from exc
+        except ValueError as exc:
+            if str(exc) == NOT_FOUND_MESSAGE:
+                raise NotFound(NOT_FOUND_MESSAGE) from exc
+            raise InvalidRequest(str(exc)) from exc
+        meta = {
+            "policy_id": record.id if record else None,
+            "policy_version": current_version,
+            "policy_name": record.name if record else None,
+        }
+        return ids, fingerprint, record, snapshot, meta
+
     def preview_scenario(self, user_id: str, payload: dict[str, Any]) -> Any:
-        raise NotImplementedYet("Scenario Lab non ancora disponibile")
+        """One Scenario Lab simulation (contract §8). Never writes.
+
+        Cached per (user, fingerprint, policy_version, snapshot_id,
+        methodology_version, "scenario", input hash).
+        """
+        from . import scenario as lab
+
+        started = time.monotonic()
+        request = lab.parse_scenario_request(payload)
+        ids, fingerprint, record, snapshot, meta = self._scenario_context(
+            user_id, request.portfolio_ids, request.policy_version,
+        )
+        lab._check_snapshot(snapshot, request.snapshot_id)
+        key = (
+            user_id, fingerprint, meta["policy_version"] or 0, snapshot.snapshot_id, METHODOLOGY_VERSION,
+            "scenario", lab.scenario_input_hash(request),
+        )
+        cached = self.cache.get(key)
+        if cached is None:
+            cached = lab.preview_scenario(
+                snapshot, request, policy_document=record.document if record else None, repo=self.repo, **meta,
+            )
+            self.cache.set(key, cached.model_copy(deep=True))
+        logger.info(
+            "doctor.scenario.preview scope_size=%d mode=%s feasible=%d ms=%.0f",
+            len(ids), request.mode, int(cached.feasible), (time.monotonic() - started) * 1000,
+        )
+        return cached.model_copy(deep=True)
 
     def compare_scenarios(self, user_id: str, payload: dict[str, Any]) -> Any:
-        raise NotImplementedYet("Scenario Lab non ancora disponibile")
+        """2–3 scenarios on one snapshot + the current state (contract §8). Never writes."""
+        from . import scenario as lab
+
+        started = time.monotonic()
+        request = lab.parse_compare_request(payload)
+        ids, fingerprint, record, snapshot, meta = self._scenario_context(
+            user_id, request.portfolio_ids, request.policy_version,
+        )
+        lab._check_snapshot(snapshot, request.snapshot_id)
+        key = (
+            user_id, fingerprint, meta["policy_version"] or 0, snapshot.snapshot_id, METHODOLOGY_VERSION,
+            "scenario-compare", tuple(lab.scenario_input_hash(s) for s in request.scenarios),
+        )
+        cached = self.cache.get(key)
+        if cached is None:
+            cached = lab.compare_scenarios(
+                snapshot, request.scenarios, policy_document=record.document if record else None,
+                repo=self.repo, expected_snapshot_id=request.snapshot_id, **meta,
+            )
+            self.cache.set(key, cached.model_copy(deep=True))
+        logger.info(
+            "doctor.scenario.compare scope_size=%d scenarios=%d ms=%.0f",
+            len(ids), len(request.scenarios), (time.monotonic() - started) * 1000,
+        )
+        return cached.model_copy(deep=True)
 
 
 _default_lock = threading.Lock()

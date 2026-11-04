@@ -41,6 +41,11 @@ FRESHNESS_TOOLS: frozenset[str] = frozenset({
     "get_aggregate_health",
     "get_aggregate_stress_test",
     "get_aggregate_performance_audit",
+    # Portfolio Doctor 2.0: metric/evaluation/scenario values depend on prices.
+    "read_doctor_metrics",
+    "read_doctor_violations",
+    "build_doctor_scenario",
+    "compare_doctor_scenarios",
 })
 
 SYNC_UNAVAILABLE_NOTE = "Stato della sincronizzazione dei prezzi non disponibile."
