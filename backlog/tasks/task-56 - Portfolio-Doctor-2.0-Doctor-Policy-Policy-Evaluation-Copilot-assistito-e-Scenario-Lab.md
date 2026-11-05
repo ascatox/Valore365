@@ -1,7 +1,7 @@
 ---
 id: TASK-56
 title: "Portfolio Doctor 2.0: Doctor Policy, Policy Evaluation, Copilot assistito e Scenario Lab"
-status: "In Progress"
+status: "Done"
 priority: "high"
 created: 2026-11-04
 labels: ["doctor", "backend", "frontend", "copilot", "feature"]
@@ -22,10 +22,10 @@ Metodologia: `docs/doctor2/financial-methodology.md`.
 
 ## Acceptance criteria
 
-- [ ] Health Score standard invariato (test di regressione)
-- [ ] Policy versionate, isolate per scope, optimistic locking (409), restore
-- [ ] Evaluation 8 metriche MVP, PASS mai su dati UNKNOWN/stale, golden fixture PRD
-- [ ] Copilot: bozze tipizzate, preview, conferma UI con token monouso; MCP read-only
-- [ ] Scenario Lab: manuale, solo nuova liquidità, ribilanciamento; invarianti di capitale
-- [ ] UI: Diagnosi / I miei parametri / Laboratorio, desktop + mobile, Privacy Mode
-- [ ] Test unit/integration/sicurezza/E2E eseguiti e passati (`docs/doctor2/test-report.md`)
+- [x] Health Score standard invariato (test di regressione)
+- [x] Policy versionate, isolate per scope, optimistic locking (409), restore
+- [x] Evaluation 8 metriche MVP, PASS mai su dati UNKNOWN/stale, golden fixture PRD
+- [x] Copilot: bozze tipizzate, preview, conferma UI con token monouso; MCP read-only
+- [x] Scenario Lab: manuale, solo nuova liquidità, ribilanciamento; invarianti di capitale
+- [x] UI: Diagnosi / I miei parametri / Laboratorio, desktop + mobile, Privacy Mode
+- [x] Test unit/integration/sicurezza/E2E eseguiti e passati (`docs/doctor2/test-report.md`)

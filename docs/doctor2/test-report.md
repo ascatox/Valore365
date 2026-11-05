@@ -172,3 +172,15 @@ Verificato contro il backend (api-contracts §8.1): le altre forme del Laborator
   mobile del confronto non va più a capo da sola (test in `DoctorLab.test.tsx`); le card mostrano
   «tra X% e Y%» quando i bounds differiscono, invece della stima puntuale (falsa precisione).
 - Carico/performance end-to-end non misurati in E2E.
+
+## Esecuzione finale pre-PR (commit `20c0942`, 5 novembre 2026)
+
+Rieseguito dal coordinatore sullo stato finale del branch, dopo tutte le correzioni:
+
+| suite | comando | esito |
+|---|---|---|
+| Backend completo (unit + integration Postgres 16 reale) | `cd src/backend && python -m pytest -q tests` | **1363 passed** |
+| Frontend lint | `npm run lint` | 0 problemi |
+| Frontend build | `npm run build` | OK |
+| Frontend unit/component | `npx vitest run --testTimeout=20000` | **231/231 passed** (35 file) |
+| E2E Playwright su stack reale | `scripts/e2e/doctor2_stack.sh start && node scripts/e2e/doctor2_e2e.cjs` | **18/18 passed**, screenshot rigenerati |
