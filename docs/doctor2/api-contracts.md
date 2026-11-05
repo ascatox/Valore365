@@ -191,7 +191,7 @@ Codici: `invalid_request`(400), `validation_error`(422 policy non valida),
 `PolicyPreviewResponse`:
 ```
 valid: bool, field_errors: [...],
-normalized_document, diff: [{rule_id, metric_code, change: "added"|"removed"|"modified", before, after}],
+normalized_document, diff: [{rule_id, metric_code, change: "added"|"removed"|"modified", before, after}],   // regole abbinate per metric_code (univoco nel documento)
 evaluation_before: PolicyEvaluationResponse|null,   // policy corrente
 evaluation_after: PolicyEvaluationResponse,          // con la bozza, stesso snapshot
 confirmation_token: str|null,                        // solo se valid

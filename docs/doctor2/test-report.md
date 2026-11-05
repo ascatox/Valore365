@@ -167,8 +167,8 @@ Verificato contro il backend (api-contracts §8.1): le altre forme del Laborator
 - **Test frontend intermittente**: in 2 esecuzioni complete di `npx vitest run` su circa 8 è fallito 1 test
   (non identificato: l'output era riassunto; in 5 esecuzioni successive dedicate non si è ripresentato). Le
   esecuzioni coincidevano con carico elevato (stack E2E attivo e altri agenti che modificavano i file).
-- **UX bozza Copilot**: il diff è per `rule_id`; se il Copilot propone un `rule_id` diverso per la stessa
-  metrica (es. `max-single` contro `max-single-position`), la card mostra «Aggiunta» + «Rimossa» invece di
-  «Modificata». Non è un errore di dati, ma può confondere.
-- **Mobile, card di confronto**: con testi lunghi la freccia «→» va a capo da sola (cosmetico).
+- **Risolti dopo l'E2E**: il diff della bozza ora abbina le regole per `metric_code` (una regola con
+  `rule_id` diverso sulla stessa metrica è «Modificata», test backend e frontend); la freccia «→» nelle card
+  mobile del confronto non va più a capo da sola (test in `DoctorLab.test.tsx`); le card mostrano
+  «tra X% e Y%» quando i bounds differiscono, invece della stima puntuale (falsa precisione).
 - Carico/performance end-to-end non misurati in E2E.

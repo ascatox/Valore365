@@ -11,7 +11,7 @@ import { DoctorPolicyRuleEditor } from './DoctorPolicyRuleEditor';
 import { PolicyEvidenceDrawer } from './PolicyEvidenceDrawer';
 import { PolicyVersionHistory } from './PolicyVersionHistory';
 import { PolicyDraftCard, parsePolicyDraft } from './PolicyDraftCard';
-import { formatComplianceSummary, formatMoney, formatPctValue, isDoctorPrivacyMode, maskMoneyInText } from './policyFormat';
+import { formatComplianceSummary, formatMoney, formatObserved, formatPctValue, formatPointEstimate, isDoctorPrivacyMode, maskMoneyInText } from './policyFormat';
 import { METRICS, errorResponse, evaluation, policyRead, preview, ruleResult } from './testFixtures';
 
 function wrap(ui: ReactNode) {
@@ -595,3 +595,64 @@ describe('PRD deviations closed (follow-up)', () => {
   });
 });
 
+
+describe('observed value with differing bounds (no false precision)', () => {
+  const usa = ruleResult({
+    rule_id: 'usa-max', metric_code: 'usa_exposure_pct', label: 'Esposizione USA', max_value: 60, status: 'PASS',
+    actual: 45.1, actual_lower: 40.9, actual_upper: 50.3, breach_amount: null,
+    reason: 'Esposizione USA tra 40,9% e 50,3%: entro il tuo limite 60%',
+  });
+  const equity = ruleResult({
+    rule_id: 'equity-range', metric_code: 'equity_weight_pct', label: 'Quota azionaria', operator: 'range', min_value: 40, max_value: 80,
+    status: 'PASS', actual: 51.4, actual_lower: 46.6, actual_upper: 56.0, breach_amount: null,
+    reason: 'Quota azionaria tra 46,6% e 56,0%: entro il tuo intervallo 40–80%',
+  });
+
+  it('formats the range instead of the point actual, and the point only as «stima»', () => {
+    expect(formatObserved(usa)).toBe('tra 40,9% e 50,3%');
+    expect(formatObserved(equity)).toBe('tra 46,6% e 56,0%');
+    expect(formatPointEstimate(usa)).toBe('stima 45,1%');
+    // Bounds equal at the rule precision (or absent): the point value, no «stima».
+    const tight = ruleResult({ actual: 45.1, actual_lower: 45.08, actual_upper: 45.12 });
+    expect(formatObserved(tight)).toBe('45,1%');
+    expect(formatPointEstimate(tight)).toBeNull();
+    expect(formatObserved(ruleResult())).toBe('46,6%');
+    expect(formatObserved(ruleResult({ actual: null, actual_lower: 30, actual_upper: 30 }))).toBe('30,0%');
+  });
+
+  it('rule cards show «tra X% e Y%» with the note, never the point actual', () => {
+    wrap(<DoctorPolicyRulesList evaluation={evaluation({ results: [usa, equity] })} metrics={METRICS} onSelect={() => {}} />);
+    for (const [id, range, point] of [['usa-max', 'tra 40,9% e 50,3%', '45,1%'], ['equity-range', 'tra 46,6% e 56,0%', '51,4%']]) {
+      const card = screen.getByTestId(`rule-card-${id}`);
+      expect(within(card).getByText(range)).toBeInTheDocument();
+      expect(within(card).getByText('stima puntuale non usata per la verifica')).toBeInTheDocument();
+      expect(card.textContent).not.toContain(point);
+    }
+  });
+
+  it('the summary card never shows the point actual of a range rule', () => {
+    const value = evaluation({ results: [usa, equity], summary: { passed: 2, failed: 0, unknown: 0, not_applicable: 0, inactive: 0, near_limit: 0, total: 2 } });
+    wrap(<DoctorPolicySummaryCard isLoading={false} error={null} isAggregate={false} scopeLabel="Core" onOpenParametri={() => {}} evaluation={value} />);
+    const card = screen.getByTestId('policy-summary-card');
+    expect(card.textContent).not.toContain('45,1%');
+    expect(card.textContent).not.toContain('51,4%');
+  });
+
+  it('the evidence drawer shows the range as value and the point only as labelled «stima»', () => {
+    wrap(
+      <PolicyEvidenceDrawer rule={usa} metrics={METRICS} privacy={false} currency="EUR" isMobile={false} canExplain canSimulate
+        onClose={() => {}} onExplain={() => {}} onSimulate={() => {}} onEdit={() => {}} />,
+    );
+    const label = screen.getByText('Valore attuale');
+    expect(label.parentElement).toHaveTextContent('tra 40,9% e 50,3%');
+    expect(screen.getByTestId('policy-point-estimate')).toHaveTextContent('stima 45,1% (stima puntuale non usata per la verifica)');
+  });
+
+  it('the evidence drawer shows no «stima» for a point-only rule', () => {
+    wrap(
+      <PolicyEvidenceDrawer rule={ruleResult()} metrics={METRICS} privacy={false} currency="EUR" isMobile={false} canExplain canSimulate
+        onClose={() => {}} onExplain={() => {}} onSimulate={() => {}} onEdit={() => {}} />,
+    );
+    expect(screen.queryByTestId('policy-point-estimate')).toBeNull();
+  });
+});

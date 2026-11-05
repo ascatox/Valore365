@@ -8,6 +8,8 @@ import {
   formatDateTime,
   formatMoney,
   formatObserved,
+  formatPointEstimate,
+  POINT_ESTIMATE_NOTE,
   formatPctValue,
   formatPp,
   formatThreshold,
@@ -63,7 +65,14 @@ export function PolicyEvidenceBody({ rule, metrics, privacy, currency }: { rule:
       {rule.reason && <Text size="sm">{maskMoneyInText(rule.reason, privacy)}</Text>}
 
       <SimpleGrid cols={2} spacing="sm">
-        <Fact label="Valore attuale">{formatObserved(rule)}</Fact>
+        <Fact label="Valore attuale">
+          {formatObserved(rule)}
+          {formatPointEstimate(rule) && (
+            <Text span size="xs" fw={400} c="dimmed" display="block" data-testid="policy-point-estimate">
+              {`${formatPointEstimate(rule)} (${POINT_ESTIMATE_NOTE})`}
+            </Text>
+          )}
+        </Fact>
         <Fact label="Soglia">{formatThreshold(rule)}</Fact>
         <Fact label="Scostamento">{rule.breach_amount != null ? formatPp(rule.breach_amount, rule.precision) : '—'}</Fact>
         <Fact label="Severità">{SEVERITY_LABELS[rule.severity] ?? rule.severity}</Fact>

@@ -110,6 +110,17 @@ describe('ScenarioComparisonTable', () => {
     expect(screen.getByText('Attuale: 46,6%')).toBeInTheDocument();
   });
 
+  it('shows «tra X% e Y%» for a metric whose bounds differ, not the point value', () => {
+    const current = side(46.6, 60, 1);
+    (current.metrics as Record<string, DoctorMetricValue>).usa_exposure_pct = {
+      ...metric('usa_exposure_pct', 45.1, 'partial'), lower: 40.9, upper: 50.3,
+    };
+    wrap(<ScenarioComparisonTable current={current} scenarios={[result()]} isMobile />);
+    const cards = screen.getByTestId('scenario-comparison-cards');
+    expect(within(cards).getByText('Attuale: tra 40,9% e 50,3%')).toBeInTheDocument();
+    expect(cards.textContent).not.toContain('45,1%');
+  });
+
   it('keeps «→» together with the scenario value on mobile (no lone arrow line)', () => {
     wrap(<ScenarioComparisonTable current={result().before} scenarios={[result()]} isMobile />);
     const groups = screen.getAllByTestId('scenario-compare-after');

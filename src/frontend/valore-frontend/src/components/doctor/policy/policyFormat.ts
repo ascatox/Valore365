@@ -149,15 +149,37 @@ export function formatThreshold(rule: Pick<DoctorPolicyRule, 'operator' | 'min_v
   return `${formatPctValue(rule.min_value, precision)}–${formatPctValue(rule.max_value, precision)}`;
 }
 
-/** Observed value, the conservative bounds when only those are known, else N/D. */
-export function formatObserved(rule: Pick<DoctorRuleResult, 'actual' | 'actual_lower' | 'actual_upper' | 'precision'>): string {
+type ObservedFields = Pick<DoctorRuleResult, 'actual' | 'actual_lower' | 'actual_upper' | 'precision'>;
+
+/**
+ * True when the backend gave bounds that differ at the rule precision: the
+ * verdict is decided on the bounds, so the point `actual` must not be shown
+ * as «the» value (false precision). Formatting only, no arithmetic.
+ */
+export function hasObservedRange(rule: ObservedFields): boolean {
+  if (rule.actual_lower == null || rule.actual_upper == null) return false;
   const precision = rule.precision ?? 1;
-  if (rule.actual != null && Number.isFinite(rule.actual)) return formatPctValue(rule.actual, precision);
-  if (rule.actual_lower != null && rule.actual_upper != null) {
+  return formatPctValue(rule.actual_lower, precision) !== formatPctValue(rule.actual_upper, precision);
+}
+
+/** Observed value: «tra X% e Y%» when the bounds differ, else the point value (or the coinciding bound), else N/D. */
+export function formatObserved(rule: ObservedFields): string {
+  const precision = rule.precision ?? 1;
+  if (hasObservedRange(rule)) {
     return `tra ${formatPctValue(rule.actual_lower, precision)} e ${formatPctValue(rule.actual_upper, precision)}`;
   }
+  if (rule.actual != null && Number.isFinite(rule.actual)) return formatPctValue(rule.actual, precision);
+  if (rule.actual_lower != null && rule.actual_upper != null) return formatPctValue(rule.actual_lower, precision);
   return NOT_AVAILABLE;
 }
+
+/** Point estimate as secondary info («stima 45,1%») only when a range is shown in its place; else null. */
+export function formatPointEstimate(rule: ObservedFields): string | null {
+  if (!hasObservedRange(rule) || rule.actual == null || !Number.isFinite(rule.actual)) return null;
+  return `stima ${formatPctValue(rule.actual, rule.precision ?? 1)}`;
+}
+
+export const POINT_ESTIMATE_NOTE = 'stima puntuale non usata per la verifica';
 
 export type RuleTone = 'fail' | 'unknown' | 'near_limit' | 'pass' | 'not_applicable' | 'inactive';
 

@@ -50,11 +50,21 @@ export function sideMetricCodes(side: DoctorScenarioSide | null | undefined): st
   return Array.isArray(side.metrics) ? side.metrics.map((metric) => metric.code) : Object.keys(side.metrics);
 }
 
-/** Metric value as the backend gave it: point value, bounds, or N/D. */
+/**
+ * Metric value as the backend gave it: «tra X% e Y%» when the bounds differ at
+ * the shown precision (the point value would be false precision), else the
+ * point value, else the coinciding bound, else N/D. Formatting only.
+ */
 export function formatMetric(metric: DoctorMetricValue | null | undefined, precision = 1): string {
   if (!metric) return NOT_AVAILABLE;
-  if (metric.value != null && Number.isFinite(metric.value)) return formatPctValue(metric.value, metric.code === 'weighted_ter_pct' ? 2 : precision);
-  if (metric.lower != null && metric.upper != null) return `tra ${formatPctValue(metric.lower, precision)} e ${formatPctValue(metric.upper, precision)}`;
+  const digits = metric.code === 'weighted_ter_pct' ? 2 : precision;
+  if (metric.lower != null && metric.upper != null) {
+    const lower = formatPctValue(metric.lower, digits);
+    const upper = formatPctValue(metric.upper, digits);
+    if (lower !== upper) return `tra ${lower} e ${upper}`;
+  }
+  if (metric.value != null && Number.isFinite(metric.value)) return formatPctValue(metric.value, digits);
+  if (metric.lower != null && metric.upper != null) return formatPctValue(metric.lower, digits);
   return NOT_AVAILABLE;
 }
 

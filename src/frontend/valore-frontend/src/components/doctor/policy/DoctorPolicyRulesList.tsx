@@ -2,7 +2,7 @@ import { Alert, Card, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@ma
 import { IconChevronRight } from '@tabler/icons-react';
 import type { DoctorMetricDefinition, DoctorPolicyEvaluation, DoctorRuleResult } from '../../../services/api/types';
 import { QualityBadge, RuleStatusBadge } from './RuleStatusBadge';
-import { formatComplianceSummary, formatObserved, formatPctValue, formatPp, formatThreshold, maskMoneyInText, ruleName, ruleStatusMeta, SEVERITY_LABELS } from './policyFormat';
+import { formatComplianceSummary, formatObserved, hasObservedRange, POINT_ESTIMATE_NOTE, formatPctValue, formatPp, formatThreshold, maskMoneyInText, ruleName, ruleStatusMeta, SEVERITY_LABELS } from './policyFormat';
 
 export function PolicyRuleCard({ rule, metrics, onSelect }: { rule: DoctorRuleResult; metrics?: DoctorMetricDefinition[] | null; onSelect: (rule: DoctorRuleResult) => void }) {
   const name = ruleName(rule, metrics);
@@ -27,6 +27,7 @@ export function PolicyRuleCard({ rule, metrics, onSelect }: { rule: DoctorRuleRe
             <div>
               <Text size="xs" c="dimmed">Valore attuale</Text>
               <Text size="sm" fw={700}>{formatObserved(rule)}</Text>
+              {hasObservedRange(rule) && <Text size="xs" c="dimmed">{POINT_ESTIMATE_NOTE}</Text>}
             </div>
             <div>
               <Text size="xs" c="dimmed">Soglia</Text>
