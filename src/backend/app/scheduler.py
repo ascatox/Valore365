@@ -4,15 +4,13 @@ from datetime import UTC, datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from .config import Settings
+from .constants.benchmarks import BENCHMARK_SYMBOLS
 from .repository import PortfolioRepository
 from .services.historical_service import HistoricalIngestionService
 from .services.pac_service import PacExecutionService
 from .services.pricing_service import PriceIngestionService
 
 logger = logging.getLogger(__name__)
-
-
-BENCHMARK_SYMBOLS = ["SPY"]
 
 
 class PriceRefreshScheduler:

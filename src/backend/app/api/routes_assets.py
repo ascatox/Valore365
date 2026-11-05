@@ -4,6 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query
 
 from ..auth import AuthContext
+from ..constants.benchmarks import BENCHMARKS
 from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError, ProviderError
 from ..finance_client import make_finance_client, QUOTE_TYPE_MAP, resolve_provider_symbol_candidates
@@ -120,10 +121,6 @@ def register_assets_routes(
             return candidate, quote
         return None, None
 
-    BENCHMARK_SYMBOLS = [
-        {"symbol": "SPY", "name": "SPDR S&P 500 ETF Trust"},
-    ]
-
     @router.post("/assets", response_model=AssetRead, responses={400: {"model": ErrorResponse}, 409: {"model": ErrorResponse}})
     def create_asset(payload: AssetCreate, _auth: AuthContext = Depends(require_auth_rate_limited)) -> AssetRead:
         try:
@@ -151,19 +148,19 @@ def register_assets_routes(
     @router.get("/benchmarks", response_model=list[BenchmarkItem])
     def get_benchmarks(_auth: AuthContext = Depends(require_auth_rate_limited)) -> list[BenchmarkItem]:
         result: list[BenchmarkItem] = []
-        for bench in BENCHMARK_SYMBOLS:
-            asset = repo.get_asset_by_symbol(bench["symbol"])
+        for bench in BENCHMARKS:
+            symbol = bench["symbol"]
+            asset = repo.get_asset_by_symbol(symbol)
             if not asset:
                 try:
-                    symbol = bench["symbol"]
                     created_asset = repo.create_asset(
                         AssetCreate(
                             symbol=symbol,
                             name=bench["name"],
                             asset_type="etf",
                             exchange_code=None,
-                            exchange_name=None,
-                            quote_currency="EUR",
+                            exchange_name=bench["exchange_name"],
+                            quote_currency=bench["quote_currency"],
                             isin=None,
                             active=True,
                         )
@@ -181,9 +178,16 @@ def register_assets_routes(
                         pass
                     asset = {"id": created_asset.id, "symbol": created_asset.symbol, "name": created_asset.name or bench["name"]}
                 except ValueError:
-                    asset = repo.get_asset_by_symbol(bench["symbol"])
+                    asset = repo.get_asset_by_symbol(symbol)
             if asset:
-                result.append(BenchmarkItem(asset_id=asset["id"], symbol=asset["symbol"], name=asset["name"] or bench["name"]))
+                result.append(
+                    BenchmarkItem(
+                        asset_id=asset["id"],
+                        symbol=asset["symbol"],
+                        name=asset["name"] or bench["name"],
+                        label=bench["label"],
+                    )
+                )
         return result
 
     @router.post(

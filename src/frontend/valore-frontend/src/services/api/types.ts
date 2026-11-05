@@ -1363,6 +1363,8 @@ export interface BenchmarkItem {
   asset_id: number;
   symbol: string;
   name: string;
+  /** Short name of the tracked index, e.g. "S&P 500" (absent on older backends). */
+  label?: string | null;
 }
 
 export interface AssetPricePoint {

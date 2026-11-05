@@ -67,7 +67,7 @@ export function BenchmarkComparisonChart({
         <Group gap="xs" style={isMobile ? { width: '100%' } : undefined}>
           <Select
             size={isMobile ? 'sm' : 'xs'}
-            w={isMobile ? '100%' : 140}
+            w={isMobile ? '100%' : 200}
             data={benchmarkSelectData}
             value={selectedBenchmarkId != null ? String(selectedBenchmarkId) : ''}
             onChange={(v) => onBenchmarkChange(v ? Number(v) : null)}
@@ -114,7 +114,7 @@ export function BenchmarkComparisonChart({
                     <Paper withBorder p="xs" radius="sm" shadow="xs">
                       <Text size="xs" c="dimmed">{`Data ${label}`}</Text>
                       <Text size="sm" fw={600} c={chartColors.primary}>{`Portafoglio: ${formatPct(pv - 100)}`}</Text>
-                      <Text size="sm" fw={600} c="#2563eb">{`${comparisonStats?.benchLabel ?? 'Benchmark'}: ${formatPct(bv - 100)}`}</Text>
+                      <Text size="sm" fw={600} c={chartColors.benchmark}>{`${comparisonStats?.benchLabel ?? 'Benchmark'}: ${formatPct(bv - 100)}`}</Text>
                     </Paper>
                   );
                 }}
