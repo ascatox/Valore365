@@ -539,3 +539,124 @@ def test_scenario_side_metrics_carry_metadata():
         for metric in side.metrics.values():
             assert metric.calculated_at == NOW.isoformat()
             assert metric.methodology_version and metric.quote_as_of == "2026-11-03"
+
+
+# -- per-computation classification memo ------------------------------------------
+
+
+def _memo_fixture():
+    holdings = [
+        _h(1, *VWCE, 30000, "EUR", isin="IE00BK5BQT80"),
+        _h(2, "VWCE.DE", "Vanguard FTSE All-World UCITS ETF", "etf", 5000, "EUR", isin="IE00BK5BQT80"),
+        _h(3, *AGGH, 20000, "EUR"),
+        _h(4, *SGLD, 6000, "USD"),
+        _h(5, "PHAG", "WisdomTree Physical Silver", "etf", 2000, "USD", investment_focus="Precious Metals"),
+        _h(6, "ZZZF", "Fondo Alfa Accumulazione", "fund", 7000, "EUR"),
+        _h(7, "AAPL", "Apple Inc.", "stock", 9000, "USD"),
+        _h(8, "ENI", "Eni S.p.A.", "stock", 4000, "EUR"),
+        _h(9, "CASH", "Liquidità", "cash", 3000, "EUR"),
+        _h(10, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 12000, "USD"),
+    ]
+    return _snap(holdings, portfolio_ids=[1, 2])
+
+
+class _MemoRepo:
+    def get_etf_enrichment_bulk(self, ids):
+        return {
+            1: {"ter": 0.22, "country_weights": [{"name": "United States", "percentage": 62.0}, {"name": "Japan", "percentage": 6.0}]},
+            10: {"investment_focus": "Equity", "index_tracked": "S&P 500"},
+        }
+
+    def get_asset_metadata_bulk(self, ids):
+        return {}
+
+
+@pytest.mark.parametrize("repo", [None, _MemoRepo()], ids=["no-repo", "repo"])
+def test_classification_memo_gives_identical_metrics(repo):
+    from app.services.doctor_policy.metrics import ClassificationMemo
+
+    snap = _memo_fixture()
+    cached = compute_metrics(snap, repo, now=NOW)
+    uncached = compute_metrics(snap, repo, now=NOW, memo=ClassificationMemo(enabled=False))
+    assert {k: v.to_dict() for k, v in cached.items()} == {k: v.to_dict() for k, v in uncached.items()}
+    # A memo shared with another computation (Scenario Lab before/after) changes nothing either.
+    shared = ClassificationMemo()
+    compute_metrics(snap, repo, now=NOW, memo=shared)
+    again = compute_metrics(snap, repo, now=NOW, memo=shared)
+    assert {k: v.to_dict() for k, v in again.items()} == {k: v.to_dict() for k, v in uncached.items()}
+
+
+@pytest.mark.parametrize("request_body", [
+    {"mode": "new_cash_only", "new_cash": 20000, "fee_model": {"pct": 0.1, "fixed": 1.5}},
+    {"mode": "rebalance", "target_weights": {"7": 5, "3": 30}, "constraints": {"keep_equity_total": False}},
+    {"mode": "manual", "operations": [{"symbol": "AAPL", "action": "sell", "amount": 4000},
+                                      {"symbol": "AGGH", "action": "buy", "amount": 4000}]},
+])
+def test_classification_memo_gives_identical_scenarios(monkeypatch, request_body):
+    from app.services.doctor_policy import scenario
+    from app.services.doctor_policy.metrics import ClassificationMemo
+
+    snap = _memo_fixture()
+    doc = {"schema_version": 1, "rules": [
+        _rule("single", "max_single_position_pct", max_value=30),
+        _rule("usa", "usa_exposure_pct", max_value=60),
+        _rule("eq", "equity_weight_pct", "range", min_value=40, max_value=80),
+        _rule("ter", "weighted_ter_pct", max_value=0.3),
+    ]}
+
+    def run():
+        result = scenario.preview_scenario(
+            snap, {"portfolio_ids": [1, 2], **request_body}, policy_document=doc, repo=_MemoRepo(), now=NOW,
+        )
+        return result.model_dump(mode="json")
+
+    cached = run()
+    original_init = ClassificationMemo.__init__
+    monkeypatch.setattr(ClassificationMemo, "__init__", lambda self, enabled=True: original_init(self, False))
+    assert run() == cached
+
+
+def _big_scope(n=6000):
+    holdings = [_h(i + 1, f"S{i}", f"Stock {i}", "stock", 100.0 + i, "USD", isin=f"US{i:010d}") for i in range(n)]
+    holdings[0].market_value = sum(h.market_value for h in holdings) * 0.2
+    return _snap(holdings, portfolio_ids=list(range(1, 21)))
+
+
+def test_preview_classifies_each_holding_at_most_three_times(monkeypatch):
+    """Per preview: 1 classification for the policy class (memo) + 1 inside
+    infer_region_profile + 1 inside infer_ter (shared functions, not memoized).
+    Without the memo it was 10 per holding."""
+    from app.services.doctor_policy import scenario
+    from app.services.portfolio_doctor import _holdings
+
+    snap = _big_scope(300)
+    calls = {"n": 0}
+    real = _holdings.classify_asset
+
+    def counting(**kwargs):
+        calls["n"] += 1
+        return real(**kwargs)
+
+    monkeypatch.setattr(_holdings, "classify_asset", counting)
+    scenario.preview_scenario(
+        snap, {"portfolio_ids": list(range(1, 21)), "mode": "new_cash_only", "new_cash": 1e9},
+        policy_document={"schema_version": 1, "rules": [_rule("m", "max_single_position_pct", max_value=1)]}, now=NOW,
+    )
+    assert calls["n"] <= 3 * 300
+
+
+def test_preview_on_6000_assets_is_reasonably_fast():
+    import time
+
+    from app.services.doctor_policy import scenario
+
+    snap = _big_scope()
+    doc = {"schema_version": 1, "rules": [_rule("m", "max_single_position_pct", max_value=0.017)]}
+    started = time.perf_counter()
+    result = scenario.preview_scenario(
+        snap, {"portfolio_ids": list(range(1, 21)), "mode": "new_cash_only", "new_cash": 1e11,
+               "fee_model": {"pct": 0.1, "fixed": 2}},
+        policy_document=doc, now=NOW,
+    )
+    assert time.perf_counter() - started < 3.0  # ~0.9 s measured; generous for CI
+    assert result.feasible

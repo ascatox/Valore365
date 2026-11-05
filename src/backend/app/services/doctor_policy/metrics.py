@@ -215,7 +215,7 @@ def format_threshold_it(value: float) -> str:
     return text.replace(".", ",")
 
 
-def policy_asset_class(holding: AnalyzedHolding) -> str:
+def policy_asset_class(holding: AnalyzedHolding, asset_class: str | None = None) -> str:
     """Asset class used by the policy metrics.
 
     The shared classifier's class, except that a ``commodity`` product on
@@ -223,7 +223,8 @@ def policy_asset_class(holding: AnalyzedHolding) -> str:
     counts with gold (``gold_weight_pct`` = gold + precious metals). Miners are
     equity already (classifier override).
     """
-    asset_class = holding_asset_class(holding)
+    if asset_class is None:
+        asset_class = holding_asset_class(holding)
     if asset_class == COMMODITY:
         text = " ".join(
             part for part in (
@@ -234,6 +235,76 @@ def policy_asset_class(holding: AnalyzedHolding) -> str:
         if _PRECIOUS_METALS.search(text):
             return GOLD
     return asset_class
+
+
+def classification_key(holding: AnalyzedHolding) -> tuple:
+    """asset_id/ISIN plus every input of the shared classifier (not the value)."""
+    return (
+        holding.asset_id, holding.isin, holding.symbol, holding.name, holding.asset_type,
+        holding.quote_currency, holding.investment_focus, holding.index_tracked, holding.category,
+        holding.enrichment_name,
+    )
+
+
+class ClassificationMemo:
+    """Per-computation memo of the per-holding classification work.
+
+    The shared functions (``classify_asset``, ``infer_region_profile``,
+    ``resolve_holding_ters``) are unchanged and still do the work; this only
+    avoids repeating it for the same holding inside one computation. Keys are
+    ``classification_key`` (plus the enrichment fields that the region
+    inference reads), never the market value, so the results are identical to
+    calling the shared functions directly. Never global: ``compute_metrics``
+    creates one per call unless the caller passes one (the Scenario Lab shares
+    it between the before/after of one preview; the repository data it reads
+    is the same within that request). ``enabled=False`` disables it (tests).
+    """
+
+    def __init__(self, enabled: bool = True) -> None:
+        self.enabled = enabled
+        self._classification: dict[tuple, Any] = {}
+        self._policy_class: dict[tuple, str] = {}
+        self._region: dict[tuple, dict[str, float]] = {}
+        self._ter: dict[tuple, tuple[float | None, str]] = {}
+
+    def classification(self, holding: AnalyzedHolding) -> Any:
+        if not self.enabled:
+            return holding_classification(holding)
+        key = classification_key(holding)
+        if key not in self._classification:
+            self._classification[key] = holding_classification(holding)
+        return self._classification[key]
+
+    def policy_asset_class(self, holding: AnalyzedHolding) -> str:
+        if not self.enabled:
+            return policy_asset_class(holding)
+        key = classification_key(holding)
+        if key not in self._policy_class:
+            self._policy_class[key] = policy_asset_class(holding, self.classification(holding).asset_class)
+        return self._policy_class[key]
+
+    def region_profile(self, holding: AnalyzedHolding, enrich: dict | None) -> dict[str, float]:
+        if not self.enabled:
+            return infer_region_profile(holding, enrich=enrich)
+        extra = (
+            (str(enrich.get("investment_focus") or ""), str(enrich.get("index_tracked") or ""),
+             str(enrich.get("description") or ""))
+            if isinstance(enrich, dict) else None
+        )
+        key = (classification_key(holding), extra)
+        if key not in self._region:
+            self._region[key] = infer_region_profile(holding, enrich=enrich)
+        return dict(self._region[key])
+
+    def ters(self, holdings: list[AnalyzedHolding], repo: Any) -> dict[int, tuple[float | None, str]]:
+        if not self.enabled:
+            return resolve_holding_ters(holdings, repo)
+        todo = [h for h in holdings if classification_key(h) not in self._ter]
+        if todo:
+            resolved = resolve_holding_ters(todo, repo)
+            for h in todo:
+                self._ter[classification_key(h)] = resolved.get(h.asset_id, (None, "none"))
+        return {h.asset_id: self._ter[classification_key(h)] for h in holdings}
 
 
 # ---------------------------------------------------------------------------
@@ -329,13 +400,13 @@ def _bounded(
 # ---------------------------------------------------------------------------
 
 
-def _asset_class_metrics(snapshot: DoctorSnapshot) -> dict[str, MetricValue]:
+def _asset_class_metrics(snapshot: DoctorSnapshot, memo: ClassificationMemo) -> dict[str, MetricValue]:
     known: dict[str, float] = defaultdict(float)
     contributors: dict[str, list[dict[str, Any]]] = defaultdict(list)
     unknown_contributors: list[dict[str, Any]] = []
     for h in snapshot.invested_holdings:
         weight = snapshot.weight_of(h)
-        asset_class = policy_asset_class(h)
+        asset_class = memo.policy_asset_class(h)
         if asset_class == UNKNOWN:
             unknown_contributors.append(_contributor(h, weight))
             continue
@@ -358,8 +429,7 @@ def _asset_class_metrics(snapshot: DoctorSnapshot) -> dict[str, MetricValue]:
     return out
 
 
-def _concentration_metrics(snapshot: DoctorSnapshot) -> dict[str, MetricValue]:
-    groups = canonical_securities(snapshot)
+def _concentration_metrics(snapshot: DoctorSnapshot, groups: list[dict[str, Any]]) -> dict[str, MetricValue]:
     contributors = [
         {"symbol": g["symbol"], "name": g["name"], "isin": g["isin"], "weight_pct": g["weight_pct"]}
         for g in groups
@@ -400,7 +470,9 @@ def _enrichment_map(snapshot: DoctorSnapshot, repo: Any) -> dict[int, dict]:
     return loaded if isinstance(loaded, dict) else {}
 
 
-def holding_usa_split(holding: AnalyzedHolding, enrich: dict | None) -> tuple[float, float, str]:
+def holding_usa_split(
+    holding: AnalyzedHolding, enrich: dict | None, memo: ClassificationMemo | None = None,
+) -> tuple[float, float, str]:
     """(USA %, classified %, source) of one holding, 0-100 of its own value.
 
     Same sources as ``compute_geographic_exposure``: justETF country weights
@@ -422,14 +494,16 @@ def holding_usa_split(holding: AnalyzedHolding, enrich: dict | None) -> tuple[fl
                 usa += pct
         classified = min(100.0, total)
         return min(usa, classified), classified, "etf_country_weights"
-    profile = infer_region_profile(holding, enrich=enrich)
+    profile = memo.region_profile(holding, enrich) if memo is not None else infer_region_profile(holding, enrich=enrich)
     if not profile:
         return 0.0, 0.0, "none"
     classified = min(100.0, sum(max(0.0, v) for v in profile.values()))
     return min(max(0.0, profile.get("usa", 0.0)), classified), classified, "region_inference"
 
 
-def _usa_metric(snapshot: DoctorSnapshot, enrichment: dict[int, dict], has_repo: bool) -> MetricValue:
+def _usa_metric(
+    snapshot: DoctorSnapshot, enrichment: dict[int, dict], has_repo: bool, memo: ClassificationMemo,
+) -> MetricValue:
     known = 0.0
     unclassified = 0.0
     contributors = []
@@ -437,7 +511,7 @@ def _usa_metric(snapshot: DoctorSnapshot, enrichment: dict[int, dict], has_repo:
     inferred_share = 0.0
     for h in snapshot.invested_holdings:
         weight = snapshot.weight_of(h)
-        usa, classified, source = holding_usa_split(h, enrichment.get(h.asset_id))
+        usa, classified, source = holding_usa_split(h, enrichment.get(h.asset_id), memo)
         known += weight * usa / 100.0
         unclassified += weight * (100.0 - classified) / 100.0
         if source == "region_inference":
@@ -463,9 +537,9 @@ def _usa_metric(snapshot: DoctorSnapshot, enrichment: dict[int, dict], has_repo:
     )
 
 
-def _ter_metric(snapshot: DoctorSnapshot, repo: Any) -> MetricValue:
+def _ter_metric(snapshot: DoctorSnapshot, repo: Any, memo: ClassificationMemo) -> MetricValue:
     holdings = snapshot.invested_holdings
-    resolved = resolve_holding_ters(holdings, repo)
+    resolved = memo.ters(holdings, repo)
     covered = 0.0
     cost = 0.0
     inferred = 0.0
@@ -515,14 +589,17 @@ def _ter_metric(snapshot: DoctorSnapshot, repo: Any) -> MetricValue:
     )
 
 
-def is_fund_holding(holding: AnalyzedHolding) -> bool:
+def is_fund_holding(holding: AnalyzedHolding, memo: ClassificationMemo | None = None) -> bool:
     if (holding.asset_type or "").lower() in {"etf", "fund"}:
         return True
-    return holding_classification(holding).is_exchange_traded_product
+    classification = memo.classification(holding) if memo is not None else holding_classification(holding)
+    return classification.is_exchange_traded_product
 
 
-def _overlap_metric(snapshot: DoctorSnapshot) -> MetricValue:
-    funds = [_merged_holding(g) for g in canonical_securities(snapshot) if is_fund_holding(g["holdings"][0])]
+def _overlap_metric(
+    snapshot: DoctorSnapshot, memo: ClassificationMemo, groups: list[dict[str, Any]],
+) -> MetricValue:
+    funds = [_merged_holding(g) for g in groups if is_fund_holding(g["holdings"][0], memo)]
     fund_value = sum(f.market_value for f in funds)
     notes = ["Misura euristica della sovrapposizione fra fondi (arrotondata a 0,1); distinta dalla concentrazione."]
     if len(funds) < 2:
@@ -541,6 +618,7 @@ def _overlap_metric(snapshot: DoctorSnapshot) -> MetricValue:
 
 def compute_metrics(
     snapshot: DoctorSnapshot, repo: Any = None, *, now: datetime | None = None,
+    memo: ClassificationMemo | None = None,
 ) -> dict[str, MetricValue]:
     """All registry metrics of a snapshot, computed once.
 
@@ -560,13 +638,15 @@ def compute_metrics(
             code: _stamped(_missing(code, d.source, d.denominator, 0.0, "Nessuna posizione investita."), stamp)
             for code, d in METRIC_REGISTRY.items()
         }
+    memo = memo if memo is not None else ClassificationMemo()
     enrichment = _enrichment_map(snapshot, repo)
+    groups = canonical_securities(snapshot)  # once per call (concentration + overlap)
     metrics: dict[str, MetricValue] = {}
-    metrics.update(_asset_class_metrics(snapshot))
-    metrics.update(_concentration_metrics(snapshot))
-    metrics["usa_exposure_pct"] = _usa_metric(snapshot, enrichment, repo is not None)
-    metrics["weighted_ter_pct"] = _ter_metric(snapshot, repo)
-    metrics["etf_overlap_pct"] = _overlap_metric(snapshot)
+    metrics.update(_asset_class_metrics(snapshot, memo))
+    metrics.update(_concentration_metrics(snapshot, groups))
+    metrics["usa_exposure_pct"] = _usa_metric(snapshot, enrichment, repo is not None, memo)
+    metrics["weighted_ter_pct"] = _ter_metric(snapshot, repo, memo)
+    metrics["etf_overlap_pct"] = _overlap_metric(snapshot, memo, groups)
 
     if snapshot.stale_symbols or snapshot.sync_failed:
         note = "Quotazioni non aggiornate: " + (", ".join(snapshot.stale_symbols) or "sincronizzazione fallita") + "."

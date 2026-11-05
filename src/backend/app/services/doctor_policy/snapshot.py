@@ -123,7 +123,7 @@ class DoctorSnapshot:
     def missing_price_symbols(self) -> list[str]:
         return sorted({h.symbol for h in self.invested_holdings if h.asset_id in self.missing_price_asset_ids})
 
-    @property
+    @cached_property
     def quote_as_of(self) -> str | None:
         """Timestamp (ISO) of the oldest price used among the invested holdings."""
         oldest: tuple[datetime, str] | None = None
@@ -169,7 +169,7 @@ class DoctorSnapshot:
             "note": self.freshness_note,
         }
 
-    @property
+    @cached_property
     def snapshot_id(self) -> str:
         """Short sha256 over positions, prices and classification inputs."""
         rows = []

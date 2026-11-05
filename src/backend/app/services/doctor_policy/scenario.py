@@ -55,7 +55,12 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from ...schemas.doctor_policy import DataQuality, MetricValueRead, PolicyScope, RuleResult
+from ...schemas.doctor_policy import (
+    DataQuality,
+    MetricValueRead,
+    PolicyScope,
+    RuleResult,
+)
 from ...schemas.doctor_scenario import (
     SCENARIO_DISCLAIMER,
     RuleChange,
@@ -74,7 +79,14 @@ from ..asset_classification import EQUITY, UNKNOWN
 from ..portfolio_doctor._holdings import AnalyzedHolding
 from .errors import DoctorPolicyError, InvalidRequest
 from .evaluator import build_evaluation_response
-from .metrics import METHODOLOGY_VERSION, canonical_key, compute_metrics, format_it, format_threshold_it, policy_asset_class
+from .metrics import (
+    METHODOLOGY_VERSION,
+    ClassificationMemo,
+    canonical_key,
+    compute_metrics,
+    format_it,
+    format_threshold_it,
+)
 from .scope import build_scope
 from .snapshot import DoctorSnapshot, is_cash_holding, snapshot_from_holdings
 from .validator import normalize_policy_document
@@ -195,6 +207,8 @@ class _Book:
     by_id: dict[int, AnalyzedHolding]
     values: dict[int, float]
     cash: float
+    # Classification memo of this request (shared by the before/after metrics).
+    memo: ClassificationMemo = field(default_factory=ClassificationMemo)
 
     @property
     def invested(self) -> float:
@@ -398,8 +412,8 @@ def _groups(book: _Book) -> dict[str, list[int]]:
     return out
 
 
-def _bucket(holding: AnalyzedHolding) -> str:
-    asset_class = policy_asset_class(holding)
+def _bucket(holding: AnalyzedHolding, memo: ClassificationMemo) -> str:
+    asset_class = memo.policy_asset_class(holding)
     if asset_class == EQUITY:
         return "equity"
     if asset_class == UNKNOWN:
@@ -492,7 +506,7 @@ def _plan_new_cash(book: _Book, req: ScenarioInput, policy_document: Mapping[str
         )
     required_buys = max(0.0, needed_total - V)
 
-    bucket_of = {g: _bucket(book.by_id[groups[g][0]]) for g in groups}
+    bucket_of = {g: _bucket(book.by_id[groups[g][0]], book.memo) for g in groups}
 
     def allocate(total_buys: float) -> dict[int, float]:
         T = V + total_buys
@@ -744,8 +758,9 @@ def _evaluate(
     now: datetime,
     metrics: dict[str, Any] | None = None,
     meta: Mapping[str, Any] | None = None,
+    memo: ClassificationMemo | None = None,
 ) -> _State:
-    metrics = metrics if metrics is not None else compute_metrics(snapshot, repo, now=now)
+    metrics = metrics if metrics is not None else compute_metrics(snapshot, repo, now=now, memo=memo)
     evaluation = build_evaluation_response(
         dict(policy_document) if policy_document is not None else None,
         snapshot, metrics, repo=repo, now=now, **dict(meta or {}),
@@ -895,7 +910,7 @@ def _run_one(
         )
 
     after_snapshot = _simulated_snapshot(snapshot, book, values, cash_after)
-    after = _evaluate(after_snapshot, policy_document, repo, now, meta=meta)
+    after = _evaluate(after_snapshot, policy_document, repo, now, meta=meta, memo=book.memo)
 
     if req.constraints.keep_equity_total and not _same_metric(
         baseline.metrics["equity_weight_pct"], after.metrics["equity_weight_pct"],
@@ -920,7 +935,7 @@ def _run_one(
         after_w = values[a] / after_inv * 100.0 if after_inv > MONEY_TOL else 0.0
         delta = values[a] - book.values[a]
         changes.append(ScenarioChange(
-            asset_id=a, symbol=h.symbol, name=h.name, isin=h.isin, asset_class=policy_asset_class(h),
+            asset_id=a, symbol=h.symbol, name=h.name, isin=h.isin, asset_class=book.memo.policy_asset_class(h),
             action="buy" if delta > MONEY_TOL else ("sell" if delta < -MONEY_TOL else "hold"),
             before_value=book.values[a], after_value=values[a], delta_value=delta,
             before_weight=before_w, after_weight=after_w, delta_weight=after_w - before_w,
@@ -1011,9 +1026,10 @@ def preview_scenario(
     snapshot = _canonical(snapshot)
     current = _utc(now)
     meta = _meta(policy_id, policy_version, policy_name)
-    baseline = _evaluate(snapshot, policy_document, repo, current, baseline_metrics, meta)
+    book = _book(snapshot)
+    baseline = _evaluate(snapshot, policy_document, repo, current, baseline_metrics, meta, memo=book.memo)
     return _run_one(
-        snapshot, _book(snapshot), req, policy_document=policy_document, repo=repo, now=current,
+        snapshot, book, req, policy_document=policy_document, repo=repo, now=current,
         baseline=baseline, meta=meta,
     )
 
@@ -1070,8 +1086,8 @@ def compare_scenarios(
     snapshot = _canonical(snapshot)
     current = _utc(now)
     meta = _meta(policy_id, policy_version, policy_name)
-    baseline = _evaluate(snapshot, policy_document, repo, current, baseline_metrics, meta)
     book = _book(snapshot)
+    baseline = _evaluate(snapshot, policy_document, repo, current, baseline_metrics, meta, memo=book.memo)
     results = [
         _run_one(snapshot, book, req, policy_document=policy_document, repo=repo, now=current, baseline=baseline, meta=meta)
         for req in inputs
