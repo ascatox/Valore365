@@ -49,6 +49,13 @@ Le uniche scritture sono sulle tabelle `doctor_policy_*` e
 
 ## 3. Pipeline di evaluation (1–8)
 
+Pipeline PRD §7: 1 autentica utente e scope; 2 carica policy e versione; 3 crea snapshot
+consistente di posizioni, prezzi e classificazioni; 4 valida operatori/unità e
+prerequisiti; 5 calcola metriche una sola volta per snapshot e versione; 6 restituisce per
+ogni regola actual, soglia, stato, breach_amount, ragione, coverage, evidenze; 7 ordina
+problemi per severità, scostamento, confidenza; 8 include timestamp, metodologia e
+snapshot id. Corrispondenza con l'implementazione:
+
 1. **Scope** — id deduplicati e ordinati, 1..20 (`invalid_request` 400 altrimenti);
    `scope_fingerprint = "p:" + id ordinati`, `scope_type` single/aggregate.
 2. **Autorizzazione** — `repo.resolve_portfolio_scope`: ogni portafoglio deve essere

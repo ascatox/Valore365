@@ -40,7 +40,7 @@ class _FakeService:
         if self.raise_on_save:
             raise self.raise_on_save
         return PolicyRead(
-            id=1, name=name, scope=PolicyScope(portfolio_ids=list(ids), scope_type="single", fingerprint="p:1"),
+            id=1, name=name or "La mia policy", scope=PolicyScope(portfolio_ids=list(ids), scope_type="single", fingerprint="p:1"),
             current_version=1, document=document, updated_at="t", created_at="t",
         )
 
@@ -187,3 +187,63 @@ def test_main_registers_doctor_routes_before_health_routes():
     first_portfolio_param = next(i for i, p in enumerate(paths) if p and p.startswith("/portfolios/{portfolio_id}"))
     assert first_doctor < first_portfolio_param
     assert "/doctor/scenarios/compare" in paths
+
+
+def test_save_without_name_passes_none(setup):
+    client, service, _settings = setup
+    r = client.post(
+        "/api/doctor/policies",
+        json={"portfolio_ids": [1], "document": DOC, "base_version": 1, "confirmation_token": "t"},
+    )
+    assert r.status_code == 201, r.text
+    assert service.calls[-1] == ("save", "u1", [1], None, 1, "t")
+
+
+def _assert_contract_400(r, field):
+    assert r.status_code == 400, r.text
+    error = r.json()["error"]
+    assert error["code"] == "invalid_request" and error["message"]
+    details = error["details"]
+    assert set(details) >= {"field_errors", "request_id", "retryable"}
+    assert details["retryable"] is False and details["request_id"]
+    assert any(e["field"] == field for e in details["field_errors"]), details
+
+
+@pytest.mark.parametrize("path, method", [
+    ("/api/doctor/policies/abc/versions", "get"),
+    ("/api/doctor/policies/1.5/versions", "get"),
+    ("/api/doctor/policies/0/versions", "get"),
+    ("/api/doctor/policies/99999999999999999999/versions", "get"),
+    ("/api/doctor/policies/abc/restore", "post"),
+])
+def test_malformed_path_params_use_the_contract_error_shape(setup, path, method):
+    client, _service, _settings = setup
+    kwargs = {"json": {"version_number": 1, "base_version": 1}} if method == "post" else {}
+    r = getattr(client, method)(path, headers={"x-request-id": "req-path"}, **kwargs)
+    _assert_contract_400(r, "policy_id")
+    assert r.json()["error"]["details"]["request_id"] == "req-path"
+
+
+@pytest.mark.parametrize("path", ["/api/doctor/policies/validate", "/api/doctor/policies", "/api/doctor/scenarios/preview"])
+def test_unreadable_json_body_uses_the_contract_error_shape(setup, path):
+    client, _service, _settings = setup
+    r = client.post(path, content=b"{not json", headers={"content-type": "application/json"})
+    assert r.status_code == 400, r.text
+    details = r.json()["error"]["details"]
+    assert r.json()["error"]["code"] == "invalid_request"
+    assert set(details) >= {"field_errors", "request_id", "retryable"} and details["field_errors"]
+
+
+def test_other_routes_keep_the_global_422_handler():
+    """The DoctorRoute shape is local: a plain route on the same router keeps FastAPI's 422."""
+    app = FastAPI()
+    router = APIRouter()
+    register_doctor_routes(router, repo=None, settings=SimpleNamespace(), service_getter=lambda: _FakeService())
+
+    @router.get("/other/{item_id}")
+    def other(item_id: int) -> dict:
+        return {"item_id": item_id}
+
+    app.include_router(router, prefix="/api")
+    r = TestClient(app).get("/api/other/abc")
+    assert r.status_code == 422

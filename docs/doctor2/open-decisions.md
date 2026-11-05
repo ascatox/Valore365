@@ -86,6 +86,24 @@ Ogni punto ha la scelta attuale e la domanda per il revisore.
 
 ## 3. Rischi noti (PRD §17) e mitigazioni
 
+Testo PRD §17: «Rischi: falsa precisione con dati incompleti, suggerimenti del modello
+plausibili ma errati, leakage tra portafogli aggregati, crescita dei costi LLM/provider,
+performance insufficiente su hosting sleeping, code duplication con FIRE/Portfolio.
+Mitigazioni: dati versionati, policy deterministic, test indipendenti, security isolation,
+caching, shared services e feature flags.» La tabella sotto dettaglia come ciascuno è
+coperto nell'implementazione (righe aggiuntive: rischi emersi durante lo sviluppo).
+
+| rischio PRD | mitigazione implementata |
+|---|---|
+| Falsa precisione con dati incompleti | bounds conservativi, UNKNOWN mai PASS, coverage/qualità visibili (vedi riga sotto) |
+| Suggerimenti del modello plausibili ma errati | il Copilot non calcola: numeri solo dai tool deterministici; bozze validate dal backend; nessun salvataggio senza conferma UI |
+| Leakage tra portafogli aggregati | ownership verificata su tutti i membri a ogni lettura/scrittura; policy per fingerprint esatto; nessuna FK cascade; test cross-user e membro rimosso |
+| Crescita costi LLM/provider | Doctor e Lab funzionano senza LLM; nessuna inferenza AI sul tick dei prezzi; output dei tool scenario ridotti per il LLM |
+| Performance su hosting sleeping | cache TTL in memoria, metriche calcolate una volta per snapshot, degraded mode con ultimo dato noto e warning di freschezza |
+| Code duplication con FIRE/Portfolio | metriche riusano i servizi condivisi (`_health.py`, `asset_classification.py`, freshness); nessuna funzione FIRE nel Doctor; ordini delegati alla pagina Portfolio |
+
+Dettaglio esteso:
+
 | rischio | mitigazione implementata | residuo |
 |---|---|---|
 | **Falsa precisione** (un PASS su dati incompleti, un valore che sembra esatto) | bounds conservativi, `min_coverage_pct`, PASS mai su dati stale/UNKNOWN, confronti su valori non arrotondati con `EPSILON`, «N/D» invece di 0, copertura e qualità visibili in card e drawer | valore riproporzionato con copertura parziale (OP-04); euristiche di classificazione (OP-01, OP-07) |
@@ -109,4 +127,4 @@ Elementi del PRD **non** presenti in questo branch:
 | **Storico delle evaluation** | salvare l'esito delle regole nel tempo (serie per scope e versione policy) e mostrarne l'andamento | tabella evaluation storiche; politica di retention; snapshot id già disponibile |
 | **Cambi di driver** | spiegare *perché* lo stato di una regola è cambiato fra due evaluation (prezzo, transazione, cambio policy, cambio classificazione/metodologia) | storico evaluation; diff di snapshot e contributori |
 | **Alert contestuali** | notifiche quando una regola passa a FAIL / near limit o quando i dati diventano stale | storico evaluation; canale notifiche; preferenze utente; copy D09 |
-| **Elementi P2** | voci a priorità P2 del PRD, rimandate. Candidati emersi dalle decisioni: metriche di costo separate (fee consulenziali/trading, D01), metrica cash (D02), metrica di volatilità versionata (D06), fiscalità negli scenari (D07), gruppi aggregati salvati al posto del fingerprint (D05), righe `stress*` nel confronto Lab, strumenti non posseduti nel Lab (OP-11), endpoint di archiviazione (OP-27), ranking del confronto in UI (OP-19) | da riconciliare con l'elenco P2 del PRD |
+| **Elementi P2 (PRD §16)** | «P2: scenari avanzati, tools MCP ampliati, notifiche opzionali.» Non sviluppati come prima release (PRD): nuovo score misto goal/health, ottimizzazione fiscale estesa, autopilot trading, duplicazione FIRE, LLM sempre attivo. Candidati emersi dalle decisioni: metriche di costo separate (D01), metrica cash (D02), volatilità versionata (D06), fiscalità negli scenari (D07), gruppi aggregati salvati (D05), strumenti non posseduti nel Lab (OP-11), endpoint di archiviazione (OP-27) | storico evaluation; validazione del revisore finanziario |
