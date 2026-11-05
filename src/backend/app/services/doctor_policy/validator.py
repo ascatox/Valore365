@@ -336,7 +336,7 @@ def document_hash(doc: Any) -> str:
     return hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
 
 
-def _rules_by_id(doc: Any) -> dict[str, dict[str, Any]]:
+def _rules_by_metric(doc: Any) -> dict[str, dict[str, Any]]:
     if not doc:
         return {}
     normalized, errors = _validate(doc)
@@ -344,27 +344,32 @@ def _rules_by_id(doc: Any) -> dict[str, dict[str, Any]]:
     rules = source.get("rules") if isinstance(source, dict) else None
     out: dict[str, dict[str, Any]] = {}
     for rule in rules or []:
-        if isinstance(rule, dict) and isinstance(rule.get("rule_id"), str):
-            out[rule["rule_id"]] = rule
+        if isinstance(rule, dict) and isinstance(rule.get("metric_code"), str):
+            out.setdefault(rule["metric_code"], rule)
     return out
 
 
 def diff_documents(before: Any, after: Any) -> list[dict[str, Any]]:
-    """Rule-level diff (contract §5): added / removed / modified by rule_id.
+    """Rule-level diff (contract §5): added / removed / modified by metric_code.
+
+    Rules are matched by ``metric_code`` (unique within a document: one rule
+    per metric), so a rule whose ``rule_id`` changed while staying on the same
+    metric (e.g. renamed by the Copilot) is "modified", not added + removed.
+    ``rule_id`` of an entry is the one of ``after`` (``before`` for removals).
 
     Order: rules of ``after`` in their order, then the removed ones in the
     order of ``before``. ``before`` None (no current policy) = all added.
     """
-    old = _rules_by_id(before)
-    new = _rules_by_id(after)
+    old = _rules_by_metric(before)
+    new = _rules_by_metric(after)
     diff: list[dict[str, Any]] = []
-    for rule_id, rule in new.items():
-        previous = old.get(rule_id)
+    for metric_code, rule in new.items():
+        previous = old.get(metric_code)
         if previous is None:
-            diff.append({"rule_id": rule_id, "metric_code": rule.get("metric_code"), "change": "added", "before": None, "after": rule})
+            diff.append({"rule_id": rule.get("rule_id"), "metric_code": metric_code, "change": "added", "before": None, "after": rule})
         elif canonical_json(previous) != canonical_json(rule):
-            diff.append({"rule_id": rule_id, "metric_code": rule.get("metric_code"), "change": "modified", "before": previous, "after": rule})
-    for rule_id, rule in old.items():
-        if rule_id not in new:
-            diff.append({"rule_id": rule_id, "metric_code": rule.get("metric_code"), "change": "removed", "before": rule, "after": None})
+            diff.append({"rule_id": rule.get("rule_id"), "metric_code": metric_code, "change": "modified", "before": previous, "after": rule})
+    for metric_code, rule in old.items():
+        if metric_code not in new:
+            diff.append({"rule_id": rule.get("rule_id"), "metric_code": metric_code, "change": "removed", "before": rule, "after": None})
     return diff

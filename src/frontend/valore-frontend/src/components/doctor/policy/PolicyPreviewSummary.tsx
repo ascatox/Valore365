@@ -31,8 +31,10 @@ export function PolicyDiffList({ diff, metrics }: { diff: DoctorPolicyDiffEntry[
       {diff.map((entry) => {
         const change = CHANGE_LABELS[entry.change];
         const name = entry.after?.label || entry.before?.label || metricLabel(entry.metric_code, metrics);
+        // One entry per metric (the backend matches rules by metric_code, which is
+        // unique in a document): the rule_id may change on a «modified» entry.
         return (
-          <List.Item key={`${entry.rule_id}-${entry.change}`}>
+          <List.Item key={`${entry.metric_code}-${entry.change}`}>
             <Group gap={6} wrap="wrap">
               <Badge size="sm" variant="light" color={change.color}>{change.label}</Badge>
               <Text size="sm" fw={600}>{name}</Text>

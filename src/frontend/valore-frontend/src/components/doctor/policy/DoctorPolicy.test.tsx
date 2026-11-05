@@ -305,6 +305,22 @@ describe('PolicyDraftCard (Copilot)', () => {
     expect(screen.getByText('Salvata')).toBeInTheDocument();
   });
 
+  it('shows a new rule_id on the same metric as one «Modificata» row with before → after', () => {
+    installFetchMock([]);
+    const diff = [{
+      rule_id: 'max-single-position', metric_code: 'max_single_position_pct', change: 'modified' as const,
+      before: { rule_id: 'max-single', operator: 'max' as const, max_value: 35, precision: 1, label: 'Max singolo ETF' },
+      after: { rule_id: 'max-single-position', operator: 'max' as const, max_value: 50, precision: 1, label: 'Max singolo ETF' },
+    }];
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview({ diff }) }} onSaved={vi.fn()} />);
+    const list = screen.getByTestId('policy-diff');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).getByText('Modificata')).toBeInTheDocument();
+    expect(within(list).queryByText('Aggiunta')).toBeNull();
+    expect(within(list).queryByText('Rimossa')).toBeNull();
+    expect(list).toHaveTextContent('max 35,0% → max 50,0%');
+  });
+
   it('«Annulla» discards the draft without any request', () => {
     const api = installFetchMock([]);
     wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview() }} />);

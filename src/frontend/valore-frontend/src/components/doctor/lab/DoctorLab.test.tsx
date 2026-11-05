@@ -109,6 +109,17 @@ describe('ScenarioComparisonTable', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByText('Attuale: 46,6%')).toBeInTheDocument();
   });
+
+  it('keeps «→» together with the scenario value on mobile (no lone arrow line)', () => {
+    wrap(<ScenarioComparisonTable current={result().before} scenarios={[result()]} isMobile />);
+    const groups = screen.getAllByTestId('scenario-compare-after');
+    expect(groups.length).toBeGreaterThan(0);
+    for (const group of groups) {
+      expect(group.firstElementChild).toHaveTextContent('→');
+      expect(group.textContent!.length).toBeGreaterThan(1);
+      expect(group).toHaveStyle({ flexWrap: 'nowrap' });
+    }
+  });
 });
 
 describe('ScenarioFeasibilitySummary', () => {

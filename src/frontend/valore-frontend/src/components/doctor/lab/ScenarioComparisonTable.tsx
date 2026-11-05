@@ -121,10 +121,13 @@ export function ScenarioComparisonTable({ current, scenarios, isMobile, ruleMetr
                 return (
                   <div key={row.key}>
                     <Text size="xs" c="dimmed">{`${row.group} · ${row.label}`}</Text>
+                    {/* Wraps only between «Attuale: x» and «→ y»: the arrow never ends up alone on a line. */}
                     <Group gap={6} wrap="wrap" align="flex-start">
                       <Text size="sm">{`Attuale: ${now.text}`}</Text>
-                      <Text size="sm" aria-hidden="true">→</Text>
-                      <CellView cell={next} />
+                      <Group gap={6} wrap="nowrap" align="flex-start" style={{ minWidth: 0 }} data-testid="scenario-compare-after">
+                        <Text size="sm" aria-hidden="true" style={{ flexShrink: 0 }}>→</Text>
+                        <div style={{ minWidth: 0, overflowWrap: 'anywhere' }}><CellView cell={next} /></div>
+                      </Group>
                     </Group>
                     {now.note && now.note !== next.note && <Text size="xs" c="dimmed">{`Attuale: ${now.note}`}</Text>}
                   </div>

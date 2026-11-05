@@ -221,6 +221,35 @@ def test_diff_documents():
     assert diff_documents(before, before) == []
 
 
+def test_diff_documents_matches_rules_by_metric_code():
+    """A new rule_id on the same metric (e.g. proposed by the Copilot) is a modification."""
+    before = {"rules": [_rule(), _rule(rule_id="usa", metric_code="usa_exposure_pct", max_value=60)]}
+    after = {"rules": [
+        _rule(rule_id="copilot-max-single", max_value=30),
+        _rule(rule_id="usa-cap", metric_code="usa_exposure_pct", max_value=60),
+    ]}
+    diff = diff_documents(before, after)
+    assert [(d["metric_code"], d["rule_id"], d["change"]) for d in diff] == [
+        ("max_single_position_pct", "copilot-max-single", "modified"),
+        ("usa_exposure_pct", "usa-cap", "modified"),
+    ]
+    assert diff[0]["before"]["rule_id"] == "max-single" and diff[0]["after"]["rule_id"] == "copilot-max-single"
+    assert diff[0]["before"]["max_value"] == 35.0 and diff[0]["after"]["max_value"] == 30.0
+    # Only the rule_id changed: still reported, with before/after.
+    assert diff[1]["before"]["rule_id"] == "usa" and diff[1]["after"]["rule_id"] == "usa-cap"
+    assert diff[1]["before"]["max_value"] == diff[1]["after"]["max_value"] == 60.0
+
+
+def test_diff_documents_same_rule_id_on_another_metric_is_added_and_removed():
+    before = {"rules": [_rule(rule_id="cap", metric_code="usa_exposure_pct", max_value=60)]}
+    after = {"rules": [_rule(rule_id="cap", max_value=35)]}
+    diff = diff_documents(before, after)
+    assert [(d["metric_code"], d["rule_id"], d["change"]) for d in diff] == [
+        ("max_single_position_pct", "cap", "added"),
+        ("usa_exposure_pct", "cap", "removed"),
+    ]
+
+
 def test_templates_are_valid_illustrative_and_versioned():
     templates = list_templates()
     ids = [t["template_id"] for t in templates]
