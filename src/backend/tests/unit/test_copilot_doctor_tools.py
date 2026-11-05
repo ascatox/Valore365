@@ -371,10 +371,74 @@ def test_build_and_compare_scenarios_are_pure(env):
     assert _run(env, "compare_doctor_scenarios", {"scenarios": [{"mode": "manual"}]})["error"]
 
 
-def test_feature_flags_disable_tools(env, monkeypatch):
-    monkeypatch.setattr(doctor_tools, "_settings", lambda: Settings(doctor_policy_enabled=False, doctor_simulator_enabled=False))
-    assert "disabilitat" in _run(env, "read_doctor_policy")["error"]
-    assert "disabilitato" in _run(env, "build_doctor_scenario", {"mode": "manual"})["error"]
+POLICY_TOOLS = DOCTOR_TOOLS - {"build_doctor_scenario", "compare_doctor_scenarios"}
+SCENARIO_ARGS = {
+    "build_doctor_scenario": {"mode": "new_cash_only", "new_cash": 1000},
+    "compare_doctor_scenarios": {"scenarios": [{"mode": "new_cash_only", "new_cash": 1000}, {"mode": "manual"}]},
+}
+
+
+def _flags(monkeypatch, *, policy=True, simulator=True):
+    monkeypatch.setattr(doctor_tools, "_settings", lambda: Settings(
+        doctor_policy_enabled=policy, doctor_simulator_enabled=simulator))
+
+
+def _forbid_service(monkeypatch):
+    def boom(_repo):
+        raise AssertionError("disabled tools must not reach the service")
+    monkeypatch.setattr(doctor_tools, "service_factory", boom)
+
+
+def test_simulator_flag_off_disables_only_scenario_tools(env, monkeypatch):
+    _flags(monkeypatch, simulator=False)
+    for name, args in SCENARIO_ARGS.items():
+        ui_events: list[dict] = []
+        result = _run(env, name, args, ui_events=ui_events)  # must not raise
+        assert result == {"error": doctor_tools.SIMULATOR_DISABLED_MESSAGE}
+        assert "feature_disabled" in result["error"] and ui_events == []
+    # Policy tools keep working.
+    assert _run(env, "read_doctor_policy")["has_policy"] is False
+    assert _run(env, "validate_policy_draft", {"document": DRAFT_60_40})["valid"] is True
+    # The service is never called while the flag is off.
+    _forbid_service(monkeypatch)
+    assert "feature_disabled" in _run(env, "build_doctor_scenario", SCENARIO_ARGS["build_doctor_scenario"])["error"]
+
+
+def test_policy_flag_off_disables_policy_tools(env, monkeypatch):
+    _flags(monkeypatch, policy=False)
+    for name in sorted(POLICY_TOOLS):
+        ui_events: list[dict] = []
+        args = {"document": DRAFT_60_40} if name in ("validate_policy_draft", "preview_policy") else {}
+        result = _run(env, name, args, ui_events=ui_events)
+        assert result == {"error": doctor_tools.POLICY_DISABLED_MESSAGE}, name
+        assert ui_events == []  # no policy_draft card, no token
+    assert env["issued"] == []
+    # Scenario Lab still works with the simulator flag on.
+    assert _run(env, "build_doctor_scenario", SCENARIO_ARGS["build_doctor_scenario"])["executed"] is False
+    _forbid_service(monkeypatch)
+    assert "feature_disabled" in _run(env, "preview_policy", {"document": DRAFT_60_40})["error"]
+
+
+def test_disabled_flag_in_agentic_stream_is_a_tool_result_not_an_error(env, monkeypatch):
+    _flags(monkeypatch, policy=False, simulator=False)
+    seen = _scripted_llm(monkeypatch, [
+        ([{"id": "c1", "name": "preview_policy", "args": {"document": DRAFT_60_40}},
+          {"id": "c2", "name": "build_doctor_scenario", "args": SCENARIO_ARGS["build_doctor_scenario"]}], ""),
+        ([], "Funzione non attiva."),
+    ])
+    events = _events(_agentic(env))
+    assert events[-1]["type"] == "done"
+    assert not any(e["type"] in ("policy_draft", "error") for e in events)
+    assert seen[1].count("feature_disabled") >= 2
+
+
+def test_mcp_disabled_flag_returns_tool_error(env, monkeypatch):
+    import app.mcp_server.tools as mcp_tools
+
+    _flags(monkeypatch, simulator=False)
+    deps = mcp_tools.ToolDependencies(repo=env["repo"], performance_service=None)
+    with pytest.raises(mcp_tools.McpToolError, match="feature_disabled"):
+        mcp_tools.run_tool_sync(deps, "build_doctor_scenario", {"portfolio_id": 1, "mode": "manual"}, USER)
 
 
 # ---------------------------------------------------------------------------

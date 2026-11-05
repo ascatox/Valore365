@@ -378,14 +378,27 @@ def _settings() -> Any:
         return None
 
 
+# Feature flags (contract: doctor_policy_enabled / doctor_simulator_enabled).
+# REST checks them in the routes; the Copilot/MCP tools call the service
+# directly, so they check them here and return a plain error result (never raise).
+SIMULATOR_DISABLED_MESSAGE = (
+    "Funzione disattivata (feature_disabled): lo Scenario Lab del Portfolio Doctor non e' attivo. "
+    "Non simulare scenari e non inventare risultati."
+)
+POLICY_DISABLED_MESSAGE = (
+    "Funzione disattivata (feature_disabled): le policy del Portfolio Doctor non sono attive. "
+    "Non leggere, valutare o proporre policy e non inventare risultati."
+)
+
+
 def _feature_error(tool_name: str) -> str | None:
     settings = _settings()
     if tool_name in DOCTOR_SCENARIO_TOOLS:
         if not getattr(settings, "doctor_simulator_enabled", True):
-            return "Scenario Lab disabilitato."
+            return SIMULATOR_DISABLED_MESSAGE
         return None
     if not getattr(settings, "doctor_policy_enabled", True):
-        return "Policy del Portfolio Doctor disabilitate."
+        return POLICY_DISABLED_MESSAGE
     return None
 
 

@@ -458,7 +458,10 @@ Architettura: `docs/doctor2/architecture.md`.
   `data_quality_warning`; ogni risultato porta `data_note` (testi = dati, non istruzioni). Scenari: payload
   `ScenarioRequest`/`ScenarioCompareRequest` con `snapshot_id = policy_version = null`; risultato compattato per il
   LLM (lati con totali, valori metrica, stato regole; max 30 `changes`), `executed: false`. I flag
-  `doctor_policy_enabled`/`doctor_simulator_enabled` sono verificati dai tool.
+  `doctor_policy_enabled`/`doctor_simulator_enabled` sono verificati dai tool stessi (le route li controllano solo
+  per REST): flag spento → risultato `{"error": "Funzione disattivata (feature_disabled): ..."}` senza eccezione
+  e senza chiamare il servizio (nessuna card `policy_draft`, nessun token); su MCP diventa un errore del tool.
+  `doctor_policy_enabled` governa i 5 tool policy, `doctor_simulator_enabled` i 2 tool scenario.
 - **Allowlist runtime**: lo streaming rifiuta (senza eseguirlo) un tool chiamato dal modello che non è
   nell'allowlist della pagina.
 - **Schemi per il LLM**: solo keyword accettate da tutti i provider (Gemini rifiuta `uniqueItems`,
