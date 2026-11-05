@@ -144,6 +144,26 @@ class DoctorRoute(APIRoute):
         return doctor_route_handler
 
 
+class _DoctorRoutes:
+    """``router.get``/``router.post`` decorators that add DoctorRoute routes."""
+
+    def __init__(self, router: APIRouter) -> None:
+        self._router = router
+
+    def _method(self, method: str, path: str, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        def decorator(endpoint: Callable[..., Any]) -> Callable[..., Any]:
+            self._router.add_api_route(path, endpoint, methods=[method], route_class_override=DoctorRoute, **kwargs)
+            return endpoint
+
+        return decorator
+
+    def get(self, path: str, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        return self._method("GET", path, **kwargs)
+
+    def post(self, path: str, **kwargs: Any) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
+        return self._method("POST", path, **kwargs)
+
+
 def _parse(model: type[M], payload: Any) -> M:
     if not isinstance(payload, dict):
         raise InvalidRequest("Il corpo della richiesta deve essere un oggetto JSON")
@@ -186,10 +206,9 @@ def register_doctor_routes(
         _svc = service or DoctorPolicyService(repo)
         service_getter = lambda: _svc  # noqa: E731
     Auth = Depends(require_auth_rate_limited)
-    outer_router = router
-    # Doctor routes live on their own router (DoctorRoute error shape),
-    # included into the caller's router at the end of this function.
-    router = APIRouter(route_class=DoctorRoute)
+    # Registered directly on the caller's router (same order as before) but
+    # with the DoctorRoute class (contract error shape for request validation).
+    router = _DoctorRoutes(router)  # type: ignore[assignment]
     PolicyId = Path(ge=1, le=BIGINT_MAX, description="Id della policy")
 
     def policy_enabled() -> None:
@@ -330,8 +349,6 @@ def register_doctor_routes(
             return service_getter().compare_scenarios(_auth.user_id, payload)
 
         return _jsonable(run(request, do, simulator_enabled))
-
-    outer_router.include_router(router)
 
 
 def _jsonable(value: Any) -> Any:
