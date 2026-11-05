@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatRequiredCash } from './labFormat';
 
-const normalize = (text: string) => text.replace(/[  ]/g, ' ');
+const normalize = (text: string) => text.replace(/[\u00A0\u202F]/g, ' ');
 
 describe('formatRequiredCash', () => {
   it('shows the PRD golden required capital as whole euros rounded up (227.028,58 → 227.029 €)', () => {

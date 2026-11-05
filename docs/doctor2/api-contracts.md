@@ -76,6 +76,9 @@ denominator: str             # descrizione testuale del denominatore
 denominator_value: float | None   # in valuta base
 contributors: list[{symbol, name, isin, weight_pct}]  # max 10, ordinati per contributo
 notes: list[str]
+quote_as_of: str | None      # timestamp (ISO) della quota più vecchia usata
+calculated_at: str | None    # ISO UTC del calcolo
+methodology_version: str     # METHODOLOGY_VERSION
 ```
 
 ## 3. Documento policy (schema_version 1)
@@ -340,8 +343,9 @@ Metodologia completa: `docs/doctor2/financial-methodology.md`.
   classificata); i bounds restano `lower`/`upper`. TER parziale: `lower` = costo coperto / 100,
   `upper = null`. `etf_overlap_pct` con meno di 2 fondi = 0 con nota (non `missing`).
 - **Empty portfolio**: le regole disattivate restano `INACTIVE` (non `NOT_APPLICABLE`).
-- **Prezzi mancanti** (nessuna quota o `price_fallback = avg_cost`): `UNKNOWN` se la loro quota del
-  valore investito supera `100 − min_coverage_pct`; `data_quality.status = partial`.
+- **Prezzi mancanti** (nessuna quota o `price_fallback = avg_cost`, oppure nessun timestamp di prezzo
+  utilizzabile: età ignota, mai «fresca»): `UNKNOWN` se la loro quota del valore investito supera
+  `100 − min_coverage_pct`; `data_quality.status = partial`.
 - **`data_quality.status = "unknown"`** per snapshot senza alcuna informazione di sync né di prezzo
   (snapshot simulati / di test).
 - **`snapshot_id`**: 16 caratteri esadecimali.
@@ -359,9 +363,13 @@ Architettura: `docs/doctor2/architecture.md`.
   `request_id` = header `X-Request-ID` del client se ben formato (`[A-Za-z0-9._-]{1,64}`),
   altrimenti uuid4 hex (il middleware esistente non genera request id). Il 409
   `version_conflict` aggiunge `details.current_version`.
-- **Body malformati** (non oggetto JSON, tipi errati, >20 id, `version_number < 1`): 400
+- **Body malformati** (non oggetto JSON, JSON illeggibile, tipi errati, >20 id, `version_number < 1`,
+  `base_version`/`version_number`/`policy_version` fuori dal range int4 `0..2147483647`): 400
   `invalid_request` con `field_errors` (path stile `portfolio_ids[0]`), non il 422 generico di
-  FastAPI. Query `portfolio_ids` non numerici → 400. Nei body è accettato anche `portfolio_id`
+  FastAPI né un 500 del database. Anche i path parameter malformati (`policy_id` non intero, ≤ 0 o
+  oltre bigint) → 400 `invalid_request` con `details = {field_errors, request_id, retryable}`: le route
+  Doctor usano la route class `DoctorRoute` (`routes_doctor.py`), il 422 globale delle altre route resta
+  invariato. Query `portfolio_ids` non numerici → 400. Nei body è accettato anche `portfolio_id`
   singolo; in query anche `portfolio_ids=19,26`.
 - **`POST /doctor/policies`** senza `confirmation_token` (o stringa vuota) → 409
   `confirmation_invalid` (prima della validazione Pydantic). Documento non valido → 422
@@ -373,6 +381,8 @@ Architettura: `docs/doctor2/architecture.md`.
   `doctor_confirmation_tokens.source`, default `manual`); il `SaveRequest` non ha `source`.
   `doctor_confirmation_tokens.created_at` aggiunta. `doctor_policy_sets.name` not null
   (default applicativo "La mia policy"), `current_version` default 0 prima della prima versione.
+  `SaveRequest.name` è opzionale (`null`/assente): su una policy esistente mantiene il nome corrente
+  (un salvataggio non rinomina mai implicitamente), alla creazione usa il nome di default.
 - **Restore**: non richiede token (azione esplicita UI, mai Copilot); `base_version` obbligatoria
   di fatto (`null` con policy esistente → 409). Documento ripristinato rinormalizzato; diff
   calcolato rispetto alla versione corrente. Mantiene il nome della policy.
@@ -402,6 +412,13 @@ Architettura: `docs/doctor2/architecture.md`.
 - **Errore nuovo** `snapshot_changed` (409, `retryable: true`, `details.current_snapshot_id`), classe
   `SnapshotChanged` definita in `scenario.py` (non in `errors.py`). `policy_version` diverso dalla versione
   corrente (0 = nessuna policy) → 409 `version_conflict` con `details.current_version`.
+- **Chiavi `target_weights`**: stringhe 1–40 caratteri; una chiave è un `asset_id` solo se è composta da
+  cifre ASCII (max 18), altrimenti è cercata come symbol (es. `"²"` o cifre non ASCII → 400 `unknown_asset`,
+  mai 500).
+- **Limite computazionale** (`new_cash_only` con costi fissi): il calcolo della liquidità minima fa al massimo
+  `MAX_REQUIRED_CASH_ITERATIONS` (20) raffinamenti; oltre → 400 `invalid_request` «Scenario troppo complesso»
+  (`field_errors[].code = "too_complex"`). Il water-filling è O(n) per giro (misurato: `_plan_new_cash` su
+  20 portafogli × 300 asset ≈ 0,1 s).
 - **Asset**: solo strumenti già presenti nello scope (gli input di classificazione vengono dagli holdings
   esistenti); asset sconosciuto o non posseduto → 400 `invalid_request`, `field_errors[].code = "unknown_asset"`
   (`ambiguous` se il symbol è duplicato, `inconsistent` se symbol e asset_id non coincidono). Posizioni cash non
@@ -469,7 +486,9 @@ Architettura: `docs/doctor2/architecture.md`.
   e senza chiamare il servizio (nessuna card `policy_draft`, nessun token); su MCP diventa un errore del tool.
   `doctor_policy_enabled` governa i 5 tool policy, `doctor_simulator_enabled` i 2 tool scenario.
 - **Allowlist runtime**: lo streaming rifiuta (senza eseguirlo) un tool chiamato dal modello che non è
-  nell'allowlist della pagina.
+  nell'allowlist della pagina. Senza `page_context` o con una pagina sconosciuta l'allowlist di default
+  contiene tutti i tool **tranne** i sette Doctor (in particolare `preview_policy`, che emette token):
+  `get_allowed_tool_names_for_page_context` non restituisce più `None` ("tutti i tool").
 - **Schemi per il LLM**: solo keyword accettate da tutti i provider (Gemini rifiuta `uniqueItems`,
   `exclusiveMinimum`, `propertyNames`): importo operazione `minimum: 0.01`.
 - **MCP**: i sei tool esposti accettano, oltre a `portfolio_id`, un `portfolio_ids` opzionale (1–20 id distinti,

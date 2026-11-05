@@ -50,9 +50,10 @@ azioni/obbligazioni/oro.
 ## 2. Metriche (tutte in punti percentuali 0–100)
 
 Ogni metrica produce un `MetricValue`: `value` (stima puntuale non arrotondata),
-`lower`/`upper` (bound prudenziali), `coverage_pct`, `quality`, `source`,
+`unit`, `lower`/`upper` (bound prudenziali), `coverage_pct`, `quality`, `source`,
 `denominator`, `denominator_value`, `contributors` (max 10, per contributo),
-`notes`. **Nessuno zero inventato**: un dato non disponibile è `value = None`,
+`notes` e i metadati PRD §6 `quote_as_of` (quota più vecchia dello snapshot),
+`calculated_at` (ISO UTC) e `methodology_version`. **Nessuno zero inventato**: un dato non disponibile è `value = None`,
 `quality = "missing"`.
 
 ### 2.1 `equity_weight_pct`, `bond_weight_pct`, `gold_weight_pct`
@@ -158,7 +159,9 @@ Per una regola attiva, in ordine:
    quotazione più vecchia di `max_data_age_days` giorni di calendario (rispetto
    a `now`), o segnalata `price_stale`, o l'ultima sincronizzazione `failed`.
 2. **Prezzi mancanti** per una quota del valore investito maggiore di
-   `100 − min_coverage_pct` → `UNKNOWN`.
+   `100 − min_coverage_pct` → `UNKNOWN`. Conta come prezzo mancante anche una
+   posizione **senza timestamp di prezzo** (o con timestamp illeggibile): la sua
+   età è ignota, quindi non può mai essere considerata fresca.
 3. **Metrica non disponibile** → `UNKNOWN` («dati non disponibili»).
 4. **Bounds decisivi** (look-through parziale): `max` → `PASS` se
    `upper ≤ max`, `FAIL` se `lower > max`; `min` → `PASS` se `lower ≥ min`,

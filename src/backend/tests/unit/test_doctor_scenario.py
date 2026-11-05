@@ -360,8 +360,8 @@ def test_new_cash_on_20_portfolios_x_300_assets_is_fast():
     doc = {"schema_version": 1, "rules": [
         {"rule_id": "m", "metric_code": "max_single_position_pct", "operator": "max", "max_value": 0.017},
     ]}
-    from app.services.doctor_policy import scenario
     from app.schemas.doctor_scenario import ScenarioInput
+    from app.services.doctor_policy import scenario
 
     req = ScenarioInput.model_validate({"mode": "new_cash_only", "new_cash": 1e11, "fee_model": {"pct": 0.1, "fixed": 2}})
     book = scenario._book(snap)
