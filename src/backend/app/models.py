@@ -993,6 +993,8 @@ class BenchmarkItem(BaseModel):
     asset_id: int
     symbol: str
     name: str
+    # Short display name of the tracked index (e.g. "S&P 500").
+    label: str | None = None
 
 
 class PacExecutionConfirm(BaseModel):
