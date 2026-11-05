@@ -13,6 +13,10 @@ with ``details = {"field_errors": [...], "request_id": str, "retryable": bool}``
 
 Bodies are read as raw JSON and validated here, so a malformed body is a 400
 ``invalid_request`` with ``field_errors`` instead of FastAPI's generic 422.
+The routes use :class:`DoctorRoute`, so FastAPI's own request validation
+(malformed path parameters such as a non-integer ``policy_id``, unreadable
+JSON) also answers 400 ``invalid_request`` in the contract shape; the
+app-wide 422 handler of the other routes is unchanged.
 
 Must be registered before ``register_portfolio_health_routes`` (main.py).
 """
@@ -24,8 +28,10 @@ import uuid
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from fastapi import APIRouter, Body, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, Path, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, ValidationError
 
 from ..auth import AuthContext
@@ -96,6 +102,48 @@ def _pydantic_field_errors(exc: ValidationError) -> list[dict[str, str]]:
     return out
 
 
+_REQUEST_PARTS = ("path", "query", "body", "header", "cookie")
+BIGINT_MAX = 9_223_372_036_854_775_807
+
+
+def _request_field_errors(exc: RequestValidationError) -> list[dict[str, str]]:
+    out = []
+    for err in exc.errors():
+        parts = list(err.get("loc", ()))
+        if parts and parts[0] in _REQUEST_PARTS:
+            parts = parts[1:]
+        loc = ""
+        for part in parts:
+            loc += f"[{part}]" if isinstance(part, int) else (f".{part}" if loc else str(part))
+        out.append({"field": loc or "body", "code": str(err.get("type", "invalid")), "message": str(err.get("msg", ""))})
+    return out
+
+
+class DoctorRoute(APIRoute):
+    """Route class of the Doctor endpoints: request-validation errors become
+    400 ``invalid_request`` with ``{field_errors, request_id, retryable}``."""
+
+    def get_route_handler(self) -> Callable[[Request], Any]:
+        handler = super().get_route_handler()
+
+        async def doctor_route_handler(request: Request) -> Response:
+            try:
+                return await handler(request)
+            except RequestValidationError as exc:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": {
+                        "code": "invalid_request",
+                        "message": "Richiesta non valida",
+                        "details": error_details(
+                            field_errors=_request_field_errors(exc), request_id=request_id_of(request),
+                        ),
+                    }},
+                )
+
+        return doctor_route_handler
+
+
 def _parse(model: type[M], payload: Any) -> M:
     if not isinstance(payload, dict):
         raise InvalidRequest("Il corpo della richiesta deve essere un oggetto JSON")
@@ -138,6 +186,11 @@ def register_doctor_routes(
         _svc = service or DoctorPolicyService(repo)
         service_getter = lambda: _svc  # noqa: E731
     Auth = Depends(require_auth_rate_limited)
+    outer_router = router
+    # Doctor routes live on their own router (DoctorRoute error shape),
+    # included into the caller's router at the end of this function.
+    router = APIRouter(route_class=DoctorRoute)
+    PolicyId = Path(ge=1, le=BIGINT_MAX, description="Id della policy")
 
     def policy_enabled() -> None:
         if not getattr(settings, "doctor_policy_enabled", True):
@@ -228,13 +281,13 @@ def register_doctor_routes(
 
     @router.get("/doctor/policies/{policy_id}/versions", response_model=PolicyVersionsResponse, responses=_ERRORS)
     def list_doctor_policy_versions(
-        request: Request, policy_id: int, _auth: AuthContext = Auth,
+        request: Request, policy_id: int = PolicyId, _auth: AuthContext = Auth,
     ) -> PolicyVersionsResponse:
         return run(request, lambda: service_getter().list_versions(_auth.user_id, policy_id), policy_enabled)
 
     @router.post("/doctor/policies/{policy_id}/restore", response_model=PolicyRead, responses=_ERRORS)
     def restore_doctor_policy(
-        request: Request, policy_id: int, payload: Any = Body(default=None), _auth: AuthContext = Auth,
+        request: Request, policy_id: int = PolicyId, payload: Any = Body(default=None), _auth: AuthContext = Auth,
     ) -> PolicyRead:
         def do() -> PolicyRead:
             body = _parse(RestoreRequest, payload)
@@ -277,6 +330,8 @@ def register_doctor_routes(
             return service_getter().compare_scenarios(_auth.user_id, payload)
 
         return _jsonable(run(request, do, simulator_enabled))
+
+    outer_router.include_router(router)
 
 
 def _jsonable(value: Any) -> Any:
