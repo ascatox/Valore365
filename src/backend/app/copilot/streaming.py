@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 MAX_TOOL_ROUNDS = 5
+# SSE events a tool may emit for the UI only (never sent to the LLM).
+UI_EVENT_TYPES = frozenset({"policy_draft"})
 AGENTIC_TIMEOUT_S = 120
 # Clients (notably iOS Safari) drop a request that receives no bytes for ~60s,
 # and a non-streaming LLM call with tools can take longer than that.
@@ -126,7 +128,14 @@ _PAGE_CONTEXT_HINTS: dict[str, str] = {
     "doctor": (
         "L'utente sta guardando il Portfolio Doctor. Concentrati su: salute del portafoglio, "
         "diversificazione, costi (TER), overlap, rischio, e suggerimenti di miglioramento. "
-        "Usa get_portfolio_health, get_cost_breakdown, get_stress_test per dati specifici."
+        "Usa get_portfolio_health, get_cost_breakdown, get_stress_test per dati specifici. "
+        "Per composizione, concentrazione e regole personali usa read_doctor_metrics, "
+        "read_doctor_violations e read_doctor_policy; per una nuova policy proponi le soglie, "
+        "valida con validate_policy_draft e mostra la bozza con preview_policy (non salva: "
+        "decide l'utente con «Conferma e salva»); per simulazioni usa build_doctor_scenario "
+        "o compare_doctor_scenarios (nessun ordine eseguito). Domande su capitale, rendita, "
+        "pensione o FIRE: rimanda a [FIRE e decumulo](/fire); ordini e target per ticker: "
+        "rimanda a [Portafoglio](/portfolio)."
     ),
     "fire": (
         "L'utente sta guardando la sezione FIRE. Concentrati su: proiezioni a lungo termine, "
@@ -228,14 +237,24 @@ def stream_copilot_response_agentic(
     finance_client: object | None = None,
     justetf_client: object | None = None,
     page_context: str | None = None,
+    portfolio_ids: list[int] | None = None,
 ) -> Generator[str, None, None]:
     """Stream LLM response with tool-calling loop. Max MAX_TOOL_ROUNDS rounds.
 
     ``justetf_client`` enables X-Ray auto-enrichment (it writes the shared
     etf_enrichment cache): the caller passes it only when
     ``settings.justetf_xray_auto_enrich_enabled_resolved`` is true.
+
+    ``portfolio_ids`` (2+ ids) is the aggregate chat scope, passed to the
+    Doctor tools (they validate ownership through DoctorPolicyService).
+
+    UI-only events produced by a tool (``policy_draft``: the Doctor policy
+    preview with its confirmation token) are emitted as their own SSE event
+    right after the tool runs; they are never part of the tool result sent
+    to the LLM nor logged.
     """
     allowed_tool_names = get_allowed_tool_names_for_page_context(page_context)
+    scope_portfolio_ids = list(portfolio_ids) if portfolio_ids and len(portfolio_ids) > 1 else None
     system_prompt = SYSTEM_PROMPT_AGENTIC.format(
         context=json.dumps(snapshot, ensure_ascii=False, indent=2),
         page_context_block=_build_page_context_block(page_context),
@@ -274,14 +293,24 @@ def stream_copilot_response_agentic(
 
                 # Execute each tool and append results
                 for tc in tool_calls:
-                    result = execute_tool(
-                        tc["name"], tc["args"],
-                        repo, perf_service, portfolio_id, user_id,
-                        finance_client=finance_client,
-                        justetf_client=justetf_client,
-                    )
+                    ui_events: list[dict] = []
+                    if allowed_tool_names is not None and tc["name"] not in allowed_tool_names:
+                        # The model only sees the page's tools; refuse anything else.
+                        result = {"error": "Tool non disponibile in questa pagina."}
+                    else:
+                        result = execute_tool(
+                            tc["name"], tc["args"],
+                            repo, perf_service, portfolio_id, user_id,
+                            finance_client=finance_client,
+                            justetf_client=justetf_client,
+                            scope_portfolio_ids=scope_portfolio_ids,
+                            ui_events=ui_events,
+                        )
                     tool_result_msg = _build_tool_result_message(provider, tc["id"], tc["name"], result)
                     conv_messages.append(tool_result_msg)
+                    for event in ui_events:
+                        if event.get("type") in UI_EVENT_TYPES:
+                            yield _sse(event["type"], event["content"])
 
                 continue  # next round
 

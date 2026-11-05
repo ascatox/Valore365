@@ -33,6 +33,7 @@ from .services.rebalance import (
     compute_rebalance_plan,
 )
 from .services.portfolio_doctor._holdings import _load_holdings
+from .copilot_doctor_tools import DOCTOR_TOOL_DEFINITIONS, DOCTOR_TOOL_HANDLERS
 
 logger = logging.getLogger(__name__)
 
@@ -351,6 +352,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    # --- T19-T25: Portfolio Doctor 2.0 (policy, metrics, Scenario Lab) ---
+    # Read-only / pure: no tool saves or restores a policy (contract §7).
+    *DOCTOR_TOOL_DEFINITIONS,
 ]
 
 _PAGE_TOOL_ALLOWLIST: dict[str, set[str]] = {
@@ -374,6 +378,13 @@ _PAGE_TOOL_ALLOWLIST: dict[str, set[str]] = {
         "get_stress_test",
         "get_xray_summary",
         "search_asset_info",
+        "read_doctor_policy",
+        "read_doctor_metrics",
+        "read_doctor_violations",
+        "validate_policy_draft",
+        "preview_policy",
+        "build_doctor_scenario",
+        "compare_doctor_scenarios",
     },
     "fire": {
         "get_portfolio_health",
@@ -399,15 +410,24 @@ _PAGE_TOOL_ALLOWLIST: dict[str, set[str]] = {
 # Provider format conversion
 # ---------------------------------------------------------------------------
 
-def get_allowed_tool_names_for_page_context(page_context: str | None) -> set[str] | None:
-    if not page_context:
-        return None
-    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context)
-    return set(allowed) if allowed else None
+# Without a (known) page_context every tool is offered except the Doctor
+# tools: preview_policy emits a confirmation token and the Doctor tools are
+# only meaningful (and only allowed) on the Doctor page.
+_DOCTOR_TOOL_NAMES: frozenset[str] = frozenset(tool["name"] for tool in DOCTOR_TOOL_DEFINITIONS)
+_DEFAULT_TOOL_ALLOWLIST: frozenset[str] = frozenset(
+    tool["name"] for tool in TOOL_DEFINITIONS if tool["name"] not in _DOCTOR_TOOL_NAMES
+)
+
+
+def get_allowed_tool_names_for_page_context(page_context: str | None) -> set[str]:
+    """Tools offered on a page; missing/unknown page -> every non-Doctor tool."""
+    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context) if page_context else None
+    return set(allowed) if allowed else set(_DEFAULT_TOOL_ALLOWLIST)
 
 
 def build_tool_availability_block(page_context: str | None) -> str:
-    allowed = get_allowed_tool_names_for_page_context(page_context)
+    # No block for a missing/unknown page (default allowlist), as before.
+    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context) if page_context else None
     if not allowed:
         return ""
     ordered_names = [tool["name"] for tool in TOOL_DEFINITIONS if tool["name"] in allowed]
@@ -463,15 +483,26 @@ def execute_tool(
     *,
     finance_client: object | None = None,
     justetf_client: object | None = None,
+    scope_portfolio_ids: list[int] | None = None,
+    ui_events: list[dict] | None = None,
 ) -> dict:
-    """Execute a tool by name and return a JSON-serializable dict."""
+    """Execute a tool by name and return a JSON-serializable dict.
+
+    ``scope_portfolio_ids`` is the chat scope (aggregate view) used by the
+    Doctor tools; ``ui_events`` collects events meant for the UI only (e.g.
+    the ``policy_draft`` card carrying the confirmation token), which the
+    caller emits on its own channel and never feeds back to the LLM.
+    """
     try:
         handler = _TOOL_HANDLERS.get(tool_name)
         if handler is None:
-            return {"error": f"Tool sconosciuto: {tool_name}"}
+            return {"error": f"Tool sconosciuto: {str(tool_name)[:100]}"}
+        if not isinstance(tool_args, dict):
+            tool_args = {}
         return handler(
             tool_args, repo, perf_service, portfolio_id, user_id,
             finance_client=finance_client, justetf_client=justetf_client,
+            scope_portfolio_ids=scope_portfolio_ids, ui_events=ui_events,
         )
     except Exception as exc:
         logger.exception("Tool execution error: %s", tool_name)
@@ -1881,4 +1912,5 @@ _TOOL_HANDLERS = {
     "get_xray_summary": _get_xray_summary,
     "get_stress_test": _get_stress_test,
     "get_income_projection": _get_income_projection,
+    **DOCTOR_TOOL_HANDLERS,
 }

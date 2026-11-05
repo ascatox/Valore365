@@ -946,6 +946,7 @@ def test_heavy_tools_have_a_stricter_rate_limit(mcp_on, monkeypatch):
     assert _call(client, 'get_portfolio_summary', {'portfolio_id': 1})['isError'] is False
     assert {'get_monte_carlo', 'get_stress_test', 'get_income_projection', 'get_xray_summary',
             'calculate_rebalance_orders', 'calculate_what_if', 'calculate_pac_contribution',
+            'build_doctor_scenario', 'compare_doctor_scenarios',
             'get_aggregate_performance', 'get_aggregate_health', 'get_aggregate_monte_carlo',
             'get_aggregate_stress_test', 'get_aggregate_xray', 'get_aggregate_performance_audit'} == HEAVY_TOOLS
 
@@ -1197,7 +1198,9 @@ def test_aggregate_tools_are_listed_read_only_with_bounded_portfolio_ids(mcp_on)
         assert (ids['minItems'], ids['maxItems'], ids['uniqueItems']) == (2, MAX_AGGREGATE_PORTFOLIOS, True)
         assert ids['items'] == {'type': 'integer', 'minimum': 1, 'maximum': mcp_tools.MAX_PORTFOLIO_ID}
     # Existing single-portfolio tools keep their schema.
-    assert all('portfolio_ids' not in t['inputSchema']['properties'] for t in tools if t['name'] in MCP_TOOL_ALLOWLIST)
+    # (The Doctor 2.0 tools are new and take an optional aggregate policy scope.)
+    assert all('portfolio_ids' not in t['inputSchema']['properties']
+               for t in tools if t['name'] in MCP_TOOL_ALLOWLIST - mcp_tools.DOCTOR_SCOPE_TOOLS)
 
 
 def test_aggregate_summary_matches_the_app_route_and_the_sum_of_singles(mcp_on, scripted_repo, monkeypatch):

@@ -37,6 +37,12 @@ import jsonschema
 from mcp import types
 from mcp.server.lowlevel import Server
 
+from ..copilot_doctor_tools import (
+    DOCTOR_TOOL_NAMES,
+    policy_document_schema,
+    scenario_properties,
+    scenario_schema,
+)
 from ..copilot_tools import TOOL_DEFINITIONS, execute_tool
 from ..rate_limit import SlidingWindowRateLimiter
 from ..repository._scope import EMPTY_SCOPE_MESSAGE, MIXED_CURRENCY_MESSAGE, NOT_FOUND_MESSAGE
@@ -85,9 +91,26 @@ MCP_TOOL_ALLOWLIST: frozenset[str] = frozenset({
     "get_xray_summary",
     "get_stress_test",
     "get_income_projection",
+    # Portfolio Doctor 2.0 (contract §7): reads and pure computations only.
+    # build/compare scenario are in-memory simulations (Scenario Lab never
+    # writes); validate is pure; the evaluation cache is in-memory.
+    "read_doctor_policy",
+    "read_doctor_metrics",
+    "read_doctor_violations",
+    "validate_policy_draft",
+    "build_doctor_scenario",
+    "compare_doctor_scenarios",
 })
 # Copilot tools deliberately kept off MCP, with the reason.
-MCP_TOOL_EXCLUDED: dict[str, str] = {}
+MCP_TOOL_EXCLUDED: dict[str, str] = {
+    "preview_policy": (
+        "Preparatorio a una scrittura: emette un confirmation token monouso (salvato in DB) che abilita "
+        "il salvataggio della policy; MCP resta in sola lettura (usa validate_policy_draft)."
+    ),
+}
+# Doctor tools that take an optional aggregate scope (portfolio_ids) on MCP.
+DOCTOR_SCOPE_TOOLS: frozenset[str] = DOCTOR_TOOL_NAMES & MCP_TOOL_ALLOWLIST
+MAX_DOCTOR_SCOPE = 20
 
 # CPU-heavy or network-bound tools: stricter per-user rate limit.
 HEAVY_TOOLS: frozenset[str] = frozenset({
@@ -98,17 +121,42 @@ HEAVY_TOOLS: frozenset[str] = frozenset({
     "calculate_rebalance_orders",
     "calculate_what_if",
     "calculate_pac_contribution",
+    "build_doctor_scenario",
+    "compare_doctor_scenarios",
 }) | AGGREGATE_HEAVY_TOOLS
 
 # Bounds for the arguments of the exposed tools, merged into their input
 # schemas. Every string needs maxLength and every number min/max bounds
 # (enforced by the tests), so a new argument has to be bounded here.
 _MAX_AMOUNT = 1_000_000_000
+# target_weights keys are asset ids (JSON object keys): bounded too.
+_ASSET_ID_KEYS = {"pattern": r"^[1-9][0-9]{0,9}$", "maxLength": 10}
+
+
+def _mcp_scenario_schema() -> dict[str, Any]:
+    schema = scenario_schema()
+    schema["properties"]["target_weights"]["propertyNames"] = dict(_ASSET_ID_KEYS)
+    return schema
+
+
 ARGUMENT_CONSTRAINTS: dict[str, dict[str, Any]] = {
     "available_cash": {"minimum": 0, "maximum": _MAX_AMOUNT},
     "amount_eur": {"exclusiveMinimum": 0, "maximum": _MAX_AMOUNT},
     "monthly_amount": {"exclusiveMinimum": 0, "maximum": _MAX_AMOUNT},
     "symbol": {"minLength": 1, "maxLength": 32, "pattern": r"^[A-Za-z0-9.\-_=^:]+$"},
+    # --- Portfolio Doctor 2.0: nested arrays/objects are fully bounded ---
+    "document": policy_document_schema(),
+    "metric_codes": {"maxItems": 8},
+    "new_cash": {"minimum": 0, "maximum": _MAX_AMOUNT},
+    "operations": scenario_properties()["operations"],
+    "target_weights": {
+        **scenario_properties()["target_weights"],
+        "propertyNames": dict(_ASSET_ID_KEYS),
+    },
+    "constraints": scenario_properties()["constraints"],
+    "fee_model": scenario_properties()["fee_model"],
+    "label": {"maxLength": 80},
+    "scenarios": {"type": "array", "minItems": 2, "maxItems": 3, "items": _mcp_scenario_schema()},
 }
 MAX_PORTFOLIO_ID = 2**31 - 1
 
@@ -215,7 +263,7 @@ def _format_window(seconds: int) -> str:
     return f"{seconds} secondi"
 
 
-def _tool_input_schema(parameters: dict[str, Any]) -> dict[str, Any]:
+def _tool_input_schema(parameters: dict[str, Any], *, doctor_scope: bool = False) -> dict[str, Any]:
     schema = copy.deepcopy(parameters) if parameters else {"type": "object", "properties": {}}
     schema["type"] = "object"
     properties = {
@@ -227,9 +275,21 @@ def _tool_input_schema(parameters: dict[str, Any]) -> dict[str, Any]:
         },
         **schema.get("properties", {}),
     }
+    if doctor_scope:
+        properties["portfolio_ids"] = {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 1, "maximum": MAX_PORTFOLIO_ID},
+            "minItems": 1,
+            "maxItems": MAX_DOCTOR_SCOPE,
+            "uniqueItems": True,
+            "description": (
+                "Scope aggregato opzionale della policy (1-20 id distinti, stessa valuta base, "
+                "deve includere portfolio_id). Senza: solo portfolio_id."
+            ),
+        }
     for name, prop in properties.items():
         if name in ARGUMENT_CONSTRAINTS:
-            prop.update(ARGUMENT_CONSTRAINTS[name])
+            prop.update(copy.deepcopy(ARGUMENT_CONSTRAINTS[name]))
     schema["properties"] = properties
     schema["required"] = ["portfolio_id", *[r for r in schema.get("required", []) if r != "portfolio_id"]]
     schema["additionalProperties"] = False
@@ -269,7 +329,10 @@ def build_tool_list() -> list[types.Tool]:
             types.Tool(
                 name=definition["name"],
                 description=definition["description"] + DATA_NOT_INSTRUCTIONS_NOTE,
-                inputSchema=_tool_input_schema(definition.get("parameters") or {}),
+                inputSchema=_tool_input_schema(
+                    definition.get("parameters") or {},
+                    doctor_scope=definition["name"] in DOCTOR_SCOPE_TOOLS,
+                ),
                 annotations=_READ_ONLY,
             )
         )
@@ -433,7 +496,12 @@ def _run_portfolio_tool(deps: ToolDependencies, name: str, args: dict[str, Any],
         raise McpToolError("portfolio_id non valido")
     _ensure_portfolio_owned(deps, portfolio_id, user_id)
 
-    tool_args = {k: v for k, v in args.items() if k != "portfolio_id"}
+    tool_args = {k: v for k, v in args.items() if k not in ("portfolio_id", "portfolio_ids")}
+    extra: dict[str, Any] = {}
+    if name in DOCTOR_SCOPE_TOOLS:
+        # Doctor tools: the scope is portfolio_id, or the given portfolio_ids
+        # (ownership of every id checked here and again by the service).
+        extra["scope_portfolio_ids"] = doctor_scope_ids(deps, args, user_id)
     result = execute_tool(
         name,
         tool_args,
@@ -444,6 +512,7 @@ def _run_portfolio_tool(deps: ToolDependencies, name: str, args: dict[str, Any],
         finance_client=deps.finance_client,
         # Read-only: no justETF client, so X-Ray never writes etf_enrichment.
         justetf_client=None,
+        **extra,
     )
     if isinstance(result, dict) and set(result) == {"error"}:
         message = str(result["error"])
@@ -452,6 +521,22 @@ def _run_portfolio_tool(deps: ToolDependencies, name: str, args: dict[str, Any],
             message = f"Errore nell'esecuzione del tool {name}"
         raise McpToolError(message[:MAX_ERROR_CHARS])
     return result
+
+
+def doctor_scope_ids(deps: ToolDependencies, args: dict[str, Any], user_id: str) -> list[int]:
+    """Sorted scope of a Doctor tool call; one fixed message for any scope failure."""
+    portfolio_id = args["portfolio_id"]
+    raw = args.get("portfolio_ids")
+    if not raw:
+        return [portfolio_id]
+    ids = sorted({int(i) for i in raw})
+    if portfolio_id not in ids:
+        raise McpToolError("portfolio_ids deve includere portfolio_id")
+    try:
+        deps.repo.resolve_portfolio_scope(ids, user_id)
+    except ValueError as exc:
+        raise McpToolError(scope_error_message(exc)) from exc
+    return ids
 
 
 def _run_aggregate_tool(deps: ToolDependencies, name: str, args: dict[str, Any], user_id: str) -> dict[str, Any]:
@@ -518,7 +603,10 @@ def run_tool_sync(deps: ToolDependencies, name: str, args: dict[str, Any], user_
             result = _run_aggregate_tool(deps, name, args, user_id)
             return _with_data_freshness(deps, name, result, list(result.get("portfolio_ids") or []), user_id)
         result = _run_portfolio_tool(deps, name, args, user_id)
-        return _with_data_freshness(deps, name, result, [args["portfolio_id"]], user_id)
+        scope_ids = [args["portfolio_id"]]
+        if name in DOCTOR_SCOPE_TOOLS and args.get("portfolio_ids"):
+            scope_ids = sorted({int(i) for i in args["portfolio_ids"]})
+        return _with_data_freshness(deps, name, result, scope_ids, user_id)
 
 
 async def _run_bounded(

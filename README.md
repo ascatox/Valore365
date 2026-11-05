@@ -67,6 +67,23 @@ Sovrapposizione ETF
 
 L'analisi è **deterministica e basata su regole**, per garantire risultati coerenti.
 
+## Doctor 2.0
+
+Il Doctor ora affianca alla diagnosi standard i **tuoi parametri**:
+
+- **I miei parametri**: regole personali per portafoglio o vista aggregata (es. «nessun ETF oltre il 35%»), verificate in modo deterministico con esito *rispettato / violato / non verificabile*, evidenze e storico versioni. Separate dal punteggio Doctor, che non cambia.
+- **Copilot assistito**: propone bozze di parametri con anteprima; nulla viene salvato senza la tua conferma.
+- **Laboratorio**: confronta fino a 3 scenari ipotetici con il portafoglio attuale. Simulazione teorica; nessun ordine eseguito.
+
+Documentazione in [docs/doctor2/](docs/doctor2/): [contratti API](docs/doctor2/api-contracts.md), [architettura](docs/doctor2/architecture.md), [metodologia finanziaria](docs/doctor2/financial-methodology.md), [specifica UI](docs/doctor2/ui-spec.md), [decisioni aperte](docs/doctor2/open-decisions.md).
+
+Feature flag backend (default `true`; se `false` gli endpoint rispondono 404 `feature_disabled` e la sezione sparisce dalla UI):
+
+| variabile | controlla |
+|---|---|
+| `DOCTOR_POLICY_ENABLED` | I miei parametri (policy ed evaluation) e i tool Copilot sulle policy |
+| `DOCTOR_SIMULATOR_ENABLED` | Laboratorio (Scenario Lab) e i tool Copilot sugli scenari |
+
 ---
 
 # 🤖 Portfolio Copilot

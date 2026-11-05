@@ -85,6 +85,7 @@ def register_copilot_routes(
                 finance_client=finance_client,
                 justetf_client=xray_justetf_client,
                 page_context=payload.page_context,
+                portfolio_ids=payload.portfolio_ids if is_aggregate else None,
             )
         else:
             # Fallback for local providers without tool calling

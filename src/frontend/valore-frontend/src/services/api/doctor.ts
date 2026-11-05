@@ -6,6 +6,20 @@ import type {
   StressTestResponse,
   DecumulationPlanResponse,
   AggregateDecumulationPlanResponse,
+  DoctorFeatures,
+  DoctorMetricDefinition,
+  DoctorPolicyDocument,
+  DoctorPolicyEvaluation,
+  DoctorPolicyPreviewResponse,
+  DoctorPolicyRead,
+  DoctorPolicySource,
+  DoctorPolicyTemplate,
+  DoctorPolicyValidateResponse,
+  DoctorPolicyVersion,
+  DoctorScenarioCompareRequest,
+  DoctorScenarioCompareResponse,
+  DoctorScenarioRequest,
+  DoctorScenarioResult,
 } from './types';
 
 export const getPortfolioHealth = async (portfolioId: number): Promise<PortfolioHealthResponse> => {
@@ -106,3 +120,86 @@ export const getAggregateDecumulationPlan = async (
   appendDecumulationScheduleParams(query, params);
   return apiFetch<AggregateDecumulationPlanResponse>(`/portfolios/aggregate/decumulation?${query.toString()}`);
 };
+
+// ---------------------------------------------------------------------------
+// Portfolio Doctor 2.0 (docs/doctor2/api-contracts.md §5, §8)
+// ---------------------------------------------------------------------------
+
+/** `portfolio_ids=1&portfolio_ids=2` for the exact scope (sorted, unique). */
+export function doctorScopeQuery(portfolioIds: number[]): string {
+  const query = new URLSearchParams();
+  [...new Set(portfolioIds)].sort((left, right) => left - right)
+    .forEach((id) => query.append('portfolio_ids', String(id)));
+  return query.toString();
+}
+
+/** Same string as the backend `scope_fingerprint` (used as a cache key). */
+export function doctorScopeFingerprint(portfolioIds: number[]): string {
+  return `p:${[...new Set(portfolioIds)].sort((left, right) => left - right).join(',')}`;
+}
+
+const postJson = <T>(path: string, body: unknown) => apiFetch<T>(path, { method: 'POST', body: JSON.stringify(body) });
+
+export const getDoctorFeatures = () => apiFetch<DoctorFeatures>('/doctor/features');
+
+export const getDoctorMetrics = async (): Promise<DoctorMetricDefinition[]> => {
+  const body = await apiFetch<DoctorMetricDefinition[] | { metrics: DoctorMetricDefinition[] }>('/doctor/metrics');
+  return Array.isArray(body) ? body : (body?.metrics ?? []);
+};
+
+export const getDoctorTemplates = async (): Promise<DoctorPolicyTemplate[]> => {
+  const body = await apiFetch<DoctorPolicyTemplate[] | { templates: DoctorPolicyTemplate[] }>('/doctor/templates');
+  return Array.isArray(body) ? body : (body?.templates ?? []);
+};
+
+export const getDoctorPolicy = async (portfolioIds: number[]): Promise<DoctorPolicyRead | null> => {
+  const body = await apiFetch<{ policy?: DoctorPolicyRead | null }>(`/doctor/policies?${doctorScopeQuery(portfolioIds)}`);
+  return body?.policy ?? null;
+};
+
+export const getDoctorEvaluation = (portfolioIds: number[]) =>
+  apiFetch<DoctorPolicyEvaluation>(`/doctor/evaluation?${doctorScopeQuery(portfolioIds)}`);
+
+export const validateDoctorPolicy = (portfolioIds: number[], document: DoctorPolicyDocument) =>
+  postJson<DoctorPolicyValidateResponse>('/doctor/policies/validate', { portfolio_ids: portfolioIds, document });
+
+export const previewDoctorPolicy = (params: {
+  portfolioIds: number[];
+  document: DoctorPolicyDocument;
+  baseVersion: number | null;
+  source: DoctorPolicySource;
+}) => postJson<DoctorPolicyPreviewResponse>('/doctor/policies/preview', {
+  portfolio_ids: params.portfolioIds,
+  document: params.document,
+  base_version: params.baseVersion,
+  source: params.source,
+});
+
+export const saveDoctorPolicy = (params: {
+  portfolioIds: number[];
+  /** null = keep the existing policy name (backend default for a new policy). */
+  name: string | null;
+  document: DoctorPolicyDocument;
+  baseVersion: number | null;
+  confirmationToken: string;
+}) => postJson<DoctorPolicyRead>('/doctor/policies', {
+  portfolio_ids: params.portfolioIds,
+  name: params.name,
+  document: params.document,
+  base_version: params.baseVersion,
+  confirmation_token: params.confirmationToken,
+});
+
+export const getDoctorPolicyVersions = async (policyId: number): Promise<DoctorPolicyVersion[]> => {
+  const body = await apiFetch<DoctorPolicyVersion[] | { versions: DoctorPolicyVersion[] }>(`/doctor/policies/${policyId}/versions`);
+  return Array.isArray(body) ? body : (body?.versions ?? []);
+};
+
+export const restoreDoctorPolicyVersion = (policyId: number, versionNumber: number, baseVersion: number) =>
+  postJson<DoctorPolicyRead>(`/doctor/policies/${policyId}/restore`, { version_number: versionNumber, base_version: baseVersion });
+
+export const previewDoctorScenario = (request: DoctorScenarioRequest) =>
+  postJson<DoctorScenarioResult>('/doctor/scenarios/preview', request);
+
+export const compareDoctorScenarios = (request: DoctorScenarioCompareRequest) =>
+  postJson<DoctorScenarioCompareResponse>('/doctor/scenarios/compare', request);

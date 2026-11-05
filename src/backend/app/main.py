@@ -62,10 +62,12 @@ from .services.pac_service import PacExecutionService
 from .services.performance_service import PerformanceService
 from .services.pricing_service import PriceIngestionService
 from .justetf_client import JustEtfClient
+from .services.doctor_policy.service import get_doctor_policy_service
 
 # --- Route registrations ---
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
 from .api.routes_aggregate import register_aggregate_routes
+from .api.routes_doctor import register_doctor_routes
 from .api.portfolio_health import register_portfolio_health_routes
 from .api.routes_portfolio import register_portfolio_routes
 from .api.routes_assets import register_assets_routes
@@ -137,6 +139,10 @@ class RuntimeDependencyProxy:
         return getattr(self._getter(), name)
 
 
+# Shared with the Copilot tools (one evaluation cache per process).
+doctor_policy_service = get_doctor_policy_service(RuntimeDependencyProxy(lambda: repo))
+
+
 # ---------------------------------------------------------------------------
 # Feature flag helper
 # ---------------------------------------------------------------------------
@@ -178,6 +184,14 @@ def _apply_pending_migrations():
         logging.getLogger(__name__).info("market data sync tables ensured")
     except Exception as exc:
         logging.getLogger(__name__).warning("Market data sync migration check failed: %s", exc)
+    # Portfolio Doctor 2.0 policies: own transaction, like the one above.
+    try:
+        with _engine.begin() as conn:
+            from .sql import load_sql
+            conn.execute(text(load_sql("migrations/create_doctor_policies")))
+        logging.getLogger(__name__).info("doctor policy tables ensured")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Doctor policy migration check failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +310,13 @@ register_aggregate_routes(
     finance_client=RuntimeDependencyProxy(lambda: finance_client),
     justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
     ensure_target_allocation_enabled=ensure_target_allocation_enabled,
+)
+# Portfolio Doctor 2.0 (/doctor/...): before the portfolio health routes.
+register_doctor_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    settings=settings,
+    service_getter=lambda: doctor_policy_service,
 )
 register_instant_portfolio_analyzer_routes(router, repo, csv_import_service=csv_import_service)
 register_portfolio_health_routes(
