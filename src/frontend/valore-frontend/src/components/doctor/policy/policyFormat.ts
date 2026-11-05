@@ -89,13 +89,32 @@ const MONEY_IN_TEXT = new RegExp(
  * warnings, infeasible reasons, explanations) in Privacy Mode. Percentages stay
  * visible. `privacy` defaults to the stored Privacy Mode flag.
  */
-export function maskMoneyInText<T extends string | null | undefined>(text: T, privacy: boolean = isDoctorPrivacyMode()): T {
+export function maskMoneyInText<T extends string | null | undefined>(
+  text: T,
+  privacy: boolean = isDoctorPrivacyMode(),
+  replacement: string = PRIVACY_MASK,
+): T {
   if (!privacy || !text) return text;
-  return text.replace(MONEY_IN_TEXT, PRIVACY_MASK) as T;
+  return text.replace(MONEY_IN_TEXT, () => replacement) as T;
+}
+
+/** The mask escaped for Markdown (so `******` is never read as emphasis or a rule). */
+export const PRIVACY_MASK_MARKDOWN = PRIVACY_MASK.replace(/\*/g, '\\*');
+
+// A calendar date without time (e.g. `quote_as_of` = "2026-11-05"): `new Date()`
+// would read it as UTC midnight and show a made-up hour, or the previous day
+// west of UTC. It is shown as the same calendar date, without a time.
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+function formatDateOnly(value: string): string | null {
+  const match = DATE_ONLY.exec(value.trim());
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : null;
 }
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return NOT_AVAILABLE;
+  const dateOnly = formatDateOnly(value);
+  if (dateOnly) return dateOnly;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -103,6 +122,8 @@ export function formatDateTime(value: string | null | undefined): string {
 
 export function formatDate(value: string | null | undefined): string {
   if (!value) return NOT_AVAILABLE;
+  const dateOnly = formatDateOnly(value);
+  if (dateOnly) return dateOnly;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' });

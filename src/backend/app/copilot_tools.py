@@ -410,15 +410,24 @@ _PAGE_TOOL_ALLOWLIST: dict[str, set[str]] = {
 # Provider format conversion
 # ---------------------------------------------------------------------------
 
-def get_allowed_tool_names_for_page_context(page_context: str | None) -> set[str] | None:
-    if not page_context:
-        return None
-    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context)
-    return set(allowed) if allowed else None
+# Without a (known) page_context every tool is offered except the Doctor
+# tools: preview_policy emits a confirmation token and the Doctor tools are
+# only meaningful (and only allowed) on the Doctor page.
+_DOCTOR_TOOL_NAMES: frozenset[str] = frozenset(tool["name"] for tool in DOCTOR_TOOL_DEFINITIONS)
+_DEFAULT_TOOL_ALLOWLIST: frozenset[str] = frozenset(
+    tool["name"] for tool in TOOL_DEFINITIONS if tool["name"] not in _DOCTOR_TOOL_NAMES
+)
+
+
+def get_allowed_tool_names_for_page_context(page_context: str | None) -> set[str]:
+    """Tools offered on a page; missing/unknown page -> every non-Doctor tool."""
+    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context) if page_context else None
+    return set(allowed) if allowed else set(_DEFAULT_TOOL_ALLOWLIST)
 
 
 def build_tool_availability_block(page_context: str | None) -> str:
-    allowed = get_allowed_tool_names_for_page_context(page_context)
+    # No block for a missing/unknown page (default allowlist), as before.
+    allowed = _PAGE_TOOL_ALLOWLIST.get(page_context) if page_context else None
     if not allowed:
         return ""
     ordered_names = [tool["name"] for tool in TOOL_DEFINITIONS if tool["name"] in allowed]

@@ -116,6 +116,9 @@ class MetricValueRead(BaseModel):
     denominator_value: float | None = None
     contributors: list[MetricContributor] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    quote_as_of: str | None = None
+    calculated_at: str | None = None
+    methodology_version: str | None = None
 
 
 class RuleResult(BaseModel):

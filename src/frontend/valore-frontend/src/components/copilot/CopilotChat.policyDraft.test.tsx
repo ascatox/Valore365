@@ -2,6 +2,7 @@ import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubLayoutApis } from '../../test/pageHarness';
+import { STORAGE_KEYS } from '../dashboard/constants';
 import { policyRead, preview } from '../doctor/policy/testFixtures';
 import { CopilotChat } from './CopilotChat';
 
@@ -59,3 +60,74 @@ describe('CopilotChat policy_draft', () => {
     expect(JSON.parse(String((policyPosts()[0][1] as RequestInit).body))).toMatchObject({ confirmation_token: 'tok-123', base_version: 3 });
   });
 });
+
+describe('CopilotChat Privacy Mode and draft → editor', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    stubLayoutApis();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function stubChat(events: unknown[]) {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => (
+      String(input).endsWith('/copilot/chat') ? sse(events) : new Response('{}', { status: 200 })
+    )));
+  }
+
+  it('masks € amounts in assistant messages on display only, on any page', async () => {
+    window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, 'true');
+    stubChat([{ type: 'text_delta', content: 'Hai 58.250 € in VWRA (46,6%) e **€ 1.200** di liquidità.' }, { type: 'done' }]);
+    render(
+      <MantineProvider>
+        <CopilotChat opened onClose={() => {}} portfolioId={1} pageContext="dashboard" quickPrompts={['Quanto ho investito in 10.000 € di ETF?']} />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByText('Quanto ho investito in 10.000 € di ETF?'));
+    expect(await screen.findByText(/Hai \*{6} in VWRA \(46,6%\) e/)).toBeInTheDocument();
+    expect(screen.queryByText(/58\.250/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/1\.200/)).not.toBeInTheDocument();
+    // The user's own text is shown as typed, and stored messages are unchanged.
+    expect(screen.getByText('Quanto ho investito in 10.000 € di ETF?')).toBeInTheDocument();
+    await waitFor(() => expect(window.localStorage.getItem('copilot_chat_1')).toContain('58.250 €'));
+  });
+
+  it('does not mask assistant amounts when Privacy Mode is off', async () => {
+    stubChat([{ type: 'text_delta', content: 'Hai 58.250 € in VWRA.' }, { type: 'done' }]);
+    render(
+      <MantineProvider>
+        <CopilotChat opened onClose={() => {}} portfolioId={1} pageContext="dashboard" quickPrompts={['Riassumi']} />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByText('Riassumi'));
+    expect(await screen.findByText('Hai 58.250 € in VWRA.')).toBeInTheDocument();
+  });
+
+  it.each([
+    [[1], true],
+    [[1, 2], false],
+  ])('offers «Apri nell\'editor» only for a draft of the chat scope (draft %j → %s)', async (ids, offered) => {
+    stubChat([{ type: 'policy_draft', content: JSON.stringify({ portfolio_ids: ids, preview: preview() }) }, { type: 'done' }]);
+    const onOpen = vi.fn();
+    render(
+      <MantineProvider>
+        <CopilotChat
+          opened onClose={() => {}} portfolioId={1} pageContext="doctor" quickPrompts={['Bozza']}
+          onOpenPolicyDraft={onOpen} portfolioNames={new Map([[1, 'Core'], [2, 'Pensione']])}
+        />
+      </MantineProvider>,
+    );
+    fireEvent.click(screen.getByText('Bozza'));
+    expect(await screen.findByTestId('policy-draft-card')).toHaveTextContent(ids.length > 1 ? 'Vista aggregata: Core, Pensione' : 'Portafoglio Core');
+    const button = screen.queryByRole('button', { name: "Apri nell'editor" });
+    if (offered) {
+      fireEvent.click(button!);
+      expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ portfolio_ids: [1] }));
+    } else {
+      expect(button).not.toBeInTheDocument();
+    }
+  });
+});
+

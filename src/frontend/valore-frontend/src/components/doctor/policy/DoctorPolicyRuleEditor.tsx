@@ -23,6 +23,7 @@ import {
 } from '../../../services/api/doctor';
 import type {
   DoctorFieldError,
+  DoctorPolicyDraftPayload,
   DoctorMetricDefinition,
   DoctorPolicyDocument,
   DoctorPolicyOperator,
@@ -56,6 +57,8 @@ interface DoctorPolicyRuleEditorProps {
   metrics: DoctorMetricDefinition[];
   templates: DoctorPolicyTemplate[];
   focusRuleId?: string | null;
+  /** Copilot draft loaded instead of the saved rules (still validated, previewed and confirmed here). */
+  initialDraft?: DoctorPolicyDraftPayload | null;
   onSaved: (policy: DoctorPolicyRead) => void;
   onReload: () => void;
   isMobile: boolean;
@@ -100,12 +103,13 @@ const templateKey = (template: DoctorPolicyTemplate) => template.template_id ?? 
 const RULE_FIELD = /^rules\[(\d+)\]\.(\w+)$/;
 
 export function DoctorPolicyRuleEditor({
-  onClose, portfolioIds, scopeLabel, policy, metrics, templates, focusRuleId, onSaved, onReload, isMobile,
+  onClose, portfolioIds, scopeLabel, policy, metrics, templates, focusRuleId, initialDraft, onSaved, onReload, isMobile,
 }: DoctorPolicyRuleEditorProps) {
   const baseVersion = policy?.current_version ?? null;
-  const [name, setName] = useState(policy?.name ?? DEFAULT_POLICY_NAME);
-  const [rules, setRules] = useState<DoctorPolicyRule[]>(() => cloneRules(policy?.document.rules ?? []));
-  const [source, setSource] = useState<DoctorPolicySource>('manual');
+  const draftDocument = initialDraft?.preview.normalized_document ?? null;
+  const [name, setName] = useState(initialDraft?.name?.trim() || policy?.name || DEFAULT_POLICY_NAME);
+  const [rules, setRules] = useState<DoctorPolicyRule[]>(() => cloneRules(draftDocument?.rules ?? policy?.document.rules ?? []));
+  const [source, setSource] = useState<DoctorPolicySource>(draftDocument ? 'copilot' : 'manual');
   const [fieldErrors, setFieldErrors] = useState<DoctorFieldError[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
@@ -245,6 +249,11 @@ export function DoctorPolicyRuleEditor({
       ) : (
         <Stack gap="md">
           <Text size="sm"><Text span fw={600}>Ambito: </Text>{scopeLabel}</Text>
+          {draftDocument && (
+            <Alert color="blue" variant="light" data-testid="editor-copilot-draft">
+              Bozza del Copilot caricata: rivedi le regole, poi verifica e conferma. Nulla è salvato finché non confermi.
+            </Alert>
+          )}
           {conflictAlert}
           {error && <Alert color="red" variant="light">{error}</Alert>}
           {generalErrors.length > 0 && (
@@ -356,8 +365,10 @@ export function DoctorPolicyRuleEditor({
                     />
                     <NumberInput
                       label="Margine di avviso (pp)"
-                      value={rule.warning_margin}
-                      onChange={(value) => updateRule(index, { warning_margin: toNumber(value) ?? 0 })}
+                      value={rule.warning_margin ?? ''}
+                      // Empty = null: the backend applies the metric default, never a silent 0.
+                      onChange={(value) => updateRule(index, { warning_margin: toNumber(value) })}
+                      placeholder="Predefinito della metrica"
                       min={0}
                       max={100}
                       decimalSeparator=","

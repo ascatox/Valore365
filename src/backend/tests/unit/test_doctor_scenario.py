@@ -329,3 +329,54 @@ def test_compare_uses_one_snapshot_and_ranks():
         compare_scenarios(snap, [{"mode": "new_cash_only"}] * 2, policy_document=DOC, expected_snapshot_id="0" * 16)
     with pytest.raises(InvalidRequest):
         compare_scenarios(snap, [{"mode": "new_cash_only"}], policy_document=DOC)
+
+
+# -- computational bounds (new_cash_only on large scopes) ----------------------
+
+
+def test_water_fill_is_not_quadratic_in_saturated_groups():
+    """20000 groups saturating a few per round: was ~4 s (list membership), now ~0.03 s."""
+    import time
+
+    from app.services.doctor_policy import scenario
+
+    weights = {f"g{i:05d}": 100.0 + i for i in range(20_000)}
+    capacity = {k: 30_000.0 - v for k, v in weights.items()}  # heavier -> less room
+    amount = sum(capacity.values()) * 0.999
+    started = time.perf_counter()
+    alloc, left = scenario._water_fill(amount, weights, capacity)
+    assert time.perf_counter() - started < 1.0
+    assert left == 0.0
+    assert sum(alloc.values()) == pytest.approx(amount)
+    assert all(alloc[k] <= capacity[k] + 1e-6 for k in weights)
+
+
+def test_new_cash_on_20_portfolios_x_300_assets_is_fast():
+    import time
+
+    holdings = [_h(i + 1, f"S{i}", f"Stock {i}", 100.0 + i, f"US{i:010d}", asset_type="stock") for i in range(6000)]
+    holdings[0].market_value = sum(h.market_value for h in holdings) * 0.2
+    snap = prd_snapshot(portfolio_ids=range(1, 21), holdings=holdings)
+    doc = {"schema_version": 1, "rules": [
+        {"rule_id": "m", "metric_code": "max_single_position_pct", "operator": "max", "max_value": 0.017},
+    ]}
+    from app.services.doctor_policy import scenario
+    from app.schemas.doctor_scenario import ScenarioInput
+
+    req = ScenarioInput.model_validate({"mode": "new_cash_only", "new_cash": 1e11, "fee_model": {"pct": 0.1, "fixed": 2}})
+    book = scenario._book(snap)
+    started = time.perf_counter()
+    plan = scenario._plan_new_cash(book, req, doc)
+    assert time.perf_counter() - started < 1.0
+    assert plan.buys
+
+
+def test_required_cash_refinement_is_bounded(monkeypatch):
+    from app.services.doctor_policy import scenario
+
+    monkeypatch.setattr(scenario, "MAX_REQUIRED_CASH_ITERATIONS", 0)
+    with pytest.raises(InvalidRequest) as info:
+        run({"portfolio_ids": [1], "mode": "new_cash_only", "new_cash": 0})
+    assert info.value.status_code == 400
+    assert info.value.details["field_errors"][0]["code"] == "too_complex"
+    assert "troppo complesso" in info.value.message.lower()

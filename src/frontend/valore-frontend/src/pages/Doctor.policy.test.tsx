@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PortfolioHealthResponse } from '../services/api';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { PENDING, installFetchMock, portfolio, renderWithApp, storeScope, stubLayoutApis } from '../test/pageHarness';
-import { evaluation, policyRead } from '../components/doctor/policy/testFixtures';
+import { evaluation, policyRead, preview } from '../components/doctor/policy/testFixtures';
 import { DoctorPage } from './Doctor.page';
 
 const PORTFOLIOS = [portfolio(1, 'Core'), portfolio(2, 'Pensione')];
@@ -158,3 +158,40 @@ describe('Doctor 2.0 sections', () => {
     expect(screen.queryByText(/41\.000/)).not.toBeInTheDocument();
   });
 });
+
+describe('Doctor page: Copilot draft → editor', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    stubLayoutApis();
+    storeScope({ mode: 'single', id: 1 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('«Apri nell\'editor» opens I miei parametri with the draft loaded, saving nothing', async () => {
+    const draft = { portfolio_ids: [1], preview: preview(), name: 'Prudente' };
+    const api = mockDoctor({ policy_enabled: true, simulator_enabled: true }, (path) => {
+      if (path === '/copilot/status') return { available: true };
+      if (path === '/copilot/chat') {
+        const body = [{ type: 'policy_draft', content: JSON.stringify(draft) }, { type: 'done' }]
+          .map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');
+        return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      return undefined;
+    });
+    renderWithApp(<DoctorPage />, { route: '/doctor' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Apri Doctor Copilot' }));
+    fireEvent.click(await screen.findByText('Spiega il punteggio Doctor in modo operativo'));
+    const card = await screen.findByTestId('policy-draft-card');
+    expect(card).toHaveTextContent('Portafoglio Core');
+    fireEvent.click(within(card).getByRole('button', { name: "Apri nell'editor" }));
+    expect(await screen.findByTestId('editor-copilot-draft')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /I miei parametri/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText('Valore massimo (%)')).toHaveValue('50');
+    expect(screen.getByLabelText('Nome')).toHaveValue('Prudente');
+    expect(api.writes().map((request) => request.path)).toEqual(['/copilot/chat']);
+  });
+});
+

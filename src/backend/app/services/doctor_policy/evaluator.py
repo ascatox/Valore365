@@ -173,9 +173,16 @@ def _stale_reason(rule: dict[str, Any], snapshot: DoctorSnapshot, now: datetime)
     return None
 
 
-def _missing_price_share(snapshot: DoctorSnapshot) -> float:
+def _missing_price_share(snapshot: DoctorSnapshot, now: datetime) -> float:
+    """Share of the invested value without a usable market price.
+
+    A holding flagged missing (no quote, or valued at average cost) and a
+    holding without any price timestamp (its age is unknown, so it can never
+    be proven fresh) both count as missing.
+    """
     return sum(
-        snapshot.weight_of(h) for h in snapshot.invested_holdings if h.asset_id in snapshot.missing_price_asset_ids
+        snapshot.weight_of(h) for h in snapshot.invested_holdings
+        if h.asset_id in snapshot.missing_price_asset_ids or snapshot.price_age_days(h, now) is None
     )
 
 
@@ -252,7 +259,7 @@ def evaluate_rule(
     if stale:
         return result("UNKNOWN", stale)
 
-    missing_share = _missing_price_share(snapshot)
+    missing_share = _missing_price_share(snapshot, now)
     if missing_share > 100.0 - float(rule["min_coverage_pct"]) + EPSILON:
         return result("UNKNOWN", _cannot_verify(
             rule, f"manca la quotazione di mercato per il {format_it(missing_share, 1)}% del valore investito",
@@ -436,7 +443,7 @@ def build_evaluation_response(
             status="no_policy", calculated_at=current.isoformat(), summary=EvaluationSummary(), results=[], **common,
         )
     if metrics is None:
-        metrics = compute_metrics(snapshot, repo)
+        metrics = compute_metrics(snapshot, repo, now=current)
     evaluation = evaluate_policy(document, metrics, snapshot, now=current)
     return PolicyEvaluationResponse(
         status="empty_portfolio" if snapshot.is_empty else "ready",

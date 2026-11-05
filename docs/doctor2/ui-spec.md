@@ -255,9 +255,13 @@ quando l'utente esegue lo scenario).
 - **Aggiungi una regola**: select delle metriche, quelle già usate disabilitate; max 20 regole.
 - Una nuova regola parte **senza soglie** (l'utente le sceglie; nessun valore suggerito),
   con i default del contratto: precisione 1 (TER 2), severità media, margine dal registry,
-  copertura 80, età 5 giorni. Svuotare «Copertura minima» o «Età massima quote» invia
-  `null` (placeholder «Predefinita (80%)» / «Predefinita (5 giorni)»): il backend applica
-  il default, mai uno 0 silenzioso.
+  copertura 80, età 5 giorni. Svuotare «Margine di avviso», «Copertura minima» o «Età
+  massima quote» invia `null` (placeholder «Predefinito della metrica» / «Predefinita (80%)»
+  / «Predefinita (5 giorni)»): il backend applica il default, mai uno 0 silenzioso.
+- Aperto da «Apri nell'editor» di una bozza Copilot: l'editor carica le regole e il nome
+  della bozza al posto di quelli salvati, con l'avviso «Bozza del Copilot caricata…» e
+  `source: "copilot"` in preview (diventa `manual` se l'utente modifica una regola); il
+  flusso validate → preview → conferma resta identico.
 - Nome al salvataggio: se il campo è vuoto, per una policy esistente si invia `null` (il
   backend mantiene il nome attuale), per una nuova «I miei parametri».
 
@@ -298,14 +302,17 @@ Il token non viene mai mostrato né salvato lato client oltre lo stato della mod
   versione precedente;
 - «Ripristina la versione N» (non sulla corrente) → modale «Ripristinare questa
   versione?» che spiega: «Le regole della versione N diventeranno una nuova versione
-  (M). La cronologia resta completa.» → «Conferma ripristino» →
+  (M). La cronologia resta completa.» e mostra l'**anteprima prima/dopo**:
+  `POST /doctor/policies/preview` con il documento della versione N e `base_version` =
+  versione corrente → diff rispetto alla versione attuale + «Verifica sugli stessi dati»
+  (Prima / Dopo). Il token della preview è ignorato (il ripristino non lo richiede). Senza
+  `document` nella versione o con preview in errore: «Anteprima non disponibile…», il
+  ripristino resta possibile. → «Conferma ripristino» →
   `POST /doctor/policies/{id}/restore` con `base_version` = versione corrente;
 - successo: «Versione ripristinata: ora è la versione M.» e invalidazione dello scope;
 - 409 `version_conflict`: stesso messaggio dell'editor con «Ricarica».
 
-**Deviazione**: il ripristino non mostra una preview prima/dopo dell'evaluation (il
-backend lo prevede senza token, come azione esplicita della UI); la modale mostra solo il
-numero di versione. L'attore non è visualizzato (il backend restituisce lo user id).
+**Deviazione**: l'attore non è visualizzato (il backend restituisce lo user id).
 
 ## 9. Copilot: card della bozza
 
@@ -316,25 +323,27 @@ numero di versione. L'attore non è visualizzato (il backend restituisce lo user
    e la preview completa (incluso il token, che **non** arriva al LLM).
 3. `CopilotChat` lo interpreta con `parsePolicyDraft` (stringa JSON o oggetto; payload
    malformato → ignorato) e aggiunge al messaggio dell'assistente una `PolicyDraftCard`.
-4. La card mostra «Bozza di parametri», badge «Non ancora salvata», ambito
-   («Portafoglio #19» o «Vista aggregata: #19, #26»), diff e conformità prima/dopo; se la
-   bozza non è valida, «La bozza non è valida e non può essere salvata.» con gli errori.
+4. La card mostra «Bozza di parametri», badge «Non ancora salvata», ambito con i **nomi**
+   dei portafogli («Portafoglio Core» o «Vista aggregata: Core, Pensione»; `#id` solo se
+   il nome non è noto), diff e conformità prima/dopo; se la bozza non è valida, «La bozza
+   non è valida e non può essere salvata.» con gli errori.
 5. **Conferma e salva** → `POST /doctor/policies` con il token della preview;
    successo → badge «Salvata», la pagina invalida le query dello scope (`onPolicySaved`).
    Il nome inviato è quello della bozza, oppure `null` (il backend mantiene il nome
    della policy esistente).
    **Annulla** → badge «Annullata», nessuna richiesta.
+   **409** `version_conflict` («I parametri sono stati modificati dopo questa bozza:
+   rigenera l'anteprima sulla versione attuale e conferma di nuovo.») o
+   `confirmation_invalid`: «Conferma e salva» si disabilita e compare **Rigenera
+   anteprima** → `GET /doctor/policies` (versione corrente) + `POST /doctor/policies/preview`
+   con lo stesso documento, `base_version` corrente e `source: "copilot"`; la card mostra
+   la nuova preview (nuovo token) e il salvataggio richiede di nuovo un clic esplicito.
+   **Apri nell'editor** (solo nella pagina Doctor, con il flag policy attivo e se la bozza
+   è dello stesso ambito della chat) → apre «I miei parametri» con l'editor precaricato
+   dalla bozza (§7); nessuna richiesta di scrittura.
 6. Le bozze **non vengono salvate** nella cronologia locale delle conversazioni
    (`saveCurrentConversation` conserva solo `role` e `content`): riaprendo la chat la card
    non c'è più e il token non resta in `localStorage`.
-
-**Deviazioni**:
-
-- In caso di 409 la card mostra il messaggio d'errore e resta in stato «Non ancora
-  salvata», ma non offre «Ricarica» né la rigenerazione della preview: bisogna chiedere
-  una nuova bozza al Copilot.
-- La card indica l'ambito con gli id (`#19`), non con i nomi dei portafogli.
-- Non c'è un pulsante «Modifica nell'editor» per aprire la bozza nell'editor manuale.
 
 Routing del Copilot (prompt di sistema): domande su capitale, rendita, pensione, FIRE →
 pagina `/fire`; ordini e target per ticker → `/portfolio`; «Vorrei 60/40» → intervalli,
@@ -353,7 +362,9 @@ domanda sull'oro e `preview_policy`.
 | `rebalance` | Ribilanciamento | pesi obiettivo (%) per ogni posizione («complessivi» in aggregata) | posizioni non elencate ripartite pro rata dal backend |
 
 Vincoli: «Nessuna vendita», «Mantieni invariata la quota azionaria complessiva»,
-«Turnover massimo (%)», «Commissioni ipotetiche (%)» (0–10). Fiscalità: sempre
+«Turnover massimo (%)», «Commissioni ipotetiche (%)» (0–10), «Commissione fissa per
+operazione» (`fee_model.fixed`, 0–10.000), «Usa anche la liquidità già presente nel
+portafoglio» (`constraints.use_cash_balance`, default `false`). Fiscalità: sempre
 `tax_model: "none"` (D07).
 
 **Esecuzione**: «Simula scenario» (1 scenario → `POST /doctor/scenarios/preview`) o
@@ -366,8 +377,12 @@ sono cambiati: riesegui la simulazione.» e ricarica l'evaluation.
 
 - disclaimer in evidenza: «Simulazione teorica; nessun ordine eseguito.»;
 - per scenario: fattibile («<nome>: fattibile — Lo scenario rispetta i vincoli indicati.»)
-  o non fattibile con il motivo del backend; «Liquidità aggiuntiva necessaria senza
-  vendite» (`required_new_cash`); Valore prima, Valore dopo, Liquidità aggiunta, Costi ipotetici;
+  o non fattibile con badge del codice (`infeasible_code`: «Liquidità insufficiente»,
+  «Impossibile senza vendite», «Turnover massimo superato»…) e motivo del backend;
+  «Nuova liquidità totale necessaria (senza vendite)» (`required_new_cash`) con la nota
+  «È il totale minimo di nuova liquidità da versare, costi inclusi, non un'integrazione:
+  confrontalo con la liquidità indicata nello scenario (<cash_in>).»; Valore prima,
+  Valore dopo, Liquidità aggiunta, Costi ipotetici, Turnover (`turnover_pct`, «N/D» se nullo);
 - tabella di confronto (§12) con righe Conformità, Concentrazione, Asset allocation,
   Geografia, Costi, Overlap, Rischio · Volatilità (+ righe `stress*` solo se il backend le restituisce) e marcatori
   «Migliora» / «Peggiora» / «Dati incompleti»; uno scenario non fattibile ha tutte le celle «N/D»;
@@ -381,7 +396,13 @@ sono cambiati: riesegui la simulazione.» e ricarica l'evaluation.
   pagina Portfolio» (`/portfolio`); sempre presente il link «Vai alla pagina FIRE» per
   capitale/rendita/pensione.
 
-- in un confronto (2–3 scenari) sotto la tabella compare la spiegazione testuale del
+- in un confronto (2–3 scenari) sotto la tabella compare l'**ordinamento** del backend
+  (`ranking`, `best_index`) con il titolo neutro «Ordinamento secondo i criteri:
+  conformità, costi, turnover» e la nota «È un ordinamento, non una raccomandazione: con
+  preferenze diverse non esiste una scelta valida per tutti.»: Posizione, Scenario,
+  Fattibile, Violate dopo, Non verificabili dopo, Costi (mascherati in Privacy Mode),
+  Turnover; lo scenario `best_index` ha il badge «Primo secondo questi criteri» (mai
+  «soluzione migliore»). Su mobile è un elenco di card. Poi la spiegazione testuale del
   backend (`explanation`, importi mascherati in Privacy Mode);
 - riga **Rischio · Volatilità**: sempre «N/D» con il motivo del backend (il Lab non stima
   la volatilità, D06).
@@ -391,14 +412,6 @@ sono cambiati: riesegui la simulazione.» e ricarica l'evaluation.
 
 **Deviazioni rispetto a contratto/PRD**:
 
-- La classifica del confronto (`ranking`, `best_index`) non è mostrata: si vede solo la
-  spiegazione testuale.
-- `turnover_pct` e `infeasible_code` non sono mostrati (solo il motivo testuale).
-- La commissione fissa (`fee_model.fixed`) e `constraints.use_cash_balance` non sono
-  esposti in UI (default 0 / `false`).
-- L'etichetta «Liquidità aggiuntiva necessaria senza vendite» mostra `required_new_cash`,
-  che per il backend è la **nuova liquidità totale minima** (costi inclusi), non
-  l'integrazione rispetto all'importo indicato.
 - In `manual` lo strumento si sceglie per simbolo fra le posizioni dello scope; non si
   possono simulare strumenti non posseduti (limite del backend, vedi open decisions).
 - La volatilità post-scenario non è stimata: la riga c'è ma vale sempre «N/D» motivato.
@@ -431,7 +444,8 @@ restano visibili** (sono il contenuto delle regole).
 | dove | cosa viene mascherato |
 |---|---|
 | drawer evidenze | valore del denominatore (`formatMoney`); importi nel motivo e nelle note |
-| Laboratorio | Valore prima/dopo, Liquidità aggiunta, Costi, Liquidità necessaria, variazioni € per posizione; importi nei testi del backend |
+| Laboratorio | Valore prima/dopo, Liquidità aggiunta, Costi, Liquidità necessaria (anche nella nota), costi dell'ordinamento, variazioni € per posizione; importi nei testi del backend |
+| Copilot (ogni pagina) | importi € nelle risposte dell'assistente (solo visualizzazione) |
 | Diagnosi esistente | metriche %, punteggi per categoria e score (comportamento preesistente: qui anche le % sono mascherate) |
 | testo copiato del referto (`shareSummary`) | **lo score è mascherato** («Score: ******/100»), come nella card e nell'immagine — fix di questo branch |
 
@@ -445,9 +459,11 @@ Testo libero e condivisione:
   di `data_quality` nel tooltip di freschezza, errori e messaggi della card bozza Copilot,
   suggerimento «Simula» nel Laboratorio, `infeasible_reason`, `warnings`, motivi delle
   regole risolte/nuove violazioni, motivo della volatilità, `explanation` del confronto.
-- **Deviazione**: le risposte testuali del Copilot (generate dal LLM) **non** sono
-  mascherate; il requisito «€ mascherati ovunque» richiede un post-processing dei
-  messaggi della chat o un'istruzione al modello.
+- Risposte del Copilot: con Privacy Mode attiva `CopilotChat` applica `maskMoneyInText`
+  ai messaggi dell'assistente su **ogni pagina**, solo in visualizzazione (la cronologia
+  salvata in `localStorage` resta invariata; i messaggi dell'utente non sono toccati). Nel
+  Markdown la maschera è scritta con asterischi escapati, così non diventa grassetto o
+  separatore.
 - Il mascheramento è un'euristica su regex: importi senza simbolo di valuta (es. «10.000»
   da solo) non vengono riconosciuti.
 - Condivisione/esportazione: l'immagine del referto e il testo copiato mascherano lo

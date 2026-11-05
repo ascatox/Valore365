@@ -77,9 +77,9 @@ function scenarioCell(row: Row, current: DoctorScenarioSide | null, scenario: Do
 }
 
 function TrendMark({ trend }: { trend: Trend }): ReactNode {
-  if (trend === 'better') return <Badge size="xs" color="teal" variant="light" leftSection={<IconArrowUpRight size={10} aria-hidden="true" />}>Migliora</Badge>;
-  if (trend === 'worse') return <Badge size="xs" color="red" variant="light" leftSection={<IconArrowDownRight size={10} aria-hidden="true" />}>Peggiora</Badge>;
-  if (trend === 'incomplete') return <Badge size="xs" color="gray" variant="outline" leftSection={<IconHelpCircle size={10} aria-hidden="true" />}>Dati incompleti</Badge>;
+  if (trend === 'better') return <Badge size="xs" miw="max-content" color="teal" variant="light" leftSection={<IconArrowUpRight size={10} aria-hidden="true" />}>Migliora</Badge>;
+  if (trend === 'worse') return <Badge size="xs" miw="max-content" color="red" variant="light" leftSection={<IconArrowDownRight size={10} aria-hidden="true" />}>Peggiora</Badge>;
+  if (trend === 'incomplete') return <Badge size="xs" miw="max-content" color="gray" variant="outline" leftSection={<IconHelpCircle size={10} aria-hidden="true" />}>Dati incompleti</Badge>;
   return null;
 }
 

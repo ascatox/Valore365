@@ -5,9 +5,25 @@ import type {
   DoctorScenarioSide,
   DoctorScenarioViolationRef,
 } from '../../../services/api/types';
-import { formatPctValue, NOT_AVAILABLE } from '../policy/policyFormat';
+import { formatPctValue, NOT_AVAILABLE, PRIVACY_MASK } from '../policy/policyFormat';
 
 export const MAX_SCENARIOS = 3;
+
+/**
+ * `required_new_cash` in whole units of the currency, rounded UP (a minimum is
+ * never shown lower than it is): 227.028,58 → «227.029 €», the same figure the
+ * backend writes in `infeasible_reason` (golden PRD example). Display only.
+ */
+export function formatRequiredCash(value: number | null | undefined, currency = 'EUR', privacy = false): string {
+  if (privacy) return PRIVACY_MASK;
+  if (value == null || !Number.isFinite(value)) return NOT_AVAILABLE;
+  const whole = Math.ceil(value - 1e-9);
+  try {
+    return new Intl.NumberFormat('it-IT', { style: 'currency', currency, maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(whole);
+  } catch {
+    return `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 0 }).format(whole)} ${currency}`;
+  }
+}
 
 export function emptyScenario(label: string, overrides: Partial<DoctorScenarioInput> = {}): DoctorScenarioInput {
   return {
@@ -15,7 +31,7 @@ export function emptyScenario(label: string, overrides: Partial<DoctorScenarioIn
     new_cash: 0,
     operations: [],
     target_weights: {},
-    constraints: { no_sell: true, max_turnover_pct: null, keep_equity_total: false },
+    constraints: { no_sell: true, max_turnover_pct: null, keep_equity_total: false, use_cash_balance: false },
     fee_model: { pct: 0, fixed: 0 },
     tax_model: 'none',
     label,

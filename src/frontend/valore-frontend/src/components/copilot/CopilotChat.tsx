@@ -22,6 +22,7 @@ import { BottomSheet } from '../mobile/BottomSheet';
 import { getAuthToken } from '../../services/api';
 import type { DoctorPolicyDraftPayload, DoctorPolicyRead } from '../../services/api/types';
 import { PolicyDraftCard, parsePolicyDraft } from '../doctor/policy/PolicyDraftCard';
+import { isDoctorPrivacyMode, maskMoneyInText, PRIVACY_MASK_MARKDOWN } from '../doctor/policy/policyFormat';
 import { useVirtualKeyboard } from '../../hooks/useVirtualKeyboard';
 import { useSwipeToClose } from '../../hooks/useSwipeToClose';
 
@@ -137,6 +138,10 @@ interface CopilotChatProps {
   pendingPrompt?: { id: number; text: string } | null;
   /** Called after the user confirmed and saved a Copilot policy draft. */
   onPolicySaved?: (policy: DoctorPolicyRead) => void;
+  /** Opens a Copilot policy draft in the manual editor (offered only for drafts of this chat's scope). */
+  onOpenPolicyDraft?: (draft: DoctorPolicyDraftPayload) => void;
+  /** Portfolio id → name, used by the policy draft card to name the scope. */
+  portfolioNames?: Map<number, string>;
   /**
    * How the chat is shown. Default `drawer` (today's behaviour on every page);
    * `side-panel` renders an inline panel the page places next to its content;
@@ -145,6 +150,12 @@ interface CopilotChatProps {
   layout?: 'drawer' | 'side-panel' | 'bottom-sheet';
   /** Drawer width at the default panel size (e.g. 'md' on tablets). Default: today's size. */
   drawerSize?: string;
+}
+
+function sameScope(left: number[], right: number[]): boolean {
+  const a = [...new Set(left)].sort((x, y) => x - y);
+  const b = [...new Set(right)].sort((x, y) => x - y);
+  return a.length > 0 && a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
 const QUICK_PROMPTS = [
@@ -218,6 +229,8 @@ export function CopilotChat({
   pageContext,
   pendingPrompt = null,
   onPolicySaved,
+  onOpenPolicyDraft,
+  portfolioNames,
   layout = 'drawer',
   drawerSize,
 }: CopilotChatProps) {
@@ -227,6 +240,8 @@ export function CopilotChat({
   const conversationKey: ConversationScopeKey | null = aggregateIds && aggregateIds.length > 1
     ? `aggregate_${aggregateIds.join('_')}`
     : portfolioId;
+  const chatScopeIds = aggregateIds ?? (portfolioId != null ? [portfolioId] : []);
+  const privacy = isDoctorPrivacyMode();
   const resolvedQuickPrompts = quickPrompts ?? (pageContext ? PAGE_QUICK_PROMPTS[pageContext] : undefined) ?? QUICK_PROMPTS;
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
@@ -623,7 +638,8 @@ export function CopilotChat({
               <Stack key={i} gap="xs">
                 <MessageBubble
                   role={msg.role}
-                  content={msg.content}
+                  // Privacy Mode: € amounts of the assistant are masked on display only (stored messages unchanged).
+                  content={msg.role === 'assistant' && privacy ? maskMoneyInText(msg.content, true, PRIVACY_MASK_MARKDOWN) : msg.content}
                   streaming={streaming && i === messages.length - 1 && msg.role === 'assistant'}
                   thinkingStatus={
                     streaming && i === messages.length - 1 && msg.role === 'assistant'
@@ -631,7 +647,14 @@ export function CopilotChat({
                       : null
                   }
                 />
-                {msg.policyDraft && <PolicyDraftCard draft={msg.policyDraft} onSaved={onPolicySaved} />}
+                {msg.policyDraft && (
+                  <PolicyDraftCard
+                    draft={msg.policyDraft}
+                    onSaved={onPolicySaved}
+                    portfolioNames={portfolioNames}
+                    onOpenInEditor={onOpenPolicyDraft && sameScope(msg.policyDraft.portfolio_ids, chatScopeIds) ? onOpenPolicyDraft : undefined}
+                  />
+                )}
               </Stack>
             ))}
           </Stack>

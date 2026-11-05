@@ -560,6 +560,33 @@ def test_agentic_stream_refuses_tools_outside_page_and_forged_saves(env, monkeyp
     assert not any(e["type"] == "policy_draft" for e in events)
 
 
+@pytest.mark.parametrize("page_context", [None, "", "unknown-page"])
+def test_default_allowlist_excludes_doctor_tools(page_context):
+    allowed = get_allowed_tool_names_for_page_context(page_context)
+    assert allowed is not None
+    assert not DOCTOR_TOOLS & allowed
+    # Every other tool keeps being offered without a page context.
+    assert allowed == {t["name"] for t in TOOL_DEFINITIONS} - DOCTOR_TOOLS
+    names = {t["function"]["name"] for t in format_tools_for_provider("openai", allowed)}
+    assert "preview_policy" not in names and "get_positions" in names
+
+
+@pytest.mark.parametrize("page_context", [None, "unknown-page"])
+def test_agentic_stream_without_page_refuses_preview_policy(env, monkeypatch, page_context):
+    called: list[str] = []
+    monkeypatch.setattr(streaming, "execute_tool", lambda name, *a, **k: called.append(name) or {})
+    seen = _scripted_llm(monkeypatch, [
+        ([{"id": "c1", "name": "preview_policy", "args": {"document": DRAFT_60_40}}], ""),
+        ([], "ok"),
+    ])
+    events = _events(_agentic(env, page_context=page_context))
+    offered = {t["function"]["name"] for t in json.loads(seen[0])["tools"]}
+    assert not DOCTOR_TOOLS & offered
+    assert called == []
+    assert "Tool non disponibile" in seen[1]
+    assert not any(e["type"] == "policy_draft" for e in events)
+
+
 def test_agentic_prompt_routes_fire_and_portfolio_questions(env, monkeypatch):
     seen = _scripted_llm(monkeypatch, [([], "Per la pensione apri [FIRE e decumulo](/fire).")])
     _agentic(env)

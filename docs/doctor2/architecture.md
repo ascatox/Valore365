@@ -66,6 +66,21 @@ snapshot id. Corrispondenza con l'implementazione:
    dalle singole (nessuna fusione).
 4. **Snapshot** — posizioni (singole o multi), prezzi più recenti, flag stale/
    prezzo mancante; `snapshot_id` = sha256 corto di posizioni+prezzi+classificazioni.
+   **Limite noto (consistenza)**: scope/saldo cash (`load_scope_portfolios`),
+   posizioni (`get_positions`/`get_positions_multi`) e stato di sync
+   (`get_market_data_sync_overview`) sono letti con le API esistenti del
+   repository, ognuna con la **propria** connessione/transazione
+   (`engine.begin()` interno, nessun parametro `conn`). Non sono quindi letti in
+   un'unica transazione REPEATABLE READ: una transazione o un aggiornamento prezzi
+   concorrente può finire in una lettura e non nell'altra (es. cash già aggiornato,
+   posizioni non ancora). Renderle atomiche richiede di passare una connessione a
+   `_compute_positions*` e ai loro helper (refactoring del repository condiviso,
+   fuori da Doctor 2.0). Mitigazioni: le letture sono ravvicinate e di sola lettura;
+   l'evaluation è ricalcolata a ogni richiesta (nessuno stato derivato persistito);
+   `snapshot_id` cambia con posizioni/prezzi, quindi il Lab risponde 409
+   `snapshot_changed` se lo snapshot atteso non coincide e la cache non riusa
+   risultati di uno snapshot diverso; lo stato di sync influisce solo sulla
+   qualità (mai su un PASS: in dubbio UNKNOWN).
 5. **Freschezza** — stato della sincronizzazione dati di mercato
    (`mcp_server.freshness.sync_status`); se la lettura fallisce la qualità degrada
    a `unknown`, l'evaluation non fallisce mai per questo.

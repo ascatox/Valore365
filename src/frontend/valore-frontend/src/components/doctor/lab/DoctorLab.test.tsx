@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
 import { MantineProvider } from '@mantine/core';
-import { render, screen, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DoctorMetricValue, DoctorScenarioResult, DoctorScenarioSide } from '../../../services/api/types';
 import { stubLayoutApis } from '../../../test/pageHarness';
 import { ScenarioComparisonTable } from './ScenarioComparisonTable';
 import { ScenarioFeasibilitySummary } from './ScenarioFeasibilitySummary';
 import { ScenarioTradeoffs } from './ScenarioTradeoffs';
+import { ScenarioRanking } from './ScenarioRanking';
+import { ScenarioBuilder } from './ScenarioBuilder';
+import { emptyScenario } from './labFormat';
 
 const metric = (code: string, value: number | null, quality: DoctorMetricValue['quality'] = 'ok'): DoctorMetricValue => ({
   code, value, lower: null, upper: null, unit: 'pct', coverage_pct: value == null ? 40 : 100, quality,
@@ -205,3 +208,59 @@ describe('Lab review fixes', () => {
     expect(within(line).getByText(VOLATILITY_REASON)).toBeInTheDocument();
   });
 });
+
+describe('Lab PRD deviations closed (follow-up)', () => {
+  const ranking = [
+    { index: 1, label: 'Scenario B', rank: 2, feasible: false, failed_after: null, unknown_after: null, violations_resolved: 0, violations_new: 0, costs: 25, cash_in: 0, turnover_pct: 18.5 },
+    { index: 0, label: 'Scenario A', rank: 1, feasible: true, failed_after: 0, unknown_after: 1, violations_resolved: 1, violations_new: 0, costs: 12.5, cash_in: 41000, turnover_pct: 0 },
+  ];
+
+  it('shows the ranking in backend order with neutral wording and the first by these criteria', () => {
+    wrap(<ScenarioRanking ranking={ranking} bestIndex={0} names={['Scenario A', 'Scenario B']} currency="EUR" privacy={false} isMobile={false} />);
+    const box = screen.getByTestId('scenario-ranking');
+    expect(within(box).getAllByText('Ordinamento secondo i criteri: conformità, costi, turnover').length).toBeGreaterThan(0);
+    expect(box.textContent).not.toMatch(/soluzione migliore|migliore/i);
+    const rows = within(box).getAllByRole('row').slice(1);
+    expect(rows[0]).toHaveTextContent('Scenario A');
+    expect(within(rows[0]).getByText('Primo secondo questi criteri')).toBeInTheDocument();
+    expect(rows[0]).toHaveTextContent('Sì');
+    expect(rows[1]).toHaveTextContent('No');
+    expect(rows[1]).toHaveTextContent('18,5%');
+    expect(within(rows[1]).getAllByText('N/D').length).toBe(2);
+    expect(rows[0].textContent).toMatch(/12,50\s?€/);
+  });
+
+  it('masks the ranking costs in Privacy Mode and stacks on mobile', () => {
+    wrap(<ScenarioRanking ranking={ranking} bestIndex={0} names={[]} currency="EUR" privacy isMobile />);
+    const box = screen.getByTestId('scenario-ranking');
+    expect(within(box).queryByRole('table')).not.toBeInTheDocument();
+    expect(box).toHaveTextContent('1. Scenario A');
+    expect(box).toHaveTextContent('Costi: ******');
+    expect(box.textContent).not.toMatch(/12,50/);
+  });
+
+  it('shows turnover, the infeasible code and the total new cash label with its hint', () => {
+    const { unmount } = wrap(<ScenarioFeasibilitySummary result={result({ turnover_pct: 7.25 })} currency="EUR" privacy={false} />);
+    expect(screen.getByTestId('scenario-turnover')).toHaveTextContent('7,3%');
+    expect(screen.getByText('Nuova liquidità totale necessaria (senza vendite):')).toBeInTheDocument();
+    expect(screen.queryByText(/Liquidità aggiuntiva necessaria/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('required-new-cash-hint').textContent).toMatch(/totale minimo.*costi inclusi.*liquidità indicata nello scenario \(41\.000,00\s?€\)/);
+    unmount();
+    wrap(<ScenarioFeasibilitySummary result={result({ feasible: false, after: null, infeasible_code: 'impossible_without_sell', turnover_pct: null })} currency="EUR" privacy />);
+    expect(screen.getByTestId('infeasible-code')).toHaveTextContent('Impossibile senza vendite');
+    expect(screen.getByTestId('scenario-turnover')).toHaveTextContent('N/D');
+    expect(screen.getByTestId('required-new-cash-hint')).toHaveTextContent('(******)');
+  });
+
+  it('exposes the fixed fee and «use cash balance» in the builder', () => {
+    const onChange = vi.fn();
+    wrap(<ScenarioBuilder value={emptyScenario('Scenario A')} onChange={onChange} positions={[]} isAggregate={false} index={0} />);
+    fireEvent.change(screen.getByLabelText('Commissione fissa per operazione'), { target: { value: '2,5' } });
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ fee_model: { pct: 0, fixed: 2.5 } }));
+    const useCash = screen.getByLabelText('Usa anche la liquidità già presente nel portafoglio');
+    expect(useCash).not.toBeChecked();
+    fireEvent.click(useCash);
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ constraints: expect.objectContaining({ use_cash_balance: true }) }));
+  });
+});
+

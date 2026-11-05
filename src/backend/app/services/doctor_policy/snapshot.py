@@ -24,6 +24,7 @@ import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
+from functools import cached_property
 from typing import Any
 
 from ...mcp_server.freshness import _latest_price_value, _note, _sort_key, sync_status
@@ -85,15 +86,23 @@ class DoctorSnapshot:
 
     # -- derived values ---------------------------------------------------
 
+    # A snapshot is read once and never mutated afterwards: the invested
+    # holdings and their total are computed once (weight_of is called for every
+    # holding by every metric; recomputing the total made it O(n^2), ~17 s on a
+    # 20 x 300 assets scope).
+    @cached_property
+    def _invested(self) -> tuple[AnalyzedHolding, ...]:
+        return tuple(h for h in self.holdings if not is_cash_holding(h) and _value_of(h) > 0)
+
     @property
     def invested_holdings(self) -> list[AnalyzedHolding]:
         """Non-cash holdings with a positive market value."""
-        return [h for h in self.holdings if not is_cash_holding(h) and _value_of(h) > 0]
+        return list(self._invested)
 
-    @property
+    @cached_property
     def invested_value(self) -> float:
         """Market value of the invested holdings (cash excluded), base currency."""
-        return sum(_value_of(h) for h in self.invested_holdings)
+        return sum(_value_of(h) for h in self._invested)
 
     @property
     def is_empty(self) -> bool:

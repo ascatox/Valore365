@@ -9,6 +9,7 @@ import type {
   DoctorPolicyEvaluation,
   DoctorRuleResult,
   DoctorScenarioInput,
+  DoctorScenarioRankItem,
   DoctorScenarioResult,
   DoctorScenarioSide,
 } from '../../../services/api/types';
@@ -18,6 +19,7 @@ import { emptyScenario, MAX_SCENARIOS } from './labFormat';
 import { ScenarioBuilder } from './ScenarioBuilder';
 import { ScenarioComparisonTable } from './ScenarioComparisonTable';
 import { ScenarioFeasibilitySummary } from './ScenarioFeasibilitySummary';
+import { ScenarioRanking } from './ScenarioRanking';
 import { ScenarioTradeoffs } from './ScenarioTradeoffs';
 
 export interface LabPrefill {
@@ -49,6 +51,9 @@ interface LabResults {
   disclaimer: string;
   /** Backend explanation of the comparison (compare only). */
   explanation: string | null;
+  /** Backend ranking of a comparison (compare only). */
+  ranking: DoctorScenarioRankItem[];
+  bestIndex: number | null;
 }
 
 const scenarioLetter = (index: number) => String.fromCharCode(65 + index);
@@ -88,6 +93,8 @@ export function DoctorLabSection({
           methodologyVersion: result.methodology_version ?? null,
           disclaimer: result.disclaimer || SCENARIO_DISCLAIMER,
           explanation: null,
+          ranking: [],
+          bestIndex: null,
         });
       } else {
         const response = await compareDoctorScenarios({ ...base, scenarios: labelled });
@@ -99,6 +106,8 @@ export function DoctorLabSection({
           methodologyVersion: response.methodology_version ?? list[0]?.methodology_version ?? null,
           disclaimer: response.disclaimer || list[0]?.disclaimer || SCENARIO_DISCLAIMER,
           explanation: response.explanation || null,
+          ranking: response.ranking ?? [],
+          bestIndex: response.best_index ?? null,
         });
       }
     } catch (caught) {
@@ -180,6 +189,14 @@ export function DoctorLabSection({
               <ScenarioFeasibilitySummary key={`${result.label}-${index}`} result={result} currency={currency} privacy={privacy} />
             ))}
             <ScenarioComparisonTable current={results.current} scenarios={results.scenarios} isMobile={isMobile} ruleMetric={ruleMetric} privacy={privacy} />
+            <ScenarioRanking
+              ranking={results.ranking}
+              bestIndex={results.bestIndex}
+              names={results.scenarios.map((result, index) => result.label || `Scenario ${scenarioLetter(index)}`)}
+              currency={currency}
+              privacy={privacy}
+              isMobile={isMobile}
+            />
             {results.explanation && (
               <Text size="sm" data-testid="lab-explanation">{maskMoneyInText(results.explanation, privacy)}</Text>
             )}

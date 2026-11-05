@@ -196,16 +196,16 @@ async function createPolicyManually() {
 
   await addRule(page, modal, 'Quota azionaria');
   const equity = modal.getByTestId('rule-editor-equity-weight');
-  await equity.getByRole('radio', { name: 'Intervallo' }).check({ force: true });
+  await equity.getByText('Intervallo', { exact: true }).click();
   await equity.getByLabel('Valore minimo (%)').fill('40');
   await equity.getByLabel('Valore massimo (%)').fill('60');
 
-  // validate (field errors inline) first: an invalid threshold is rejected by the backend.
-  await single.getByLabel('Valore massimo (%)').fill('135');
+  // validate first: a backend field error (min > max) is shown inline and blocks the preview.
+  await equity.getByLabel('Valore minimo (%)').fill('70');
   await modal.getByRole('button', { name: 'Verifica e anteprima' }).click();
-  await single.getByText(/100/).first().waitFor();
-  assert(!calls.some((call) => call.endsWith('/preview')), `preview must not run on an invalid draft: ${calls}`);
-  await single.getByLabel('Valore massimo (%)').fill('35');
+  await equity.getByText('La soglia minima non può superare la massima.').waitFor();
+  assert(calls.includes('POST /api/doctor/policies/validate') && !calls.some((call) => call.endsWith('/preview')), `preview must not run on an invalid draft: ${calls}`);
+  await equity.getByLabel('Valore minimo (%)').fill('40');
 
   await modal.getByRole('button', { name: 'Verifica e anteprima' }).click();
   await modal.getByText('Conferma le modifiche').waitFor();
@@ -228,12 +228,12 @@ async function evaluationFailUnknown() {
   const summary = (await page.getByTestId('rules-summary').innerText()).trim();
   assert(summary === '1 rispettato · 1 violato · 1 non verificabile', `summary: ${summary}`);
   assert(!/\d+\s*\/\s*\d+/.test(summary), 'summary must not use x/y');
-  const failCard = page.getByTestId('rule-card-max-single');
+  const failCard = page.getByTestId('rule-card-max-single-position');
   await failCard.getByText(EXPECTED_FAIL_REASON, { exact: true }).waitFor();
-  assert((await failCard.getByTestId('rule-status').innerText()).includes('Violato'), 'FAIL badge text');
+  assert(/violato/i.test(await failCard.getByTestId('rule-status').innerText()), 'FAIL badge text');
   const usaCard = page.getByTestId('rule-card-usa-exposure');
   const usaText = await usaCard.innerText();
-  assert(usaText.includes('Non verificabile') && usaText.includes('Non possiamo verificare il limite USA: copertura insufficiente'), `USA UNKNOWN: ${usaText}`);
+  assert(/non verificabile/i.test(usaText) && usaText.includes('Non possiamo verificare il limite USA: copertura insufficiente'), `USA UNKNOWN: ${usaText}`);
   assert(usaText.includes('tra 40,9% e 50,3%') || usaText.includes('45,1%'), `USA bounds/value shown: ${usaText}`);
   // status is text + icon, not colour only
   for (const tone of ['fail', 'unknown', 'pass']) {
@@ -241,7 +241,6 @@ async function evaluationFailUnknown() {
     assert((await badge.innerText()).trim().length > 0, `badge ${tone} has text`);
     assert(await badge.locator('svg').count() > 0, `badge ${tone} has icon`);
   }
-  await shot(page, 'desktop-parametri');
 
   // Diagnosi: separate summary card, same wording, never x/y
   await page.getByRole('tab', { name: 'Diagnosi' }).click();
@@ -249,22 +248,20 @@ async function evaluationFailUnknown() {
   const cardSummary = (await card.getByTestId('policy-summary-text').innerText()).trim();
   assert(cardSummary === summary, `Diagnosi summary: ${cardSummary}`);
   await card.getByText(EXPECTED_FAIL_REASON).waitFor();
-  await shot(page, 'desktop-diagnosi');
   await context.close();
 }
 
 async function evidenceDrawer() {
   const context = await newContext(DESKTOP, [PARENT]);
   const page = await openDoctor(context, 'parametri');
-  await page.getByTestId('rule-card-max-single').click();
+  await page.getByTestId('rule-card-max-single-position').click();
   const evidence = page.getByTestId('policy-evidence');
   await evidence.waitFor();
   const text = await evidence.innerText();
-  for (const expected of ['VWRA', 'IE00BK5BQT80', '46,6%', '685.000,00', 'doctor-policy-1.0', 'Formula e metodologia', 'Denominatore']) {
-    assert(text.includes(expected), `evidence missing «${expected}»: ${text}`);
+  for (const expected of ['VWRA', 'IE00BK5BQT80', '46,6%', '685.000,00', 'doctor-policy-1.0', 'formula e metodologia', 'denominatore', 'strumenti che contribuiscono']) {
+    assert(text.toLowerCase().includes(expected.toLowerCase()), `evidence missing «${expected}»: ${text}`);
   }
   assert(!/Quote al\s+\d{2}\/\d{2}\/\d{4},?\s+\d{2}:\d{2}/.test(text), `quote date shown with a fake time: ${text}`);
-  await shot(page, 'desktop-evidenza');
   await page.keyboard.press('Escape');
   await context.close();
 }
@@ -275,12 +272,12 @@ async function versionsAndRestore() {
   const page = await openDoctor(context, 'parametri');
   await page.getByRole('button', { name: 'Modifica parametri' }).click();
   const modal = page.getByRole('dialog');
-  await modal.getByTestId('rule-editor-max-single').getByLabel('Valore massimo (%)').fill('30');
+  await modal.getByTestId('rule-editor-max-single-position').getByLabel('Valore massimo (%)').fill('30');
   await modal.getByRole('button', { name: 'Verifica e anteprima' }).click();
   await modal.getByTestId('policy-diff').getByText('max 35,0% → max 30,0%').waitFor();
   await modal.getByRole('button', { name: 'Conferma e salva' }).click();
   await page.getByText('Parametri salvati: versione 2.').waitFor();
-  await page.getByTestId('rule-card-max-single').getByText('VWRA 46,6%: supera il tuo limite 30% di 16,6 punti percentuali').waitFor();
+  await page.getByTestId('rule-card-max-single-position').getByText('VWRA 46,6%: supera il tuo limite 30% di 16,6 punti percentuali').waitFor();
 
   await page.getByRole('button', { name: 'Versioni e audit' }).click();
   const history = page.getByTestId('policy-version-history');
@@ -289,7 +286,7 @@ async function versionsAndRestore() {
   await page.getByRole('dialog').getByText('diventeranno una nuova versione (3)').waitFor();
   await page.getByRole('button', { name: 'Conferma ripristino' }).click();
   await page.getByText('Versione ripristinata: ora è la versione 3.').waitFor();
-  await page.getByTestId('rule-card-max-single').getByText(EXPECTED_FAIL_REASON).waitFor();
+  await page.getByTestId('rule-card-max-single-position').getByText(EXPECTED_FAIL_REASON).waitFor();
   const versions = (await api(`/doctor/policies/${(await policyOf([PARENT])).id}/versions`)).json.versions;
   assert(versions.length === 3 && versions[0].source === 'restore' && versions[0].version_number === 3, `versions: ${JSON.stringify(versions.map((v) => [v.version_number, v.source]))}`);
   await context.close();
@@ -351,7 +348,7 @@ async function aggregateScopePolicy() {
   // Wealth has a stale EIMI quote: the aggregate rule is UNKNOWN (never PASS), with the stale warning
   const card = page.getByTestId('rule-card-max-single-position');
   const text = await card.innerText();
-  assert(text.includes('Non verificabile') && text.includes('quotazioni non aggiornate per EIMI'), `aggregate stale UNKNOWN: ${text}`);
+  assert(/non verificabile/i.test(text) && text.includes('quotazioni non aggiornate per EIMI'), `aggregate stale UNKNOWN: ${text}`);
   await context.close();
 }
 
@@ -377,10 +374,9 @@ async function copilotDraftCard() {
   assert((await policyOf([WEALTH])) === null, 'Wealth still without policy after the draft');
   const tokensInDb = Number(psql("select count(*) from doctor_confirmation_tokens where source = 'copilot' and used_at is null"));
   assert(tokensInDb >= 1, 'a copilot confirmation token was issued');
-  await shot(page, 'desktop-copilot-bozza');
 
   await card.getByRole('button', { name: 'Conferma e salva' }).click();
-  await card.getByText('Salvata').waitFor();
+  await card.getByText('Salvata', { exact: true }).waitFor();
   assert(saves.length === 1, `one save after the click (${saves.length})`);
   const saved = await policyOf([WEALTH]);
   assert(saved && saved.current_version === 1 && saved.name === 'Policy 60/40', `saved draft ${JSON.stringify(saved)}`);
@@ -395,7 +391,7 @@ async function staleUnknownWealth() {
   const summary = (await page.getByTestId('rules-summary').innerText()).trim();
   assert(summary === '0 rispettati · 0 violati · 3 non verificabili', `stale summary: ${summary}`);
   const reasons = await page.locator('[data-testid^="rule-card-"]').allInnerTexts();
-  assert(reasons.every((r) => r.includes('quotazioni non aggiornate per EIMI') && r.includes('Non verificabile')), `stale reasons: ${reasons}`);
+  assert(reasons.length === 3 && reasons.every((r) => r.includes('quotazioni non aggiornate per EIMI') && /non verificabile/i.test(r)), `stale reasons: ${reasons}`);
   await page.getByRole('tab', { name: 'Diagnosi' }).click();
   await page.getByTestId('policy-summary-card').getByText('Quotazioni non aggiornate: alcune regole non sono verificabili').waitFor();
   await context.close();
@@ -406,7 +402,7 @@ async function labNewCashAndCompare() {
   const page = await openDoctor(context, 'laboratorio');
   const builder = page.getByTestId('scenario-builder-0');
   await builder.waitFor();
-  await builder.getByLabel('Scenario A').fill('Solo versamenti');
+  await builder.getByRole('textbox', { name: 'Scenario A' }).fill('Solo versamenti');
   const preview = page.waitForResponse((r) => r.url().includes('/api/doctor/scenarios/preview'));
   await page.getByRole('button', { name: 'Simula scenario' }).click();
   const response = await preview;
@@ -425,7 +421,7 @@ async function labNewCashAndCompare() {
   // scenario B: the required cash → compare (table on desktop)
   await page.getByRole('button', { name: 'Aggiungi scenario' }).click();
   const builderB = page.getByTestId('scenario-builder-1');
-  await builderB.getByLabel('Scenario B').fill('Versamento 227.029 €');
+  await builderB.getByRole('textbox', { name: 'Scenario B' }).fill('Versamento 227.029 €');
   await builderB.getByLabel('Nuova liquidità da investire').fill('227029');
   const compare = page.waitForResponse((r) => r.url().includes('/api/doctor/scenarios/compare'));
   await page.getByRole('button', { name: 'Confronta scenari' }).click();
@@ -438,7 +434,6 @@ async function labNewCashAndCompare() {
   assert(tableText.includes('46,6%') && tableText.includes('35,0%'), `max single before/after: ${tableText}`);
   assert(/0 rispettati · 1 violato · 1 non verificabile|1 rispettato · 1 violato · 1 non verificabile/.test(tableText), `compliance row: ${tableText}`);
   assert(await page.getByTestId('scenario-comparison-cards').count() === 0, 'no cards on desktop');
-  await shot(page, 'desktop-laboratorio-confronto', { locator: results });
   await context.close();
 }
 
@@ -467,7 +462,7 @@ async function privacyMode() {
   const amounts = labText.split('\n').filter((line) => MONEY_RE.test(line));
   assert(amounts.length === 0, `€ amounts visible in Privacy Mode: ${amounts.join(' | ')}`);
   await page.getByRole('tab', { name: 'I miei parametri' }).click();
-  await page.getByTestId('rule-card-max-single').click();
+  await page.getByTestId('rule-card-max-single-position').click();
   const evidence = page.getByTestId('policy-evidence');
   await evidence.waitFor();
   assert((await evidence.getByTestId('evidence-denominator-value').innerText()).trim() === '******', 'denominator masked');
@@ -485,7 +480,7 @@ async function llmFailureKeepsDoctor() {
     await sendCopilot(page, 'Spiegami le violazioni');
     await page.getByText(/errore|non disponibile|riprova/i).last().waitFor({ timeout: 45000 });
     // the Doctor still answers without the LLM
-    await page.getByTestId('rule-card-max-single').getByText(EXPECTED_FAIL_REASON).waitFor();
+    await page.getByTestId('rule-card-max-single-position').getByText(EXPECTED_FAIL_REASON).waitFor();
     await page.getByRole('button', { name: 'Modifica parametri' }).click();
     const modal = page.getByRole('dialog');
     await modal.getByRole('button', { name: 'Verifica e anteprima' }).click();
@@ -512,12 +507,12 @@ async function providerErrorsDegrade() {
     await card.getByText('0 rispettati · 0 violati · 3 non verificabili').waitFor();
     await card.getByText('Quotazioni non aggiornate: alcune regole non sono verificabili').waitFor();
     await page.getByRole('tab', { name: 'I miei parametri' }).click();
-    await page.getByTestId('rule-card-max-single').getByText("l'ultima sincronizzazione dei prezzi è fallita").waitFor();
+    await page.getByTestId('rule-card-max-single-position').getByText("l'ultima sincronizzazione dei prezzi è fallita").waitFor();
     // 2) a manual price refresh with the provider unreachable: the page survives
     const refresh = await api('/prices/refresh', { method: 'POST', body: { portfolio_id: PARENT } });
     assert(refresh.status < 500 || refresh.json, `refresh answered ${refresh.status}`);
     await page.reload();
-    await page.getByTestId('rule-card-max-single').waitFor();
+    await page.getByTestId('rule-card-max-single-position').waitFor();
     assert(context.consoleErrors.length === 0, `page errors: ${context.consoleErrors}`);
     await context.close();
   } finally {
@@ -547,7 +542,7 @@ async function featureFlagsOff() {
   const disabled = await api('/api/doctor/evaluation?portfolio_ids=1', { base: FLAGS_OFF_API });
   assert(disabled.status === 404 && disabled.json.error.code === 'feature_disabled', `evaluation with flags off ${disabled.status}`);
   const context = await newContext(DESKTOP, [PARENT]);
-  await context.route('**/api/**', async (route) => {
+  await context.route((url) => url.pathname.startsWith('/api/'), async (route) => {
     const url = new URL(route.request().url());
     const response = await route.fetch({ url: `${FLAGS_OFF_API}${url.pathname}${url.search}` });
     await route.fulfill({ response });
@@ -572,11 +567,11 @@ async function deviceScreenshots(name, device) {
   await shot(page, `${name}-diagnosi`);
   await page.getByRole('tab', { name: 'I miei parametri' }).click();
   await page.getByTestId('rules-summary').waitFor();
-  await page.getByTestId('rule-card-max-single').scrollIntoViewIfNeeded();
+  await page.getByTestId('rule-card-max-single-position').scrollIntoViewIfNeeded();
   await shot(page, `${name}-parametri`);
   let overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert(overflow <= 1, `${name}: horizontal overflow in Parametri ${overflow}px`);
-  await page.getByTestId('rule-card-max-single').click();
+  await page.getByTestId('rule-card-max-single-position').click();
   await page.getByTestId('policy-evidence').waitFor();
   await page.waitForTimeout(400);
   await shot(page, `${name}-evidenza`);
@@ -591,6 +586,9 @@ async function deviceScreenshots(name, device) {
   await comparison.waitFor();
   await comparison.scrollIntoViewIfNeeded();
   await shot(page, `${name}-laboratorio-confronto`);
+  const truncated = await comparison.locator('.mantine-Badge-label').evaluateAll((labels) => labels
+    .filter((label) => label.scrollWidth > label.clientWidth + 1).map((label) => label.textContent));
+  assert(truncated.length === 0, `${name}: truncated status badges ${truncated}`);
   overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   assert(overflow <= 1, `${name}: horizontal overflow in Laboratorio ${overflow}px`);
 
@@ -618,6 +616,9 @@ async function deviceScreenshots(name, device) {
   browser = await chromium.launch({ headless: process.env.HEADED !== '1' });
   const health = await api('/health');
   assert(health.status === 200, `backend not reachable at ${API_URL}`);
+  // Start from the seed: no policies, versions, tokens or failed syncs left by a previous run.
+  // (Every save invalidates the backend evaluation cache of its scope.)
+  psql("truncate doctor_policy_versions, doctor_policy_scope_members, doctor_policy_sets, doctor_confirmation_tokens restart identity cascade; delete from market_data_sync_runs where status <> 'success'");
   log(`Doctor 2.0 E2E — ${BASE_URL} (API ${API_URL})`);
 
   await scenario('01 policy manuale: editor → validate → preview → conferma → v1', createPolicyManually);

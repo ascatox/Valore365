@@ -1519,7 +1519,8 @@ export interface DoctorPolicyRule {
   unit: 'pct' | string;
   precision: number;
   severity: DoctorPolicySeverity;
-  warning_margin: number;
+  /** null in a draft = backend default of the metric. */
+  warning_margin: number | null;
   /** null in a draft = backend default (80). */
   min_coverage_pct: number | null;
   /** null in a draft = backend default (5). */

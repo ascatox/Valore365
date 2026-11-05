@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from ..asset_classification import BOND, COMMODITY, EQUITY, GOLD, UNKNOWN
@@ -84,6 +85,11 @@ class MetricValue:
     unit: str = "pct"
     contributors: list[dict[str, Any]] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    # PRD §6 metadata: oldest quote used (ISO), computation time (ISO UTC),
+    # methodology. Filled by ``compute_metrics``.
+    quote_as_of: str | None = None
+    calculated_at: str | None = None
+    methodology_version: str = METHODOLOGY_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -533,17 +539,25 @@ def _overlap_metric(snapshot: DoctorSnapshot) -> MetricValue:
     )
 
 
-def compute_metrics(snapshot: DoctorSnapshot, repo: Any = None) -> dict[str, MetricValue]:
+def compute_metrics(
+    snapshot: DoctorSnapshot, repo: Any = None, *, now: datetime | None = None,
+) -> dict[str, MetricValue]:
     """All registry metrics of a snapshot, computed once.
 
     ``repo`` is optional: with it TER and country weights come from the stored
     enrichment/metadata; without it (tests, Scenario Lab on simulated
     holdings) only the deterministic fallbacks are used (``infer_ter``,
-    ``infer_region_profile``) and the source says so.
+    ``infer_region_profile``) and the source says so. Every metric carries
+    ``quote_as_of`` (oldest quote of the snapshot), ``calculated_at`` (``now``,
+    default the current UTC time) and ``methodology_version``.
     """
+    current = now if now is not None else datetime.now(UTC)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=UTC)
+    stamp = {"quote_as_of": snapshot.quote_as_of, "calculated_at": current.isoformat()}
     if snapshot.is_empty:
         return {
-            code: _missing(code, d.source, d.denominator, 0.0, "Nessuna posizione investita.")
+            code: _stamped(_missing(code, d.source, d.denominator, 0.0, "Nessuna posizione investita."), stamp)
             for code, d in METRIC_REGISTRY.items()
         }
     enrichment = _enrichment_map(snapshot, repo)
@@ -560,7 +574,14 @@ def compute_metrics(snapshot: DoctorSnapshot, repo: Any = None) -> dict[str, Met
             if metric.quality != "missing":
                 metric.quality = "stale"
             metric.notes.append(note)
-    return {code: metrics[code] for code in METRIC_CODES}
+    return {code: _stamped(metrics[code], stamp) for code in METRIC_CODES}
+
+
+def _stamped(metric: MetricValue, stamp: dict[str, Any]) -> MetricValue:
+    metric.quote_as_of = stamp["quote_as_of"]
+    metric.calculated_at = stamp["calculated_at"]
+    metric.methodology_version = METHODOLOGY_VERSION
+    return metric
 
 
 def metric_definitions() -> list[dict[str, Any]]:

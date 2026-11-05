@@ -238,6 +238,18 @@ def test_missing_prices_beyond_coverage_tolerance_are_unknown():
     assert _eval(_rule(min_coverage_pct=50.0), _metric("equity_weight_pct", 10.0), snap).status == "PASS"
 
 
+@pytest.mark.parametrize("price_as_of", [{1: "2026-11-03"}, {1: "2026-11-03", 2: None}, {1: "2026-11-03", 2: "not a date"}])
+def test_holding_without_price_timestamp_counts_as_missing_price(price_as_of):
+    # AGGH (40% of the value) has no usable price timestamp: its age is
+    # unknown, so it is treated as a missing price, never as fresh.
+    snap = _snapshot(price_as_of=price_as_of)
+    result = _eval(_rule(), _metric("equity_weight_pct", 10.0), snap)
+    assert result.status == "UNKNOWN"
+    assert "manca la quotazione" in result.reason
+    # Tolerated when the missing share is within 100 - min_coverage_pct.
+    assert _eval(_rule(min_coverage_pct=60.0), _metric("equity_weight_pct", 10.0), snap).status == "PASS"
+
+
 # -- inactive, empty, no policy, ordering, summary ----------------------------
 
 

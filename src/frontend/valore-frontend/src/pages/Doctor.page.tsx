@@ -52,7 +52,7 @@ import { XRayCard } from '../components/doctor/XRayCard';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { getCopilotStatus } from '../services/api';
-import type { DoctorPolicyRead, DoctorRuleResult, PortfolioHealthAlert, PortfolioHealthResponse } from '../services/api';
+import type { DoctorPolicyDraftPayload, DoctorPolicyRead, DoctorRuleResult, PortfolioHealthAlert, PortfolioHealthResponse } from '../services/api';
 import { doctorScopeFingerprint } from '../services/api/doctor';
 import { DoctorSectionErrorBoundary } from '../components/doctor/DoctorSectionErrorBoundary';
 import { DoctorPolicySummaryCard } from '../components/doctor/policy/DoctorPolicySummaryCard';
@@ -324,6 +324,9 @@ export function DoctorPage() {
   const { data: doctorMetrics } = useDoctorMetrics(features.policyEnabled || features.simulatorEnabled);
   const invalidateDoctorPolicy = useInvalidateDoctorPolicy();
   const [labPrefill, setLabPrefill] = useState<LabPrefill | null>(null);
+  // A Copilot draft the user chose to open in the manual editor of «I miei parametri».
+  const [editorDraft, setEditorDraft] = useState<{ id: number; draft: DoctorPolicyDraftPayload } | null>(null);
+  const portfolioNames = useMemo(() => new Map(portfolios.map((item) => [item.id, item.name])), [portfolios]);
   const privacy = isPrivacyModeEnabled();
 
   useEffect(() => {
@@ -489,6 +492,11 @@ export function DoctorPage() {
     openCopilot();
   }
 
+  function handleOpenPolicyDraft(draft: DoctorPolicyDraftPayload) {
+    setEditorDraft({ id: Date.now(), draft });
+    setSection('parametri');
+  }
+
   function handlePolicySaved(saved: DoctorPolicyRead) {
     void invalidateDoctorPolicy(saved.scope?.fingerprint ?? doctorScopeFingerprint(saved.scope?.portfolio_ids ?? scopeIds));
   }
@@ -563,6 +571,8 @@ export function DoctorPage() {
       pageContext="doctor"
       pendingPrompt={pendingCopilotPrompt}
       onPolicySaved={handlePolicySaved}
+      onOpenPolicyDraft={features.policyEnabled ? handleOpenPolicyDraft : undefined}
+      portfolioNames={portfolioNames}
       layout={copilotLayout}
       drawerSize="md"
     />
@@ -907,6 +917,8 @@ export function DoctorPage() {
                 canSimulate={features.simulatorEnabled}
                 onExplain={handleExplainRule}
                 onSimulate={handleSimulateRule}
+                draftToEdit={editorDraft}
+                onDraftConsumed={() => setEditorDraft(null)}
               />
             </DoctorSectionErrorBoundary>
           )}

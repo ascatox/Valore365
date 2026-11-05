@@ -448,3 +448,134 @@ describe('optional rule fields left empty (review fix)', () => {
     expect(rule.max_data_age_days).toBeNull();
   });
 });
+
+describe('PRD deviations closed (follow-up)', () => {
+  const editorProps = {
+    onClose: () => {}, portfolioIds: [1], scopeLabel: 'Portafoglio Core', metrics: METRICS, templates: [], onReload: vi.fn(), isMobile: false,
+  };
+  const policyPosts = (fetchMock: ReturnType<typeof vi.fn>) => fetchMock.mock.calls
+    .filter(([url, init]) => /\/doctor\/policies$/.test(String(url)) && (init as RequestInit)?.method === 'POST')
+    .map(([, init]) => JSON.parse(String((init as RequestInit).body)));
+
+  it.each([
+    ['version_conflict', /rigenera l'anteprima sulla versione attuale/],
+    ['confirmation_invalid', /La conferma non è più valida/],
+  ])('draft card: after a 409 %s it regenerates the preview on the current version and saves only on a new click', async (code, message) => {
+    const onSaved = vi.fn();
+    let saves = 0;
+    installFetchMock([], (request) => {
+      if (request.path === '/doctor/policies' && request.method === 'POST') {
+        saves += 1;
+        return saves === 1 ? errorResponse(409, code, 'conflict') : policyRead({ current_version: 6 });
+      }
+      if (request.path.startsWith('/doctor/policies?')) return { policy: policyRead({ current_version: 5 }) };
+      if (request.path === '/doctor/policies/preview') return preview({ confirmation_token: 'tok-new', base_version: 5 });
+      return undefined;
+    });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview() }} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Conferma e salva' }));
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Conferma e salva' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rigenera anteprima' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Rigenera anteprima' })).not.toBeInTheDocument());
+    expect(bodyOf(fetchMock, '/doctor/policies/preview')).toMatchObject({ portfolio_ids: [1], base_version: 5, source: 'copilot' });
+    // Nothing saved by the regeneration itself.
+    expect(policyPosts(fetchMock)).toHaveLength(1);
+    expect(onSaved).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Conferma e salva' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(policyPosts(fetchMock)[1]).toMatchObject({ confirmation_token: 'tok-new', base_version: 5 });
+  });
+
+  it('draft card: names the portfolios of the scope instead of #id', () => {
+    installFetchMock([]);
+    const { unmount } = wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview() }} portfolioNames={new Map([[1, 'Core']])} />);
+    expect(screen.getByTestId('policy-preview-summary')).toHaveTextContent('Portafoglio Core');
+    expect(screen.queryByText(/#1/)).not.toBeInTheDocument();
+    unmount();
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1, 2], preview: preview() }} portfolioNames={new Map([[1, 'Core'], [2, 'Pensione']])} />);
+    expect(screen.getByTestId('policy-preview-summary')).toHaveTextContent('Vista aggregata: Core, Pensione');
+  });
+
+  it('draft card: «Apri nell\'editor» hands the draft over without saving (only when offered)', () => {
+    const api = installFetchMock([]);
+    const onOpen = vi.fn();
+    const { unmount } = wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview(), name: 'Prudente' }} onOpenInEditor={onOpen} />);
+    fireEvent.click(screen.getByRole('button', { name: "Apri nell'editor" }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ portfolio_ids: [1], name: 'Prudente' }));
+    expect(api.writes()).toEqual([]);
+    unmount();
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview() }} />);
+    expect(screen.queryByRole('button', { name: "Apri nell'editor" })).not.toBeInTheDocument();
+  });
+
+  it('editor: a Copilot draft is loaded in place of the saved rules and previewed with source copilot', async () => {
+    installFetchMock([], (request) => {
+      if (request.path === '/doctor/policies/validate') return { valid: true, field_errors: [], normalized_document: preview().normalized_document };
+      if (request.path === '/doctor/policies/preview') return preview();
+      return undefined;
+    });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<DoctorPolicyRuleEditor {...editorProps} policy={policyRead()} onSaved={vi.fn()} initialDraft={{ portfolio_ids: [1], preview: preview(), name: 'Prudente' }} />);
+    expect(screen.getByTestId('editor-copilot-draft')).toBeInTheDocument();
+    expect(screen.getByLabelText('Valore massimo (%)')).toHaveValue('50');
+    expect(screen.getByLabelText('Nome')).toHaveValue('Prudente');
+    fireEvent.click(screen.getByRole('button', { name: 'Verifica e anteprima' }));
+    expect(await screen.findByText('Conferma le modifiche')).toBeInTheDocument();
+    expect(bodyOf(fetchMock, '/doctor/policies/preview')).toMatchObject({ source: 'copilot', base_version: 3 });
+  });
+
+  it('editor: clearing «Margine di avviso» sends null, never 0', async () => {
+    installFetchMock([], (request) => (request.path === '/doctor/policies/validate'
+      ? { valid: false, field_errors: [{ field: 'rules[0].max_value', code: 'out_of_range', message: 'stop' }], normalized_document: null }
+      : undefined));
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<DoctorPolicyRuleEditor {...editorProps} policy={policyRead()} onSaved={vi.fn()} />);
+    const margin = screen.getByLabelText('Margine di avviso (pp)');
+    fireEvent.change(margin, { target: { value: '' } });
+    expect(margin).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: 'Verifica e anteprima' }));
+    await screen.findByText('stop');
+    expect(bodyOf(fetchMock, '/doctor/policies/validate').document.rules[0].warning_margin).toBeNull();
+  });
+
+  it('restore: previews before/after with the old document and the current base_version, then restores on confirm', async () => {
+    const onRestored = vi.fn();
+    const oldDocument = { schema_version: 1 as const, rules: [{ ...policyRead().document.rules[0], max_value: 30 }] };
+    installFetchMock([], (request) => {
+      if (request.path === '/doctor/policies/7/versions') {
+        return [
+          { version_number: 3, source: 'manual', confirmed_at: '2026-11-01T10:00:00Z', diff: [], document: policyRead().document },
+          { version_number: 2, source: 'manual', confirmed_at: '2026-10-20T10:00:00Z', diff: [], document: oldDocument },
+        ];
+      }
+      if (request.path === '/doctor/policies/preview') {
+        return preview({
+          diff: [{
+            rule_id: 'max-single', metric_code: 'max_single_position_pct', change: 'modified',
+            before: { operator: 'max', max_value: 35, precision: 1, label: 'Max singolo ETF' },
+            after: { operator: 'max', max_value: 30, precision: 1, label: 'Max singolo ETF' },
+          }],
+        });
+      }
+      if (request.path === '/doctor/policies/7/restore') return policyRead({ current_version: 4 });
+      return undefined;
+    });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<PolicyVersionHistory policy={policyRead()} metrics={METRICS} onRestored={onRestored} onReload={vi.fn()} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Ripristina la versione 2' }));
+    const summary = await screen.findByTestId('restore-preview');
+    expect(within(summary).getByTestId('policy-diff')).toHaveTextContent('max 35,0% → max 30,0%');
+    expect(within(summary).getByText(/Prima:/).parentElement).toHaveTextContent('2 rispettati · 1 violato · 2 non verificabili');
+    expect(within(summary).getByText(/Dopo:/).parentElement).toHaveTextContent('3 rispettati · 0 violati · 2 non verificabili');
+    expect(bodyOf(fetchMock, '/doctor/policies/preview')).toMatchObject({ portfolio_ids: [1], base_version: 3, document: oldDocument });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/restore'))).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Conferma ripristino' }));
+    await waitFor(() => expect(onRestored).toHaveBeenCalled());
+    expect(bodyOf(fetchMock, '/doctor/policies/7/restore')).toEqual({ version_number: 2, base_version: 3 });
+  });
+});
+

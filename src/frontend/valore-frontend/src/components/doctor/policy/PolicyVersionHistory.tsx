@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Alert, Badge, Button, Card, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { IconHistory } from '@tabler/icons-react';
-import { restoreDoctorPolicyVersion } from '../../../services/api/doctor';
-import type { DoctorMetricDefinition, DoctorPolicyRead, DoctorPolicyVersion } from '../../../services/api/types';
+import { previewDoctorPolicy, restoreDoctorPolicyVersion } from '../../../services/api/doctor';
+import type { DoctorMetricDefinition, DoctorPolicyPreviewResponse, DoctorPolicyRead, DoctorPolicyVersion } from '../../../services/api/types';
 import { useDoctorPolicyVersions } from './hooks';
-import { PolicyDiffList } from './PolicyPreviewSummary';
+import { PolicyDiffList, PolicyPreviewSummary } from './PolicyPreviewSummary';
 import { doctorErrorMessage, formatDateTime, isDoctorErrorCode, POLICY_VERSION_CONFLICT_MESSAGE } from './policyFormat';
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -28,6 +28,34 @@ export function PolicyVersionHistory({ policy, metrics, onRestored, onReload }: 
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  // Before/after of the restore on the same data (POST /preview; its token is not used: restore takes none).
+  const [restorePreview, setRestorePreview] = useState<{ loading: boolean; data: DoctorPolicyPreviewResponse | null; error: string | null }>(
+    { loading: false, data: null, error: null },
+  );
+
+  const askRestore = async (version: DoctorPolicyVersion) => {
+    setPending(version);
+    if (!version.document) {
+      setRestorePreview({ loading: false, data: null, error: 'Anteprima non disponibile per questa versione.' });
+      return;
+    }
+    setRestorePreview({ loading: true, data: null, error: null });
+    try {
+      const data = await previewDoctorPolicy({
+        portfolioIds: policy.scope.portfolio_ids,
+        document: version.document,
+        baseVersion: policy.current_version,
+        source: 'manual',
+      });
+      setRestorePreview({ loading: false, data, error: null });
+    } catch (caught) {
+      if (isDoctorErrorCode(caught, 'version_conflict')) {
+        setPending(null);
+        setConflict(true);
+      }
+      setRestorePreview({ loading: false, data: null, error: `Anteprima non disponibile: ${doctorErrorMessage(caught)}` });
+    }
+  };
 
   const versions = [...(versionsQuery.data ?? [])].sort((left, right) => right.version_number - left.version_number);
 
@@ -81,7 +109,7 @@ export function PolicyVersionHistory({ policy, metrics, onRestored, onReload }: 
                 </Group>
                 <PolicyDiffList diff={version.diff ?? []} metrics={metrics} />
                 {!current && (
-                  <Button size="xs" variant="subtle" w="fit-content" px={0} onClick={() => setPending(version)}>
+                  <Button size="xs" variant="subtle" w="fit-content" px={0} onClick={() => { void askRestore(version); }}>
                     {`Ripristina la versione ${version.version_number}`}
                   </Button>
                 )}
@@ -94,14 +122,23 @@ export function PolicyVersionHistory({ policy, metrics, onRestored, onReload }: 
         )}
       </Stack>
 
-      <Modal opened={pending != null} onClose={() => setPending(null)} title={<Text fw={700}>Ripristinare questa versione?</Text>} centered>
+      <Modal opened={pending != null} onClose={() => setPending(null)} title={<Text fw={700}>Ripristinare questa versione?</Text>} centered size="lg">
         <Stack gap="md">
           <Text size="sm">
             {pending && `Le regole della versione ${pending.version_number} diventeranno una nuova versione (${policy.current_version + 1}). La cronologia resta completa.`}
           </Text>
+          {restorePreview.loading && (
+            <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Anteprima del ripristino…</Text></Group>
+          )}
+          {restorePreview.data && (
+            <div data-testid="restore-preview">
+              <PolicyPreviewSummary preview={restorePreview.data} metrics={metrics} />
+            </div>
+          )}
+          {restorePreview.error && <Text size="sm" c="dimmed">{restorePreview.error}</Text>}
           <Group justify="flex-end" gap="xs">
             <Button variant="default" onClick={() => setPending(null)}>Annulla</Button>
-            <Button onClick={handleRestore} loading={restoring}>Conferma ripristino</Button>
+            <Button onClick={handleRestore} loading={restoring} disabled={restorePreview.loading}>Conferma ripristino</Button>
           </Group>
         </Stack>
       </Modal>

@@ -574,6 +574,9 @@ def _read_doctor_metrics(service: Any, ids: list[int], user_id: str, args: dict,
                 for c in (v.get("contributors") or [])[:5]
             ],
             "notes": list(v.get("notes") or [])[:5],
+            "quote_as_of": v.get("quote_as_of"),
+            "calculated_at": v.get("calculated_at"),
+            "methodology_version": v.get("methodology_version"),
         })
     return {
         "scope": _scope_block(ids),

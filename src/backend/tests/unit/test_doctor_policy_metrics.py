@@ -496,3 +496,46 @@ def test_example_b_health_100_but_policy_violated_coexist():
     assert result.breach_amount == pytest.approx(10.0)
     # The Health response is the standard one (no policy fields leak into it).
     assert "policy" not in health.model_dump()
+
+
+# -- PRD §6: metric metadata ---------------------------------------------------
+
+
+REQUIRED_METRIC_FIELDS = (
+    "value", "unit", "source", "quote_as_of", "calculated_at", "coverage_pct", "methodology_version", "quality",
+)
+
+
+@pytest.mark.parametrize("holdings", [
+    [_h(1, *VWCE, 6000, "EUR"), _h(2, *AGGH, 4000, "EUR")],
+    [],  # empty portfolio: metrics missing, metadata still present
+])
+def test_every_metric_exposes_prd_metadata(holdings):
+    from app.schemas.doctor_policy import MetricValueRead
+    from app.services.doctor_policy.metrics import METHODOLOGY_VERSION
+
+    snap = _snap(holdings, price_as_of={1: "2026-11-02", 2: "2026-11-03"} if holdings else {})
+    metrics = compute_metrics(snap, now=NOW)
+    assert set(metrics) == set(METRIC_CODES)
+    for metric in metrics.values():
+        data = MetricValueRead(**metric.to_dict()).model_dump()
+        assert set(REQUIRED_METRIC_FIELDS) <= set(data)
+        assert data["calculated_at"] == NOW.isoformat()
+        assert data["methodology_version"] == METHODOLOGY_VERSION
+        assert data["quote_as_of"] == snap.quote_as_of
+        assert data["unit"] == "pct" and data["source"]
+    if holdings:
+        assert snap.quote_as_of == "2026-11-02"
+
+
+def test_scenario_side_metrics_carry_metadata():
+    from app.services.doctor_policy import scenario
+
+    snap = _snap([_h(1, *VWCE, 6000, "EUR"), _h(2, *AGGH, 4000, "EUR")])
+    result = scenario.preview_scenario(
+        snap, {"portfolio_ids": [1], "mode": "new_cash_only", "new_cash": 1000}, policy_document=None, now=NOW,
+    )
+    for side in (result.before, result.after):
+        for metric in side.metrics.values():
+            assert metric.calculated_at == NOW.isoformat()
+            assert metric.methodology_version and metric.quote_as_of == "2026-11-03"

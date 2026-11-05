@@ -194,7 +194,22 @@ export function ScenarioBuilder({ value, onChange, positions, isAggregate, index
               max={10}
               decimalSeparator=","
             />
+            <NumberInput
+              label="Commissione fissa per operazione"
+              value={value.fee_model.fixed}
+              onChange={(fee) => set({ fee_model: { ...value.fee_model, fixed: Math.min(10000, Math.max(0, toNumber(fee))) } })}
+              min={0}
+              max={10000}
+              thousandSeparator="."
+              decimalSeparator=","
+            />
           </SimpleGrid>
+          <Checkbox
+            label="Usa anche la liquidità già presente nel portafoglio"
+            description="Se disattivato, la simulazione usa solo la nuova liquidità e le eventuali vendite."
+            checked={value.constraints.use_cash_balance ?? false}
+            onChange={(event) => setConstraints({ use_cash_balance: event.currentTarget.checked })}
+          />
         </Stack>
       </Stack>
     </Card>

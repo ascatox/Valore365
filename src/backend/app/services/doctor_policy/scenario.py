@@ -82,6 +82,8 @@ from .validator import normalize_policy_document
 MONEY_TOL = 1e-6  # base currency
 WEIGHT_TOL = 1e-6  # percentage points
 MIN_TRADE = 0.01  # a purchase below one cent is not an operation (water-filling)
+# Refinements of the minimum new cash with per-operation costs (new_cash_only).
+MAX_REQUIRED_CASH_ITERATIONS = 20
 MAX_FIXED_POINT_ITERATIONS = 200
 
 VOLATILITY_BEFORE_REASON = (
@@ -405,6 +407,16 @@ def _bucket(holding: AnalyzedHolding) -> str:
     return "other"
 
 
+def _too_complex() -> InvalidRequest:
+    return InvalidRequest(
+        "Scenario troppo complesso",
+        field_errors=[{
+            "field": "new_cash", "code": "too_complex",
+            "message": "Scenario troppo complesso da calcolare: riduci il numero di posizioni o i costi fissi per operazione",
+        }],
+    )
+
+
 def _water_fill(amount: float, weights: dict[str, float], capacity: dict[str, float]) -> tuple[dict[str, float], float]:
     """Spread ``amount`` pro rata to ``weights`` without exceeding ``capacity``.
 
@@ -430,7 +442,8 @@ def _water_fill(amount: float, weights: dict[str, float], capacity: dict[str, fl
             room = capacity[k] - alloc[k]
             alloc[k] += room
             remaining -= room
-        active = [k for k in active if k not in saturated]
+        done = set(saturated)  # set: the filter stays O(n) per round (was O(n * saturated))
+        active = [k for k in active if k not in done]
     return alloc, max(0.0, remaining)
 
 
@@ -542,10 +555,16 @@ def _plan_new_cash(book: _Book, req: ScenarioInput, policy_document: Mapping[str
     # Cash needed to reach the caps (costs included), checked against invest().
     required_cash = cash_for(allocate(required_buys)) if required_buys > MONEY_TOL else 0.0
     if required_cash > 0:
-        for _ in range(len(book.ids) + 1):
+        # Computational bound: each step re-runs invest() (up to 10 water-fills
+        # over every security); without a cap a large scope could loop
+        # len(book.ids) times. Not converging within the cap is a 400, never
+        # an underestimated required_new_cash.
+        for _ in range(min(len(book.ids) + 1, MAX_REQUIRED_CASH_ITERATIONS)):
             if invest(_ceil_cents(required_cash))[1] >= required_buys - MONEY_TOL:
                 break
             required_cash += max(fixed, 0.01)
+        else:
+            raise _too_complex()
     if C + MONEY_TOL < required_cash:
         worst = max(
             (g for g in caps if gvalue[g] > MONEY_TOL and caps[g] > 0 and gvalue[g] / caps[g] >= needed_total - MONEY_TOL),
@@ -726,7 +745,7 @@ def _evaluate(
     metrics: dict[str, Any] | None = None,
     meta: Mapping[str, Any] | None = None,
 ) -> _State:
-    metrics = metrics if metrics is not None else compute_metrics(snapshot, repo)
+    metrics = metrics if metrics is not None else compute_metrics(snapshot, repo, now=now)
     evaluation = build_evaluation_response(
         dict(policy_document) if policy_document is not None else None,
         snapshot, metrics, repo=repo, now=now, **dict(meta or {}),

@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Button, Card, Group, Loader, Stack, Text, Title } from '@mantine/core';
 import { IconAdjustments, IconCheck, IconHistory, IconStack2 } from '@tabler/icons-react';
-import type { DoctorPolicyRead, DoctorRuleResult } from '../../../services/api/types';
+import type { DoctorPolicyDraftPayload, DoctorPolicyRead, DoctorRuleResult } from '../../../services/api/types';
 import { DoctorPolicyRuleEditor } from './DoctorPolicyRuleEditor';
 import { DoctorPolicyRulesList } from './DoctorPolicyRulesList';
 import { PolicyEvidenceDrawer } from './PolicyEvidenceDrawer';
@@ -21,20 +21,30 @@ interface DoctorParametriSectionProps {
   canSimulate: boolean;
   onExplain: (rule: DoctorRuleResult) => void;
   onSimulate: (rule: DoctorRuleResult) => void;
+  /** Copilot draft to open in the editor («Apri nell'editor» on the draft card). */
+  draftToEdit?: { id: number; draft: DoctorPolicyDraftPayload } | null;
+  onDraftConsumed?: () => void;
 }
 
 /** «I miei parametri»: rules with status, evidence, editor, versions & audit. */
 export function DoctorParametriSection({
   portfolioIds, isAggregate, scopeLabel, privacy, currency, isMobile, policyState, canExplain, canSimulate, onExplain, onSimulate,
+  draftToEdit, onDraftConsumed,
 }: DoctorParametriSectionProps) {
   const { fingerprint, policyQuery, policy, evaluationQuery } = policyState;
   const metricsQuery = useDoctorMetrics();
   const templatesQuery = useDoctorTemplates();
   const invalidate = useInvalidateDoctorPolicy();
-  const [editor, setEditor] = useState<{ focusRuleId: string | null } | null>(null);
+  const [editor, setEditor] = useState<{ focusRuleId: string | null; draft?: DoctorPolicyDraftPayload } | null>(null);
   const [selectedRule, setSelectedRule] = useState<DoctorRuleResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!draftToEdit) return;
+    setEditor({ focusRuleId: null, draft: draftToEdit.draft });
+    onDraftConsumed?.();
+  }, [draftToEdit, onDraftConsumed]);
 
   const metrics = metricsQuery.data ?? [];
   const evaluation = isEvaluation(evaluationQuery.data) ? evaluationQuery.data : null;
@@ -174,6 +184,7 @@ export function DoctorParametriSection({
           metrics={metrics}
           templates={templatesQuery.data ?? []}
           focusRuleId={editor.focusRuleId}
+          initialDraft={editor.draft ?? null}
           onSaved={(saved) => handleSaved(saved, 'Parametri salvati: versione {v}.')}
           onReload={reload}
           isMobile={isMobile}
