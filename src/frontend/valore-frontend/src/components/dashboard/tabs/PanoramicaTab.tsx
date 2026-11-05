@@ -9,7 +9,7 @@ import { BestWorstCards } from '../summary/BestWorstCards';
 import { DashboardMobileKpiCarousel } from '../../mobile/DashboardMobileKpiCarousel';
 import { DashboardMobileHero } from '../../mobile/DashboardMobileHero';
 import { DASHBOARD_WINDOWS } from '../constants';
-import { benchmarkOptionLabel, benchmarkShortLabel } from '../benchmarkLabels';
+import { benchmarkShortLabel } from '../benchmarkLabels';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 import {
   usePortfolioSummary,
@@ -205,7 +205,7 @@ export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText =
   const benchmarkSelectData = useMemo(
     () => [
       { value: '', label: 'Nessuno' },
-      ...benchmarkList.map((b) => ({ value: String(b.asset_id), label: benchmarkOptionLabel(b) })),
+      ...benchmarkList.map((b) => ({ value: String(b.asset_id), label: benchmarkShortLabel(b) })),
     ],
     [benchmarkList],
   );
@@ -316,7 +316,7 @@ export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText =
               <Group gap="xs">
                 <Select
                   size="xs"
-                  w={200}
+                  w={170}
                   data={benchmarkSelectData}
                   value={selectedBenchmarkId != null ? String(selectedBenchmarkId) : ''}
                   onChange={(v) => setSelectedBenchmarkId(v ? Number(v) : null)}
