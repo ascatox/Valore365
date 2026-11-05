@@ -195,7 +195,8 @@ export function DoctorPolicyRuleEditor({
     try {
       const saved = await saveDoctorPolicy({
         portfolioIds,
-        name: name.trim() || DEFAULT_POLICY_NAME,
+        // Existing policy: its (possibly edited) name, or null to keep it; never a default that renames it.
+        name: name.trim() || (policy ? null : DEFAULT_POLICY_NAME),
         document: preview.normalized_document ?? document(),
         baseVersion: preview.base_version ?? baseVersion,
         confirmationToken: preview.confirmation_token,
@@ -364,8 +365,10 @@ export function DoctorPolicyRuleEditor({
                     />
                     <NumberInput
                       label="Copertura minima (%)"
-                      value={rule.min_coverage_pct}
-                      onChange={(value) => updateRule(index, { min_coverage_pct: toNumber(value) ?? 0 })}
+                      value={rule.min_coverage_pct ?? ''}
+                      // Empty = null: the backend applies its default (80%), never a silent 0.
+                      onChange={(value) => updateRule(index, { min_coverage_pct: toNumber(value) })}
+                      placeholder="Predefinita (80%)"
                       min={0}
                       max={100}
                       decimalSeparator=","
@@ -373,8 +376,10 @@ export function DoctorPolicyRuleEditor({
                     />
                     <NumberInput
                       label="Età massima quote (giorni)"
-                      value={rule.max_data_age_days}
-                      onChange={(value) => updateRule(index, { max_data_age_days: toNumber(value) ?? 0 })}
+                      value={rule.max_data_age_days ?? ''}
+                      // Empty = null: the backend applies its default (5 days), never a silent 0.
+                      onChange={(value) => updateRule(index, { max_data_age_days: toNumber(value) })}
+                      placeholder="Predefinita (5 giorni)"
                       min={1}
                       max={365}
                       allowDecimal={false}

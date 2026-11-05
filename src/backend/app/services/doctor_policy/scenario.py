@@ -249,13 +249,19 @@ def _resolve(book: _Book, *, asset_id: int | None, symbol: str | None, field_nam
     )
 
 
+MAX_ASSET_ID_DIGITS = 18  # fits a bigint
+
+
 def _resolve_weights(book: _Book, weights: Mapping[str, float]) -> dict[int, float]:
     """target_weights keys (asset_id as string, or symbol) -> asset_id: fraction."""
     out: dict[int, float] = {}
     for key in sorted(weights):
         field_name = f"target_weights.{key}"
         raw = str(key).strip()
-        if raw.isdigit():
+        # isdigit() alone accepts "²" or other Unicode digits that int() rejects
+        # (or maps to an unrelated id): only short ASCII digit strings are ids,
+        # anything else is looked up as a symbol (-> 400 unknown_asset).
+        if raw.isascii() and raw.isdigit() and len(raw) <= MAX_ASSET_ID_DIGITS:
             aid = _resolve(book, asset_id=int(raw), symbol=None, field_name=field_name)
         else:
             aid = _resolve(book, asset_id=None, symbol=raw, field_name=field_name)

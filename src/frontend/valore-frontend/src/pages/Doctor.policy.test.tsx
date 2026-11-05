@@ -110,7 +110,8 @@ describe('Doctor 2.0 sections', () => {
         return {
           label: 'Scenario A', feasible: false, infeasible_reason: 'Servono almeno 41.000 € di nuova liquidità senza vendite',
           before: { metrics: {}, evaluation_summary: null }, after: null, changes: [], warnings: [], violations_resolved: [], violations_new: [],
-          required_new_cash: 41000, total_before: 125000, total_after: null, cash_in: 0, costs: 0,
+          required_new_cash: 41000, total_before: 125000, total_after: null, cash_in: 0,
+          costs: { total: 0, variable: 0, fixed: 0, operations: 0, fee_model: { pct: 0, fixed: 0 } },
           methodology_version: 'doctor-policy-1.0', snapshot_id: 'abc123', data_quality: null, disclaimer: 'Simulazione teorica; nessun ordine eseguito.',
         };
       }
@@ -122,5 +123,38 @@ describe('Doctor 2.0 sections', () => {
     expect(screen.getByTestId('lab-disclaimer')).toHaveTextContent('Simulazione teorica; nessun ordine eseguito.');
     expect(screen.getByRole('link', { name: 'Traduci in ordini nella pagina Portfolio' })).toHaveAttribute('href', '/portfolio');
     await waitFor(() => expect(api.writes().map((request) => request.path)).toEqual(['/doctor/scenarios/preview']));
+  });
+
+  it('shows the comparison explanation with € amounts masked in Privacy Mode', async () => {
+    window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, 'true');
+    const side = {
+      invested_value: 125000, cash_value: 0, total_value: 125000, metrics: {}, evaluation_status: 'ready', evaluation_summary: null, rule_results: [],
+      volatility: { value: null, status: 'not_available', reason: 'Non stimabile' },
+    };
+    const scenario = (label: string) => ({
+      label, mode: 'new_cash_only', feasible: true, infeasible_code: null, infeasible_reason: null, before: side, after: side, changes: [], warnings: [],
+      violations_resolved: [], violations_new: [], required_new_cash: null, total_before: 125000, total_after: 125000, cash_in: 0,
+      costs: { total: 0, variable: 0, fixed: 0, operations: 0, fee_model: { pct: 0, fixed: 0 } }, turnover_pct: 0,
+      methodology_version: 'doctor-policy-1.0', snapshot_id: 'abc123', data_quality: null, disclaimer: 'Simulazione teorica; nessun ordine eseguito.',
+    });
+    mockDoctor({ policy_enabled: true, simulator_enabled: true }, (path) => {
+      if (path === '/doctor/scenarios/compare') {
+        return {
+          current: side, scenarios: [scenario('Scenario A'), scenario('Scenario B')],
+          ranking: [
+            { index: 0, label: 'Scenario A', rank: 1, feasible: true, failed_after: 0, unknown_after: 0, violations_resolved: 1, violations_new: 0, costs: 0, cash_in: 0, turnover_pct: 0 },
+            { index: 1, label: 'Scenario B', rank: 2, feasible: true, failed_after: 1, unknown_after: 0, violations_resolved: 0, violations_new: 0, costs: 0, cash_in: 0, turnover_pct: 0 },
+          ],
+          best_index: 0, explanation: 'Scenario A risolve 1 regola con 41.000 € di nuova liquidità (peso VWRA 34,9%).',
+          snapshot_id: 'abc123', methodology_version: 'doctor-policy-1.0', disclaimer: 'Simulazione teorica; nessun ordine eseguito.',
+        };
+      }
+      return undefined;
+    });
+    renderWithApp(<DoctorPage />, { route: '/doctor?section=laboratorio' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Aggiungi scenario' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Confronta scenari' }));
+    expect(await screen.findByTestId('lab-explanation')).toHaveTextContent('Scenario A risolve 1 regola con ****** di nuova liquidità (peso VWRA 34,9%).');
+    expect(screen.queryByText(/41\.000/)).not.toBeInTheDocument();
   });
 });

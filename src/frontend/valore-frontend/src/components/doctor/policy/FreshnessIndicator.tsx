@@ -1,7 +1,7 @@
 import { Badge, Group, Text, Tooltip } from '@mantine/core';
 import { IconClockExclamation, IconRefresh } from '@tabler/icons-react';
 import type { DoctorDataQuality } from '../../../services/api/types';
-import { dataQualityLabel, formatDateTime } from './policyFormat';
+import { dataQualityLabel, formatDateTime, maskMoneyInText } from './policyFormat';
 
 /** Freshness of the prices behind the evaluation (data_quality of the backend). */
 export function FreshnessIndicator({ dataQuality, snapshotAsOf }: { dataQuality: DoctorDataQuality | null | undefined; snapshotAsOf?: string | null }) {
@@ -12,7 +12,7 @@ export function FreshnessIndicator({ dataQuality, snapshotAsOf }: { dataQuality:
   const details = [
     `Ultima sincronizzazione riuscita: ${formatDateTime(dataQuality.last_successful_price_sync)}`,
     snapshotAsOf ? `Quota più vecchia usata: ${formatDateTime(snapshotAsOf)}` : null,
-    dataQuality.note,
+    maskMoneyInText(dataQuality.note),
   ].filter(Boolean).join(' · ');
   return (
     <Group gap="xs" wrap="wrap" data-testid="doctor-freshness">

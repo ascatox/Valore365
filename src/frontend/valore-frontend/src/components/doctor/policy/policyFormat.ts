@@ -75,6 +75,25 @@ export function formatMoney(value: number | null | undefined, currency = 'EUR', 
   }
 }
 
+// A money amount inside free text: «227.029 €», «€ 10.000», «1.500,50 EUR», «EUR 41000», «10 euro».
+// Percentages («46,6%») and plain numbers are never matched.
+const SPACE = '[\\s\\u00A0\\u202F]?';
+const NUMBER = '[-+\\u2212]?\\d(?:[\\d.,\\u00A0\\u202F]*\\d)?';
+const MONEY_IN_TEXT = new RegExp(
+  `(?:€|\\bEUR)${SPACE}${NUMBER}|${NUMBER}${SPACE}(?:€|EUR\\b|euro\\b)`,
+  'gi',
+);
+
+/**
+ * Masks the money amounts of a backend free-text string (rule reasons, notes,
+ * warnings, infeasible reasons, explanations) in Privacy Mode. Percentages stay
+ * visible. `privacy` defaults to the stored Privacy Mode flag.
+ */
+export function maskMoneyInText<T extends string | null | undefined>(text: T, privacy: boolean = isDoctorPrivacyMode()): T {
+  if (!privacy || !text) return text;
+  return text.replace(MONEY_IN_TEXT, PRIVACY_MASK) as T;
+}
+
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return NOT_AVAILABLE;
   const date = new Date(value);

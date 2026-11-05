@@ -2,7 +2,7 @@ import { Badge, Card, Group, Stack, Table, Text } from '@mantine/core';
 import { IconArrowDownRight, IconArrowUpRight, IconHelpCircle } from '@tabler/icons-react';
 import type { ReactNode } from 'react';
 import type { DoctorScenarioResult, DoctorScenarioSide } from '../../../services/api/types';
-import { formatComplianceSummary, metricLabel, NOT_AVAILABLE } from '../policy/policyFormat';
+import { formatComplianceSummary, formatPctValue, maskMoneyInText, metricLabel, NOT_AVAILABLE } from '../policy/policyFormat';
 import { formatMetric, isIncomplete, sideMetric, sideMetricCodes, touchedMetrics } from './labFormat';
 
 interface Row {
@@ -10,6 +10,8 @@ interface Row {
   group: string;
   label: string;
 }
+
+const VOLATILITY_ROW = 'volatility';
 
 const BASE_ROWS: Row[] = [
   { key: 'compliance', group: 'Conformità', label: 'Regole' },
@@ -21,6 +23,7 @@ const BASE_ROWS: Row[] = [
   { key: 'usa_exposure_pct', group: 'Geografia', label: metricLabel('usa_exposure_pct') },
   { key: 'weighted_ter_pct', group: 'Costi', label: metricLabel('weighted_ter_pct') },
   { key: 'etf_overlap_pct', group: 'Overlap', label: metricLabel('etf_overlap_pct') },
+  { key: VOLATILITY_ROW, group: 'Rischio', label: 'Volatilità' },
 ];
 
 type Trend = 'better' | 'worse' | 'incomplete' | null;
@@ -28,6 +31,15 @@ type Trend = 'better' | 'worse' | 'incomplete' | null;
 interface Cell {
   text: string;
   trend: Trend;
+  /** Backend explanation shown under the value (e.g. why volatility is N/D). */
+  note?: string | null;
+}
+
+/** Volatility exactly as the backend gives it: never estimated here (always N/D + reason in the MVP). */
+function volatilityCell(side: DoctorScenarioSide | null | undefined, privacy?: boolean): Cell {
+  const volatility = side?.volatility;
+  if (volatility?.value != null && Number.isFinite(volatility.value)) return { text: formatPctValue(volatility.value), trend: null };
+  return { text: NOT_AVAILABLE, trend: null, note: maskMoneyInText(volatility?.reason ?? null, privacy) };
 }
 
 function rowsFor(current: DoctorScenarioSide | null, scenarios: DoctorScenarioResult[]): Row[] {
@@ -37,15 +49,17 @@ function rowsFor(current: DoctorScenarioSide | null, scenarios: DoctorScenarioRe
   return [...BASE_ROWS, ...stress];
 }
 
-function currentCell(row: Row, current: DoctorScenarioSide | null): Cell {
+function currentCell(row: Row, current: DoctorScenarioSide | null, privacy?: boolean): Cell {
   if (row.key === 'compliance') return { text: current?.evaluation_summary ? formatComplianceSummary(current.evaluation_summary) : NOT_AVAILABLE, trend: null };
+  if (row.key === VOLATILITY_ROW) return volatilityCell(current, privacy);
   const metric = sideMetric(current, row.key);
   return { text: formatMetric(metric), trend: isIncomplete(metric) ? 'incomplete' : null };
 }
 
-function scenarioCell(row: Row, current: DoctorScenarioSide | null, scenario: DoctorScenarioResult, ruleMetric: Map<string, string>): Cell {
+function scenarioCell(row: Row, current: DoctorScenarioSide | null, scenario: DoctorScenarioResult, ruleMetric: Map<string, string>, privacy?: boolean): Cell {
   const after = scenario.feasible ? scenario.after : null;
   if (!after) return { text: NOT_AVAILABLE, trend: 'incomplete' };
+  if (row.key === VOLATILITY_ROW) return volatilityCell(after, privacy);
   if (row.key === 'compliance') {
     const summary = after.evaluation_summary;
     if (!summary) return { text: NOT_AVAILABLE, trend: 'incomplete' };
@@ -73,6 +87,7 @@ function CellView({ cell }: { cell: Cell }) {
   return (
     <Stack gap={2}>
       <Text size="sm" fw={600}>{cell.text}</Text>
+      {cell.note && <Text size="xs" c="dimmed">{cell.note}</Text>}
       <TrendMark trend={cell.trend} />
     </Stack>
   );
@@ -84,10 +99,12 @@ interface ScenarioComparisonTableProps {
   isMobile: boolean;
   /** rule_id → metric_code of the current evaluation (for violation refs given by rule id). */
   ruleMetric?: Map<string, string>;
+  /** Privacy Mode (masks amounts in backend notes); defaults to the stored flag. */
+  privacy?: boolean;
 }
 
 /** «Attuale» vs scenarios: table on desktop, stacked cards on mobile. */
-export function ScenarioComparisonTable({ current, scenarios, isMobile, ruleMetric = new Map() }: ScenarioComparisonTableProps) {
+export function ScenarioComparisonTable({ current, scenarios, isMobile, ruleMetric = new Map(), privacy }: ScenarioComparisonTableProps) {
   const rows = rowsFor(current, scenarios);
   const names = scenarios.map((scenario, index) => scenario.label || `Scenario ${String.fromCharCode(65 + index)}`);
 
@@ -98,16 +115,21 @@ export function ScenarioComparisonTable({ current, scenarios, isMobile, ruleMetr
           <Card key={names[index]} withBorder radius="lg" padding="md">
             <Text fw={700} mb="xs">{names[index]}</Text>
             <Stack gap="xs">
-              {rows.map((row) => (
-                <div key={row.key}>
-                  <Text size="xs" c="dimmed">{`${row.group} · ${row.label}`}</Text>
-                  <Group gap={6} wrap="wrap" align="flex-start">
-                    <Text size="sm">{`Attuale: ${currentCell(row, current).text}`}</Text>
-                    <Text size="sm" aria-hidden="true">→</Text>
-                    <CellView cell={scenarioCell(row, current, scenario, ruleMetric)} />
-                  </Group>
-                </div>
-              ))}
+              {rows.map((row) => {
+                const now = currentCell(row, current, privacy);
+                const next = scenarioCell(row, current, scenario, ruleMetric, privacy);
+                return (
+                  <div key={row.key}>
+                    <Text size="xs" c="dimmed">{`${row.group} · ${row.label}`}</Text>
+                    <Group gap={6} wrap="wrap" align="flex-start">
+                      <Text size="sm">{`Attuale: ${now.text}`}</Text>
+                      <Text size="sm" aria-hidden="true">→</Text>
+                      <CellView cell={next} />
+                    </Group>
+                    {now.note && now.note !== next.note && <Text size="xs" c="dimmed">{`Attuale: ${now.note}`}</Text>}
+                  </div>
+                );
+              })}
             </Stack>
           </Card>
         ))}
@@ -133,9 +155,9 @@ export function ScenarioComparisonTable({ current, scenarios, isMobile, ruleMetr
                 <Text size="xs" c="dimmed">{row.group}</Text>
                 <Text size="sm" fw={500}>{row.label}</Text>
               </Table.Th>
-              <Table.Td><CellView cell={currentCell(row, current)} /></Table.Td>
+              <Table.Td><CellView cell={currentCell(row, current, privacy)} /></Table.Td>
               {scenarios.map((scenario, index) => (
-                <Table.Td key={names[index]}><CellView cell={scenarioCell(row, current, scenario, ruleMetric)} /></Table.Td>
+                <Table.Td key={names[index]}><CellView cell={scenarioCell(row, current, scenario, ruleMetric, privacy)} /></Table.Td>
               ))}
             </Table.Tr>
           ))}

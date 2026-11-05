@@ -140,10 +140,53 @@ def test_bounds_decisive_even_below_coverage():
     assert "almeno 65,0%" in failing.reason
 
 
-def test_coverage_above_minimum_uses_point_value_when_bounds_undecided():
+def test_point_estimate_never_decides_a_partially_classified_metric():
+    # PRD D04: coverage 70 >= minimum 60, point estimate 50 <= 60, but the
+    # unclassified share could bring USA to 65 -> UNKNOWN, never PASS.
     rule = _rule(metric_code="usa_exposure_pct", max_value=60.0, min_coverage_pct=60.0)
     result = _eval(rule, _metric("usa_exposure_pct", 50.0, lower=35.0, upper=65.0, coverage=70.0, quality="partial"))
-    assert result.status == "PASS"
+    assert result.status == "UNKNOWN"
+    assert "tra 35,0% e 65,0%" in result.reason
+
+
+def test_usa_known_50_unclassified_15_coverage_85_max_60_is_unknown():
+    rule = _rule(metric_code="usa_exposure_pct", max_value=60.0)  # min_coverage default 80
+    result = _eval(rule, _metric("usa_exposure_pct", 50 / 85 * 100, lower=50.0, upper=65.0, coverage=85.0, quality="partial"))
+    assert result.status == "UNKNOWN"
+    assert result.reason.startswith("Non possiamo verificare il limite USA")
+    assert "tra 50,0% e 65,0%" in result.reason
+    assert "copertura insufficiente" not in result.reason
+
+
+@pytest.mark.parametrize("operator, values", [("min", {"min_value": 40.0, "max_value": None}),
+                                              ("range", {"min_value": 40.0, "max_value": 60.0})])
+def test_point_estimate_never_decides_min_and_range(operator, values):
+    rule = _rule(metric_code="usa_exposure_pct", operator=operator, **values)
+    # estimate 58.8 inside the limits, bounds 50-65 undecided for the range, 35-... for min.
+    metric = _metric("usa_exposure_pct", 45.0, lower=35.0, upper=65.0, coverage=85.0, quality="partial")
+    assert _eval(rule, metric).status == "UNKNOWN"
+
+
+def _ter(value, lower, coverage):
+    return MetricValue(
+        code="weighted_ter_pct", value=value, lower=lower, upper=None, coverage_pct=coverage, quality="partial",
+        source="t", denominator="t", denominator_value=1.0,
+    )
+
+
+def test_ter_covered_value_decides_only_above_min_coverage():
+    rule = _rule(metric_code="weighted_ter_pct", max_value=0.3, warning_margin=0)
+    passing = _eval(rule, _ter(0.2, 0.184, 92.0))
+    assert passing.status == "PASS"
+    assert passing.quality == "partial"
+    assert "su 92% del portafoglio coperto" in passing.reason
+    failing = _eval(rule, _ter(0.35, 0.28, 80.0))
+    assert failing.status == "FAIL"
+    assert failing.quality == "partial"
+    assert "su 80% del portafoglio coperto" in failing.reason
+    below = _eval(rule, _ter(0.2, 0.12, 60.0))
+    assert below.status == "UNKNOWN"
+    assert "copertura insufficiente" in below.reason
 
 
 def test_coverage_below_minimum_and_bounds_undecided_is_unknown():

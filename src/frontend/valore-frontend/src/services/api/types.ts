@@ -1520,8 +1520,10 @@ export interface DoctorPolicyRule {
   precision: number;
   severity: DoctorPolicySeverity;
   warning_margin: number;
-  min_coverage_pct: number;
-  max_data_age_days: number;
+  /** null in a draft = backend default (80). */
+  min_coverage_pct: number | null;
+  /** null in a draft = backend default (5). */
+  max_data_age_days: number | null;
   enabled: boolean;
   label?: string | null;
 }
@@ -1702,6 +1704,7 @@ export interface DoctorScenarioConstraints {
   no_sell: boolean;
   max_turnover_pct: number | null;
   keep_equity_total: boolean;
+  use_cash_balance?: boolean;
 }
 
 export interface DoctorScenarioInput {
@@ -1743,30 +1746,82 @@ export interface DoctorMetricValue {
   notes?: string[];
 }
 
+/** Post-scenario volatility is never estimated by the MVP: always `not_available` with a reason. */
+export interface DoctorScenarioVolatility {
+  value: number | null;
+  status: 'not_available' | string;
+  reason: string | null;
+}
+
 export interface DoctorScenarioSide {
+  invested_value: number | null;
+  cash_value: number | null;
+  total_value: number | null;
   metrics: Record<string, DoctorMetricValue> | DoctorMetricValue[];
+  evaluation_status: 'ready' | 'no_policy' | 'empty_portfolio';
   evaluation_summary: DoctorEvaluationSummary | null;
+  rule_results: DoctorRuleResult[];
+  volatility: DoctorScenarioVolatility | null;
 }
 
 export interface DoctorScenarioChange {
   asset_id: number | null;
   symbol: string | null;
+  name?: string | null;
+  isin?: string | null;
+  asset_class?: string | null;
+  action?: 'buy' | 'sell' | 'hold';
   before_value: number | null;
   after_value: number | null;
+  delta_value: number | null;
   before_weight: number | null;
   after_weight: number | null;
-  delta_value: number | null;
+  delta_weight?: number | null;
+  fees?: number | null;
 }
 
-/** A rule touched by the scenario: the backend may send the rule id or an object. */
+/** A rule touched by the scenario (§8.1 `RuleChange`); a bare rule id is still tolerated. */
 export type DoctorScenarioViolationRef =
   | string
-  | { rule_id?: string | null; metric_code?: string | null; label?: string | null; reason?: string | null };
+  | {
+    rule_id?: string | null;
+    metric_code?: string | null;
+    label?: string | null;
+    reason?: string | null;
+    before_status?: string | null;
+    after_status?: string | null;
+    before_actual?: number | null;
+    after_actual?: number | null;
+  };
+
+/** Hypothetical costs of a scenario: an object, never a bare number. */
+export interface DoctorScenarioCosts {
+  total: number | null;
+  variable: number | null;
+  fixed: number | null;
+  operations: number | null;
+  fee_model: { pct: number; fixed: number } | null;
+}
+
+export type DoctorScenarioInfeasibleCode =
+  | 'insufficient_cash'
+  | 'no_sell'
+  | 'impossible_without_sell'
+  | 'oversell'
+  | 'capacity_exceeded'
+  | 'keep_equity_total'
+  | 'turnover_exceeded'
+  | 'empty_portfolio';
 
 export interface DoctorScenarioResult {
   label?: string | null;
+  mode: DoctorScenarioMode;
   feasible: boolean;
+  infeasible_code: DoctorScenarioInfeasibleCode | string | null;
   infeasible_reason: string | null;
+  scope: DoctorPolicyScope;
+  policy_id: number | null;
+  policy_version: number | null;
   before: DoctorScenarioSide;
   after: DoctorScenarioSide | null;
   changes: DoctorScenarioChange[];
@@ -1777,16 +1832,42 @@ export interface DoctorScenarioResult {
   total_before: number | null;
   total_after: number | null;
   cash_in: number | null;
-  costs: number | null;
+  costs: DoctorScenarioCosts | null;
+  turnover_pct: number | null;
   methodology_version: string;
   snapshot_id: string;
   data_quality: DoctorDataQuality | null;
+  calculated_at: string;
+  tax_model: 'none';
   disclaimer: string;
 }
 
+/** One row of the comparison ranking: `costs` is the total cost (a number) here. */
+export interface DoctorScenarioRankItem {
+  index: number;
+  label: string | null;
+  rank: number;
+  feasible: boolean;
+  failed_after: number | null;
+  unknown_after: number | null;
+  violations_resolved: number;
+  violations_new: number;
+  costs: number | null;
+  cash_in: number | null;
+  turnover_pct: number | null;
+}
+
 export interface DoctorScenarioCompareResponse {
+  scope?: DoctorPolicyScope;
+  policy_id?: number | null;
+  policy_version?: number | null;
+  calculated_at?: string;
+  data_quality?: DoctorDataQuality | null;
   current?: DoctorScenarioSide | null;
   scenarios: DoctorScenarioResult[];
+  ranking?: DoctorScenarioRankItem[];
+  best_index?: number | null;
+  explanation?: string | null;
   snapshot_id?: string | null;
   methodology_version?: string | null;
   disclaimer?: string | null;

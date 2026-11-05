@@ -11,7 +11,7 @@ import { DoctorPolicyRuleEditor } from './DoctorPolicyRuleEditor';
 import { PolicyEvidenceDrawer } from './PolicyEvidenceDrawer';
 import { PolicyVersionHistory } from './PolicyVersionHistory';
 import { PolicyDraftCard, parsePolicyDraft } from './PolicyDraftCard';
-import { formatComplianceSummary, formatMoney, formatPctValue, isDoctorPrivacyMode } from './policyFormat';
+import { formatComplianceSummary, formatMoney, formatPctValue, isDoctorPrivacyMode, maskMoneyInText } from './policyFormat';
 import { METRICS, errorResponse, evaluation, policyRead, preview, ruleResult } from './testFixtures';
 
 function wrap(ui: ReactNode) {
@@ -312,5 +312,139 @@ describe('PolicyDraftCard (Copilot)', () => {
     expect(screen.getByText('Annullata')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Conferma e salva' })).not.toBeInTheDocument();
     expect(api.writes()).toEqual([]);
+  });
+});
+
+describe('Privacy Mode in backend free text (review fix)', () => {
+  const handlers = { onClose: () => {}, onExplain: vi.fn(), onSimulate: vi.fn(), onEdit: vi.fn() };
+
+  it('maskMoneyInText masks € / EUR amounts and keeps percentages', () => {
+    const text = 'Servono 227.029 € (€ 10.000 + 1.500,50 EUR + EUR 41000 + 10 euro + 41.000,00\u00a0€); peso 46,6% oltre il 35%.';
+    expect(maskMoneyInText(text, true)).toBe('Servono ****** (****** + ****** + ****** + ****** + ******); peso 46,6% oltre il 35%.');
+    expect(maskMoneyInText(text, false)).toBe(text);
+    expect(maskMoneyInText(null, true)).toBeNull();
+    expect(maskMoneyInText('Nessun importo: 3 regole, 46,6%', true)).toBe('Nessun importo: 3 regole, 46,6%');
+    // Without an explicit flag it follows the stored Privacy Mode.
+    expect(maskMoneyInText('Vale 5.000 €')).toBe('Vale 5.000 €');
+    window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, 'true');
+    expect(maskMoneyInText('Vale 5.000 €')).toBe('Vale ******');
+  });
+
+  it('masks € amounts in the rule reason of the summary card and of the rule cards', () => {
+    window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, 'true');
+    const value = evaluation({ results: [ruleResult({ reason: 'VWRA 46,6% (58.250 €) supera il tuo limite 35%' })] });
+    const { unmount } = wrap(
+      <DoctorPolicySummaryCard isLoading={false} error={null} isAggregate={false} scopeLabel="Core" onOpenParametri={() => {}} evaluation={value} />,
+    );
+    expect(screen.getByText('VWRA 46,6% (******) supera il tuo limite 35%')).toBeInTheDocument();
+    unmount();
+    wrap(<DoctorPolicyRulesList evaluation={value} metrics={METRICS} onSelect={() => {}} />);
+    expect(within(screen.getByTestId('rule-card-max-single')).getByText('VWRA 46,6% (******) supera il tuo limite 35%')).toBeInTheDocument();
+    expect(screen.queryByText(/58\.250/)).not.toBeInTheDocument();
+  });
+
+  it('masks € amounts in the evidence reason and notes', () => {
+    const rule = ruleResult({
+      reason: 'Posizione da 58.250 € oltre il 35%',
+      evidence: { ...ruleResult().evidence, notes: ['Denominatore 125.000 € (escluso cash)', 'Copertura 100%'] },
+    });
+    wrap(<PolicyEvidenceDrawer rule={rule} metrics={METRICS} privacy currency="EUR" isMobile={false} canExplain canSimulate {...handlers} />);
+    expect(screen.getByText('Posizione da ****** oltre il 35%')).toBeInTheDocument();
+    expect(screen.getByText('Denominatore ****** (escluso cash)')).toBeInTheDocument();
+    expect(screen.getByText('Copertura 100%')).toBeInTheDocument();
+    expect(screen.queryByText(/58\.250|125\.000/)).not.toBeInTheDocument();
+  });
+
+  it('masks € amounts in the Copilot draft card messages', () => {
+    window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, 'true');
+    installFetchMock([]);
+    const invalid = preview({ valid: false, confirmation_token: null, field_errors: [{ field: 'rules', code: 'infeasible', message: 'Servirebbero 10.000 € di liquidità' }] });
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: invalid }} />);
+    expect(screen.getByText('Servirebbero ****** di liquidità')).toBeInTheDocument();
+  });
+});
+
+describe('policy name on save (review fix)', () => {
+  const baseProps = {
+    onClose: () => {}, portfolioIds: [1], scopeLabel: 'Portafoglio Core', metrics: METRICS, templates: [], onReload: vi.fn(), isMobile: false,
+  };
+  const savedBody = (fetchMock: ReturnType<typeof vi.fn>) => {
+    const call = fetchMock.mock.calls.find(([url, init]) => /\/doctor\/policies$/.test(String(url)) && (init as RequestInit)?.method === 'POST');
+    return call ? JSON.parse(String((call[1] as RequestInit).body)) : null;
+  };
+
+  it('the Copilot draft sends name null when it has none (keeps the existing name)', async () => {
+    const onSaved = vi.fn();
+    installFetchMock([], (request) => (request.path === '/doctor/policies' ? policyRead({ name: 'Pensione', current_version: 4 }) : undefined));
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview() }} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Conferma e salva' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(savedBody(fetchMock).name).toBeNull();
+  });
+
+  it('the Copilot draft sends its own name when it provides one', async () => {
+    const onSaved = vi.fn();
+    installFetchMock([], (request) => (request.path === '/doctor/policies' ? policyRead({ current_version: 4 }) : undefined));
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<PolicyDraftCard draft={{ portfolio_ids: [1], preview: preview(), name: '  Prudente ' }} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Conferma e salva' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    expect(savedBody(fetchMock).name).toBe('Prudente');
+  });
+
+  async function saveFromEditor(policy: ReturnType<typeof policyRead>, nameInput: string) {
+    const onSaved = vi.fn();
+    installFetchMock([], (request) => {
+      if (request.path === '/doctor/policies/validate') return { valid: true, field_errors: [], normalized_document: preview().normalized_document };
+      if (request.path === '/doctor/policies/preview') return preview();
+      if (request.path === '/doctor/policies' && request.method === 'POST') return policyRead({ current_version: 4 });
+      return undefined;
+    });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(<DoctorPolicyRuleEditor {...baseProps} policy={policy} onSaved={onSaved} />);
+    fireEvent.change(screen.getByLabelText('Nome'), { target: { value: nameInput } });
+    fireEvent.click(screen.getByRole('button', { name: 'Verifica e anteprima' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Conferma e salva' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    return savedBody(fetchMock);
+  }
+
+  it('the manual editor keeps the current name of an existing policy', async () => {
+    expect((await saveFromEditor(policyRead({ name: 'Pensione' }), 'Pensione')).name).toBe('Pensione');
+  });
+
+  it('the manual editor sends null (never a default) when the name of an existing policy is cleared', async () => {
+    expect((await saveFromEditor(policyRead({ name: 'Pensione' }), '   ')).name).toBeNull();
+  });
+});
+
+describe('optional rule fields left empty (review fix)', () => {
+  it('clearing «Copertura minima» and «Età massima quote» keeps null (backend default), never 0', async () => {
+    installFetchMock([], (request) => {
+      if (request.path === '/doctor/policies/validate') {
+        return { valid: false, field_errors: [{ field: 'rules[0].max_value', code: 'out_of_range', message: 'stop' }], normalized_document: null };
+      }
+      return undefined;
+    });
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    wrap(
+      <DoctorPolicyRuleEditor
+        onClose={() => {}} portfolioIds={[1]} scopeLabel="Core" metrics={METRICS} templates={[]} onReload={vi.fn()} isMobile={false}
+        policy={policyRead()} onSaved={vi.fn()}
+      />,
+    );
+    const coverage = screen.getByLabelText('Copertura minima (%)');
+    const age = screen.getByLabelText('Età massima quote (giorni)');
+    fireEvent.change(coverage, { target: { value: '' } });
+    fireEvent.change(age, { target: { value: '' } });
+    expect(coverage).toHaveValue('');
+    expect(age).toHaveValue('');
+    expect(coverage).toHaveAttribute('placeholder', 'Predefinita (80%)');
+    fireEvent.click(screen.getByRole('button', { name: 'Verifica e anteprima' }));
+    await screen.findByText('stop');
+    const rule = bodyOf(fetchMock, '/doctor/policies/validate').document.rules[0];
+    expect(rule.min_coverage_pct).toBeNull();
+    expect(rule.max_data_age_days).toBeNull();
   });
 });

@@ -118,6 +118,9 @@ Ogni metrica produce un `MetricValue`: `value` (stima puntuale non arrotondata),
   altrimenti `lower = Σ (peso_i × TER_i) / 100` (TER mancanti ≥ 0) e
   `upper = None` (nessun limite superiore noto). Un limite max può quindi
   fallire anche con copertura bassa se perfino il bound inferiore lo supera.
+  Con copertura ≥ `min_coverage_pct` la regola è decisa sul valore
+  dell'universo coperto (`quality = partial`, copertura nel testo: «su 92% del
+  portafoglio coperto»); sotto, solo il bound inferiore può decidere (FAIL).
 - Nessun TER noto → `missing`. Golden: TER coperto 60%, `min_coverage_pct`
   80 → **UNKNOWN**.
 
@@ -162,9 +165,23 @@ Per una regola attiva, in ordine:
    `FAIL` se `upper < min`; `range` → `FAIL` se un lato fallisce, `PASS` se
    entrambi passano. Un bound mancante è illimitato. Vale anche sotto la
    copertura minima (il risultato è certo).
-5. Bounds non decisivi ma `coverage ≥ min_coverage_pct` → stato del valore
-   puntuale.
-6. Altrimenti `UNKNOWN` «copertura insufficiente», con copertura e intervallo.
+5. Solo per una metrica **senza upper bound** (TER con copertura parziale):
+   bounds non decisivi e `coverage ≥ min_coverage_pct` → stato del valore
+   sull'universo coperto, con `quality = "partial"` e la copertura nel testo
+   («TER medio ponderato 0,20% su 92% del portafoglio coperto: entro…»).
+6. Altrimenti `UNKNOWN`. Per una metrica con quota non classificata
+   (`lower ≠ upper`: asset class, USA) il **valore puntuale non decide mai**,
+   qualunque sia la copertura («mai verde automatico su dati sconosciuti»):
+   il testo riporta l'intervallo «tra X% e Y%»; sotto `min_coverage_pct` il
+   testo è «copertura insufficiente (classificato il …, minimo richiesto …;
+   valore tra X% e Y%)». `min_coverage_pct` è quindi un cancello: sotto la
+   soglia solo i bounds possono decidere; sopra, decidono comunque solo i
+   bounds (salvo il TER, punto 5).
+
+Esempio: USA nota 50 + non classificata 15 (coverage 85 ≥ 80), limite max 60
+→ intervallo 50–65 non decisivo → **UNKNOWN** «… valore tra 50,0% e 65,0%
+(quota non classificata 15,0% del valore investito)», anche se la stima
+puntuale (58,8%) sarebbe sotto il limite.
 
 `breach_amount` (solo `FAIL`) = punti percentuali oltre la soglia violata,
 calcolato sul valore prudenziale (`lower` per un massimo, `upper` per un
@@ -212,7 +229,7 @@ normalizzato (`35` e `35.0` danno lo stesso hash).
 | D01 | TER: solo OCF/TER dei prodotti o anche fee consulenziali/trading? | `weighted_ter_pct` misura **solo** OCF/TER dei prodotti, con perimetro e coverage dichiarati; fee di consulenza/trading sono fuori MVP e saranno metriche separate | metriche separate con perimetro esplicito evitano di mischiare costi ricorrenti di prodotto e costi operativi |
 | D02 | Escludere il cash dai pesi asset class? | Cash (saldo e posizioni `cash`) escluso da tutti i denominatori; il cash non è una metrica MVP (sarà metrica distinta) | i limiti riguardano la parte investita; la liquidità in attesa non deve diluire i pesi |
 | D03 | Concentrazione per simbolo, ISIN o emittente? | Security canonica (ISIN, fallback asset_id) aggregata fra listing e portafogli; overlap ETF misura separata | lo stesso ETF su due borse è un unico rischio; l'overlap fra fondi diversi non è concentrazione |
-| D04 | Quanta copertura X-Ray serve per PASS di geografia/settore? | Politica per metrica (`min_coverage_pct`, default 80) **più** bounds conservativi: PASS se `upper ≤ max`, FAIL se `lower > max`, altrimenti UNKNOWN; sotto la copertura minima solo i bounds possono decidere | non dichiarare rispettato un limite che la parte non classificata potrebbe violare |
+| D04 | Quanta copertura X-Ray serve per PASS di geografia/settore? | Bounds conservativi: PASS se `upper ≤ max`, FAIL se `lower > max`, altrimenti UNKNOWN (con «tra X% e Y%»); la stima puntuale non decide mai una metrica con quota non classificata. `min_coverage_pct` (default 80) è un cancello: sotto la soglia UNKNOWN salvo bounds decisivi. Eccezione TER (nessun upper bound): PASS/FAIL sull'universo coperto solo con coverage ≥ minimo, `quality = partial` e copertura nel testo; FAIL anche se il solo lower bound supera il limite | non dichiarare rispettato un limite che la parte non classificata potrebbe violare |
 | D05 | Scope aggregato: fingerprint di ID o gruppo salvato? | MVP: fingerprint normalizzato `p:<id ordinati>` + nome leggibile; proprietà di tutti i membri verificata a ogni lettura/scrittura | semplice, deterministico, invariante all'ordine; nessuna fusione con le policy singole |
 | D06 | Quale modello di volatilità per le policy? | Nessuna metrica di volatilità nell'MVP; quando arriverà avrà definizione unica e versionata, separata da Health e Stress. Nel Lab la volatilità post-scenario è `N/D` motivato | evitare di mischiare modelli diversi sotto lo stesso nome |
 | D07 | Fiscalità negli scenari? | MVP lordo (`tax_model: "none"`) con caveat esplicito; nessuna simulazione fiscale senza regole validate | evitare falsa precisione |

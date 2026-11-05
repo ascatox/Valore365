@@ -192,6 +192,27 @@ def test_invalid_bodies_are_400(env, body):
     assert r.json()["error"]["code"] == "invalid_request"
 
 
+@pytest.mark.parametrize("key", ["²", "١", "1²", "9" * 30, "9" * 41, ""])
+def test_unusual_target_weight_keys_are_400_field_errors(env, key):
+    body = {**GOLDEN, "mode": "rebalance", "target_weights": {key: 10}}
+    r = env.client.post("/api/doctor/scenarios/preview", json=body)
+    assert r.status_code == 400, r.text
+    error = r.json()["error"]
+    assert error["code"] == "invalid_request"
+    assert error["details"]["field_errors"][0]["field"].startswith("target_weights")
+
+
+@pytest.mark.parametrize("value", [2_147_483_648, -1])
+def test_policy_version_outside_int4_is_400(env, value):
+    r = env.client.post("/api/doctor/scenarios/preview", json={**GOLDEN, "policy_version": value})
+    assert r.status_code == 400, r.text
+    r = env.client.post("/api/doctor/scenarios/compare", json={
+        "portfolio_ids": [1], "policy_version": value,
+        "scenarios": [{"mode": "new_cash_only"}, {"mode": "new_cash_only", "new_cash": 10}],
+    })
+    assert r.status_code == 400, r.text
+
+
 def test_compare_over_rest(env):
     r = env.client.post("/api/doctor/scenarios/compare", json={
         "portfolio_ids": [1],

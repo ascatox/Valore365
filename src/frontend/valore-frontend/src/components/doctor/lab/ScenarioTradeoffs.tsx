@@ -1,6 +1,6 @@
 import { Box, Stack, Table, Text } from '@mantine/core';
 import type { DoctorScenarioResult } from '../../../services/api/types';
-import { formatMoney, formatPctValue, NOT_AVAILABLE } from '../policy/policyFormat';
+import { formatMoney, formatPctValue, maskMoneyInText, NOT_AVAILABLE } from '../policy/policyFormat';
 import { violationKey } from './labFormat';
 
 interface ScenarioTradeoffsProps {
@@ -26,19 +26,19 @@ export function ScenarioTradeoffs({ result, currency, privacy, isAggregate, isMo
       {result.violations_resolved?.length > 0 && (
         <Box>
           <Text size="sm" fw={700}>Regole che tornerebbero rispettate</Text>
-          {result.violations_resolved.map((ref, index) => <Text key={index} size="sm">{`✓ ${refLabel(ref, ruleNames)}`}</Text>)}
+          {result.violations_resolved.map((ref, index) => <Text key={index} size="sm">{`✓ ${maskMoneyInText(refLabel(ref, ruleNames), privacy)}`}</Text>)}
         </Box>
       )}
       {result.violations_new?.length > 0 && (
         <Box>
           <Text size="sm" fw={700} c="red.8">Nuove violazioni</Text>
-          {result.violations_new.map((ref, index) => <Text key={index} size="sm">{`✗ ${refLabel(ref, ruleNames)}`}</Text>)}
+          {result.violations_new.map((ref, index) => <Text key={index} size="sm">{`✗ ${maskMoneyInText(refLabel(ref, ruleNames), privacy)}`}</Text>)}
         </Box>
       )}
       {result.warnings?.length > 0 && (
         <Box>
           <Text size="sm" fw={700}>Avvertenze</Text>
-          {result.warnings.map((warning) => <Text key={warning} size="sm">{warning}</Text>)}
+          {result.warnings.map((warning, index) => <Text key={index} size="sm">{maskMoneyInText(warning, privacy)}</Text>)}
         </Box>
       )}
       {result.changes?.length > 0 && (

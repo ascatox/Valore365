@@ -231,3 +231,28 @@ def test_templates_are_valid_illustrative_and_versioned():
         assert t["template_version"]
         assert validate_policy_document(t["document"]) == []
     assert templates[-1]["document"]["rules"] == []
+
+
+# -- hardening: huge integers, rule_id anchoring ----------------------------------
+
+
+@pytest.mark.parametrize("field", ["max_value", "warning_margin", "min_coverage_pct"])
+@pytest.mark.parametrize("value", [10**400, -(10**400)], ids=["huge", "huge-negative"])
+def test_huge_integer_is_a_field_error_not_overflow(field, value):
+    errors = validate_policy_document({"schema_version": 1, "rules": [_rule(**{field: value})]})
+    assert (f"rules[0].{field}", "out_of_range") in _codes(errors)
+
+
+@pytest.mark.parametrize("rule_id", ["max-single\n", "max-single\r\n", "\nmax-single", "a" * 41])
+def test_rule_id_trailing_newline_is_rejected(rule_id):
+    errors = validate_policy_document({"schema_version": 1, "rules": [_rule(rule_id=rule_id)]})
+    assert ("rules[0].rule_id", "invalid_format") in _codes(errors)
+
+
+def test_rule_schema_pattern_rejects_trailing_newline():
+    from pydantic import ValidationError
+
+    from app.schemas.doctor_policy import PolicyRule
+
+    with pytest.raises(ValidationError):
+        PolicyRule.model_validate({**_rule(), "rule_id": "max-single\n", "unit": "pct"})

@@ -13,7 +13,7 @@ import type {
   DoctorScenarioSide,
 } from '../../../services/api/types';
 import type { PortfolioScope } from '../../../scope/portfolioScope';
-import { doctorErrorMessage, isDoctorErrorCode, ruleName, SCENARIO_DISCLAIMER } from '../policy/policyFormat';
+import { doctorErrorMessage, isDoctorErrorCode, maskMoneyInText, ruleName, SCENARIO_DISCLAIMER } from '../policy/policyFormat';
 import { emptyScenario, MAX_SCENARIOS } from './labFormat';
 import { ScenarioBuilder } from './ScenarioBuilder';
 import { ScenarioComparisonTable } from './ScenarioComparisonTable';
@@ -47,6 +47,8 @@ interface LabResults {
   snapshotId: string | null;
   methodologyVersion: string | null;
   disclaimer: string;
+  /** Backend explanation of the comparison (compare only). */
+  explanation: string | null;
 }
 
 const scenarioLetter = (index: number) => String.fromCharCode(65 + index);
@@ -85,6 +87,7 @@ export function DoctorLabSection({
           snapshotId: result.snapshot_id ?? null,
           methodologyVersion: result.methodology_version ?? null,
           disclaimer: result.disclaimer || SCENARIO_DISCLAIMER,
+          explanation: null,
         });
       } else {
         const response = await compareDoctorScenarios({ ...base, scenarios: labelled });
@@ -95,6 +98,7 @@ export function DoctorLabSection({
           snapshotId: response.snapshot_id ?? list[0]?.snapshot_id ?? null,
           methodologyVersion: response.methodology_version ?? list[0]?.methodology_version ?? null,
           disclaimer: response.disclaimer || list[0]?.disclaimer || SCENARIO_DISCLAIMER,
+          explanation: response.explanation || null,
         });
       }
     } catch (caught) {
@@ -146,7 +150,7 @@ export function DoctorLabSection({
             positions={positions}
             isAggregate={isAggregate}
             onRemove={scenarios.length > 1 ? () => setScenarios((current) => current.filter((_, position) => position !== index)) : undefined}
-            hint={index === 0 && prefill ? prefill.rule.reason : null}
+            hint={index === 0 && prefill ? maskMoneyInText(prefill.rule.reason, privacy) : null}
           />
         ))}
         <Group gap="xs">
@@ -175,7 +179,10 @@ export function DoctorLabSection({
             {results.scenarios.map((result, index) => (
               <ScenarioFeasibilitySummary key={`${result.label}-${index}`} result={result} currency={currency} privacy={privacy} />
             ))}
-            <ScenarioComparisonTable current={results.current} scenarios={results.scenarios} isMobile={isMobile} ruleMetric={ruleMetric} />
+            <ScenarioComparisonTable current={results.current} scenarios={results.scenarios} isMobile={isMobile} ruleMetric={ruleMetric} privacy={privacy} />
+            {results.explanation && (
+              <Text size="sm" data-testid="lab-explanation">{maskMoneyInText(results.explanation, privacy)}</Text>
+            )}
             {results.scenarios.map((result, index) => (
               <Stack key={`tradeoffs-${index}`} gap={4}>
                 <Divider label={result.label || `Scenario ${scenarioLetter(index)}`} labelPosition="left" />

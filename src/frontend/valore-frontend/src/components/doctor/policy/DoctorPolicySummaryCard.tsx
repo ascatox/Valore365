@@ -1,7 +1,7 @@
 import { Alert, Badge, Button, Card, Group, Loader, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { IconAdjustmentsCheck, IconAlertTriangle, IconClockExclamation, IconStack2 } from '@tabler/icons-react';
 import type { DoctorPolicyEvaluation } from '../../../services/api/types';
-import { doctorErrorMessage, formatComplianceSummary, formatNearLimit, isEvaluation } from './policyFormat';
+import { doctorErrorMessage, formatComplianceSummary, formatNearLimit, isEvaluation, maskMoneyInText } from './policyFormat';
 
 interface DoctorPolicySummaryCardProps {
   evaluation: DoctorPolicyEvaluation | null | undefined;
@@ -52,7 +52,7 @@ export function DoctorPolicySummaryCard({ evaluation, isLoading, error, isAggreg
       <Stack gap={6} data-state="ready">
         <Text fw={800} size="lg" data-testid="policy-summary-text">{formatComplianceSummary(valid.summary)}</Text>
         {nearLimit && <Text size="sm" c="dimmed">{nearLimit}</Text>}
-        {firstFail && <Text size="sm">{firstFail.reason}</Text>}
+        {firstFail && <Text size="sm">{maskMoneyInText(firstFail.reason)}</Text>}
         {stale && (
           <Badge color="orange" variant="light" leftSection={<IconClockExclamation size={12} aria-hidden="true" />} w="fit-content">
             Quotazioni non aggiornate: alcune regole non sono verificabili

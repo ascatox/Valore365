@@ -12,8 +12,11 @@ Order of the checks for an enabled rule:
 3. metric not available -> UNKNOWN;
 4. conservative bounds decisive (max: upper <= max PASS, lower > max FAIL;
    min symmetric; range both) -> that status, whatever the coverage;
-5. coverage >= ``min_coverage_pct`` -> status of the point value;
-6. otherwise UNKNOWN (insufficient coverage).
+5. only for a metric without upper bound (partial TER) and coverage >=
+   ``min_coverage_pct`` -> status of the covered-universe value (quality
+   ``partial``, coverage in the reason);
+6. otherwise UNKNOWN: the point estimate of a partially classified metric is
+   never used (PRD D04, "mai verde automatico su dati sconosciuti").
 
 The reasons describe the user's own rule; they never say whether an
 investment is suitable or advisable.
@@ -232,8 +235,13 @@ def evaluate_rule(
         "evidence": _evidence(metric, rule, snapshot, calculated_at),
     }
 
-    def result(status: str, reason: str, *, near: bool = False, breach: float | None = None) -> RuleResult:
-        return RuleResult(**base, status=status, reason=reason, near_limit=near, breach_amount=breach)
+    def result(
+        status: str, reason: str, *, near: bool = False, breach: float | None = None, quality: str | None = None,
+    ) -> RuleResult:
+        fields = dict(base)
+        if quality is not None:
+            fields["quality"] = quality
+        return RuleResult(**fields, status=status, reason=reason, near_limit=near, breach_amount=breach)
 
     if not rule.get("enabled", True):
         return result("INACTIVE", "Regola disattivata: non viene verificata.")
@@ -253,29 +261,49 @@ def evaluate_rule(
     if metric is None or metric.quality == "missing" and metric.lower is None and metric.upper is None:
         return result("UNKNOWN", _cannot_verify(rule, "dati non disponibili"))
 
+    # PRD D04: with an unclassified/unknown share only the conservative bounds
+    # decide (PASS if the upper bound respects the limit, FAIL if the lower
+    # bound violates it); the point estimate on the classified part is never
+    # used, whatever the coverage. ``min_coverage_pct`` is a gate: below it a
+    # result the bounds do not decide is UNKNOWN. The only metric without a
+    # meaningful upper bound (TER, ``upper = None`` at partial coverage) may be
+    # decided on the covered universe, and only when coverage >= minimum.
+    coverage = metric.coverage_pct if metric.coverage_pct is not None else 0.0
+    min_coverage = float(rule["min_coverage_pct"])
+    coverage_ok = _ge(coverage, min_coverage)
+    interval = metric.lower is not None and metric.upper is not None and metric.upper - metric.lower > EPSILON
+    open_upper = metric.lower is not None and metric.upper is None
     lower = metric.lower if metric.lower is not None else metric.value
     upper = metric.upper if metric.upper is not None else (metric.value if metric.lower is None else None)
     decided_by = "bounds"
     status = _status_for_interval(rule, lower, upper)
-    coverage = metric.coverage_pct if metric.coverage_pct is not None else 0.0
+    if status is None and open_upper and metric.value is not None and coverage_ok:
+        status = _status_for_interval(rule, metric.value, metric.value)
+        lower = upper = metric.value
+        decided_by = "covered"
     if status is None:
-        if metric.value is not None and _ge(coverage, float(rule["min_coverage_pct"])):
-            status = _status_for_interval(rule, metric.value, metric.value)
-            lower = upper = metric.value
-            decided_by = "value"
+        if interval:
+            range_text = f"valore tra {_value_text(metric.lower, precision)} e {_value_text(metric.upper, precision)}"
+        elif metric.lower is not None:
+            range_text = f"valore di almeno {_value_text(metric.lower, precision)}, nessun limite superiore noto"
         else:
+            range_text = "valore non determinabile"
+        if not coverage_ok:
             detail = (
                 f"classificato il {format_it(coverage, 1)}% del valore, minimo richiesto "
-                f"{format_threshold_it(float(rule['min_coverage_pct']))}%"
+                f"{format_threshold_it(min_coverage)}%; {range_text}"
             )
-            if metric.lower is not None and metric.upper is not None:
-                detail += (
-                    f"; stima fra {_value_text(metric.lower, precision)} e "
-                    f"{_value_text(metric.upper, precision)}"
-                )
             return result("UNKNOWN", _cannot_verify(rule, f"copertura insufficiente ({detail})"))
+        return result("UNKNOWN", _cannot_verify(
+            rule,
+            f"{range_text} (quota non classificata {format_it(max(0.0, 100.0 - coverage), 1)}% "
+            f"del valore investito)",
+        ))
 
     subject = _subject(rule, metric, label)
+    covered = decided_by == "covered"
+    covered_text = f" su {format_threshold_it(round(coverage, 1))}% del portafoglio coperto" if covered else ""
+    quality = "partial" if covered else None
     partial = decided_by == "bounds" and metric.lower is not None and metric.upper is not None and (
         metric.upper - metric.lower > EPSILON
     )
@@ -284,7 +312,7 @@ def evaluate_rule(
         shown = lower if side == "max" else upper
         bounded = partial or (decided_by == "bounds" and (metric.upper is None or metric.lower is None))
         prefix = ("almeno " if side == "max" else "al massimo ") if bounded else ""
-        shown_text = f"{prefix}{_value_text(shown, precision)}"
+        shown_text = f"{prefix}{_value_text(shown, precision)}{covered_text}"
         if rule["operator"] == "range":
             verb = "sopra il massimo" if side == "max" else "sotto il minimo"
             reason = (
@@ -296,19 +324,20 @@ def evaluate_rule(
             reason = f"{subject} {shown_text}: supera {_limit_text(rule)} di {format_it(breach, precision)} {PP}"
         else:
             reason = f"{subject} {shown_text}: sotto {_limit_text(rule)} di {format_it(breach, precision)} {PP}"
-        return result("FAIL", reason, breach=breach)
+        return result("FAIL", reason, breach=breach, quality=quality)
 
     distance = _distance_to_limit(rule, lower, upper)
     margin = float(rule.get("warning_margin") or 0.0)
     near = margin > 0 and distance <= margin + EPSILON
     if partial:
-        value_part = f"fra {_value_text(lower, precision)} e {_value_text(upper, precision)}"
+        value_part = f"tra {_value_text(lower, precision)} e {_value_text(upper, precision)}"
     else:
         value_part = _value_text(metric.value if decided_by == "bounds" and metric.value is not None else lower, precision)
+        value_part += covered_text
     reason = f"{subject} {value_part}: entro {_limit_text(rule)}"
     if near:
         reason += f", a {format_it(max(0.0, distance), precision)} {PP} dalla soglia"
-    return result("PASS", reason, near=near)
+    return result("PASS", reason, near=near, quality=quality)
 
 
 def _order_key(item: tuple[int, RuleResult]) -> tuple:

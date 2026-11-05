@@ -1,7 +1,7 @@
 import { Alert, Group, SimpleGrid, Stack, Text } from '@mantine/core';
 import { IconCircleCheck, IconCircleX } from '@tabler/icons-react';
 import type { DoctorScenarioResult } from '../../../services/api/types';
-import { formatMoney } from '../policy/policyFormat';
+import { formatMoney, maskMoneyInText } from '../policy/policyFormat';
 
 function Amount({ label, value, currency, privacy }: { label: string; value: number | null | undefined; currency: string; privacy: boolean }) {
   return (
@@ -23,7 +23,7 @@ export function ScenarioFeasibilitySummary({ result, currency, privacy }: { resu
         </Alert>
       ) : (
         <Alert color="red" variant="light" icon={<IconCircleX size={18} />} title={`${title}: non fattibile`}>
-          <Text size="sm">{result.infeasible_reason || 'Lo scenario non rispetta i vincoli indicati.'}</Text>
+          <Text size="sm">{maskMoneyInText(result.infeasible_reason, privacy) || 'Lo scenario non rispetta i vincoli indicati.'}</Text>
         </Alert>
       )}
       {result.required_new_cash != null && (
@@ -36,7 +36,7 @@ export function ScenarioFeasibilitySummary({ result, currency, privacy }: { resu
         <Amount label="Valore prima" value={result.total_before} currency={currency} privacy={privacy} />
         <Amount label="Valore dopo" value={result.total_after} currency={currency} privacy={privacy} />
         <Amount label="Liquidità aggiunta" value={result.cash_in} currency={currency} privacy={privacy} />
-        <Amount label="Costi ipotetici" value={result.costs} currency={currency} privacy={privacy} />
+        <Amount label="Costi ipotetici" value={result.costs?.total ?? null} currency={currency} privacy={privacy} />
       </SimpleGrid>
     </Stack>
   );

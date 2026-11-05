@@ -2,7 +2,7 @@ import { Alert, Card, Group, SimpleGrid, Stack, Text, UnstyledButton } from '@ma
 import { IconChevronRight } from '@tabler/icons-react';
 import type { DoctorMetricDefinition, DoctorPolicyEvaluation, DoctorRuleResult } from '../../../services/api/types';
 import { QualityBadge, RuleStatusBadge } from './RuleStatusBadge';
-import { formatComplianceSummary, formatObserved, formatPctValue, formatPp, formatThreshold, ruleName, ruleStatusMeta, SEVERITY_LABELS } from './policyFormat';
+import { formatComplianceSummary, formatObserved, formatPctValue, formatPp, formatThreshold, maskMoneyInText, ruleName, ruleStatusMeta, SEVERITY_LABELS } from './policyFormat';
 
 export function PolicyRuleCard({ rule, metrics, onSelect }: { rule: DoctorRuleResult; metrics?: DoctorMetricDefinition[] | null; onSelect: (rule: DoctorRuleResult) => void }) {
   const name = ruleName(rule, metrics);
@@ -37,7 +37,7 @@ export function PolicyRuleCard({ rule, metrics, onSelect }: { rule: DoctorRuleRe
               <Text size="sm" fw={700}>{rule.breach_amount != null ? formatPp(rule.breach_amount, rule.precision) : '—'}</Text>
             </div>
           </SimpleGrid>
-          {rule.reason && <Text size="sm" c={rule.status === 'FAIL' ? 'red.8' : undefined}>{rule.reason}</Text>}
+          {rule.reason && <Text size="sm" c={rule.status === 'FAIL' ? 'red.8' : undefined}>{maskMoneyInText(rule.reason)}</Text>}
           <Group gap={6}>
             <Text size="xs" c="dimmed">{`Severità ${SEVERITY_LABELS[rule.severity] ?? rule.severity}`}</Text>
             {rule.coverage_pct != null && <Text size="xs" c="dimmed">{`· Copertura ${formatPctValue(rule.coverage_pct, 0)}`}</Text>}

@@ -121,7 +121,13 @@ addizionale (mai PASS automatico). Confronto su valori non arrotondati con
 Regola dei bounds (look-through parziale): per `max`: PASS se `upper ≤ max`, FAIL se
 `lower > max`, altrimenti UNKNOWN; per `min` simmetrico; per `range` combinazione.
 Dati stale (quote più vecchie di `max_data_age_days` o sync fallita) → UNKNOWN con
-`reason` esplicita, mai PASS. Coverage < `min_coverage_pct` e bounds non decisivi → UNKNOWN.
+`reason` esplicita, mai PASS. Con quota non classificata (`lower ≠ upper`: asset class, USA) decidono
+**solo** i bounds: se non decidono → UNKNOWN con l'intervallo «tra X% e Y%» nel `reason`, anche con
+coverage ≥ `min_coverage_pct` (la stima puntuale non viene mai usata). `min_coverage_pct` è un cancello:
+coverage < minimo e bounds non decisivi → UNKNOWN «copertura insufficiente». TER (nessun upper bound a
+copertura parziale): PASS/FAIL sul valore dell'universo coperto solo se coverage ≥ `min_coverage_pct`, con
+`quality = "partial"` e la copertura nel `reason` («su 92% del portafoglio coperto»); FAIL anche sotto la
+copertura minima se il solo `lower` supera il limite.
 Portafoglio vuoto → stato risposta `empty_portfolio`, regole `NOT_APPLICABLE`.
 Nessun documento → stato `no_policy`.
 

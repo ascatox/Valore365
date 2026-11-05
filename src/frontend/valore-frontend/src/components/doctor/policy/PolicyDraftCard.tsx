@@ -4,8 +4,7 @@ import { IconCheck, IconFileDescription } from '@tabler/icons-react';
 import { saveDoctorPolicy } from '../../../services/api/doctor';
 import type { DoctorPolicyDraftPayload, DoctorPolicyRead } from '../../../services/api/types';
 import { PolicyPreviewSummary, describeScope } from './PolicyPreviewSummary';
-import { DEFAULT_POLICY_NAME } from './DoctorPolicyRuleEditor';
-import { doctorErrorMessage } from './policyFormat';
+import { doctorErrorMessage, maskMoneyInText } from './policyFormat';
 
 /** Parses the `policy_draft` SSE content (JSON string or object); null when malformed. */
 export function parsePolicyDraft(content: unknown): DoctorPolicyDraftPayload | null {
@@ -45,7 +44,8 @@ export function PolicyDraftCard({ draft, onSaved }: { draft: DoctorPolicyDraftPa
     try {
       const saved = await saveDoctorPolicy({
         portfolioIds: draft.portfolio_ids,
-        name: draft.name?.trim() || DEFAULT_POLICY_NAME,
+        // No name in the draft → null: the backend keeps the existing policy name.
+        name: draft.name?.trim() || null,
         document: preview.normalized_document!,
         baseVersion: preview.base_version,
         confirmationToken: preview.confirmation_token!,
@@ -75,11 +75,11 @@ export function PolicyDraftCard({ draft, onSaved }: { draft: DoctorPolicyDraftPa
           <Alert color="red" variant="light">
             <Stack gap={2}>
               <Text size="sm">La bozza non è valida e non può essere salvata.</Text>
-              {(preview.field_errors ?? []).map((item) => <Text key={`${item.field}-${item.code}`} size="xs">{item.message}</Text>)}
+              {(preview.field_errors ?? []).map((item) => <Text key={`${item.field}-${item.code}`} size="xs">{maskMoneyInText(item.message)}</Text>)}
             </Stack>
           </Alert>
         )}
-        {error && <Alert color="red" variant="light">{error}</Alert>}
+        {error && <Alert color="red" variant="light">{maskMoneyInText(error)}</Alert>}
         {(state === 'pending' || state === 'saving') && (
           <Group gap="xs">
             <Button size="xs" onClick={handleConfirm} loading={state === 'saving'} disabled={!canConfirm}>Conferma e salva</Button>

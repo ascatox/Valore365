@@ -189,6 +189,19 @@ def test_usa_known_35_unknown_30_max_60_is_unknown():
     assert (result.actual_lower, result.actual_upper) == (pytest.approx(35.0), pytest.approx(65.0))
 
 
+def test_usa_known_50_unclassified_15_max_60_is_unknown_not_pass():
+    snap = _snap([
+        _h(1, "CSPX", "iShares Core S&P 500 UCITS ETF", "etf", 5000, "USD"),
+        _h(2, "MEUD", "Amundi Stoxx Europe 600 UCITS ETF", "etf", 3500, "EUR"),
+        _h(3, "ZZZF", "Fondo Alfa Accumulazione", "etf", 1500, "EUR"),
+    ])
+    m = compute_metrics(snap)["usa_exposure_pct"]
+    assert (m.lower, m.upper, m.coverage_pct) == (pytest.approx(50.0), pytest.approx(65.0), pytest.approx(85.0))
+    result = _one(_rule("usa", "usa_exposure_pct", max_value=60), snap)
+    assert result.status == "UNKNOWN"
+    assert "tra 50,0% e 65,0%" in result.reason
+
+
 def test_usa_uses_country_weights_from_repo_with_explicit_remainder():
     class Repo:
         def get_etf_enrichment_bulk(self, ids):

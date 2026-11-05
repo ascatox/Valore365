@@ -11,7 +11,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .doctor_policy import DataQuality, EvaluationSummary, MetricValueRead, PolicyScope, RuleResult
+from .doctor_policy import INT4_MAX, DataQuality, EvaluationSummary, MetricValueRead, PolicyScope, RuleResult
 
 MAX_OPERATIONS = 50
 MAX_TARGET_WEIGHTS = 50
@@ -24,6 +24,8 @@ ScenarioMode = Literal["manual", "new_cash_only", "rebalance"]
 Amount = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0, le=MAX_AMOUNT)]
 PositiveAmount = Annotated[float, Field(strict=True, allow_inf_nan=False, gt=0, le=MAX_AMOUNT)]
 Pct = Annotated[float, Field(strict=True, allow_inf_nan=False, ge=0, le=100)]
+# target_weights key: asset_id as a string, or a symbol (bounded length).
+TargetKey = Annotated[str, Field(min_length=1, max_length=40)]
 
 
 class _Strict(BaseModel):
@@ -73,7 +75,7 @@ class ScenarioInput(_Strict):
     operations: list[ScenarioOperation] = Field(default_factory=list, max_length=MAX_OPERATIONS)
     # asset_id (as string, JSON object key) -> pct. rebalance: overall target
     # weights; new_cash_only: maximum weight per position.
-    target_weights: dict[str, Pct] = Field(default_factory=dict)
+    target_weights: dict[TargetKey, Pct] = Field(default_factory=dict)
     constraints: ScenarioConstraints = Field(default_factory=ScenarioConstraints)
     fee_model: FeeModel = Field(default_factory=FeeModel)
     tax_model: Literal["none"] = "none"
@@ -92,13 +94,13 @@ class ScenarioInput(_Strict):
 class ScenarioRequest(ScenarioInput):
     portfolio_ids: list[Annotated[int, Field(strict=True)]] = Field(min_length=1, max_length=20)
     snapshot_id: Annotated[str, Field(max_length=64)] | None = None
-    policy_version: Annotated[int, Field(strict=True, ge=0)] | None = None
+    policy_version: Annotated[int, Field(strict=True, ge=0, le=INT4_MAX)] | None = None
 
 
 class ScenarioCompareRequest(_Strict):
     portfolio_ids: list[Annotated[int, Field(strict=True)]] = Field(min_length=1, max_length=20)
     snapshot_id: Annotated[str, Field(max_length=64)] | None = None
-    policy_version: Annotated[int, Field(strict=True, ge=0)] | None = None
+    policy_version: Annotated[int, Field(strict=True, ge=0, le=INT4_MAX)] | None = None
     scenarios: list[ScenarioInput] = Field(min_length=2, max_length=3)
 
 

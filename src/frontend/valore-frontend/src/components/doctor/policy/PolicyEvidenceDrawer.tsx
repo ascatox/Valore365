@@ -11,6 +11,7 @@ import {
   formatPctValue,
   formatPp,
   formatThreshold,
+  maskMoneyInText,
   NOT_AVAILABLE,
   ruleName,
   SEVERITY_LABELS,
@@ -59,7 +60,7 @@ export function PolicyEvidenceBody({ rule, metrics, privacy, currency }: { rule:
         <RuleStatusBadge status={rule.status} nearLimit={rule.near_limit} />
         <QualityBadge quality={rule.quality} />
       </Group>
-      {rule.reason && <Text size="sm">{rule.reason}</Text>}
+      {rule.reason && <Text size="sm">{maskMoneyInText(rule.reason, privacy)}</Text>}
 
       <SimpleGrid cols={2} spacing="sm">
         <Fact label="Valore attuale">{formatObserved(rule)}</Fact>
@@ -103,7 +104,7 @@ export function PolicyEvidenceBody({ rule, metrics, privacy, currency }: { rule:
 
       {evidence.notes?.length > 0 && (
         <Section title="Note">
-          <Stack gap={2}>{evidence.notes.map((note) => <Text key={note} size="sm">{note}</Text>)}</Stack>
+          <Stack gap={2}>{evidence.notes.map((note, index) => <Text key={index} size="sm">{maskMoneyInText(note, privacy)}</Text>)}</Stack>
         </Section>
       )}
     </Stack>

@@ -177,7 +177,8 @@ export const previewDoctorPolicy = (params: {
 
 export const saveDoctorPolicy = (params: {
   portfolioIds: number[];
-  name: string;
+  /** null = keep the existing policy name (backend default for a new policy). */
+  name: string | null;
   document: DoctorPolicyDocument;
   baseVersion: number | null;
   confirmationToken: string;

@@ -226,6 +226,11 @@ class PolicyVersionsResponse(BaseModel):
     versions: list[PolicyVersionRead] = Field(default_factory=list)
 
 
+# Versions are stored in int4 columns: out-of-range values are a 400 field
+# error, never a database error (500).
+INT4_MAX = 2_147_483_647
+
+
 class ValidateRequest(BaseModel):
     portfolio_ids: list[int] = Field(min_length=1, max_length=20)
     document: dict[str, Any]
@@ -240,7 +245,7 @@ class ValidateResponse(BaseModel):
 class PreviewRequest(BaseModel):
     portfolio_ids: list[int] = Field(min_length=1, max_length=20)
     document: dict[str, Any]
-    base_version: int | None = None
+    base_version: int | None = Field(default=None, ge=0, le=INT4_MAX)
     source: Literal["manual", "copilot", "template"] = "manual"
 
 
@@ -259,15 +264,17 @@ class PolicyPreviewResponse(BaseModel):
 
 class SaveRequest(BaseModel):
     portfolio_ids: list[int] = Field(min_length=1, max_length=20)
-    name: str = Field(default="La mia policy", min_length=1, max_length=80)
+    # None keeps the current name of an existing policy (a save never renames
+    # it implicitly); on create the default name "La mia policy" is used.
+    name: str | None = Field(default=None, min_length=1, max_length=80)
     document: dict[str, Any]
-    base_version: int | None = None
+    base_version: int | None = Field(default=None, ge=0, le=INT4_MAX)
     confirmation_token: str = Field(min_length=1)
 
 
 class RestoreRequest(BaseModel):
-    version_number: int = Field(ge=1)
-    base_version: int | None = None
+    version_number: int = Field(ge=1, le=INT4_MAX)
+    base_version: int | None = Field(default=None, ge=0, le=INT4_MAX)
 
 
 class TemplateRead(BaseModel):

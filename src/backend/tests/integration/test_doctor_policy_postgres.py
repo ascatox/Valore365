@@ -216,6 +216,56 @@ def test_create_gives_version_1_and_get_reads_it(client, env):
     assert confirmation.hash_token(preview["confirmation_token"]) in stored
 
 
+def _save_raw(client, body, user=ALICE):
+    return client.post("/api/doctor/policies", json=body, headers={"x-test-user": user})
+
+
+def test_save_without_name_keeps_current_name_and_create_uses_default(client, env):
+    pid = env["ids"]["parent"]
+    first = _preview(client, [pid], DOC_35)
+    created = _save_raw(client, {"portfolio_ids": [pid], "document": DOC_35, "base_version": None,
+                                 "confirmation_token": first["confirmation_token"]})
+    assert created.status_code == 201, created.text
+    assert created.json()["name"] == "La mia policy"
+
+    second = _preview(client, [pid], DOC_40, 1)
+    renamed = _save(client, [pid], DOC_40, 1, second["confirmation_token"], name="Piano pensione")
+    assert renamed.status_code == 201, renamed.text
+    assert renamed.json()["name"] == "Piano pensione"
+
+    # A later save without "name" (or with null) must not rename the policy.
+    for base, doc in ((2, DOC_35), (3, DOC_EMPTY)):
+        p = _preview(client, [pid], doc, base)
+        body = {"portfolio_ids": [pid], "document": doc, "base_version": base,
+                "confirmation_token": p["confirmation_token"]}
+        if base == 3:
+            body["name"] = None
+        saved = _save_raw(client, body)
+        assert saved.status_code == 201, saved.text
+        assert saved.json()["name"] == "Piano pensione"
+    with env["engine"].connect() as conn:
+        assert conn.execute(text("select name from doctor_policy_sets")).scalar_one() == "Piano pensione"
+
+
+def test_out_of_range_versions_are_400_not_500(client, env):
+    pid = env["ids"]["parent"]
+    created = _create(client, [pid], DOC_35)
+    huge = 2_147_483_648
+    r = client.post("/api/doctor/policies/preview", json={"portfolio_ids": [pid], "document": DOC_35, "base_version": huge})
+    assert r.status_code == 400, r.text
+    assert r.json()["error"]["details"]["field_errors"][0]["field"] == "base_version"
+    r = _save(client, [pid], DOC_35, huge, "tok")
+    assert r.status_code == 400, r.text
+    for body in ({"version_number": huge, "base_version": 1}, {"version_number": 1, "base_version": huge},
+                 {"version_number": 1, "base_version": -1}):
+        r = client.post(f"/api/doctor/policies/{created['id']}/restore", json=body)
+        assert r.status_code == 400, r.text
+        assert r.json()["error"]["code"] == "invalid_request"
+    r = client.post("/api/doctor/scenarios/preview",
+                    json={"portfolio_ids": [pid], "mode": "new_cash_only", "new_cash": 100, "policy_version": huge})
+    assert r.status_code == 400, r.text
+
+
 def test_no_policy_evaluation(client, env):
     pid = env["ids"]["wealth"]
     assert client.get(f"/api/doctor/policies?portfolio_ids={pid}").json() == {"policy": None}

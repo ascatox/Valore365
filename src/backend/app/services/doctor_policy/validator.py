@@ -26,7 +26,8 @@ SCHEMA_VERSION = 1
 MAX_RULES = 20
 MAX_LABEL_LENGTH = 80
 EPSILON = 1e-9
-RULE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
+# Used with fullmatch: "$" would also accept a trailing "\n".
+RULE_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 SEVERITIES = ("low", "medium", "high")
 OPERATORS = ("min", "max", "range")
 
@@ -53,7 +54,11 @@ def _err(field: str, code: str, message: str) -> FieldError:
 
 
 def _is_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    # Any JSON integer is a number (a huge one is out of range, not a 500:
+    # float(10**400) would raise OverflowError).
+    return isinstance(value, int) or math.isfinite(value)
 
 
 def _is_int(value: Any) -> bool:
@@ -72,7 +77,10 @@ def _number(
     if not _is_number(value):
         errors.append(_err(path, "invalid_type", "Deve essere un numero."))
         return None
-    number = float(value)
+    try:
+        number = float(value)
+    except OverflowError:
+        number = math.inf if value > 0 else -math.inf
     if number < low - EPSILON or number > high + EPSILON:
         errors.append(_err(
             path, "out_of_range",
@@ -95,7 +103,7 @@ def _validate_rule(raw: Any, index: int, errors: list[FieldError]) -> dict[str, 
     rule_id = raw.get("rule_id")
     if rule_id is None:
         errors.append(_err(f"{base}.rule_id", "required", "Identificativo della regola obbligatorio."))
-    elif not isinstance(rule_id, str) or not RULE_ID_PATTERN.match(rule_id):
+    elif not isinstance(rule_id, str) or not RULE_ID_PATTERN.fullmatch(rule_id):
         errors.append(_err(
             f"{base}.rule_id", "invalid_format",
             "Usa da 1 a 40 caratteri: lettere minuscole, cifre, '-' o '_' (inizia con lettera o cifra).",
