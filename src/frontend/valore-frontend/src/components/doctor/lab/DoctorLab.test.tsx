@@ -117,7 +117,7 @@ describe('ScenarioComparisonTable', () => {
     for (const group of groups) {
       expect(group.firstElementChild).toHaveTextContent('→');
       expect(group.textContent!.length).toBeGreaterThan(1);
-      expect(group).toHaveStyle({ flexWrap: 'nowrap' });
+      expect(group.getAttribute('style')).toContain('--group-wrap: nowrap');
     }
   });
 });
