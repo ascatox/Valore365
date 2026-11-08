@@ -17,7 +17,7 @@ import {
   TextInput,
   Alert,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconFileImport, IconCheck, IconX, IconChartPie, IconCopy, IconAlertTriangle } from '@tabler/icons-react';
 import { formatNum } from '../../dashboard/formatters';
 import {
@@ -83,7 +83,7 @@ export function CsvImportModal({
   onImportComplete,
   onPortfolioCreated,
 }: CsvImportModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const [step, setStep] = useState<'upload' | 'preview' | 'done'>('upload');
   const [broker, setBroker] = useState<string>('fineco');

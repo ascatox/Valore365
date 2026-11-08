@@ -9,7 +9,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import {
   createPacRule,
   updatePacRule,
@@ -51,7 +51,7 @@ export function PacRuleDrawer({
   selectedAssetSymbol,
   onSaved,
 }: PacRuleDrawerProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
   const [mode, setMode] = useState<'amount' | 'quantity'>('amount');
   const [amount, setAmount] = useState<number | string>('');

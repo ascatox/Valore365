@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   ActionIcon,
   Alert,
@@ -280,9 +281,9 @@ function shareImageFilter(node: HTMLElement): boolean {
 
 export function DoctorPage() {
   type PendingCopilotPrompt = { id: number; text: string } | null;
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   // Copilot: side panel next to the content on desktop (Mantine lg), drawer on tablet, bottom sheet on mobile.
-  const isDesktop = useMediaQuery('(min-width: 75em)');
+  const isDesktop = useMediaQuery('(min-width: 75em)', undefined, { getInitialValueInEffect: false });
   // Shared scope: one portfolio or the aggregate of several (every Doctor
   // analysis has an aggregate route on merged holdings).
   const { scope, isAggregate, selectedPortfolios, setSingle, setScope } = usePortfolioScope();

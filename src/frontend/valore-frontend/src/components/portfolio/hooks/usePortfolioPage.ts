@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import { useDisclosure } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import {
   deleteTransaction,
   createPortfolio,
@@ -38,7 +39,7 @@ const toLocalDateTimeInput = (value: string) => {
 };
 
 export function usePortfolioPage() {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   // --- Portfolio state ---
   const [portfolios, setPortfolios] = useState<import('../../../services/api').Portfolio[]>([]);

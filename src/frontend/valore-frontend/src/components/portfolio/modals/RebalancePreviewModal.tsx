@@ -12,7 +12,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import type { RebalancePreviewResponse, RebalanceCommitResponse } from '../../../services/api';
 import { formatNum, formatMoneyOrNA as formatMoney } from '../../dashboard/formatters';
 
@@ -72,7 +72,7 @@ export function RebalancePreviewModal({
   onLoadPreview,
   onCommitPreview,
 }: RebalancePreviewModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   return (
     <Modal
       opened={opened}

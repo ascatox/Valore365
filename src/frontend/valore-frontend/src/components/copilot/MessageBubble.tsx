@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { ActionIcon, Box, Group, Paper, Text, Tooltip, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { IconCheck, IconCopy, IconRobot } from '@tabler/icons-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -43,7 +43,7 @@ export function MessageBubble({ role, content, streaming, thinkingStatus }: Mess
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
   const isUser = role === 'user';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {

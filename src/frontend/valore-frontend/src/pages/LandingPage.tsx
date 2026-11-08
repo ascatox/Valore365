@@ -1,5 +1,5 @@
 import { Box, Button, Card, Container, Grid, Group, SimpleGrid, Stack, Text, ThemeIcon, Title, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   IconArrowRight,
   IconBolt,
@@ -90,7 +90,7 @@ export function LandingPage() {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const sectionPx = isMobile ? 'xs' : 'xl';
 
   const emerald = '#10b981';

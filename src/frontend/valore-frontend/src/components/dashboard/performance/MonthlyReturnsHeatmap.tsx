@@ -1,6 +1,6 @@
 import { Card, Group, Loader, Table, Text } from '@mantine/core';
 import { useComputedColorScheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { formatPct, formatShortDate } from '../formatters';
 import { heatmapCellColors, MONTH_LABELS } from './utils';
 
@@ -20,7 +20,7 @@ interface MonthlyReturnsHeatmapProps {
 export function MonthlyReturnsHeatmap({ matrix, loading, startDate, endDate }: MonthlyReturnsHeatmapProps) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   return (
     <Card withBorder radius="md" p="md" shadow="sm">

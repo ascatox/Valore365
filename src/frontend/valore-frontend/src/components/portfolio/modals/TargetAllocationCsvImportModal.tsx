@@ -10,7 +10,7 @@ import {
   Table,
   Text,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconCheck, IconFileImport, IconX, IconAlertTriangle } from '@tabler/icons-react';
 import { formatNum } from '../../dashboard/formatters';
 import {
@@ -107,7 +107,7 @@ export function TargetAllocationCsvImportModal({
   portfolioId,
   onImportComplete,
 }: Props) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [step, setStep] = useState<Step>('upload');
   const [resolvedRows, setResolvedRows] = useState<ResolvedRow[]>([]);
   const [resolving, setResolving] = useState(false);

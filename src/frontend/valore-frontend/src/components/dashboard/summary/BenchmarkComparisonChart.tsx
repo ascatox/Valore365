@@ -1,6 +1,6 @@
 import { Badge, Card, Group, Loader, Paper, SegmentedControl, Select, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { DASHBOARD_WINDOWS } from '../constants';
 import { formatPct, getVariationColor } from '../formatters';
@@ -36,7 +36,7 @@ export function BenchmarkComparisonChart({
   onBenchmarkChange,
   comparisonStats,
 }: BenchmarkComparisonChartProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';

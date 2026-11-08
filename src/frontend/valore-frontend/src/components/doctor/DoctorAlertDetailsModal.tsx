@@ -1,5 +1,5 @@
 import { Badge, Group, Modal, SimpleGrid, Stack, Table, Text, ThemeIcon, Title } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { IconAlertTriangle, IconArrowsShuffle, IconBriefcase } from '@tabler/icons-react';
 import type { PortfolioHealthAlert } from '../../services/api';
 import { EducationBlock } from './EducationBlock';
@@ -75,7 +75,7 @@ export function DoctorAlertDetailsModal({
   currency = 'EUR',
   onPromptSelect,
 }: DoctorAlertDetailsModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const details = isRecord(alert?.details) ? alert.details : null;
   const dominantPosition = isHoldingDetail(details?.dominant_position) ? details.dominant_position : null;
   const topPositions = asHoldingArray(details?.top_positions);

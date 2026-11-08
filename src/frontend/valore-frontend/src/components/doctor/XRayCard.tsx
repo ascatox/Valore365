@@ -19,7 +19,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { IconAlertTriangle, IconChevronDown, IconChevronRight, IconInfoCircle, IconSearch } from '@tabler/icons-react';
 import { usePortfolioXray } from '../dashboard/hooks/queries';
 import { STORAGE_KEYS } from '../dashboard/constants';
@@ -138,7 +138,7 @@ export function XRayCard({ scope }: Props) {
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [expandedEtf, setExpandedEtf] = useState<string | null>(null);
   const [infoModal, setInfoModal] = useState<{ symbol: string } | null>(null);
   const privacy = isPrivacyModeEnabled();

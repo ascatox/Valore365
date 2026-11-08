@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Box } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface PageLayoutProps {
   children: ReactNode;
@@ -13,7 +13,7 @@ export function PageLayout({
   children,
   style,
 }: PageLayoutProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   return (
     <Box

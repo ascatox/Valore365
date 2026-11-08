@@ -1,6 +1,6 @@
 import { Badge, Card, Group, Loader, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Paper } from '@mantine/core';
 import { formatNum } from '../formatters';
@@ -45,7 +45,7 @@ export function PerformanceChart({
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
   const resolvedHeight = isMobile ? Math.max(height, 240) : height;

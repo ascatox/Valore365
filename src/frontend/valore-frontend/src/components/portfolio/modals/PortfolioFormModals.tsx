@@ -9,7 +9,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconCopy } from '@tabler/icons-react';
 import type { Portfolio } from '../../../services/api';
 import { formatGrossTotal } from '../../dashboard/formatters';
@@ -50,7 +50,7 @@ export function PortfolioModal({
   saving,
   onSave,
 }: PortfolioModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const keyboardOpen = useVirtualKeyboard(Boolean(isMobile) && opened);
   const stackRef = useRef<HTMLDivElement>(null);
 
@@ -135,7 +135,7 @@ export function PortfolioCloneModal({
   cloning,
   onClone,
 }: PortfolioCloneModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   return (
     <Modal
       opened={opened}
@@ -189,7 +189,7 @@ export function PortfolioDeleteModal({
   deleting,
   onDelete,
 }: PortfolioDeleteModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   return (
     <Modal
       opened={opened}
@@ -265,7 +265,7 @@ export function EditTransactionModal({
   saving,
   onSave,
 }: EditTransactionModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const keyboardOpen = useVirtualKeyboard(Boolean(isMobile) && opened);
   const editStackRef = useRef<HTMLDivElement>(null);
   const grossTotal = formatGrossTotal(quantity, price);
@@ -339,7 +339,7 @@ export function DeleteTransactionModal({
   transactionId,
   onConfirm,
 }: DeleteTransactionModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   return (
     <Modal
       opened={opened}

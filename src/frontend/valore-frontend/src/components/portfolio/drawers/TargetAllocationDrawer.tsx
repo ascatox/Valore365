@@ -6,7 +6,7 @@ import {
   NumberInput,
   Stack,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { upsertPortfolioTargetAllocation } from '../../../services/api';
 import { AssetDiscoverSelect } from '../AssetDiscoverSelect';
 import { useSwipeToClose } from '../../../hooks/useSwipeToClose';
@@ -24,7 +24,7 @@ export function TargetAllocationDrawer({
   portfolioId,
   onSaved,
 }: TargetAllocationDrawerProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
   const [resolvedAssetId, setResolvedAssetId] = useState<number | null>(null);
   const [targetWeight, setTargetWeight] = useState<number | string>(0);

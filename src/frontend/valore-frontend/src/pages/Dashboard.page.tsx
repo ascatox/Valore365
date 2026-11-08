@@ -8,7 +8,8 @@ import {
   Tabs,
   Text,
 } from '@mantine/core';
-import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import { useDisclosure } from '@mantine/hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { IconChartPie, IconList, IconChartBar, IconWorld, IconPercentage, IconRobot } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { prefetchMarketData, usePortfolioSummary, usePortfolios, useTargetPerformance } from '../components/dashboard/hooks/queries';
@@ -42,7 +43,7 @@ const DASHBOARD_TABS: string[] = [
 
 export function DashboardPage() {
   const navigate = useNavigate();
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   // Shared scope: one portfolio or the aggregate of several, the same on every page.
   const { scope, scopeKey, isAggregate, setSingle, setScope } = usePortfolioScope();

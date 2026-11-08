@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Badge, Card, Group, Progress, Table, Text, Tooltip, UnstyledButton } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconChevronUp, IconChevronDown, IconSelector, IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
@@ -90,7 +90,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
   const [sortKey, setSortKey] = useState<SortKey>('market_value');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   const handleSort = (key: SortKey) => {
     if (key === sortKey) {

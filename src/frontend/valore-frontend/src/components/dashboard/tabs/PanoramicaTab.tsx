@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Alert, Group, Paper, SegmentedControl, Select, Stack, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
@@ -34,7 +34,7 @@ interface PanoramicaTabProps {
 }
 
 export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText = null }: PanoramicaTabProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const theme = useMantineTheme();
   const isDark = useComputedColorScheme('light') === 'dark';
   const chartColor = theme.colors.teal[isDark ? 4 : 6];

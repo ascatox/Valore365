@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { ActionIcon, Alert, Badge, Button, Divider, Grid, Group, Loader, Modal, Paper, Progress, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
 import { IconInfoCircle, IconRefresh } from '@tabler/icons-react';
 import { ApiRequestError } from '../../../services/api';
@@ -176,7 +176,7 @@ interface AssetInfoModalProps {
 }
 
 export function AssetInfoModal({ assetId, symbol, opened, onClose }: AssetInfoModalProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [info, setInfo] = useState<AssetInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
