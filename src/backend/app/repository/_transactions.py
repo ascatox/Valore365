@@ -5,6 +5,7 @@ from datetime import date, datetime
 
 from sqlalchemy import Date, bindparam, text
 
+from ..crypto import decrypt_field, encrypt_field
 from ._cash_model import cash_delta, settle_day
 from ._scope import (
     EMPTY_SCOPE_MESSAGE,
@@ -22,7 +23,17 @@ from ..models import (
 )
 
 
-def _transaction_list_item(row) -> TransactionListItem:
+def decrypt_notes(conn, user_id: str, value):
+    # TASK-57: transactions.notes is encrypted at rest (legacy plaintext passes through).
+    return decrypt_field(conn, "transactions", "notes", user_id, value)
+
+
+def decrypt_portfolio_name(conn, user_id: str, value):
+    return decrypt_field(conn, "portfolios", "name", user_id, value)
+
+
+def _transaction_list_item(row, conn, user_id: str) -> TransactionListItem:
+    portfolio_name = row.get("portfolio_name")
     return TransactionListItem(
         id=int(row["id"]),
         portfolio_id=int(row["portfolio_id"]),
@@ -34,10 +45,10 @@ def _transaction_list_item(row) -> TransactionListItem:
         fees=float(row["fees"]),
         taxes=float(row["taxes"]),
         trade_currency=str(row["trade_currency"]),
-        notes=row["notes"],
+        notes=decrypt_notes(conn, user_id, row["notes"]),
         symbol=row["symbol"],
         asset_name=row["asset_name"],
-        portfolio_name=row.get("portfolio_name"),
+        portfolio_name=decrypt_portfolio_name(conn, user_id, portfolio_name) if portfolio_name is not None else None,
     )
 
 
@@ -109,7 +120,7 @@ class TransactionsMixin:
                 "fees": payload.fees,
                 "taxes": payload.taxes,
                 "trade_currency": currency,
-                "notes": payload.notes,
+                "notes": encrypt_field(conn, "transactions", "notes", user_id, payload.notes),
                 "owner_user_id": user_id,
             },
         ).fetchone()
@@ -160,8 +171,7 @@ class TransactionsMixin:
                 ),
                 {"portfolio_id": portfolio_id},
             ).mappings().all()
-
-        return [_transaction_list_item(row) for row in rows]
+            return [_transaction_list_item(row, conn, user_id) for row in rows]
 
     def list_transactions_multi(self, portfolio_ids: list[int], user_id: str) -> list[TransactionListItem]:
         """Transactions of several portfolios, newest first, as one list.
@@ -199,8 +209,7 @@ class TransactionsMixin:
                 ),
                 {"portfolio_ids": scope_ids},
             ).mappings().all()
-
-        return [_transaction_list_item(row) for row in rows]
+            return [_transaction_list_item(row, conn, user_id) for row in rows]
 
     def get_portfolio_created_date(self, portfolio_id: int, user_id: str) -> date:
         with self.engine.begin() as conn:
@@ -295,6 +304,7 @@ class TransactionsMixin:
                 ),
                 {"portfolio_id": portfolio_id, "start_date": start_date, "end_date": end_date},
             ).mappings().all()
+            notes = [decrypt_notes(conn, user_id, row["notes"]) for row in rows]
 
         return [
             TransactionRead(
@@ -308,9 +318,9 @@ class TransactionsMixin:
                 fees=float(row["fees"]),
                 taxes=float(row["taxes"]),
                 trade_currency=str(row["trade_currency"]),
-                notes=row["notes"],
+                notes=note,
             )
-            for row in rows
+            for row, note in zip(rows, notes)
         ]
 
     def get_external_cashflows(
@@ -759,13 +769,17 @@ class TransactionsMixin:
 
             if updates:
                 assignments = ", ".join(f"{field} = :{field}" for field in updates.keys())
+                values = dict(updates)
+                if "notes" in values:
+                    values["notes"] = encrypt_field(conn, "transactions", "notes", user_id, values["notes"])
                 conn.execute(
                     text(f"update transactions set {assignments} where id = :transaction_id and owner_user_id = :user_id"),
-                    {"transaction_id": transaction_id, "user_id": user_id, **updates},
+                    {"transaction_id": transaction_id, "user_id": user_id, **values},
                 )
                 existing = self._get_transaction_for_user(conn, transaction_id, user_id)
                 if existing is None:
                     raise ValueError("Transazione non trovata")
+            existing_notes = decrypt_notes(conn, user_id, existing["notes"])
 
         return TransactionRead(
             id=int(existing["id"]),
@@ -778,7 +792,7 @@ class TransactionsMixin:
             fees=float(existing["fees"]),
             taxes=float(existing["taxes"]),
             trade_currency=str(existing["trade_currency"]),
-            notes=existing["notes"],
+            notes=existing_notes,
         )
 
     def delete_transaction(self, transaction_id: int, user_id: str) -> None:

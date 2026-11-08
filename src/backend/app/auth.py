@@ -11,6 +11,7 @@ from fastapi import Depends, Header
 from sqlalchemy import text
 
 from .config import get_settings
+from .crypto import email_blind_index, encrypt_field
 from .db import engine
 from .errors import AppError
 
@@ -94,10 +95,11 @@ def _sync_app_user(user_id: str, email: str | None, last_sign_in_at: datetime | 
             conn.execute(
                 text(
                     """
-                    insert into app_users (user_id, email, last_sign_in_at, last_seen_at, updated_at)
-                    values (:user_id, :email, :last_sign_in_at, now(), now())
+                    insert into app_users (user_id, email, email_bidx, last_sign_in_at, last_seen_at, updated_at)
+                    values (:user_id, :email, :email_bidx, :last_sign_in_at, now(), now())
                     on conflict (user_id) do update set
                       email = coalesce(excluded.email, app_users.email),
+                      email_bidx = coalesce(excluded.email_bidx, app_users.email_bidx),
                       last_sign_in_at = coalesce(excluded.last_sign_in_at, app_users.last_sign_in_at),
                       last_seen_at = now(),
                       updated_at = now()
@@ -105,7 +107,9 @@ def _sync_app_user(user_id: str, email: str | None, last_sign_in_at: datetime | 
                 ),
                 {
                     "user_id": user_id,
-                    "email": email,
+                    # TASK-57: encrypted at rest; looked up only through email_bidx.
+                    "email": encrypt_field(conn, "app_users", "email", user_id, email),
+                    "email_bidx": email_blind_index(email),
                     "last_sign_in_at": last_sign_in_at,
                 },
             )

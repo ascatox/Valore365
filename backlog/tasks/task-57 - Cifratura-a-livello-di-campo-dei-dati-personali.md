@@ -1,7 +1,7 @@
 ---
 id: TASK-57
 title: "Cifratura a livello di campo dei dati personali nel database"
-status: "In Progress"
+status: "Done"
 priority: "high"
 created: 2026-11-08
 labels: ["backend", "security", "database", "gdpr"]
@@ -44,10 +44,10 @@ Restano in chiaro: importi, quantità, prezzi, date, ID, dati di mercato.
 
 ## Acceptance Criteria
 
-- [ ] #1 Modulo `app/crypto` con cifratura/decifratura AES-256-GCM, keyring con rotazione, DEK per utente, blind index
-- [ ] #2 Le colonne elencate sono scritte cifrate e lette in chiaro dalle API, senza cambiare i contratti
-- [ ] #3 I valori legacy in chiaro sono ancora leggibili; uno script di backfill li cifra (idempotente, con `--dry-run`)
-- [ ] #4 Migrazione SQL in `database/migrations` e `schema.sql` aggiornato
-- [ ] #5 In prod l'avvio fallisce senza `DATA_ENCRYPTION_KEYS`; `render.yaml` e documentazione aggiornati
-- [ ] #6 Test unitari: round-trip, AAD errata, rotazione chiavi, valori legacy, crypto-shredding
-- [ ] #7 La suite di test esistente passa
+- [x] #1 Modulo `app/crypto` con cifratura/decifratura AES-256-GCM, keyring con rotazione, DEK per utente, blind index
+- [x] #2 Le colonne elencate sono scritte cifrate e lette in chiaro dalle API, senza cambiare i contratti
+- [x] #3 I valori legacy in chiaro sono ancora leggibili; uno script di backfill li cifra (idempotente, con `--dry-run`)
+- [x] #4 Migrazione SQL in `database/migrations` e `schema.sql` aggiornato
+- [x] #5 In prod l'avvio fallisce senza `DATA_ENCRYPTION_KEYS`; `render.yaml` e documentazione aggiornati
+- [x] #6 Test unitari: round-trip, AAD errata, rotazione chiavi, valori legacy, crypto-shredding
+- [x] #7 La suite di test esistente passa

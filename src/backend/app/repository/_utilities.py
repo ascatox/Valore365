@@ -17,7 +17,15 @@ from ..models import (
     TransactionListItem,
     TransactionRead,
 )
+from ..crypto import (
+    csv_filename_blind_index,
+    decrypt_field,
+    decrypt_json_field,
+    encrypt_field,
+    encrypt_json_field,
+)
 from ._base import PortfolioData
+from ._transactions import decrypt_notes
 from ._cash_model import cash_delta, fold_cash
 from ._scope import load_scope_portfolios
 
@@ -409,6 +417,7 @@ class UtilitiesMixin:
                 ),
                 {"portfolio_id": portfolio_id},
             ).mappings().all()
+            recent_notes = [decrypt_notes(conn, user_id, r["notes"]) for r in recent_rows]
 
         recent = [
             TransactionListItem(
@@ -422,11 +431,11 @@ class UtilitiesMixin:
                 fees=float(r["fees"]),
                 taxes=float(r["taxes"]),
                 trade_currency=str(r["trade_currency"]),
-                notes=r["notes"],
+                notes=note,
                 symbol=r["symbol"],
                 asset_name=r["asset_name"],
             )
-            for r in recent_rows
+            for r, note in zip(recent_rows, recent_notes)
         ]
 
         return CashBalanceResponse(
@@ -636,27 +645,41 @@ class UtilitiesMixin:
         total_rows: int,
         valid_rows: int,
         error_rows: int,
-        preview_data: list[dict],
+        preview_data: list[dict] | dict,
     ) -> int:
+        # TASK-57: file name and preview are encrypted at rest; the duplicate
+        # detection reads the plaintext source_sha256 column and the file
+        # name blind index instead.
+        source_sha256 = preview_data.get("source_sha256") if isinstance(preview_data, dict) else None
         with self.engine.begin() as conn:
             if self._get_portfolio_for_user(conn, portfolio_id, user_id) is None:
                 raise ValueError("Portfolio non trovato")
             row = conn.execute(
                 text(
                     """
-                    insert into csv_import_batches (portfolio_id, owner_user_id, original_filename, total_rows, valid_rows, error_rows, preview_data)
-                    values (:portfolio_id, :user_id, :filename, :total_rows, :valid_rows, :error_rows, cast(:preview_data as jsonb))
+                    insert into csv_import_batches (
+                      portfolio_id, owner_user_id, original_filename, original_filename_bidx, source_sha256,
+                      total_rows, valid_rows, error_rows, preview_data
+                    )
+                    values (
+                      :portfolio_id, :user_id, :filename, :filename_bidx, :source_sha256,
+                      :total_rows, :valid_rows, :error_rows, cast(:preview_data as jsonb)
+                    )
                     returning id
                     """
                 ),
                 {
                     "portfolio_id": portfolio_id,
                     "user_id": user_id,
-                    "filename": filename,
+                    "filename": encrypt_field(conn, "csv_import_batches", "original_filename", user_id, filename),
+                    "filename_bidx": csv_filename_blind_index(filename),
+                    "source_sha256": source_sha256,
                     "total_rows": total_rows,
                     "valid_rows": valid_rows,
                     "error_rows": error_rows,
-                    "preview_data": json.dumps(preview_data),
+                    "preview_data": json.dumps(
+                        encrypt_json_field(conn, "csv_import_batches", "preview_data", user_id, preview_data)
+                    ),
                 },
             ).fetchone()
         if row is None:
@@ -675,9 +698,16 @@ class UtilitiesMixin:
                 ),
                 {"batch_id": batch_id, "user_id": user_id},
             ).mappings().fetchone()
-        if row is None:
-            return None
-        return dict(row)
+            if row is None:
+                return None
+            batch = dict(row)
+            batch["original_filename"] = decrypt_field(
+                conn, "csv_import_batches", "original_filename", user_id, batch["original_filename"]
+            )
+            batch["preview_data"] = decrypt_json_field(
+                conn, "csv_import_batches", "preview_data", user_id, batch["preview_data"]
+            )
+        return batch
 
     def commit_csv_import_batch(
         self,
@@ -728,15 +758,16 @@ class UtilitiesMixin:
                 text(
                     """
                     select id, original_filename, committed_at,
-                           (jsonb_typeof(preview_data) = 'object'
-                            and preview_data->>'source_sha256' = :source_sha256) as same_content
+                           coalesce(source_sha256 = :source_sha256, false) as same_content
                     from csv_import_batches
                     where portfolio_id = :portfolio_id
                       and owner_user_id = :user_id
                       and status = 'committed'
                       and (
-                        original_filename = :filename
-                        or (jsonb_typeof(preview_data) = 'object' and preview_data->>'source_sha256' = :source_sha256)
+                        original_filename_bidx = :filename_bidx
+                        or source_sha256 = :source_sha256
+                        -- legacy rows not yet backfilled (no blind index, plaintext name)
+                        or (original_filename_bidx is null and original_filename = :filename)
                       )
                     order by committed_at desc nulls last, id desc
                     limit 20
@@ -746,10 +777,16 @@ class UtilitiesMixin:
                     "portfolio_id": portfolio_id,
                     "user_id": user_id,
                     "filename": filename,
+                    "filename_bidx": csv_filename_blind_index(filename),
                     "source_sha256": source_sha256,
                 },
             ).mappings().all()
-        return [dict(row) for row in rows]
+            batches = [dict(row) for row in rows]
+            for batch in batches:
+                batch["original_filename"] = decrypt_field(
+                    conn, "csv_import_batches", "original_filename", user_id, batch["original_filename"]
+                )
+        return batches
 
     def cancel_csv_import_batch(self, batch_id: int, user_id: str) -> None:
         with self.engine.begin() as conn:
