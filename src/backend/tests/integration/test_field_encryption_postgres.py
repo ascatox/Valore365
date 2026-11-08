@@ -301,3 +301,35 @@ def test_kek_rotation_rewraps_stored_deks(pg_engine, repo, crypto):
     # Old KEK removed: the data (never re-encrypted) is still readable.
     set_field_crypto(FieldCrypto(parse_keyring(f"k2:{NEW_KEY}"), BIDX_KEY))
     assert [p.name for p in repo.list_portfolios(user) if p.id == created.id] == ["Ruotato"]
+
+
+def test_startup_backfill_runner_under_advisory_lock(pg_engine, crypto):
+    from app.services.field_encryption_backfill import FIELD_ENCRYPTION_BACKFILL_LOCK_KEY, FieldEncryptionBackfillRunner
+
+    user = "fe_user_startup"
+    with pg_engine.begin() as conn:
+        pid = conn.execute(
+            text("insert into portfolios (name, base_currency, owner_user_id) values ('Avvio', 'EUR', :u) returning id"),
+            {"u": user},
+        ).scalar_one()
+    runner = FieldEncryptionBackfillRunner(pg_engine)
+
+    # Another instance holds the lock: the run is skipped and writes nothing.
+    with pg_engine.connect() as other:
+        with other.begin():
+            assert other.execute(
+                text("select pg_try_advisory_xact_lock(:k)"), {"k": FIELD_ENCRYPTION_BACKFILL_LOCK_KEY}
+            ).scalar()
+            assert runner.run(crypto, batch_size=2)["status"] == "skipped_locked"
+    assert _scalar(pg_engine, "select name from portfolios where id = :id", id=pid) == "Avvio"
+
+    first = runner.run(crypto, batch_size=2, batch_pause_seconds=0.01)
+    assert first["status"] == "completed", first
+    assert first["tables"]["portfolios"]["updated"] >= 1
+    assert is_encrypted(_scalar(pg_engine, "select name from portfolios where id = :id", id=pid))
+
+    second = runner.run(crypto, batch_size=2)
+    assert second["status"] == "completed" and second["rows_updated"] == 0
+    # The lock was released at the end of each run.
+    with pg_engine.begin() as conn:
+        assert conn.execute(text("select pg_try_advisory_xact_lock(:k)"), {"k": FIELD_ENCRYPTION_BACKFILL_LOCK_KEY}).scalar()

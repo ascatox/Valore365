@@ -148,6 +148,14 @@ class Settings(BaseSettings):
     # In-process cache of unwrapped DEKs.
     data_dek_cache_size: int = 1024
     data_dek_cache_ttl_seconds: float = 600.0
+    # Backfill automatico all'avvio (services/field_encryption_backfill.py): con
+    # le chiavi configurate cifra in background i valori ancora in chiaro e
+    # riempie i blind index, sotto un advisory lock (una sola istanza alla volta).
+    # A dati già cifrati costa una query per tabella.
+    data_backfill_on_startup: bool = True
+    data_backfill_batch_size: int = 500
+    # Pausa tra un blocco e l'altro, per non occupare il pool di connessioni.
+    data_backfill_batch_pause_seconds: float = 0.2
 
     # Price validation thresholds
     price_validation_min_price: float = 0.0001

@@ -2,6 +2,8 @@
 """
 TASK-57: cifra i dati personali ancora in chiaro e riempie i blind index
 (docs/field-encryption.md). Idempotente: le righe gia' cifrate vengono saltate.
+Il backend fa lo stesso backfill da solo all'avvio (DATA_BACKFILL_ON_STARTUP):
+lo script serve per esecuzioni manuali e per --rewrap-keys.
 
 Uso (con le stesse variabili d'ambiente del backend: DATABASE_URL,
 DATA_ENCRYPTION_KEYS, DATA_BLIND_INDEX_KEY, APP_ENV):
