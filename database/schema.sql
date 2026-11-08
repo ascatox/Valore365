@@ -198,16 +198,19 @@ create table app_user_settings (
   updated_at timestamptz not null default now()
 );
 
+-- TASK-57: email cifrata ("enc:v1:..."), ricercabile solo tramite email_bidx
+-- (migrations/20261108_01_field_encryption.sql, docs/field-encryption.md).
 create table app_users (
   user_id varchar(255) primary key,
-  email varchar(320),
+  email text,
+  email_bidx text,
   last_sign_in_at timestamptz,
   last_seen_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
-create index idx_app_users_email on app_users(email);
+create index idx_app_users_email_bidx on app_users(email_bidx);
 create index idx_app_users_last_seen_at on app_users(last_seen_at desc);
 
 create table public_instant_analyzer_events (
@@ -240,6 +243,8 @@ create table csv_import_batches (
   owner_user_id varchar(255) not null,
   status text not null check (status in ('pending','committed','cancelled')) default 'pending',
   original_filename text,
+  original_filename_bidx text,
+  source_sha256 text,
   total_rows int not null default 0,
   valid_rows int not null default 0,
   error_rows int not null default 0,
@@ -247,6 +252,9 @@ create table csv_import_batches (
   created_at timestamptz not null default now(),
   committed_at timestamptz
 );
+
+create index idx_csv_import_batches_filename_bidx on csv_import_batches(portfolio_id, original_filename_bidx);
+create index idx_csv_import_batches_source_sha256 on csv_import_batches(portfolio_id, source_sha256);
 
 create table pac_rules (
   id bigserial primary key,
@@ -365,3 +373,17 @@ create table if not exists doctor_confirmation_tokens (
 
 create index if not exists idx_doctor_confirmation_tokens_expires
   on doctor_confirmation_tokens (expires_at);
+
+-- TASK-57: DEK per utente cifrate con la KEK (cifratura a livello di campo di
+-- portfolios.name, transactions.notes, app_users.email,
+-- csv_import_batches.original_filename/preview_data, doctor_policy_sets.name).
+-- migrations/20261108_01_field_encryption.sql attiva anche la RLS.
+create table if not exists user_data_keys (
+  user_id varchar(255) primary key,
+  kek_id text not null,
+  wrapped_dek bytea not null,
+  created_at timestamptz not null default now(),
+  rotated_at timestamptz
+);
+
+create index if not exists idx_user_data_keys_kek_id on user_data_keys (kek_id);

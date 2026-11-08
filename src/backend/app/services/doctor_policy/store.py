@@ -35,6 +35,11 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import IntegrityError
 
+from ...crypto import decrypt_field, encrypt_field
+
+# TASK-57: doctor_policy_sets.name is encrypted at rest with the owner's key.
+_NAME_TABLE, _NAME_COLUMN = "doctor_policy_sets", "name"
+
 
 class StoreVersionConflict(Exception):
     def __init__(self, current_version: int | None) -> None:
@@ -114,12 +119,13 @@ class DoctorPolicyStore:
         return tuple(int(r[0]) for r in rows)
 
     def _set_from_row(self, conn: Connection, row) -> PolicySetRecord:
+        owner = str(row["owner_user_id"])
         return PolicySetRecord(
             id=int(row["id"]),
-            owner_user_id=str(row["owner_user_id"]),
+            owner_user_id=owner,
             scope_type=str(row["scope_type"]),
             scope_fingerprint=str(row["scope_fingerprint"]),
-            name=str(row["name"]),
+            name=str(decrypt_field(conn, _NAME_TABLE, _NAME_COLUMN, owner, row["name"])),
             active=bool(row["active"]),
             current_version=int(row["current_version"]),
             created_at=row["created_at"],
@@ -272,7 +278,9 @@ class DoctorPolicyStore:
                                 "owner": owner_user_id,
                                 "scope_type": scope_type,
                                 "fp": scope_fingerprint,
-                                "name": name or "La mia policy",
+                                "name": encrypt_field(
+                                    c, _NAME_TABLE, _NAME_COLUMN, owner_user_id, name or "La mia policy"
+                                ),
                             },
                         ).scalar_one()
                 except IntegrityError as exc:
@@ -325,7 +333,11 @@ class DoctorPolicyStore:
                      where id = :id
                     """
                 ),
-                {"id": set_id, "n": new_version, "name": name},
+                {
+                    "id": set_id,
+                    "n": new_version,
+                    "name": encrypt_field(c, _NAME_TABLE, _NAME_COLUMN, owner_user_id, name),
+                },
             )
             record = self.get_policy_set_by_id(owner_user_id, set_id, conn=c)
             assert record is not None

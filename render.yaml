@@ -61,6 +61,15 @@ services:
       # MARKET_DATA_SYNC_MAX_LOOKBACK_DAYS=30, MARKET_DATA_SYNC_GRACE_MINUTES=60.
       - key: MARKET_DATA_SYNC_TOKEN
         sync: false
+      # TASK-57: cifratura a livello di campo dei dati personali
+      # (docs/field-encryption.md). Obbligatorie con APP_ENV=prod: senza,
+      # l'avvio fallisce. DATA_ENCRYPTION_KEYS = "kid:base64key[,kid:base64key]"
+      # (la prima e' la KEK attiva); DATA_BLIND_INDEX_KEY = base64 di 32 byte.
+      # Impostate nel dashboard, mai nel repository.
+      - key: DATA_ENCRYPTION_KEYS
+        sync: false
+      - key: DATA_BLIND_INDEX_KEY
+        sync: false
       - key: CLERK_AUTH_ENABLED
         value: "true"
       - key: CORS_ALLOWED_ORIGINS

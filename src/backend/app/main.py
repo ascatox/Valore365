@@ -48,6 +48,7 @@ class SafeJSONResponse(JSONResponse):
 from .auth import AuthContext, require_admin
 from .middleware import RequestLoggingMiddleware
 from .config import get_settings
+from .crypto import CryptoConfigError, init_field_crypto
 from .version import APP_VERSION
 from .db import engine
 from .errors import AppError
@@ -202,6 +203,11 @@ def _apply_pending_migrations():
 async def lifespan(_: FastAPI):
     if settings.app_env != "dev" and not settings.clerk_auth_enabled:
         raise RuntimeError("Refusing to start with Clerk auth disabled outside dev")
+    # TASK-57: fails in production without DATA_ENCRYPTION_KEYS / DATA_BLIND_INDEX_KEY.
+    try:
+        init_field_crypto(settings)
+    except CryptoConfigError as exc:
+        raise RuntimeError(f"Refusing to start: {exc}") from exc
     # Keep the sync-handler threadpool no wider than the connection pool, so a burst
     # queues for a thread instead of piling up on db_pool_timeout and failing.
     anyio.to_thread.current_default_thread_limiter().total_tokens = settings.request_threadpool_size

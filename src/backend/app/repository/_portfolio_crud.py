@@ -7,7 +7,13 @@ from ..models import (
     PortfolioRead,
     PortfolioUpdate,
 )
+from ..crypto import decrypt_field, encrypt_field
 from ._base import PortfolioData
+
+
+def _decrypt_name(conn, user_id: str, value) -> str:
+    # TASK-57: portfolios.name is encrypted at rest (legacy plaintext passes through).
+    return str(decrypt_field(conn, "portfolios", "name", user_id, value))
 
 
 class PortfolioCrudMixin:
@@ -38,11 +44,12 @@ class PortfolioCrudMixin:
                     for row in rows
                 ],
             )
+            names = {int(row["id"]): _decrypt_name(conn, user_id, row["name"]) for row in rows}
 
         return [
             PortfolioRead(
                 id=int(row["id"]),
-                name=str(row["name"]),
+                name=names[int(row["id"])],
                 base_currency=str(row["base_currency"]),
                 timezone=str(row["timezone"]),
                 target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
@@ -75,7 +82,7 @@ class PortfolioCrudMixin:
                     """
                 ),
                 {
-                    "name": name,
+                    "name": encrypt_field(conn, "portfolios", "name", user_id, name),
                     "base_currency": base_currency,
                     "timezone": timezone,
                     "target_notional": target_notional,
@@ -89,7 +96,7 @@ class PortfolioCrudMixin:
 
         return PortfolioRead(
             id=int(row["id"]),
-            name=str(row["name"]),
+            name=name,
             base_currency=str(row["base_currency"]),
             timezone=str(row["timezone"]),
             target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
@@ -110,7 +117,7 @@ class PortfolioCrudMixin:
             name = str(updates["name"]).strip()
             if not name:
                 raise ValueError("Nome portfolio obbligatorio")
-            params["name"] = name
+            params["name"] = name  # encrypted below, on the open connection
             set_clauses.append("name = :name")
 
         if "base_currency" in updates:
@@ -143,6 +150,8 @@ class PortfolioCrudMixin:
             raise ValueError("Nessun campo valido da aggiornare")
 
         with self.engine.begin() as conn:
+            if "name" in params:
+                params["name"] = encrypt_field(conn, "portfolios", "name", user_id, str(params["name"]))
             row = conn.execute(
                 text(
                     f"""
@@ -155,13 +164,14 @@ class PortfolioCrudMixin:
                 ,
                 params,
             ).mappings().fetchone()
+            updated_name = _decrypt_name(conn, user_id, row["name"]) if row is not None else ""
 
         if row is None:
             raise ValueError("Portfolio non trovato")
 
         return PortfolioRead(
             id=int(row["id"]),
-            name=str(row["name"]),
+            name=updated_name,
             base_currency=str(row["base_currency"]),
             timezone=str(row["timezone"]),
             target_notional=float(row["target_notional"]) if row["target_notional"] is not None else None,
@@ -187,7 +197,7 @@ class PortfolioCrudMixin:
 
             clone_name = (payload.name or "").strip()
             if not clone_name:
-                clone_name = f'{str(source["name"]).strip()} (Copia)'
+                clone_name = f'{_decrypt_name(conn, user_id, source["name"]).strip()} (Copia)'
             if not clone_name:
                 raise ValueError("Nome portfolio clone obbligatorio")
 
@@ -200,7 +210,7 @@ class PortfolioCrudMixin:
                     """
                 ),
                 {
-                    "name": clone_name,
+                    "name": encrypt_field(conn, "portfolios", "name", user_id, clone_name),
                     "base_currency": str(source["base_currency"]),
                     "timezone": str(source["timezone"]),
                     "target_notional": source["target_notional"],
@@ -234,7 +244,7 @@ class PortfolioCrudMixin:
         return PortfolioCloneResponse(
             portfolio=PortfolioRead(
                 id=int(created["id"]),
-                name=str(created["name"]),
+                name=clone_name,
                 base_currency=str(created["base_currency"]),
                 timezone=str(created["timezone"]),
                 target_notional=float(created["target_notional"]) if created["target_notional"] is not None else None,

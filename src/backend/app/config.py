@@ -135,6 +135,20 @@ class Settings(BaseSettings):
     # Fernet key for encrypting user API keys (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
     copilot_encryption_key: str = ""
 
+    # TASK-57: field-level encryption of personal data (app/crypto,
+    # docs/field-encryption.md). Keyring "kid1:base64key,kid2:base64key" of
+    # 32-byte KEKs: the first wraps new per-user DEKs, the others only unwrap
+    # (rotation). Required when APP_ENV is production; empty elsewhere = the
+    # personal fields are written in plaintext.
+    data_encryption_keys: str = ""
+    # base64 32-byte HMAC key of the blind indexes (app_users.email_bidx,
+    # csv_import_batches.original_filename_bidx). Required in production;
+    # empty elsewhere = a fixed dev key.
+    data_blind_index_key: str = ""
+    # In-process cache of unwrapped DEKs.
+    data_dek_cache_size: int = 1024
+    data_dek_cache_ttl_seconds: float = 600.0
+
     # Price validation thresholds
     price_validation_min_price: float = 0.0001
     price_validation_max_daily_change_pct: float = 50.0
