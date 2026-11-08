@@ -65,7 +65,10 @@ services:
       # (docs/field-encryption.md). Obbligatorie con APP_ENV=prod: senza,
       # l'avvio fallisce. DATA_ENCRYPTION_KEYS = "kid:base64key[,kid:base64key]"
       # (la prima e' la KEK attiva); DATA_BLIND_INDEX_KEY = base64 di 32 byte.
-      # Impostate nel dashboard, mai nel repository.
+      # Impostate nel dashboard, mai nel repository. All'avvio il backend cifra
+      # in background i dati ancora in chiaro (DATA_BACKFILL_ON_STARTUP=true di
+      # default; false per disattivarlo, poi DATA_BACKFILL_BATCH_SIZE=500,
+      # DATA_BACKFILL_BATCH_PAUSE_SECONDS=0.2).
       - key: DATA_ENCRYPTION_KEYS
         sync: false
       - key: DATA_BLIND_INDEX_KEY

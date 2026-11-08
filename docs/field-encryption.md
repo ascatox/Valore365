@@ -88,23 +88,93 @@ primo deploy (i blind index esistenti smetterebbero di corrispondere; andrebbero
    `email_bidx`, `original_filename_bidx`, `source_sha256` con gli indici, porta
    `app_users.email` a `text` e copia `source_sha256` dal jsonb esistente). È idempotente.
 2. **Variabili**: impostare `DATA_ENCRYPTION_KEYS` e `DATA_BLIND_INDEX_KEY` su Render.
-3. **Deploy** del backend. Da qui le nuove scritture sono cifrate; i dati esistenti restano
-   leggibili in chiaro.
-4. **Backfill** dei dati esistenti, con le stesse variabili d'ambiente del backend
-   (`DATABASE_URL`, `DATA_ENCRYPTION_KEYS`, `DATA_BLIND_INDEX_KEY`, `APP_ENV`):
-
-   ```bash
-   python scripts/encrypt_existing_data.py --dry-run     # conta le righe da aggiornare
-   python scripts/encrypt_existing_data.py               # cifra e riempie i blind index
-   python scripts/encrypt_existing_data.py --table portfolios --batch-size 200
-   ```
-
-   Lo script è idempotente (salta i valori già cifrati), lavora a blocchi (una transazione per
-   blocco, `--batch-size`, default 500) e si può rieseguire o interrompere in qualsiasi
-   momento. Il `--dry-run` non scrive nulla, nemmeno le DEK.
+3. **Deploy** del backend. Da qui le nuove scritture sono cifrate e, all'avvio, il backend
+   esegue da solo il **backfill** dei dati esistenti (sezione seguente): non serve nessuna
+   shell. Finché il backfill non ha finito i dati legacy restano leggibili in chiaro.
 
 L'ordine conta: un backend nuovo su un database senza migrazione fallisce su ogni scrittura
 cifrata (`user_data_keys` mancante) e sugli import CSV (colonne mancanti).
+
+## Backfill automatico all'avvio
+
+Codice: `src/backend/app/services/field_encryption_backfill.py` (usa
+`app/crypto/backfill.py`, lo stesso codice dello script).
+
+- Parte a ogni avvio se `DATA_ENCRYPTION_KEYS` è configurata e `DATA_BACKFILL_ON_STARTUP`
+  è attivo (default `true`), in un thread in background: l'avvio e il bind della porta non
+  lo aspettano e un suo errore non blocca mai l'avvio (finisce nel log).
+- Cifra i valori ancora in chiaro e riempie `email_bidx`, `original_filename_bidx` e
+  `source_sha256`. È idempotente: a dati già cifrati fa solo una query per tabella e scrive
+  una riga di riepilogo nel log (`field encryption backfill: completed, rows updated=0 ...`).
+- Lavora a blocchi (`DATA_BACKFILL_BATCH_SIZE`, default 500 righe, una transazione per
+  blocco) con una pausa tra un blocco e l'altro (`DATA_BACKFILL_BATCH_PAUSE_SECONDS`,
+  default 0.2) per non occupare il pool di connessioni.
+- Una sola istanza alla volta: `pg_try_advisory_xact_lock` su una connessione dedicata
+  (come la sincronizzazione dei dati di mercato, variante "xact" per il pooler di Supabase
+  in transaction mode). Con deploy sovrapposti la seconda istanza trova il lock occupato,
+  lo scrive nel log e salta.
+- Allo shutdown si ferma dopo il blocco corrente; il resto lo riprende l'avvio successivo.
+- Una riga che non si riesce a cifrare viene registrata nel log e saltata; un errore di
+  database su una tabella annulla solo il blocco corrente di quella tabella e il backfill
+  passa alla tabella successiva. Le righe saltate vengono ritentate all'avvio successivo.
+- Log (logger `app.services.field_encryption_backfill`): avvio, righe aggiornate per tabella
+  (solo se ce ne sono), riepilogo con totale e durata, errori.
+- Esito dell'ultima run del processo per gli admin: `GET /api/admin/field-encryption/backfill`
+  (`status`: `running`, `completed`, `completed_with_errors`, `stopped`, `skipped_locked`,
+  `failed`, `disabled`; `started_at`, `finished_at`, righe per tabella, `error`). È per
+  istanza: quella che ha trovato il lock occupato risponde `skipped_locked`.
+- Per disattivarlo: `DATA_BACKFILL_ON_STARTUP=false`.
+
+### Verifica dal SQL Editor di Supabase
+
+Righe ancora da cifrare per colonna (tutte a 0 = backfill completo):
+
+```sql
+select 'app_users.email' as colonna, count(*) as in_chiaro
+  from app_users where email is not null and email not like 'enc:v1:%'
+union all
+select 'app_users.email_bidx mancante', count(*)
+  from app_users where email is not null and email_bidx is null
+union all
+select 'portfolios.name', count(*)
+  from portfolios where name is not null and name not like 'enc:v1:%'
+union all
+select 'transactions.notes', count(*)
+  from transactions where notes is not null and notes not like 'enc:v1:%'
+union all
+select 'csv_import_batches.original_filename', count(*)
+  from csv_import_batches where original_filename is not null and original_filename not like 'enc:v1:%'
+union all
+select 'csv_import_batches.original_filename_bidx mancante', count(*)
+  from csv_import_batches where original_filename is not null and original_filename_bidx is null
+union all
+select 'csv_import_batches.preview_data', count(*)
+  from csv_import_batches
+  where preview_data is not null
+    and not (jsonb_typeof(preview_data) = 'object' and preview_data ? '_enc')
+union all
+select 'doctor_policy_sets.name', count(*)
+  from doctor_policy_sets where name is not null and name not like 'enc:v1:%';
+```
+
+### Esecuzione manuale (script)
+
+Lo script resta disponibile per esecuzioni manuali (dry run, una sola tabella) e per la
+rotazione della KEK (`--rewrap-keys`), con le stesse variabili d'ambiente del backend
+(`DATABASE_URL`, `DATA_ENCRYPTION_KEYS`, `DATA_BLIND_INDEX_KEY`, `APP_ENV`):
+
+```bash
+python scripts/encrypt_existing_data.py --dry-run     # conta le righe da aggiornare
+python scripts/encrypt_existing_data.py               # cifra e riempie i blind index
+python scripts/encrypt_existing_data.py --table portfolios --batch-size 200
+```
+
+Lo script è idempotente (salta i valori già cifrati), lavora a blocchi (una transazione per
+blocco, `--batch-size`, default 500) e si può rieseguire o interrompere in qualsiasi
+momento. Il `--dry-run` non scrive nulla, nemmeno le DEK. Non prende l'advisory lock: se
+gira insieme al backfill automatico le due esecuzioni possono cifrare le stesse righe: il
+risultato resta corretto (l'aggiornamento tocca solo righe ancora in chiaro), ma è lavoro
+sprecato.
 
 ## Rotazione della KEK
 

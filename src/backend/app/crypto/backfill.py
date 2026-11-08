@@ -1,6 +1,7 @@
 """Backfill of the field encryption (TASK-57): encrypt legacy plaintext, fill blind indexes.
 
-Used by ``scripts/encrypt_existing_data.py``. Idempotent: a row is selected
+Used by ``scripts/encrypt_existing_data.py`` and, at app startup, by
+``app/services/field_encryption_backfill.py``. Idempotent: a row is selected
 only while it still has something to do (plaintext value, missing blind
 index or source_sha256), and values already encrypted are left as they are.
 Rows are walked by primary key in batches, one transaction per batch.
@@ -10,11 +11,14 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import text
+from sqlalchemy.exc import StatementError
 
 from .errors import FieldCryptoError
 from .field import FieldCrypto, is_encrypted, is_encrypted_json
@@ -28,9 +32,19 @@ class TableResult:
     scanned: int = 0
     updated: int = 0
     failed: list[str] = field(default_factory=list)
+    stopped: bool = False  # interrupted by stop_event before the table was done
+    error: str | None = None  # batch-level failure (isolate_errors=True only)
 
 
 DRY_RUN_PLACEHOLDER = "<encrypt>"
+
+
+def describe_error(exc: BaseException) -> str:
+    """One-line error description without SQL parameters (they can hold personal data)."""
+    if isinstance(exc, StatementError) and exc.orig is not None:
+        exc = exc.orig
+    first_line = (str(exc).strip().splitlines() or [""])[0]
+    return f"{type(exc).__name__}: {first_line[:300]}"
 
 
 @dataclass(frozen=True)
@@ -159,7 +173,9 @@ def _update_sql(target: Target, columns: list[str]) -> str:
     assignments = ", ".join(
         f"{c} = cast(:{c} as jsonb)" if c in target.jsonb_columns else f"{c} = :{c}" for c in columns
     )
-    return f"update {target.table} set {assignments} where {target.key} = :_key"
+    # The pending clause again: a row rewritten (encrypted) by the app between the
+    # select and this update is left alone instead of getting the old value back.
+    return f"update {target.table} set {assignments} where {target.key} = :_key and ({target.pending})"
 
 
 def backfill_table(
@@ -169,41 +185,81 @@ def backfill_table(
     *,
     batch_size: int = 500,
     dry_run: bool = False,
+    stop_event: threading.Event | None = None,
+    batch_pause_seconds: float = 0.0,
+    on_batch: Callable[[], None] | None = None,
+    isolate_errors: bool = False,
 ) -> TableResult:
+    """Walk the pending rows of ``target`` in batches (one transaction each).
+
+    A row that fails to transform (FieldCryptoError/ValueError) is logged,
+    listed in ``failed`` and skipped. Any other error (database, connection)
+    rolls back the current batch: it propagates, or with ``isolate_errors``
+    it is logged and stored in ``error`` (the batches already committed stay,
+    and their counts too). After each batch: ``on_batch()`` (e.g. a lock
+    heartbeat), then a stop check (``stop_event`` set = ``stopped``, the table
+    is left for the next run), then a pause of ``batch_pause_seconds``
+    (interrupted by ``stop_event``).
+    """
     result = TableResult(target.table)
     ctx = Ctx(crypto, dry_run)
     after: Any = None
-    while True:
-        with conn_factory() as conn:
-            params: dict[str, Any] = {"_limit": int(batch_size)}
-            key_filter = ""
-            if after is not None:
-                key_filter = f"and {target.key} > :_after"
-                params["_after"] = after
-            rows = conn.execute(
-                text(
-                    f"select {target.columns} from {target.table} "
-                    f"where ({target.pending}) {key_filter} order by {target.key} limit :_limit"
-                ),
-                params,
-            ).mappings().all()
-            if not rows:
-                break
-            for row in rows:
-                result.scanned += 1
-                key = row[target.key]
-                try:
-                    updates = target.transform(ctx, conn, dict(row))
-                except (FieldCryptoError, ValueError) as exc:
-                    logger.error("%s %s=%s: %s", target.table, target.key, key, exc)
-                    result.failed.append(str(key))
-                    continue
-                if not updates:
-                    continue
-                result.updated += 1
-                if not dry_run:
-                    conn.execute(text(_update_sql(target, sorted(updates))), {**updates, "_key": key})
+    try:
+        while True:
+            scanned = updated = 0
+            failed: list[str] = []
+            with conn_factory() as conn:
+                params: dict[str, Any] = {"_limit": int(batch_size)}
+                key_filter = ""
+                if after is not None:
+                    key_filter = f"and {target.key} > :_after"
+                    params["_after"] = after
+                rows = conn.execute(
+                    text(
+                        f"select {target.columns} from {target.table} "
+                        f"where ({target.pending}) {key_filter} order by {target.key} limit :_limit"
+                    ),
+                    params,
+                ).mappings().all()
+                if not rows:
+                    break
+                for row in rows:
+                    scanned += 1
+                    key = row[target.key]
+                    try:
+                        updates = target.transform(ctx, conn, dict(row))
+                    except (FieldCryptoError, ValueError) as exc:
+                        logger.error("%s %s=%s: %s", target.table, target.key, key, exc)
+                        failed.append(str(key))
+                        continue
+                    if not updates:
+                        continue
+                    updated += 1
+                    if not dry_run:
+                        conn.execute(text(_update_sql(target, sorted(updates))), {**updates, "_key": key})
+            # The batch is committed: count it.
+            result.scanned += scanned
+            result.updated += updated
+            result.failed.extend(failed)
             after = rows[-1][target.key]
+            if on_batch is not None:
+                on_batch()
+            if stop_event is not None and stop_event.is_set():
+                result.stopped = True
+                break
+            if batch_pause_seconds > 0:
+                if stop_event is not None:
+                    if stop_event.wait(batch_pause_seconds):
+                        result.stopped = True
+                        break
+                else:
+                    time.sleep(batch_pause_seconds)
+    except Exception as exc:
+        if not isolate_errors:
+            raise
+        result.error = describe_error(exc)
+        # No traceback: SQLAlchemy errors carry the statement parameters.
+        logger.error("field encryption backfill: table %s aborted after %d rows: %s", target.table, result.scanned, result.error)
     return result
 
 
@@ -214,9 +270,31 @@ def backfill_all(
     batch_size: int = 500,
     dry_run: bool = False,
     tables: set[str] | None = None,
+    stop_event: threading.Event | None = None,
+    batch_pause_seconds: float = 0.0,
+    on_batch: Callable[[], None] | None = None,
+    isolate_errors: bool = False,
 ) -> list[TableResult]:
-    return [
-        backfill_table(crypto, conn_factory, target, batch_size=batch_size, dry_run=dry_run)
-        for target in TARGETS
-        if tables is None or target.table in tables
-    ]
+    """Backfill every target (or only ``tables``); see backfill_table. Once
+    ``stop_event`` is set the remaining tables are reported as ``stopped``."""
+    results: list[TableResult] = []
+    for target in TARGETS:
+        if tables is not None and target.table not in tables:
+            continue
+        if stop_event is not None and stop_event.is_set():
+            results.append(TableResult(target.table, stopped=True))
+            continue
+        results.append(
+            backfill_table(
+                crypto,
+                conn_factory,
+                target,
+                batch_size=batch_size,
+                dry_run=dry_run,
+                stop_event=stop_event,
+                batch_pause_seconds=batch_pause_seconds,
+                on_batch=on_batch,
+                isolate_errors=isolate_errors,
+            )
+        )
+    return results

@@ -57,6 +57,7 @@ from .models import AdminUsageSummary, ErrorResponse
 from .repository import PortfolioRepository
 from .scheduler import PriceRefreshScheduler
 from .services.csv_service import CsvImportService
+from .services.field_encryption_backfill import FieldEncryptionBackfillRunner
 from .services.historical_service import HistoricalIngestionService
 from .services.market_data_sync import MarketDataSyncService, launch_startup_catch_up
 from .services.pac_service import PacExecutionService
@@ -126,6 +127,8 @@ market_data_sync = MarketDataSyncService(settings, repo, pricing_service, histor
 scheduler = PriceRefreshScheduler(
     settings, pricing_service, pac_service, historical_service, repo, market_data_sync=market_data_sync,
 )
+# TASK-57: background backfill of the field encryption at startup.
+field_encryption_backfill = FieldEncryptionBackfillRunner(engine)
 finance_client = make_finance_client(settings)
 justetf_client = JustEtfClient(settings=settings)
 
@@ -205,7 +208,7 @@ async def lifespan(_: FastAPI):
         raise RuntimeError("Refusing to start with Clerk auth disabled outside dev")
     # TASK-57: fails in production without DATA_ENCRYPTION_KEYS / DATA_BLIND_INDEX_KEY.
     try:
-        init_field_crypto(settings)
+        field_crypto = init_field_crypto(settings)
     except CryptoConfigError as exc:
         raise RuntimeError(f"Refusing to start: {exc}") from exc
     # Keep the sync-handler threadpool no wider than the connection pool, so a burst
@@ -215,9 +218,14 @@ async def lifespan(_: FastAPI):
     scheduler.start()
     # Non-blocking: needs_sync() and the sync itself run in a daemon thread.
     launch_startup_catch_up(market_data_sync, settings)
+    # TASK-57: encrypts the remaining plaintext in a daemon thread (advisory
+    # lock, never raises); a no-op without keys or with DATA_BACKFILL_ON_STARTUP=false.
+    field_encryption_backfill.start(field_crypto, settings)
     try:
         yield
     finally:
+        # Stops after the current batch; the next startup resumes (idempotent).
+        field_encryption_backfill.stop(timeout=5.0)
         scheduler.shutdown()
 
 
@@ -304,6 +312,12 @@ def health() -> dict[str, Any]:
 @router.get("/admin/usage-summary", response_model=AdminUsageSummary, responses={403: {"model": ErrorResponse}})
 def get_admin_usage_summary(_auth: AuthContext = Depends(require_admin)) -> AdminUsageSummary:
     return repo.get_admin_usage_summary()
+
+
+@router.get("/admin/field-encryption/backfill", responses={403: {"model": ErrorResponse}})
+def get_field_encryption_backfill_status(_auth: AuthContext = Depends(require_admin)) -> dict[str, Any]:
+    """Last startup backfill run of THIS process (TASK-57, docs/field-encryption.md)."""
+    return field_encryption_backfill.status()
 
 
 # Register all route modules.
