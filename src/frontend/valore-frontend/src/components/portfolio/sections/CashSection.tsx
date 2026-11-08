@@ -14,7 +14,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconPlus } from '@tabler/icons-react';
 import {
   createCashMovement,
@@ -64,7 +64,7 @@ const formatAmount = (value: number) =>
   value.toLocaleString('it-IT', { useGrouping: 'always', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function CashSection({ selectedPortfolioId, baseCurrency, onMovementCreated }: CashSectionProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [cashData, setCashData] = useState<CashBalanceResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawerOpened, setDrawerOpened] = useState(false);

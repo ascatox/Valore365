@@ -25,7 +25,8 @@ import {
 } from '@mantine/core';
 import { IconFlame, IconPlus, IconRobot, IconTarget, IconTrash, IconTrendingUp, IconWallet } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useDisclosure, useMediaQuery } from '@mantine/hooks';
+import { useDisclosure } from '@mantine/hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import {
   Area,
   CartesianGrid,
@@ -104,7 +105,7 @@ const FIRE_MODES = ['accumulation', 'decumulation'] as const;
 
 export function FirePage() {
   const queryClient = useQueryClient();
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';

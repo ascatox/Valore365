@@ -1,6 +1,6 @@
 import { Badge, Grid, Group, Loader, Paper, Text } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatNum, formatPct, formatDateTime, getVariationColor } from '../formatters';
 import type { AssetMiniChartData } from '../types';
@@ -31,7 +31,7 @@ export function AssetMiniChartsGrid({ assets, chartWindow, assetIntradayLoading 
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const gridColor = isDark ? theme.colors.dark[4] : '#e9ecef';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
 

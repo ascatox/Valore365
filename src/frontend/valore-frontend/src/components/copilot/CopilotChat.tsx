@@ -15,7 +15,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { IconArrowRight, IconArrowsHorizontal, IconChevronDown, IconMessagePlus, IconRobot, IconSend, IconTrash } from '@tabler/icons-react';
 import { MessageBubble } from './MessageBubble';
 import { BottomSheet } from '../mobile/BottomSheet';
@@ -246,7 +246,7 @@ export function CopilotChat({
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   type PanelSize = 'default' | 'half' | 'wide';
   const PANEL_SIZES: PanelSize[] = ['default', 'half', 'wide'];
   const PANEL_SIZE_MAP: Record<PanelSize, string> = { default: 'lg', half: '50%', wide: '75%' };

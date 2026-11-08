@@ -1,8 +1,10 @@
-import { Suspense, lazy, useState, useEffect, useRef, useCallback } from 'react';
+import { Suspense, lazy, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import {
   AppShell,
   Badge,
   Box,
+  Center,
+  Loader,
   SimpleGrid,
   Stack,
   Text,
@@ -17,6 +19,7 @@ import {
   useComputedColorScheme,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from './hooks/useIsMobile';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
 import {
   IconRefresh,
@@ -55,16 +58,69 @@ import { getAdminPortfolios, getAdminUsageSummary } from './services/api';
 import { PortfolioScopeProvider, useOptionalPortfolioScope } from './scope/PortfolioScopeContext';
 import { AGGREGATE_READ_ONLY_HINT } from './scope/aggregateLabels';
 
-const InstantPortfolioAnalyzerPage = lazy(() => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })));
-const LandingPage = lazy(() => import('./pages/LandingPage.tsx').then((module) => ({ default: module.LandingPage })));
-const AdminPage = lazy(() => import('./pages/Admin.page.tsx').then((module) => ({ default: module.AdminPage })));
-const DoctorPage = lazy(() => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })));
-const FirePage = lazy(() => import('./pages/Fire.page.tsx').then((module) => ({ default: module.FirePage })));
-const PortfolioPage = lazy(() => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })));
-const DashboardPage = lazy(() => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })));
-const SettingsPage = lazy(() => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })));
-const AboutPage = lazy(() => import('./pages/About.page.tsx').then((module) => ({ default: module.AboutPage })));
-const CreatorPage = lazy(() => import('./pages/Creator.page.tsx').then((module) => ({ default: module.CreatorPage })));
+// Page chunks: each loader is shared by lazy() and the idle-time prefetch, so
+// a prefetched chunk is the very module the route renders.
+const pageLoaders = {
+  instantAnalyzer: () => import('./pages/InstantPortfolioAnalyzerPage.tsx').then((module) => ({ default: module.InstantPortfolioAnalyzerPage })),
+  landing: () => import('./pages/LandingPage.tsx').then((module) => ({ default: module.LandingPage })),
+  admin: () => import('./pages/Admin.page.tsx').then((module) => ({ default: module.AdminPage })),
+  doctor: () => import('./pages/Doctor.page.tsx').then((module) => ({ default: module.DoctorPage })),
+  fire: () => import('./pages/Fire.page.tsx').then((module) => ({ default: module.FirePage })),
+  portfolio: () => import('./pages/Portfolio.page.tsx').then((module) => ({ default: module.PortfolioPage })),
+  dashboard: () => import('./pages/Dashboard.page.tsx').then((module) => ({ default: module.DashboardPage })),
+  settings: () => import('./pages/Settings.page.tsx').then((module) => ({ default: module.SettingsPage })),
+  about: () => import('./pages/About.page.tsx').then((module) => ({ default: module.AboutPage })),
+  creator: () => import('./pages/Creator.page.tsx').then((module) => ({ default: module.CreatorPage })),
+};
+
+const InstantPortfolioAnalyzerPage = lazy(pageLoaders.instantAnalyzer);
+const LandingPage = lazy(pageLoaders.landing);
+const AdminPage = lazy(pageLoaders.admin);
+const DoctorPage = lazy(pageLoaders.doctor);
+const FirePage = lazy(pageLoaders.fire);
+const PortfolioPage = lazy(pageLoaders.portfolio);
+const DashboardPage = lazy(pageLoaders.dashboard);
+const SettingsPage = lazy(pageLoaders.settings);
+const AboutPage = lazy(pageLoaders.about);
+const CreatorPage = lazy(pageLoaders.creator);
+
+// Pages reachable from the app navigation, in the order they're prefetched
+// (bottom-nav tabs first): the first visit to a tab then has no chunk to wait for.
+const PREFETCHED_PAGES = [
+  pageLoaders.dashboard,
+  pageLoaders.portfolio,
+  pageLoaders.doctor,
+  pageLoaders.fire,
+  pageLoaders.settings,
+  pageLoaders.creator,
+  pageLoaders.about,
+];
+
+function prefetchAppPages() {
+  const run = () => {
+    // One at a time, so the prefetch never competes with the current page.
+    void PREFETCHED_PAGES.reduce<Promise<unknown>>(
+      (chain, load) => chain.then(() => load().catch(() => undefined)),
+      Promise.resolve(),
+    );
+  };
+  const idle = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (idle) {
+    idle(run, { timeout: 3000 });
+  } else {
+    window.setTimeout(run, 1500);
+  }
+}
+
+// Shown only while a page chunk loads for the first time; the app shell
+// (header, bottom nav) stays mounted around it.
+function PageFallback() {
+  return (
+    <Center py="xl" mih={160} aria-busy="true" aria-label="Caricamento pagina">
+      <Loader size="sm" />
+    </Center>
+  );
+}
 
 const clerkEnabled = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
@@ -72,11 +128,7 @@ function App() {
   return (
     <BrowserRouter>
       <Suspense
-        fallback={(
-          <Box py="xl" ta="center" c="dimmed">
-            Caricamento pagina...
-          </Box>
-        )}
+        fallback={<PageFallback />}
       >
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -103,9 +155,9 @@ function ProtectedApp() {
   const mainRef = useRef<HTMLElement | null>(null);
   const [navbarExpanded, setNavbarExpanded] = useState(true);
   const colorScheme = useComputedColorScheme('light');
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const portfolioScope = useOptionalPortfolioScope();
-  const isLandscape = useMediaQuery('(max-width: 48em) and (orientation: landscape)');
+  const isLandscape = useMediaQuery('(max-width: 48em) and (orientation: landscape)', undefined, { getInitialValueInEffect: false });
   const headerHeight = isLandscape ? 44 : 60;
   const [hasPortfolios, setHasPortfolios] = useState<boolean | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
@@ -119,6 +171,20 @@ function ProtectedApp() {
     window.localStorage.setItem(STORAGE_KEYS.privacyModeEnabled, String(next));
     window.dispatchEvent(new CustomEvent('valore365:privacy-changed', { detail: next }));
   };
+
+  // Load the other pages' chunks once the current one is up.
+  useEffect(() => {
+    prefetchAppPages();
+  }, []);
+
+  // A new page starts at the top: the window keeps the previous page's
+  // offset otherwise, so the new page opened half-way down (or showed the end
+  // of the old one while it grew). Layout effect: runs before the new page is
+  // painted. Query-only changes (?azione=, ?tab=) keep the position.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [location.pathname]);
 
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -531,6 +597,11 @@ function ProtectedApp() {
             )}
           </Transition>
           <Container fluid px={0} key={`privacy-${privacyMode}`}>
+            {/* Inner boundary: a page chunk still loading suspends only the
+                content area, never the AppShell around it. Navigations run in
+                a transition (React Router v7 default), so an already-shown
+                page stays on screen until the next one is ready. */}
+            <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/portfolio" element={<PortfolioPage />} />
@@ -542,6 +613,7 @@ function ProtectedApp() {
               <Route path="/admin" element={<AdminPage />} />
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>
+            </Suspense>
           </Container>
         </AppShell.Main>
 

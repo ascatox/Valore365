@@ -9,7 +9,7 @@ import {
   Stack,
   TextInput,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { createTransaction } from '../../../services/api';
 import type { Portfolio } from '../../../services/api';
 import { formatGrossTotal } from '../../dashboard/formatters';
@@ -46,7 +46,7 @@ export function TransactionDrawer({
   selectedPortfolio,
   onTransactionCreated,
 }: TransactionDrawerProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const swipeHandlers = useSwipeToClose(onClose, { enabled: Boolean(isMobile) });
   const firstInputRef = useRef<HTMLInputElement>(null);
 

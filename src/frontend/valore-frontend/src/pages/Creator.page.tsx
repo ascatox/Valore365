@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Button, Group, Stack, Stepper, Notification } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
@@ -23,7 +23,7 @@ const STEP_LABELS = ['Scegli', 'Seleziona', 'Personalizza', 'Capitale', 'Conferm
 
 export function CreatorPage() {
   const navigate = useNavigate();
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   const [active, setActive] = useState(0);
   const [method, setMethod] = useState<CreatorMethod | null>(null);

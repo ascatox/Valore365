@@ -12,7 +12,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { IconTrendingUp } from '@tabler/icons-react';
 import {
   Area,
@@ -80,7 +80,7 @@ export function MonteCarloCard({ scope, marketValue, currency }: Props) {
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const hasValue = marketValue != null && marketValue > 0;
 
   if (isLoading && scope != null) {

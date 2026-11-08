@@ -21,7 +21,7 @@ import {
   Box,
   Alert,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop, IconRobot } from '@tabler/icons-react';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
@@ -57,7 +57,7 @@ export function SettingsPage() {
   const theme = useMantineTheme();
   const { colorScheme: colorSchemeRaw, setColorScheme } = useMantineColorScheme();
   const colorScheme = useComputedColorScheme('light');
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState('general');
   const [textSize, setTextSize] = useState<TextSizePreference>(() => getTextSizePreference());
   const largeText = useTextScale() >= LARGE_TEXT_SCALE;

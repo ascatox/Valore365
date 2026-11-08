@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Box, Group, Stack, Text, Title } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface PageHeaderProps {
   eyebrow?: string;
@@ -14,7 +14,7 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ eyebrow, title, description, actions, mobileBelow, hideMobileTitle = false }: PageHeaderProps) {
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   if (isMobile) {
     // One compact sticky row instead of eyebrow + title + full-width cards:

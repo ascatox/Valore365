@@ -18,7 +18,7 @@ import {
   useComputedColorScheme,
   useMantineTheme,
 } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   IconBriefcase2,
   IconCheck,
@@ -124,7 +124,7 @@ export function PortfolioSwitcher({
   const theme = useMantineTheme();
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
   const [opened, setOpened] = useState(false);
   const [query, setQuery] = useState('');
 

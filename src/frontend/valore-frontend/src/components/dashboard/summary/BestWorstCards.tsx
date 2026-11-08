@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Badge, Card, Grid, Group, SegmentedControl, Text, Tooltip, UnstyledButton } from '@mantine/core';
-import { useMediaQuery } from '@mantine/hooks';
+import { useIsMobile } from '../../../hooks/useIsMobile';
 import { IconArrowUpRight, IconArrowDownRight, IconInfoCircle } from '@tabler/icons-react';
 import { formatPct, formatShortDate, getVariationColor } from '../formatters';
 import type { PerformerItem } from '../types';
@@ -75,7 +75,7 @@ function PerformerList({
 
 export function BestWorstCards({ best, worst, periodLabel, chartWindow, onWindowChange }: BestWorstCardsProps) {
   const [infoModal, setInfoModal] = useState<{ assetId: number; symbol: string } | null>(null);
-  const isMobile = useMediaQuery('(max-width: 48em)');
+  const isMobile = useIsMobile();
 
   const handleInfoClick = isMobile ? undefined : (assetId: number, symbol: string) => {
     setInfoModal({ assetId, symbol });
