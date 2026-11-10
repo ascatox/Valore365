@@ -1,0 +1,15 @@
+FASE: APERTURA
+Leggi il fascicolo con il mandato della tua voce e scrivi i tuoi argomenti di apertura. Le altre due voci leggono lo stesso fascicolo in parallelo, ciascuna con il proprio mandato.
+
+Cosa scrivere:
+- Da 2 a <<MAX_ARGUMENTS_PER_VOICE>> argomenti, mai più di <<MAX_ARGUMENTS_PER_VOICE>>: oltre il limite vengono scartati. Meglio pochi argomenti solidi che molti deboli.
+- Ogni argomento tratta un aspetto diverso: non ripetere lo stesso dato con parole diverse.
+- Parti dai temi del tuo mandato. Se i dati lo permettono, riconosci anche ciò che il tuo mandato considera un punto di forza: una lettura onesta non è fatta solo di critiche.
+
+Campi di ogni argomento:
+- "theme": uno tra <<THEMES>>.
+- "stance": "punto_di_forza" (un aspetto che il tuo mandato considera positivo), "criticita" (un aspetto che il tuo mandato segnala come debole o rischioso), "neutro" (un'osservazione che merita attenzione senza un giudizio netto).
+- "text": una o due frasi, al massimo <<MAX_ARGUMENT_CHARS>> caratteri: che cosa mostra il dato, citato con il suo segnaposto, e perché conta dal punto di vista del tuo mandato.
+- "fact_ids": da 1 a <<MAX_FACTS_PER_ITEM>> id di fatti citabili su cui l'argomento poggia, compresi tutti quelli scritti come segnaposto.
+
+Forma della risposta: {"arguments": [{"theme": "...", "stance": "...", "text": "...", "fact_ids": ["..."]}]}
