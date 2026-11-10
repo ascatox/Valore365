@@ -70,6 +70,7 @@ from .services.doctor_policy.service import get_doctor_policy_service
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
 from .api.routes_aggregate import register_aggregate_routes
 from .api.routes_doctor import register_doctor_routes
+from .api.routes_tribunal import register_tribunal_routes
 from .api.portfolio_health import register_portfolio_health_routes
 from .api.routes_portfolio import register_portfolio_routes
 from .api.routes_assets import register_assets_routes
@@ -337,6 +338,15 @@ register_doctor_routes(
     RuntimeDependencyProxy(lambda: repo),
     settings=settings,
     service_getter=lambda: doctor_policy_service,
+)
+# Tribunale del portafoglio (/doctor/tribunal/...): after the Doctor routes.
+register_tribunal_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    settings=settings,
+    service_getter=lambda: doctor_policy_service,
+    finance_client=RuntimeDependencyProxy(lambda: finance_client),
+    justetf_client=RuntimeDependencyProxy(lambda: justetf_client),
 )
 register_instant_portfolio_analyzer_routes(router, repo, csv_import_service=csv_import_service)
 register_portfolio_health_routes(

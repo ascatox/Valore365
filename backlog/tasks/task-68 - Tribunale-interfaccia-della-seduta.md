@@ -1,7 +1,7 @@
 ---
 id: TASK-68
 title: 'Tribunale: interfaccia della seduta'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -25,15 +25,15 @@ L'utente deve capire in pochi secondi tre cose: cosa pensa ciascuna voce, su qua
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 La seduta mostra le tre voci distinguibili per nome e colore, con gli argomenti che compaiono man mano e l'indicazione della fase in corso
-- [ ] #2 Ogni argomento mostra posizione (punto di forza, criticità, neutro) e i fatti citati come elementi selezionabili che aprono etichetta, valore, fonte e qualità del dato
-- [ ] #3 Le repliche sono visivamente collegate all'argomento a cui rispondono
-- [ ] #4 La sintesi presenta punti condivisi, punti contesi con le voci su ciascun lato e domande aperte, senza alcun elemento che suggerisca un vincitore
-- [ ] #5 Su desktop le voci sono affiancate; su mobile sono impilate o a schede, senza scorrimento orizzontale
-- [ ] #6 Sono presenti gli stati della specifica: non disponibile con il motivo, pronto, in corso, concluso, errore con ciò che era già arrivato, limite raggiunto; l'avvertenza è sempre visibile
-- [ ] #7 In Privacy Mode gli importi sono nascosti come nel resto dell'app; i temi di colore selezionabili sono rispettati
-- [ ] #8 Il numero di argomenti scartati dal verificatore è mostrato con una spiegazione di cosa significa
-- [ ] #9 Test dei componenti coprono ogni stato, l'apertura di un fatto citato e la resa su mobile
+- [x] #1 La seduta mostra le tre voci distinguibili per nome e colore, con gli argomenti che compaiono man mano e l'indicazione della fase in corso
+- [x] #2 Ogni argomento mostra posizione (punto di forza, criticità, neutro) e i fatti citati come elementi selezionabili che aprono etichetta, valore, fonte e qualità del dato
+- [x] #3 Le repliche sono visivamente collegate all'argomento a cui rispondono
+- [x] #4 La sintesi presenta punti condivisi, punti contesi con le voci su ciascun lato e domande aperte, senza alcun elemento che suggerisca un vincitore
+- [x] #5 Su desktop le voci sono affiancate; su mobile sono impilate o a schede, senza scorrimento orizzontale
+- [x] #6 Sono presenti gli stati della specifica: non disponibile con il motivo, pronto, in corso, concluso, errore con ciò che era già arrivato, limite raggiunto; l'avvertenza è sempre visibile
+- [x] #7 In Privacy Mode gli importi sono nascosti come nel resto dell'app; i temi di colore selezionabili sono rispettati
+- [x] #8 Il numero di argomenti scartati dal verificatore è mostrato con una spiegazione di cosa significa
+- [x] #9 Test dei componenti coprono ogni stato, l'apertura di un fatto citato e la resa su mobile
 <!-- AC:END -->
 
 ## Implementation Notes

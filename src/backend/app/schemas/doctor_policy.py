@@ -303,3 +303,4 @@ class MetricsResponse(BaseModel):
 class DoctorFeaturesRead(BaseModel):
     policy_enabled: bool
     simulator_enabled: bool
+    tribunal_enabled: bool

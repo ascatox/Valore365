@@ -77,9 +77,9 @@ def setup():
 
 def test_features_reflect_flags(setup):
     client, _service, settings = setup
-    assert client.get("/api/doctor/features").json() == {"policy_enabled": True, "simulator_enabled": True}
+    assert client.get("/api/doctor/features").json() == {"policy_enabled": True, "simulator_enabled": True, "tribunal_enabled": True}
     settings.doctor_simulator_enabled = False
-    assert client.get("/api/doctor/features").json() == {"policy_enabled": True, "simulator_enabled": False}
+    assert client.get("/api/doctor/features").json() == {"policy_enabled": True, "simulator_enabled": False, "tribunal_enabled": True}
 
 
 def test_policy_flag_off_is_404_feature_disabled(setup):
