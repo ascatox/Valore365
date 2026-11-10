@@ -128,8 +128,10 @@ Percorsi relativi a `src/frontend/valore-frontend/src/components/doctor/tribunal
   testo) e il tema (§6.3) come testo secondario; poi il testo.
 - Le repliche ricevute sono annidate **sotto l'argomento bersaglio**, nella colonna della voce
   bersaglio, rientrate, con bordo sinistro del colore della voce che replica e intestazione
-  «Replica di <nome voce> · <Concorda|Contesta|Precisa>».
-- Nella colonna della voce che replica compare una riga compatta «Ha replicato a <nome voce>»
+  «Replica <di + voce> · <Concorda|Contesta|Precisa>» con la preposizione articolata («Replica
+  del fattoriale», «Replica dell'indicizzatore»).
+- Nella colonna della voce che replica compare una riga compatta «Ha replicato <a + voce>»
+  («Ha replicato al prudente», «Ha replicato all'indicizzatore»)
   che porta all'argomento bersaglio (scroll e focus; su mobile cambia anche scheda). Ogni card ha
   `id="tribunal-<id elemento>"`.
 - Durante la fase di apertura una voce in attesa mostra due `Skeleton`; durante la replica le
@@ -366,8 +368,8 @@ strumenti, importi o soglie.
   dettagli»; dettaglio raggiungibile da tastiera, Esc chiude e riporta il focus al chip.
 - Posizioni e qualità mai solo a colori (icona + testo); colonne con `role="region"` e
   `aria-label` col nome della voce; schede mobili con i ruoli `tablist`/`tab` di Mantine.
-- Le repliche hanno `aria-describedby` verso l'argomento bersaglio; i collegamenti «Ha replicato a
-  …» e quelli della sintesi spostano il focus sull'elemento.
+- Le repliche hanno `aria-describedby` verso l'argomento bersaglio; i collegamenti «Ha replicato
+  al/all' …» e quelli della sintesi spostano il focus sull'elemento.
 - Stepper delle fasi con `aria-current="step"` sulla fase in corso.
 
 ## 11. Colori e temi

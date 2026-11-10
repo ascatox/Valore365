@@ -149,8 +149,8 @@ Limiti residui noti (per contratto il verificatore è basato su regole, non sul 
 - URL e markup nel testo (es. `[qui](http://…)`) passano il verificatore ma il frontend li mostra come testo
   semplice (React, nessun Markdown), quindi non diventano link.
 
-## 6. Osservazioni sul frontend (non corrette: TASK-70 è in corso sugli stessi file)
+## 6. Osservazioni sul frontend
 
-1. **Preposizione articolata con i nomi delle voci**: le etichette mostrano «Replica di Il fattoriale», «Replica di
-   L'indicizzatore», «Ha replicato a Il prudente» invece di «del fattoriale», «dell'indicizzatore», «al prudente»
-   (card di replica e collegamenti sotto le colonne).
+1. **Preposizione articolata con i nomi delle voci** (risolto dopo TASK-70): le etichette mostravano «Replica di Il
+   fattoriale», «Ha replicato a Il prudente». Ora `voiceWithPreposition` in `tribunalFormat.ts` produce «Replica del
+   fattoriale», «Replica dell'indicizzatore», «Ha replicato al prudente».
