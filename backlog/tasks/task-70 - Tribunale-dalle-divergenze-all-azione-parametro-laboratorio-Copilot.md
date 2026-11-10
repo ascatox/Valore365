@@ -1,7 +1,7 @@
 ---
 id: TASK-70
 title: 'Tribunale: dalle divergenze all''azione (parametro, laboratorio, Copilot)'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -25,12 +25,12 @@ Una seduta che finisce con «le voci non concordano sulla concentrazione» lasci
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Da un punto conteso l'utente può chiedere al Copilot di approfondirlo: la chat si apre con una domanda precompilata che riporta il punto e i fatti citati
-- [ ] #2 Da un punto conteso legato a una metrica del Doctor l'utente può aprire I miei parametri con una bozza di regola su quella metrica, da confermare con il flusso esistente; nulla viene salvato senza conferma
-- [ ] #3 Da un punto conteso l'utente può aprire il Laboratorio per costruire uno scenario
-- [ ] #4 Le azioni compaiono solo se la sezione di destinazione è attiva e, in vista aggregata, solo dove ha senso
-- [ ] #5 Nessuna azione propone strumenti da comprare o vendere né precompila soglie non scelte dall'utente
-- [ ] #6 Test coprono le tre azioni, le sezioni spente e la vista aggregata
+- [x] #1 Da un punto conteso l'utente può chiedere al Copilot di approfondirlo: la chat si apre con una domanda precompilata che riporta il punto e i fatti citati
+- [x] #2 Da un punto conteso legato a una metrica del Doctor l'utente può aprire I miei parametri con una bozza di regola su quella metrica, da confermare con il flusso esistente; nulla viene salvato senza conferma
+- [x] #3 Da un punto conteso l'utente può aprire il Laboratorio per costruire uno scenario
+- [x] #4 Le azioni compaiono solo se la sezione di destinazione è attiva e, in vista aggregata, solo dove ha senso
+- [x] #5 Nessuna azione propone strumenti da comprare o vendere né precompila soglie non scelte dall'utente
+- [x] #6 Test coprono le tre azioni, le sezioni spente e la vista aggregata
 <!-- AC:END -->
 
 ## Implementation Notes

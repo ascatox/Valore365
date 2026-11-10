@@ -63,7 +63,8 @@ import { FreshnessIndicator } from '../components/doctor/policy/FreshnessIndicat
 import { useDoctorFeatures, useDoctorMetrics, useDoctorPolicyState, useInvalidateDoctorPolicy } from '../components/doctor/policy/hooks';
 import { isEvaluation, ruleName } from '../components/doctor/policy/policyFormat';
 import { DoctorLabSection, type LabPrefill } from '../components/doctor/lab/DoctorLabSection';
-import { TribunalSection } from '../components/doctor/tribunal/TribunalSection';
+import { TribunalSection, type TribunalSectionProps } from '../components/doctor/tribunal/TribunalSection';
+import { TribunalContestedActions } from '../components/doctor/tribunal/TribunalContestedActions';
 import { useTribunalFeature } from '../components/doctor/tribunal/useTribunalSession';
 import { DOCTOR_TRIBUNAL_UI_ENABLED } from '../features';
 
@@ -338,6 +339,8 @@ export function DoctorPage() {
   const [labPrefill, setLabPrefill] = useState<LabPrefill | null>(null);
   // A Copilot draft the user chose to open in the manual editor of «I miei parametri».
   const [editorDraft, setEditorDraft] = useState<{ id: number; draft: DoctorPolicyDraftPayload } | null>(null);
+  // A new rule (no thresholds) on a metric of a contested point of the Tribunale, for the editor.
+  const [ruleToAdd, setRuleToAdd] = useState<{ id: number; metricCode: string } | null>(null);
   const portfolioNames = useMemo(() => new Map(portfolios.map((item) => [item.id, item.name])), [portfolios]);
   const privacy = isPrivacyModeEnabled();
 
@@ -508,6 +511,41 @@ export function DoctorPage() {
     setEditorDraft({ id: Date.now(), draft });
     setSection('parametri');
   }
+
+  // Tribunale (TASK-70): from a contested point to the user's own tools. Nothing is saved here.
+  const knownMetricCodes = useMemo(
+    () => (doctorMetrics ? new Set(doctorMetrics.map((metric) => metric.code)) : null),
+    [doctorMetrics],
+  );
+  const renderContestedActions = useCallback<NonNullable<TribunalSectionProps['renderContestedActions']>>(
+    (point, { caseFile, voices }) => (
+      <TribunalContestedActions
+        // Only metrics of the Doctor registry can become a rule (the backend already guarantees it).
+        point={knownMetricCodes ? { ...point, metric_codes: point.metric_codes.filter((code) => knownMetricCodes.has(code)) } : point}
+        caseFile={caseFile}
+        voices={voices}
+        isAggregate={isAggregate}
+        privacy={privacy}
+        copilotAvailable={copilotAvailable}
+        parametriEnabled={features.policyEnabled}
+        labEnabled={features.simulatorEnabled}
+        onAskCopilot={(text) => {
+          setPendingCopilotPrompt({ id: Date.now(), text });
+          openCopilot();
+        }}
+        onOpenPolicyDraft={(metricCode) => {
+          setRuleToAdd({ id: Date.now(), metricCode });
+          setSection('parametri');
+        }}
+        onOpenLab={() => {
+          // An empty scenario: no prefill left over from «Simula» on a rule.
+          setLabPrefill(null);
+          setSection('laboratorio');
+        }}
+      />
+    ),
+    [knownMetricCodes, isAggregate, privacy, copilotAvailable, features.policyEnabled, features.simulatorEnabled, openCopilot, setSection],
+  );
 
   function handlePolicySaved(saved: DoctorPolicyRead) {
     void invalidateDoctorPolicy(saved.scope?.fingerprint ?? doctorScopeFingerprint(saved.scope?.portfolio_ids ?? scopeIds));
@@ -939,6 +977,8 @@ export function DoctorPage() {
                 onSimulate={handleSimulateRule}
                 draftToEdit={editorDraft}
                 onDraftConsumed={() => setEditorDraft(null)}
+                ruleToAdd={ruleToAdd}
+                onRuleToAddConsumed={() => setRuleToAdd(null)}
               />
             </DoctorSectionErrorBoundary>
           )}
@@ -965,7 +1005,12 @@ export function DoctorPage() {
 
           {section === 'tribunale' && scope != null && (
             <DoctorSectionErrorBoundary key={`tribunale-${scopeKeyString}`} area="Tribunale">
-              <TribunalSection portfolioIds={scopeIds} isAggregate={isAggregate} privacy={privacy} />
+              <TribunalSection
+                portfolioIds={scopeIds}
+                isAggregate={isAggregate}
+                privacy={privacy}
+                renderContestedActions={renderContestedActions}
+              />
             </DoctorSectionErrorBoundary>
           )}
         </Stack>

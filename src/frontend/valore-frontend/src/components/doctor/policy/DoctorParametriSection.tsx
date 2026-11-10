@@ -24,18 +24,25 @@ interface DoctorParametriSectionProps {
   /** Copilot draft to open in the editor («Apri nell'editor» on the draft card). */
   draftToEdit?: { id: number; draft: DoctorPolicyDraftPayload } | null;
   onDraftConsumed?: () => void;
+  /**
+   * New rule on one metric to open in the editor, with no thresholds (from a contested point of
+   * the Tribunale). Opened once the saved rules and the metrics are loaded; still validated,
+   * previewed and confirmed in the editor.
+   */
+  ruleToAdd?: { id: number; metricCode: string } | null;
+  onRuleToAddConsumed?: () => void;
 }
 
 /** «I miei parametri»: rules with status, evidence, editor, versions & audit. */
 export function DoctorParametriSection({
   portfolioIds, isAggregate, scopeLabel, privacy, currency, isMobile, policyState, canExplain, canSimulate, onExplain, onSimulate,
-  draftToEdit, onDraftConsumed,
+  draftToEdit, onDraftConsumed, ruleToAdd, onRuleToAddConsumed,
 }: DoctorParametriSectionProps) {
   const { fingerprint, policyQuery, policy, evaluationQuery } = policyState;
   const metricsQuery = useDoctorMetrics();
   const templatesQuery = useDoctorTemplates();
   const invalidate = useInvalidateDoctorPolicy();
-  const [editor, setEditor] = useState<{ focusRuleId: string | null; draft?: DoctorPolicyDraftPayload } | null>(null);
+  const [editor, setEditor] = useState<{ focusRuleId: string | null; draft?: DoctorPolicyDraftPayload; addMetricCode?: string } | null>(null);
   const [selectedRule, setSelectedRule] = useState<DoctorRuleResult | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,6 +52,14 @@ export function DoctorParametriSection({
     setEditor({ focusRuleId: null, draft: draftToEdit.draft });
     onDraftConsumed?.();
   }, [draftToEdit, onDraftConsumed]);
+
+  // Wait for the saved rules (kept in the editor) and the metric definitions before opening.
+  const ruleToAddReady = ruleToAdd != null && !policyQuery.isLoading && !metricsQuery.isLoading;
+  useEffect(() => {
+    if (!ruleToAdd || !ruleToAddReady) return;
+    if (!policyQuery.error) setEditor({ focusRuleId: null, addMetricCode: ruleToAdd.metricCode });
+    onRuleToAddConsumed?.();
+  }, [ruleToAdd, ruleToAddReady, policyQuery.error, onRuleToAddConsumed]);
 
   const metrics = metricsQuery.data ?? [];
   const evaluation = isEvaluation(evaluationQuery.data) ? evaluationQuery.data : null;
@@ -185,6 +200,7 @@ export function DoctorParametriSection({
           templates={templatesQuery.data ?? []}
           focusRuleId={editor.focusRuleId}
           initialDraft={editor.draft ?? null}
+          addMetricCode={editor.addMetricCode ?? null}
           onSaved={(saved) => handleSaved(saved, 'Parametri salvati: versione {v}.')}
           onReload={reload}
           isMobile={isMobile}
