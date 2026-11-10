@@ -44,4 +44,5 @@ Con fascicolo, chiamata strutturata, voci e verificatore pronti, serve il pezzo 
 File di proprietà: `src/backend/app/services/tribunal/orchestrator.py`, `src/backend/app/api/routes_tribunal.py`, la registrazione in `app/main.py`, il flag in `app/config.py` e `.env.example`, `tests/unit/test_tribunal_orchestrator.py`, `tests/unit/test_tribunal_routes.py`.
 Riferimenti: `copilot/streaming.py` (`_run_with_heartbeat`, timeout, `_friendly_error`), `api/routes_copilot.py` (risoluzione della configurazione, `memoize_positions`), `api/routes_doctor.py` (feature flag e scope).
 È il punto di integrazione del backend: un solo agente, dopo che TASK-61…64 sono chiusi.
+Aggiornamento da TASK-60: oltre ai file sopra, TASK-65 possiede una riga ciascuno in `app/schemas/doctor_policy.py` (`DoctorFeaturesRead.tribunal_enabled`) e in `services/doctor_policy/service.py` (`features`), e definisce `resolve_tribunal_config` in `orchestrator.py` senza modificare `copilot/config.py`. Lavora con lo store nullo previsto dal contratto (`docs/tribunale/architecture.md`).
 <!-- SECTION:NOTES:END -->
