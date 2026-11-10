@@ -1,7 +1,7 @@
 ---
 id: TASK-61
 title: 'Tribunale: fascicolo dei fatti calcolato dal Doctor'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -24,13 +24,13 @@ Le tre voci del Tribunale possono citare solo dati calcolati dal Doctor. Serve u
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Dato uno scope, il modulo restituisce un fascicolo conforme allo schema di `docs/tribunale/api-contracts.md`, senza chiamare alcun LLM
-- [ ] #2 Il fascicolo copre: metriche del registry del Doctor, health score con i suoi avvisi, costi (TER medio), concentrazione e X-Ray (prime esposizioni per paese e settore), stress test storici, percentili Monte Carlo, numero di posizioni e, se esiste una policy, le regole violate o non verificabili
-- [ ] #3 Un dato mancante, stale o UNKNOWN compare come fatto non citabile con il motivo, mai come zero
-- [ ] #4 A parità di dati di ingresso il fascicolo ha gli stessi id, lo stesso ordine e lo stesso hash; l'hash cambia quando cambia un valore
-- [ ] #5 Funziona in vista aggregata e rifiuta scope non posseduti dall'utente con lo stesso errore del Doctor
-- [ ] #6 I nomi degli strumenti sono troncati e ripuliti come nei tool del Copilot, e il fascicolo rispetta il limite di fatti del contratto dando priorità ai più rilevanti
-- [ ] #7 Test unitari coprono portafoglio completo, dati mancanti, vista aggregata, stabilità dell'hash e portafoglio vuoto
+- [x] #1 Dato uno scope, il modulo restituisce un fascicolo conforme allo schema di `docs/tribunale/api-contracts.md`, senza chiamare alcun LLM
+- [x] #2 Il fascicolo copre: metriche del registry del Doctor, health score con i suoi avvisi, costi (TER medio), concentrazione e X-Ray (prime esposizioni per paese e settore), stress test storici, percentili Monte Carlo, numero di posizioni e, se esiste una policy, le regole violate o non verificabili
+- [x] #3 Un dato mancante, stale o UNKNOWN compare come fatto non citabile con il motivo, mai come zero
+- [x] #4 A parità di dati di ingresso il fascicolo ha gli stessi id, lo stesso ordine e lo stesso hash; l'hash cambia quando cambia un valore
+- [x] #5 Funziona in vista aggregata e rifiuta scope non posseduti dall'utente con lo stesso errore del Doctor
+- [x] #6 I nomi degli strumenti sono troncati e ripuliti come nei tool del Copilot, e il fascicolo rispetta il limite di fatti del contratto dando priorità ai più rilevanti
+- [x] #7 Test unitari coprono portafoglio completo, dati mancanti, vista aggregata, stabilità dell'hash e portafoglio vuoto
 <!-- AC:END -->
 
 ## Implementation Notes

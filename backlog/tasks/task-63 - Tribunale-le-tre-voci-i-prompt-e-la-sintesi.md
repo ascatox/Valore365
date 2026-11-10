@@ -1,7 +1,7 @@
 ---
 id: TASK-63
 title: 'Tribunale: le tre voci, i prompt e la sintesi'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -25,12 +25,12 @@ La qualità del Tribunale dipende da quanto le tre voci sono davvero diverse tra
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Esistono le tre voci definite nel contratto, ciascuna con mandato, temi su cui si concentra e divieti, in file di prompt separati dal codice
-- [ ] #2 Per ogni fase (apertura, replica, sintesi) una funzione restituisce prompt di sistema, messaggi e schema JSON della risposta, conformi a `docs/tribunale/api-contracts.md`
-- [ ] #3 I prompt impongono: numeri solo tramite segnaposto `{Fn}`, almeno un fatto citato per argomento, nessuna indicazione di acquisto o vendita, nessuno strumento fuori dal fascicolo, risposta in italiano
-- [ ] #4 La sintesi è costruita solo dagli argomenti già verificati e produce punti condivisi, punti contesi con le voci coinvolte e domande aperte per l'utente, senza dichiarare un vincitore
-- [ ] #5 Nomi di strumenti, etichette e note del fascicolo sono trattati come dati: un test dimostra che un'istruzione nascosta in un nome non finisce tra le istruzioni del prompt
-- [ ] #6 Test unitari verificano che i tre prompt differiscano nel mandato, che gli schemi siano validi e che il fascicolo sia incluso integralmente e una sola volta
+- [x] #1 Esistono le tre voci definite nel contratto, ciascuna con mandato, temi su cui si concentra e divieti, in file di prompt separati dal codice
+- [x] #2 Per ogni fase (apertura, replica, sintesi) una funzione restituisce prompt di sistema, messaggi e schema JSON della risposta, conformi a `docs/tribunale/api-contracts.md`
+- [x] #3 I prompt impongono: numeri solo tramite segnaposto `{Fn}`, almeno un fatto citato per argomento, nessuna indicazione di acquisto o vendita, nessuno strumento fuori dal fascicolo, risposta in italiano
+- [x] #4 La sintesi è costruita solo dagli argomenti già verificati e produce punti condivisi, punti contesi con le voci coinvolte e domande aperte per l'utente, senza dichiarare un vincitore
+- [x] #5 Nomi di strumenti, etichette e note del fascicolo sono trattati come dati: un test dimostra che un'istruzione nascosta in un nome non finisce tra le istruzioni del prompt
+- [x] #6 Test unitari verificano che i tre prompt differiscano nel mandato, che gli schemi siano validi e che il fascicolo sia incluso integralmente e una sola volta
 <!-- AC:END -->
 
 ## Implementation Notes

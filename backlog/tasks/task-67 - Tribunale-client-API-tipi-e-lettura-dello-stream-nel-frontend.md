@@ -1,7 +1,7 @@
 ---
 id: TASK-67
 title: 'Tribunale: client API, tipi e lettura dello stream nel frontend'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -24,13 +24,13 @@ Il frontend deve poter avviare una seduta e ricevere fascicolo, argomenti, repli
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 I tipi TypeScript di fatto, fascicolo, argomento, replica, sintesi ed eventi corrispondono agli schemi di `docs/tribunale/api-contracts.md`
-- [ ] #2 Esistono le funzioni per stato, avvio seduta e ultima seduta, per portafoglio singolo e vista aggregata, con gli stessi meccanismi di autenticazione del client esistente
-- [ ] #3 Un hook espone fase corrente, fascicolo, argomenti per voce, repliche, sintesi, numero di scartati, errore, e le azioni avvia, interrompi e rifai
-- [ ] #4 Interrompere la seduta chiude la connessione; cambiare scope o smontare il componente fa lo stesso
-- [ ] #5 Eventi sconosciuti o malformati vengono ignorati senza rompere la seduta; un errore a metà conserva ciò che è già arrivato
-- [ ] #6 Una fixture con la seduta di esempio del contratto e un finto stream sono disponibili per i test e per TASK-68
-- [ ] #7 Test unitari coprono seduta completa, errore a metà, interruzione, evento sconosciuto e limite raggiunto
+- [x] #1 I tipi TypeScript di fatto, fascicolo, argomento, replica, sintesi ed eventi corrispondono agli schemi di `docs/tribunale/api-contracts.md`
+- [x] #2 Esistono le funzioni per stato, avvio seduta e ultima seduta, per portafoglio singolo e vista aggregata, con gli stessi meccanismi di autenticazione del client esistente
+- [x] #3 Un hook espone fase corrente, fascicolo, argomenti per voce, repliche, sintesi, numero di scartati, errore, e le azioni avvia, interrompi e rifai
+- [x] #4 Interrompere la seduta chiude la connessione; cambiare scope o smontare il componente fa lo stesso
+- [x] #5 Eventi sconosciuti o malformati vengono ignorati senza rompere la seduta; un errore a metà conserva ciò che è già arrivato
+- [x] #6 Una fixture con la seduta di esempio del contratto e un finto stream sono disponibili per i test e per TASK-68
+- [x] #7 Test unitari coprono seduta completa, errore a metà, interruzione, evento sconosciuto e limite raggiunto
 <!-- AC:END -->
 
 ## Implementation Notes

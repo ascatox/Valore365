@@ -1,7 +1,7 @@
 ---
 id: TASK-62
 title: 'Copilot: chiamata LLM con risposta strutturata per tutti i provider'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -24,12 +24,12 @@ Oggi il Copilot sa fare due cose con un modello: testo in streaming e tool calli
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Esiste una funzione che, dati configurazione Copilot, prompt di sistema, messaggi e uno schema JSON, restituisce un dizionario conforme allo schema oppure solleva un errore tipizzato
-- [ ] #2 Funziona con OpenAI, Anthropic, Gemini e OpenRouter usando il meccanismo di tool forzato o output strutturato di ciascun provider
-- [ ] #3 Per il provider locale senza tool calling la funzione dichiara che la capacità non è disponibile, senza tentare la chiamata
-- [ ] #4 Una risposta non conforme allo schema provoca un solo nuovo tentativo, poi l'errore tipizzato; timeout ed errori del provider sono distinguibili da quelli di schema
-- [ ] #5 Il comportamento del Copilot esistente (chat, loop agentico, streaming) non cambia: i test attuali passano senza modifiche
-- [ ] #6 Test unitari con client finti coprono, per ogni provider, risposta valida, risposta non conforme, timeout ed errore del provider
+- [x] #1 Esiste una funzione che, dati configurazione Copilot, prompt di sistema, messaggi e uno schema JSON, restituisce un dizionario conforme allo schema oppure solleva un errore tipizzato
+- [x] #2 Funziona con OpenAI, Anthropic, Gemini e OpenRouter usando il meccanismo di tool forzato o output strutturato di ciascun provider
+- [x] #3 Per il provider locale senza tool calling la funzione dichiara che la capacità non è disponibile, senza tentare la chiamata
+- [x] #4 Una risposta non conforme allo schema provoca un solo nuovo tentativo, poi l'errore tipizzato; timeout ed errori del provider sono distinguibili da quelli di schema
+- [x] #5 Il comportamento del Copilot esistente (chat, loop agentico, streaming) non cambia: i test attuali passano senza modifiche
+- [x] #6 Test unitari con client finti coprono, per ogni provider, risposta valida, risposta non conforme, timeout ed errore del provider
 <!-- AC:END -->
 
 ## Implementation Notes
