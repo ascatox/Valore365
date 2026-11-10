@@ -387,3 +387,54 @@ create table if not exists user_data_keys (
 );
 
 create index if not exists idx_user_data_keys_kek_id on user_data_keys (kek_id);
+
+-- Tribunale del portafoglio (TASK-66): ultima seduta per (utente, scope esatto),
+-- cifrata a livello di campo (payload), membri dello scope e contatore giornaliero
+-- delle sedute pagate con la chiave del server (giorno Europe/Rome).
+-- migrations/20261110_01_tribunal_sessions.sql attiva anche la RLS.
+create table if not exists tribunal_sessions (
+  id bigserial primary key,
+  owner_user_id text not null,
+  scope_fingerprint text not null,
+  session_id text not null,
+  case_file_hash text not null,
+  contract_version text not null,
+  prompt_version text not null,
+  key_source text not null check (key_source in ('user', 'server')),
+  payload text not null,
+  created_at timestamptz not null,
+  completed_at timestamptz not null,
+  saved_at timestamptz not null default now(),
+  unique (owner_user_id, scope_fingerprint)
+);
+
+create table if not exists tribunal_session_members (
+  tribunal_session_id bigint not null references tribunal_sessions(id) on delete cascade,
+  portfolio_id bigint not null references portfolios(id) on delete cascade,
+  primary key (tribunal_session_id, portfolio_id)
+);
+
+create index if not exists idx_tribunal_session_members_portfolio
+  on tribunal_session_members (portfolio_id);
+
+create table if not exists tribunal_daily_usage (
+  owner_user_id text not null,
+  usage_day date not null,
+  sessions int not null default 0 check (sessions >= 0),
+  updated_at timestamptz not null default now(),
+  primary key (owner_user_id, usage_day)
+);
+
+-- Eliminare un portafoglio (cascata sui membri) elimina ogni seduta che lo include.
+create or replace function tribunal_session_member_removed() returns trigger
+language plpgsql as $$
+begin
+  delete from tribunal_sessions where id = old.tribunal_session_id;
+  return null;
+end;
+$$;
+
+drop trigger if exists trg_tribunal_session_members_cleanup on tribunal_session_members;
+create trigger trg_tribunal_session_members_cleanup
+  after delete on tribunal_session_members
+  for each row execute function tribunal_session_member_removed();

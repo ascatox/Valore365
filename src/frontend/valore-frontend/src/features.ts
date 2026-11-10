@@ -6,3 +6,5 @@
  */
 export const DOCTOR_POLICY_UI_ENABLED: boolean = true;
 export const DOCTOR_LAB_UI_ENABLED: boolean = true;
+/** Tribunale del portafoglio (TASK-69): shown only if this flag is on AND `tribunal_enabled` from the backend. */
+export const DOCTOR_TRIBUNAL_UI_ENABLED: boolean = true;

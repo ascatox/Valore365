@@ -45,6 +45,7 @@ from .personas import (
     build_rebuttal_request,
     build_synthesis_request,
 )
+from .store import TribunalStore
 from .verifier import verify_opening, verify_rebuttals, verify_synthesis
 
 logger = logging.getLogger("app.services.tribunal")
@@ -147,7 +148,7 @@ class SessionStore(Protocol):
 
 
 class NullSessionStore:
-    """Store nullo finché TASK-66 non è chiuso: niente seduta salvata, uso sempre 0."""
+    """Store nullo (repository senza engine): niente seduta salvata, uso sempre 0."""
 
     def get_latest(self, user_id: str, scope_fingerprint: str) -> dict[str, Any] | None:
         return None
@@ -161,7 +162,11 @@ class NullSessionStore:
 
 
 def _default_store(repo: Any) -> SessionStore:
-    return NullSessionStore()
+    # TASK-66: store reale sull'engine del repository (repository senza engine: store nullo).
+    engine = getattr(repo, "engine", None)
+    if engine is None:
+        return NullSessionStore()
+    return TribunalStore(engine)
 
 
 StructuredCall = Callable[..., dict[str, Any]]
