@@ -44,6 +44,30 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
     opzionale per le policy aggregate.
   - Documentazione: `docs/doctor2/architecture.md`, `docs/doctor2/ui-spec.md`,
     `docs/doctor2/open-decisions.md`.
+- **Tribunale del portafoglio** — nuova sezione del Doctor (task backlog TASK-60…71): tre
+  voci AI con filosofie diverse (*L'indicizzatore*, *Il fattoriale*, *Il prudente*)
+  discutono lo stesso portafoglio, singolo o aggregato.
+  - **Fascicolo** deterministico di al massimo 40 fatti del Doctor (id stabili `F1`…,
+    valore formattato, fonte, qualità, citabilità) con hash; nessun LLM lo produce.
+  - **Seduta** in tre fasi (apertura in parallelo, replica, sintesi con punti condivisi,
+    punti contesi e domande aperte; mai un vincitore) in streaming SSE
+    (`POST /api/doctor/tribunal/sessions`), con `GET /api/doctor/tribunal/status` e
+    `GET /api/doctor/tribunal/sessions/latest`; contratto `tribunale-1.0` in
+    `docs/tribunale/api-contracts.md`.
+  - Chiamata strutturata al modello (`copilot/structured.py`) per OpenAI, Anthropic, Gemini e
+    OpenRouter; numeri solo tramite segnaposto `{Fn}` sostituiti dal backend.
+  - **Verificatore** deterministico: scarta cifre libere, fatti inesistenti o non
+    citabili, strumenti fuori dal portafoglio, indicazioni operative e verdetti prima che
+    raggiungano l'utente, che vede solo i conteggi per voce e per codice.
+  - Sedute salvate cifrate (ultima per utente e scope), riuso a fascicolo invariato,
+    limite giornaliero con la chiave del server; migrazione
+    `database/migrations/20261110_01_tribunal_sessions.sql`.
+  - Feature flag `DOCTOR_TRIBUNAL_ENABLED` (default `true`, esposto come `tribunal_enabled`
+    in `GET /api/doctor/features`) e `DOCTOR_TRIBUNAL_DAILY_LIMIT` (default `3`).
+  - Prove avversarie su Postgres reale (`tests/integration/test_tribunal_adversarial.py`),
+    E2E Playwright con LLM finto (`scripts/e2e/tribunal_stack.sh`, `tribunal_e2e.cjs`,
+    `tribunal_fake_llm.py`) e script di valutazione di prompt e modello
+    (`scripts/e2e/tribunal_eval.py`); esiti in `docs/tribunale/test-report.md`.
 
 ### Changed
 
@@ -64,6 +88,11 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
   test `Doctor.alertPrompt.test.tsx`.
 - Doctor: in Privacy Mode il riepilogo testuale copiato maschera lo score
   («Score: ******/100»), come già facevano la card e l'immagine condivisa.
+- Tribunale: il verificatore non si lasciava aggirare da lettere cirilliche o greche identiche
+  a quelle latine né da accenti combinanti («cоmprare», «VWСE», «cómprare»): ora li
+  riconduce a lettere latine prima dei controlli su strumenti, indicazioni operative e verdetti.
+- Copilot (chiamata strutturata): i log e i messaggi d'errore di una risposta fuori schema
+  non riportano più il testo prodotto dal modello, solo il percorso e la regola violata.
 
 ### Security
 

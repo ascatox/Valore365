@@ -84,6 +84,27 @@ Feature flag backend (default `true`; se `false` gli endpoint rispondono 404 `fe
 | `DOCTOR_POLICY_ENABLED` | I miei parametri (policy ed evaluation) e i tool Copilot sulle policy |
 | `DOCTOR_SIMULATOR_ENABLED` | Laboratorio (Scenario Lab) e i tool Copilot sugli scenari |
 
+## ⚖️ Tribunale del portafoglio
+
+Una sezione del Doctor in cui **tre voci AI con filosofie d'investimento diverse** discutono lo stesso portafoglio: *L'indicizzatore* (basso costo, ampia diversificazione, semplicità), *Il fattoriale* (inclinazioni volute, concentrazione consapevole) e *Il prudente* (protezione del capitale, reddito, tenuta nei ribassi). **Il Doctor calcola, l'AI interpreta.**
+
+- **Fascicolo**: prima della seduta il Doctor raccoglie fino a 40 fatti deterministici (composizione, concentrazione, costi, salute, X-Ray, stress test, Monte Carlo, i tuoi parametri), ciascuno con valore, fonte e qualità del dato. Nessun LLM li produce.
+- **Seduta**: apertura (le tre voci in parallelo) → replica (ogni voce risponde alle altre) → sintesi (punti condivisi, punti contesi, domande aperte per te). Mai un vincitore, mai un verdetto.
+- **Nessun numero inventato**: le voci non scrivono cifre; citano i fatti con segnaposto che il backend sostituisce con il valore calcolato. Ogni valore nel testo è cliccabile e mostra il dato del fascicolo.
+- **Verificatore deterministico**: ogni frase che contiene cifre libere, fatti inesistenti o non citabili, strumenti che non sono nel portafoglio, indicazioni di acquisto o vendita o verdetti viene scartata **prima** di arrivare a te; vedi solo quante frasi sono state scartate e perché, mai il loro testo.
+- **Non è consulenza**: nessuna indicazione di comprare o vendere strumenti specifici, nessuno strumento estraneo al portafoglio.
+- Funziona per portafoglio singolo e per vista aggregata; l'ultima seduta per portafoglio (o vista) è salvata, cifrata, e si riapre senza richiamare il modello finché i dati non cambiano («Rifai la seduta» per una nuova).
+- Usa la configurazione del Copilot con un provider che supporta le risposte strutturate (OpenAI, Anthropic, Gemini, OpenRouter; non il modello locale). Con la chiave del server c'è un limite di sedute al giorno; con la tua chiave API no.
+
+Documentazione in [docs/tribunale/](docs/tribunale/): [contratti API](docs/tribunale/api-contracts.md), [architettura](docs/tribunale/architecture.md), [specifica UI](docs/tribunale/ui-spec.md), [report di test](docs/tribunale/test-report.md).
+
+| variabile | default | controlla |
+|---|---|---|
+| `DOCTOR_TRIBUNAL_ENABLED` | `true` | Tribunale del portafoglio; se `false` gli endpoint `/api/doctor/tribunal/*` rispondono 404 `feature_disabled` e la tab sparisce dal Doctor (`GET /api/doctor/features` → `tribunal_enabled`) |
+| `DOCTOR_TRIBUNAL_DAILY_LIMIT` | `3` | sedute nuove al giorno (giorno di Roma) per utente con la chiave del server; `0` = Tribunale disponibile solo con la chiave dell'utente |
+
+Per sviluppatori: endpoint `GET /api/doctor/tribunal/status`, `POST /api/doctor/tribunal/sessions` (stream SSE), `GET /api/doctor/tribunal/sessions/latest`; codice in `src/backend/app/services/tribunal/` e `src/frontend/valore-frontend/src/components/doctor/tribunal/`. Prove avversarie: `src/backend/tests/integration/test_tribunal_adversarial.py`; E2E con LLM finto: `scripts/e2e/tribunal_stack.sh` + `scripts/e2e/tribunal_e2e.cjs`; valutazione di prompt e modello: `scripts/e2e/tribunal_eval.py` (vedi [scripts/e2e/README.md](scripts/e2e/README.md)).
+
 ---
 
 # 🤖 Portfolio Copilot

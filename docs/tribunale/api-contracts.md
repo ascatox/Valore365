@@ -1523,3 +1523,20 @@ Props e `buildContestedCopilotPrompt` come in `architecture.md` §3.3; testo del
   punto e dei lati il loro valore diventa «[dato nascosto]»; `maskMoneyInText` sul testo libero.
 - File in più: `TribunalContestedActions.tsx` esporta anche `contestedFactIds` e
   `metricLabelFromCaseFile`; test di pagina in `src/pages/Doctor.tribunalActions.test.tsx`.
+
+### TASK-71
+
+Correzioni di difetti trovati dalle prove avversarie (`tests/integration/test_tribunal_adversarial.py`,
+`docs/tribunale/test-report.md`); nessun cambiamento a eventi, schemi o codici:
+
+- **Verificatore, omoglifi** (§7.5–§7.7): prima dei controlli su ISIN, ticker, emittenti, indicazioni
+  operative e verdetti il testo (già NFKC) è anche ripiegato su lettere latine: lettere cirilliche,
+  greche e armene identiche a lettere latine → lettera latina, poi NFKD senza segni diacritici
+  combinanti (categoria `Mn`). Così «cоmprare» (о cirillica), «cómprare» (accento combinante) e
+  «VWСE» (С cirillica) sono scartati con `indicazione_operativa` / `strumento_non_ammesso` come le
+  forme latine. Il controllo delle cifre libere (§7.4) resta sul testo NFKC. Effetto collaterale
+  accettato: una parola maiuscola accentata di 2–6 lettere (es. «PIÙ») diventa un ticker non ammesso,
+  come già le parole maiuscole per enfasi.
+- **Chiamata strutturata** (§8.4): il messaggio di `_SchemaMismatch` (log `Structured output non
+  conforme …` e messaggio di `StructuredOutputSchemaError`) riporta solo il percorso e la regola dello
+  schema violata, non più `ValidationError.message`, che conteneva il valore prodotto dal modello.

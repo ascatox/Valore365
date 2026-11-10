@@ -141,7 +141,10 @@ def _validate(validator: Draft202012Validator, payload: Any) -> None:
     if errors:
         first = errors[0]
         where = "/".join(str(p) for p in first.absolute_path) or "<radice>"
-        raise _SchemaMismatch(f"{where}: {first.message}")
+        # Solo percorso e regola violata: ``first.message`` riporta il valore del modello, che
+        # finirebbe nei log e nel messaggio dell'eccezione (TASK-71: nessun testo non verificato
+        # del modello nei log).
+        raise _SchemaMismatch(f"{where}: regola '{first.validator}' non rispettata")
 
 
 def _parse_json_object(raw: Any) -> Any:
@@ -223,7 +226,7 @@ def _call_provider_once(
     except _SchemaMismatch:
         raise
     except Exception as exc:  # noqa: BLE001 - unexpected response shape
-        raise _SchemaMismatch(f"risposta inattesa: {type(exc).__name__}: {exc}") from exc
+        raise _SchemaMismatch(f"risposta inattesa: {type(exc).__name__}") from exc
 
 
 # ---------------------------------------------------------------------------
