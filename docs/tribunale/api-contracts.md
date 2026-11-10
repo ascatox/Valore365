@@ -1285,3 +1285,23 @@ Estratto (apertura del prudente, dal grezzo al verificato):
 
 (Nessuna. I task che si discostano dal contratto aggiungono qui una sottosezione con il proprio
 nome, come in `docs/doctor2/api-contracts.md`.)
+
+### TASK-64
+
+Nessuna deviazione dalle regole; alcune letture del testo dove il contratto lascia margine:
+
+- **Punto conteso** (§7.3): i controlli 3–14 si eseguono codice per codice su punto e lati
+  (prima il controllo 3 sul punto e su ciascun lato, poi il 4, …), così il codice restituito è
+  sempre il primo nell'ordine di precedenza; `fatto_estraneo` guarda insieme i fatti del punto e
+  dei lati. L'anno ammesso (§7.4) per un lato si cerca nelle label dei `fact_ids` del lato.
+- **Domande aperte**: saltano solo 3, 4 e 9 (ultima frase di §7.3), quindi un segnaposto verso
+  un fatto non citabile dà `fatto_non_citabile`; verso un fatto citabile `segnaposto_non_citato`.
+- **Id interni nel testo** (§7.4, ultima frase): `F12` o `A-IND-1` scritti nel testo sono
+  scartati, ma con `strumento_non_ammesso` (corrispondono alla regex dei ticker, controllo 11,
+  che precede `cifra_libera`). In minuscolo (`a-ind-1`) restano `cifra_libera`.
+- **Ticker** (§7.5.2): ammessi i `symbol` del fascicolo, il prefisso prima del punto di un
+  `symbol` (es. `SXRV` per `SXRV.DE`) e `ALLOWED_ACRONYMS`; un ticker con un suffisso diverso
+  (es. `EIMI.DE` quando il fascicolo ha `EIMI`) non è ammesso.
+- Una lista grezza assente o non lista (`arguments`, `rebuttals`, punti, domande) è trattata
+  come vuota (nessun ammesso, nessuno scarto): la forma della risposta la garantisce già
+  `call_structured` (§6.4). Una voce sconosciuta solleva `ValueError`.
