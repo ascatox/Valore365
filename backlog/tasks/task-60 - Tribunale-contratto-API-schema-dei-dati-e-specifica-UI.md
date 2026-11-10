@@ -1,7 +1,7 @@
 ---
 id: TASK-60
 title: 'Tribunale: contratto API, schema dei dati e specifica UI'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -33,13 +33,13 @@ Questo task fissa per iscritto il contratto che tutti gli altri task del Tribuna
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Esiste `docs/tribunale/api-contracts.md` con: endpoint (stato, avvio seduta in SSE, ultima seduta salvata), parametri di scope identici al Doctor (portafoglio singolo e vista aggregata), codici di errore, e per ogni evento SSE il nome, l'ordine e lo schema JSON del contenuto con un esempio
-- [ ] #2 Il documento definisce gli schemi JSON di fatto, fascicolo, argomento, replica e sintesi, e un esempio completo di seduta coerente dall'inizio alla fine, riusabile come fixture da backend e frontend
-- [ ] #3 Esiste `docs/tribunale/architecture.md` con il flusso della seduta, i moduli previsti in `src/backend/app/services/tribunal/` e in `src/frontend/valore-frontend/src/components/doctor/tribunal/`, e quale task possiede quale file
-- [ ] #4 Il documento elenca le regole del verificatore, ciascuna con un codice di scarto, e i limiti numerici della seduta (argomenti per voce, lunghezza del testo, numero di fatti, timeout)
-- [ ] #5 Esiste `docs/tribunale/ui-spec.md` con la disposizione desktop e mobile, gli stati (non disponibile, pronto, in corso per fase, concluso, errore, limite raggiunto), il testo dell'avvertenza e il comportamento in Privacy Mode
-- [ ] #6 I documenti descrivono le tre voci con mandato, temi ammessi e cose che non possono dire, e spiegano perché il Tribunale non costituisce consulenza personalizzata
-- [ ] #7 Nessun codice applicativo viene modificato in questo task
+- [x] #1 Esiste `docs/tribunale/api-contracts.md` con: endpoint (stato, avvio seduta in SSE, ultima seduta salvata), parametri di scope identici al Doctor (portafoglio singolo e vista aggregata), codici di errore, e per ogni evento SSE il nome, l'ordine e lo schema JSON del contenuto con un esempio
+- [x] #2 Il documento definisce gli schemi JSON di fatto, fascicolo, argomento, replica e sintesi, e un esempio completo di seduta coerente dall'inizio alla fine, riusabile come fixture da backend e frontend
+- [x] #3 Esiste `docs/tribunale/architecture.md` con il flusso della seduta, i moduli previsti in `src/backend/app/services/tribunal/` e in `src/frontend/valore-frontend/src/components/doctor/tribunal/`, e quale task possiede quale file
+- [x] #4 Il documento elenca le regole del verificatore, ciascuna con un codice di scarto, e i limiti numerici della seduta (argomenti per voce, lunghezza del testo, numero di fatti, timeout)
+- [x] #5 Esiste `docs/tribunale/ui-spec.md` con la disposizione desktop e mobile, gli stati (non disponibile, pronto, in corso per fase, concluso, errore, limite raggiunto), il testo dell'avvertenza e il comportamento in Privacy Mode
+- [x] #6 I documenti descrivono le tre voci con mandato, temi ammessi e cose che non possono dire, e spiegano perché il Tribunale non costituisce consulenza personalizzata
+- [x] #7 Nessun codice applicativo viene modificato in questo task
 <!-- AC:END -->
 
 ## Implementation Notes
@@ -48,4 +48,5 @@ Questo task fissa per iscritto il contratto che tutti gli altri task del Tribuna
 Modello da seguire: `docs/doctor2/` (api-contracts, architecture, ui-spec). Riferimenti nel codice: eventi SSE in `src/backend/app/copilot/providers.py` (`_sse`) e `copilot/streaming.py`; scope e feature flag in `src/backend/app/api/routes_doctor.py`; metriche in `src/backend/app/services/doctor_policy/metrics.py`.
 Eventi SSE attesi (nomi da confermare nel contratto): `phase`, `case_file`, `argument`, `rebuttal`, `synthesis`, `discarded`, `done`, `error`.
 Sblocca tutti gli altri task: va fatto per primo e da un solo agente.
+Completato: `docs/tribunale/` (api-contracts, architecture, ui-spec, fixtures/seduta-esempio.json e .sse.txt). Fixture verificate con uno script indipendente che ricalcola hash, sostituzioni e scarti.
 <!-- SECTION:NOTES:END -->

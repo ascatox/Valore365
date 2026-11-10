@@ -39,4 +39,5 @@ Il frontend deve poter avviare una seduta e ricevere fascicolo, argomenti, repli
 File di proprietà: `src/frontend/valore-frontend/src/services/api/tribunal.ts`, i tipi (in un file dedicato, esportati da `services/api/index.ts`), `src/components/doctor/tribunal/useTribunalSession.ts`, `src/components/doctor/tribunal/fixtures/`.
 Riferimenti: la lettura SSE in `src/components/copilot/CopilotChat.tsx` (righe attorno al parsing di `event.type`), `services/api/doctor.ts` e `services/api/client.ts`.
 Parallelizzabile con TASK-61…64.
+Aggiornamento da TASK-60: TASK-67 aggiunge anche `tribunal_enabled?` a `DoctorFeatures` in `services/api/types.ts`, gli export in `services/api/index.ts` ed espone `useTribunalFeature` senza modificare `components/doctor/policy/hooks.ts`. Firme esatte in `docs/tribunale/architecture.md`.
 <!-- SECTION:NOTES:END -->

@@ -40,4 +40,5 @@ I componenti della seduta vanno resi raggiungibili: una quarta sezione «Tribuna
 File di proprietà: `src/frontend/valore-frontend/src/pages/Doctor.page.tsx` (unico task del Tribunale che lo modifica) e `src/pages/Doctor.tribunal.test.tsx`.
 Riferimenti: `DOCTOR_SECTIONS`, `availableSections` e `DoctorSectionErrorBoundary` in `Doctor.page.tsx`; `Doctor.policy.test.tsx` come modello di test.
 Se TASK-66 non è ancora chiuso, la parte «ultima seduta» degrada senza errori quando l'endpoint non esiste.
+Aggiornamento da TASK-60: TASK-69 possiede anche `DOCTOR_TRIBUNAL_UI_ENABLED` in `src/features.ts`. Impostazioni → Copilot non ha un deep link: il rimando è a `/settings` indicando la scheda a parole.
 <!-- SECTION:NOTES:END -->

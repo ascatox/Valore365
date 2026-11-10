@@ -39,4 +39,5 @@ Le tre voci del Tribunale possono citare solo dati calcolati dal Doctor. Serve u
 File di proprietà: `src/backend/app/services/tribunal/__init__.py`, `case_file.py`, `tests/unit/test_tribunal_case_file.py`. Non toccare altri file.
 Riusare, senza duplicare calcoli: `services/doctor_policy/metrics.py` (`compute_metrics`, `format_it`), `services/doctor_policy/scope.py` e `service.py`, `services/portfolio_doctor/` (`_health`, `_xray`, `_stress`, `_monte_carlo`), `copilot_doctor_tools.py` per la sanitizzazione dei testi.
 Parallelizzabile con TASK-62, 63, 64, 67.
+Aggiornamento da TASK-60: per lo scope singolo chiamare prima `DoctorPolicyService.resolve_scope` (`resolve_doctor_scope` non verifica la proprietà). Se importare `clean_text` da `copilot_doctor_tools` crea un ciclo, importarlo dentro la funzione.
 <!-- SECTION:NOTES:END -->

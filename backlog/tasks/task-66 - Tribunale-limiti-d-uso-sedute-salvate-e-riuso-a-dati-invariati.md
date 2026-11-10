@@ -39,4 +39,5 @@ Una seduta costa sette chiamate al modello. Senza limiti, pochi utenti possono c
 <!-- SECTION:NOTES:BEGIN -->
 File di proprietà: `src/backend/app/services/tribunal/store.py`, `database/migrations/<data>_tribunal_sessions.sql`, le modifiche a `database/schema.sql` e `database/supabase_full_setup.sql`, i relativi test. Modifiche minime e localizzate a `orchestrator.py` e `routes_tribunal.py` di TASK-65.
 Riferimenti: `docs/field-encryption.md` e `app/crypto/`; `services/doctor_policy/store.py` per lo stile del repository; `rate_limit.py`.
+Aggiornamento da TASK-60: il backend non ha un flusso di cancellazione dell'account; esporre `TribunalStore.delete_for_user` e la cascata sulla cancellazione del portafoglio, e segnalare l'AC #6 come parziale per la parte account. `supabase_full_setup.sql` non è più mantenuto come schema completo: aggiornarlo solo se coerente con `docs/doctor2/api-contracts.md`.
 <!-- SECTION:NOTES:END -->
