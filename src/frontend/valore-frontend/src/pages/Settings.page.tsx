@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import {
   Badge,
   Tabs,
@@ -20,9 +20,11 @@ import {
   Center,
   Box,
   Alert,
+  SimpleGrid,
+  UnstyledButton,
 } from '@mantine/core';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop, IconRobot } from '@tabler/icons-react';
+import { IconSettings, IconReceipt, IconShield, IconSun, IconMoon, IconDeviceDesktop, IconRobot, IconCheck } from '@tabler/icons-react';
 import { STORAGE_KEYS } from '../components/dashboard/constants';
 import { getUserSettings, updateUserSettings, getCopilotStatus } from '../services/api';
 import type { CopilotStatus } from '../services/api';
@@ -38,6 +40,7 @@ import {
   useTextScale,
   type TextSizePreference,
 } from '../textScale';
+import { COLOR_THEMES, setColorThemePreference, useColorThemePreference } from '../colorTheme';
 
 const COLOR_SCHEME_OPTIONS = [
   { value: 'light', label: 'Chiaro', icon: IconSun },
@@ -52,6 +55,99 @@ const TEXT_SIZE_OPTIONS: { value: TextSizePreference; label: string }[] = [
   { value: 'large', label: 'Grande (115%)' },
   { value: 'xlarge', label: 'Molto grande (130%)' },
 ];
+
+const COLOR_THEME_KEY_STEPS: Record<string, number> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+};
+
+/** Colour theme swatches, a radio group: arrows move the selection, Tab leaves it. */
+function ColorThemePicker({ columns, dark }: { columns: number; dark: boolean }) {
+  const selected = useColorThemePreference();
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  const handleKeyDown = (event: KeyboardEvent, index: number) => {
+    const last = COLOR_THEMES.length - 1;
+    let next: number;
+    if (event.key === 'Home') next = 0;
+    else if (event.key === 'End') next = last;
+    else if (event.key in COLOR_THEME_KEY_STEPS) {
+      next = (index + COLOR_THEME_KEY_STEPS[event.key] + COLOR_THEMES.length) % COLOR_THEMES.length;
+    } else return;
+    event.preventDefault();
+    setColorThemePreference(COLOR_THEMES[next].id);
+    optionRefs.current[next]?.focus();
+  };
+
+  return (
+    <Stack gap="xs">
+      <Text fw={500} size="sm" id="color-theme-label">Tema colore</Text>
+      <SimpleGrid
+        cols={columns}
+        spacing="xs"
+        verticalSpacing="xs"
+        role="radiogroup"
+        aria-labelledby="color-theme-label"
+        aria-describedby="color-theme-description"
+      >
+        {COLOR_THEMES.map((option, index) => {
+          const checked = option.id === selected;
+          // On dark cards the lighter tone leads, as it does in the themed UI.
+          const [main, accent] = dark ? [option.swatch[1], option.swatch[0]] : option.swatch;
+          return (
+            <UnstyledButton
+              key={option.id}
+              ref={(node) => { optionRefs.current[index] = node; }}
+              role="radio"
+              aria-checked={checked}
+              tabIndex={checked ? 0 : -1}
+              onClick={() => setColorThemePreference(option.id)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 6,
+                minWidth: 0,
+                minHeight: 44,
+                padding: '8px 2px',
+                borderRadius: 8,
+              }}
+            >
+              <Box
+                aria-hidden
+                style={{
+                  width: 44,
+                  height: 44,
+                  flexShrink: 0,
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  background: `linear-gradient(135deg, ${main} 0 76%, ${accent} 76% 100%)`,
+                  color: dark ? option.dark[7] : '#ffffff',
+                  boxShadow: checked
+                    ? `0 0 0 2px var(--mantine-color-body), 0 0 0 4px ${main}`
+                    : undefined,
+                }}
+              >
+                {checked && <IconCheck size={22} stroke={3} />}
+              </Box>
+              <Text size="xs" fw={checked ? 700 : 500} ta="center" lh={1.2} style={{ maxWidth: '100%', overflowWrap: 'anywhere' }}>
+                {option.label}
+              </Text>
+            </UnstyledButton>
+          );
+        })}
+      </SimpleGrid>
+      <Text size="xs" c="dimmed" id="color-theme-description">
+        Vale per questo dispositivo, solo su smartphone.
+      </Text>
+    </Stack>
+  );
+}
 
 export function SettingsPage() {
   const theme = useMantineTheme();
@@ -281,6 +377,8 @@ export function SettingsPage() {
                   }))}
                 />
               </Stack>
+              {/* Colour themes apply on phones only (see colorTheme.ts). */}
+              {isMobile && <ColorThemePicker columns={largeText ? 2 : 3} dark={colorScheme === 'dark'} />}
               <Stack gap="xs">
                 <Select
                   label="Dimensione del testo"

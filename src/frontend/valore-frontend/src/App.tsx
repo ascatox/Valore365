@@ -20,6 +20,7 @@ import {
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { useIsMobile } from './hooks/useIsMobile';
+import { useActiveColorTheme } from './colorTheme';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
 import {
   IconRefresh,
@@ -186,12 +187,14 @@ function ProtectedApp() {
     if (mainRef.current) mainRef.current.scrollTop = 0;
   }, [location.pathname]);
 
+  // Dark browser chrome matches the page background of the colour theme.
+  const darkPageBg = useActiveColorTheme().dark[7];
   useEffect(() => {
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
-      meta.setAttribute('content', colorScheme === 'dark' ? '#0e1514' : '#ffffff');
+      meta.setAttribute('content', colorScheme === 'dark' ? darkPageBg : '#ffffff');
     }
-  }, [colorScheme]);
+  }, [colorScheme, darkPageBg]);
 
   useEffect(() => {
     let active = true;
