@@ -3,6 +3,7 @@ import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useIsMobile } from '../../../hooks/useIsMobile';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { formatNum, formatPct, getVariationColor } from '../formatters';
+import { useChartColors } from '../chartColors';
 import type { IntradayChartPoint } from '../types';
 
 interface IntradayModalProps {
@@ -22,6 +23,7 @@ export function IntradayModal({ opened, onClose, dateLabel, loading, error, char
   const isMobile = useIsMobile();
   const gridColor = isDark ? theme.colors.dark[4] : '#e0e0e0';
   const tickColor = isDark ? theme.colors.dark[1] : '#868e96';
+  const seriesColor = useChartColors().primary;
 
   return (
     <Modal
@@ -73,8 +75,8 @@ export function IntradayModal({ opened, onClose, dateLabel, loading, error, char
             <AreaChart data={chartData}>
               <defs>
                 <linearGradient id="colorIntraday" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#12b886" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#12b886" stopOpacity={0} />
+                  <stop offset="5%" stopColor={seriesColor} stopOpacity={0.25} />
+                  <stop offset="95%" stopColor={seriesColor} stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={gridColor} />
@@ -95,7 +97,7 @@ export function IntradayModal({ opened, onClose, dateLabel, loading, error, char
                   );
                 }}
               />
-              <Area type="monotone" dataKey="value" stroke="#12b886" strokeWidth={2.5} fillOpacity={1} fill="url(#colorIntraday)" />
+              <Area type="monotone" dataKey="value" stroke={seriesColor} strokeWidth={2.5} fillOpacity={1} fill="url(#colorIntraday)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>

@@ -451,7 +451,8 @@ export function FirePage() {
             radius="xl"
             padding="xl"
             withBorder
-            style={{ background: 'linear-gradient(140deg, #083634 0%, #0b4a46 56%, #c2620a 170%)', color: 'white' }}
+            // Brand shade 9 darkened towards black (≈ #083634 on the default petrol theme) so the hero follows the colour theme.
+            style={{ background: 'linear-gradient(140deg, color-mix(in srgb, var(--mantine-color-teal-9) 73%, black) 0%, var(--mantine-color-teal-9) 56%, #c2620a 170%)', color: 'white' }}
           >
             <Stack gap="lg">
               <Group justify="space-between" align="flex-start" wrap="wrap">

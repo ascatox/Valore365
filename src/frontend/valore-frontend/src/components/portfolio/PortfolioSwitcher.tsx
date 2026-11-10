@@ -253,11 +253,11 @@ export function PortfolioSwitcher({
             style={{
               width: '100%',
               borderRadius: 18,
-              border: `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`,
-              background: isDark ? 'rgba(20,184,166,0.12)' : 'linear-gradient(135deg, rgba(15,118,110,0.13), rgba(15,118,110,0.05))',
+              border: `1px solid ${isDark ? 'var(--mantine-color-teal-8)' : 'var(--mantine-color-teal-6)'}`,
+              background: isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 12%, transparent)' : 'linear-gradient(135deg, color-mix(in srgb, var(--mantine-color-teal-6) 13%, transparent), color-mix(in srgb, var(--mantine-color-teal-6) 5%, transparent))',
               padding: '16px',
               textAlign: 'left',
-              boxShadow: isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)',
+              boxShadow: isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px color-mix(in srgb, var(--mantine-color-teal-6) 10%, transparent)',
             }}
           >
             <Group justify="space-between" align="flex-start" wrap="nowrap">
@@ -281,7 +281,7 @@ export function PortfolioSwitcher({
                   {`Creato ${formatDate(selectedPortfolio.created_at)} · TZ ${selectedPortfolio.timezone}`}
                 </Text>
               </Box>
-              <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />
+              <IconCheck size={18} color={isDark ? 'var(--mantine-color-teal-3)' : 'var(--mantine-color-teal-6)'} style={{ flexShrink: 0, marginTop: 2 }} />
             </Group>
           </UnstyledButton>
         </Box>
@@ -308,16 +308,16 @@ export function PortfolioSwitcher({
               width: '100%',
               borderRadius: 16,
               border: isActive
-                ? `1px solid ${isDark ? theme.colors.teal[8] : '#0f766e'}`
-                : `1px solid ${isDark ? theme.colors.dark[4] : '#d6d9de'}`,
+                ? `1px solid ${isDark ? 'var(--mantine-color-teal-8)' : 'var(--mantine-color-teal-6)'}`
+                : `1px solid ${isDark ? 'var(--mantine-color-dark-4)' : '#d6d9de'}`,
               background: isActive
-                ? (isDark ? 'rgba(20,184,166,0.10)' : 'linear-gradient(135deg, rgba(15,118,110,0.12), rgba(15,118,110,0.04))')
-                : (isDark ? theme.colors.dark[6] : '#ffffff'),
+                ? (isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 10%, transparent)' : 'linear-gradient(135deg, color-mix(in srgb, var(--mantine-color-teal-6) 12%, transparent), color-mix(in srgb, var(--mantine-color-teal-6) 4%, transparent))')
+                : (isDark ? 'var(--mantine-color-dark-6)' : '#ffffff'),
               padding: '14px 16px',
               textAlign: 'left',
               transition: 'transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease',
               boxShadow: isActive
-                ? (isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px rgba(15, 118, 110, 0.10)')
+                ? (isDark ? '0 12px 28px rgba(0, 0, 0, 0.24)' : '0 12px 28px color-mix(in srgb, var(--mantine-color-teal-6) 10%, transparent)')
                 : (isDark ? '0 8px 20px rgba(0, 0, 0, 0.18)' : '0 8px 20px rgba(15, 23, 42, 0.05)'),
             }}
           >
@@ -342,7 +342,7 @@ export function PortfolioSwitcher({
                   {`Creato ${formatDate(portfolio.created_at)} · TZ ${portfolio.timezone}`}
                 </Text>
               </Box>
-              {isActive && <IconCheck size={18} color={isDark ? theme.colors.teal[3] : '#0f766e'} style={{ flexShrink: 0, marginTop: 2 }} />}
+              {isActive && <IconCheck size={18} color={isDark ? 'var(--mantine-color-teal-3)' : 'var(--mantine-color-teal-6)'} style={{ flexShrink: 0, marginTop: 2 }} />}
             </Group>
           </UnstyledButton>
         );
@@ -351,7 +351,7 @@ export function PortfolioSwitcher({
           </Box>
         </>
       ) : (
-        <Paper radius="lg" p="md" withBorder bg={isDark ? theme.colors.dark[6] : '#f8fafc'}>
+        <Paper radius="lg" p="md" withBorder bg={isDark ? 'var(--mantine-color-dark-6)' : '#f8fafc'}>
           <Text size="sm" c="dimmed">Nessun portafoglio trovato</Text>
         </Paper>
       )}
@@ -506,9 +506,9 @@ export function PortfolioSwitcher({
       style={{
         width: '100%',
         borderRadius: 18,
-        border: `1px solid ${isDark ? theme.colors.dark[4] : '#d6d9de'}`,
+        border: `1px solid ${isDark ? 'var(--mantine-color-dark-4)' : '#d6d9de'}`,
         background: isDark
-          ? `linear-gradient(180deg, ${theme.colors.dark[6]} 0%, ${theme.colors.dark[7]} 100%)`
+          ? `linear-gradient(180deg, var(--mantine-color-dark-6) 0%, var(--mantine-color-dark-7) 100%)`
           : 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
         padding: isMobile ? '14px 16px' : '15px 18px',
         boxShadow: isDark ? '0 12px 32px rgba(0, 0, 0, 0.24)' : '0 12px 32px rgba(15, 23, 42, 0.07)',
@@ -524,9 +524,9 @@ export function PortfolioSwitcher({
               borderRadius: 14,
               display: 'grid',
               placeItems: 'center',
-              background: 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)',
+              background: 'linear-gradient(135deg, var(--mantine-color-teal-6) 0%, var(--mantine-color-teal-9) 100%)',
               color: '#ffffff',
-              boxShadow: '0 10px 22px rgba(15, 118, 110, 0.25)',
+              boxShadow: '0 10px 22px color-mix(in srgb, var(--mantine-color-teal-6) 25%, transparent)',
             }}
           >
             <IconBriefcase2 size={20} />

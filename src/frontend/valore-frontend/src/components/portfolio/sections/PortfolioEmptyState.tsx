@@ -27,8 +27,8 @@ export function PortfolioEmptyState({ onCreatePortfolio, onImportFromFile }: Por
       mb="md"
       style={{
         background: isDark
-          ? 'linear-gradient(135deg, rgba(20,184,166,0.10), rgba(15,23,42,0.9))'
-          : 'linear-gradient(135deg, #f8fffd 0%, #eefaf6 48%, #f8fbff 100%)',
+          ? 'linear-gradient(135deg, color-mix(in srgb, var(--mantine-color-teal-4) 10%, transparent), rgba(15,23,42,0.9))'
+          : 'linear-gradient(135deg, color-mix(in srgb, var(--mantine-color-teal-0) 25%, #ffffff) 0%, color-mix(in srgb, var(--mantine-color-teal-0) 60%, #ffffff) 48%, #f8fbff 100%)',
       }}
     >
       <Stack gap="lg">
