@@ -1,4 +1,4 @@
-import { Group, Portal, Text, UnstyledButton, alpha, useComputedColorScheme, useMantineTheme } from '@mantine/core';
+import { Group, Portal, Text, UnstyledButton, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { Fragment, useRef, type CSSProperties, type PointerEvent } from 'react';
 
 type NavIcon = React.ComponentType<{ size?: string | number; className?: string; style?: CSSProperties }>;
@@ -85,9 +85,9 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
         touchAction: 'none',
         padding: 6,
         borderRadius: 20,
-        background: isDark ? alpha(theme.colors.dark[5], 0.94) : 'rgba(255,255,255,0.94)',
+        background: isDark ? 'color-mix(in srgb, var(--mantine-color-dark-5) 94%, transparent)' : 'rgba(255,255,255,0.94)',
         backdropFilter: 'blur(16px)',
-        border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(148,163,184,0.22)',
+        border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid rgba(148,163,184,0.22)',
         boxShadow: isDark ? '0 18px 42px rgba(0, 0, 0, 0.34)' : '0 18px 42px rgba(15, 23, 42, 0.18)',
       }}
     >
@@ -116,7 +116,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
                 placeItems: 'center',
                 background: 'var(--mantine-primary-color-filled)',
                 color: '#ffffff',
-                boxShadow: '0 8px 18px rgba(15, 118, 110, 0.35)',
+                boxShadow: '0 8px 18px color-mix(in srgb, var(--mantine-color-teal-6) 35%, transparent)',
               }}
             >
               <CenterIcon size={24} />
@@ -136,7 +136,7 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
               minHeight: 44,
               borderRadius: 16,
               padding: '10px 4px',
-              background: isActive ? 'linear-gradient(135deg, #0f766e 0%, #134e4a 100%)' : 'transparent',
+              background: isActive ? 'linear-gradient(135deg, var(--mantine-color-teal-6) 0%, var(--mantine-color-teal-9) 100%)' : 'transparent',
               color: isActive ? '#ffffff' : (isDark ? theme.colors.gray[3] : '#475569'),
               textAlign: 'center',
               opacity: item.disabled ? 0.4 : 1,

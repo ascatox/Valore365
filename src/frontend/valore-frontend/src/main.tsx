@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Drawer, MantineProvider, Modal, NumberInput, createTheme, type MantineColorsTuple } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -6,6 +6,7 @@ import { ClerkProvider } from '@clerk/clerk-react';
 import { ClerkTokenBridge } from './components/ClerkTokenBridge';
 import App from './App.tsx';
 import { initTextScale } from './textScale';
+import { initColorTheme, useActiveColorTheme, type ColorTheme } from './colorTheme';
 
 // Importa gli stili obbligatori di Mantine
 import '@mantine/core/styles.css';
@@ -23,14 +24,6 @@ const queryClient = new QueryClient({
 
 const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
-// Brand petrol: replaces Mantine's teal, which the app already uses as its
-// brand colour, so every `color="teal"` and `theme.colors.teal[n]` follows it.
-// Shade 6 is the #0f766e used across the mobile components.
-const petrol: MantineColorsTuple = [
-  '#e7f4f2', '#cde8e4', '#9dd1c9', '#6bb8ad', '#3e9f93',
-  '#1f877b', '#0f766e', '#0e6c65', '#0d625c', '#0b4a46',
-];
-
 // Gain, loss and attention. Shade 6 is the light-mode text/fill and shade 4
 // the dark-mode text, so both keep readable contrast on their background.
 const gain: MantineColorsTuple = [
@@ -44,13 +37,6 @@ const loss: MantineColorsTuple = [
 const attention: MantineColorsTuple = [
   '#fdf3e7', '#fbe3c4', '#f6c78b', '#f2b065', '#f0a04b',
   '#dd7d1c', '#c2620a', '#a85409', '#8f4708', '#6f3706',
-];
-
-// Dark-mode neutrals with a slight petrol tint, replacing Mantine's flat grey.
-// dark[7] is the page background, dark[6] cards and inputs, dark[4] borders.
-const petrolDark: MantineColorsTuple = [
-  '#d3dcda', '#aab6b4', '#7c8987', '#55625f', '#2b3836',
-  '#1b2726', '#151f1e', '#0e1514', '#0b1110', '#070c0b',
 ];
 
 const IS_TOUCH_DEVICE = typeof window !== 'undefined'
@@ -72,14 +58,18 @@ const CLOSE_TEXT_STYLES = {
   border: 'none',
 };
 
-const theme = createTheme({
+// The colour theme (colorTheme.ts; petrol by default) replaces two Mantine
+// tuples: teal, which the app already uses as its brand colour, so every
+// `color="teal"` and `theme.colors.teal[n]` follows it, and dark, the
+// dark-mode neutrals, slightly tinted instead of Mantine's flat grey.
+const buildTheme = (colorTheme: ColorTheme) => createTheme({
   primaryColor: 'teal',
   colors: {
-    teal: petrol,
+    teal: colorTheme.primary,
     green: gain,
     red: loss,
     orange: attention,
-    dark: petrolDark,
+    dark: colorTheme.dark,
   },
   // Radius by role: 8 for inputs, buttons and chips, 14 for cards, 20 for sheets.
   radius: { xs: '4px', sm: '8px', md: '14px', lg: '20px', xl: '28px' },
@@ -122,6 +112,10 @@ const theme = createTheme({
 });
 
 function Root() {
+  // A new theme object only swaps Mantine's CSS variables: nothing remounts.
+  const colorTheme = useActiveColorTheme();
+  const theme = useMemo(() => buildTheme(colorTheme), [colorTheme]);
+
   if (clerkPubKey) {
     return (
       <ClerkProvider publishableKey={clerkPubKey}>
@@ -146,6 +140,7 @@ function Root() {
 
 // Before the first render, so the page doesn't reflow once it's on screen.
 initTextScale();
+initColorTheme();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

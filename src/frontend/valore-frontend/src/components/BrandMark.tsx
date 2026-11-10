@@ -19,8 +19,8 @@ export function BrandMark({ compact = false }: BrandMarkProps) {
           minWidth: compact ? 26 : 30,
           borderRadius: compact ? 8 : 10,
           overflow: 'hidden',
-          background: isDark ? theme.colors.dark[6] : '#ffffff',
-          border: isDark ? `1px solid ${theme.colors.dark[4]}` : '1px solid rgba(15, 23, 42, 0.06)',
+          background: isDark ? 'var(--mantine-color-dark-6)' : '#ffffff',
+          border: isDark ? '1px solid var(--mantine-color-dark-4)' : '1px solid rgba(15, 23, 42, 0.06)',
           boxShadow: isDark ? '0 8px 18px rgba(0, 0, 0, 0.24)' : '0 8px 18px rgba(15, 23, 42, 0.10)',
         }}
       >
