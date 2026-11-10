@@ -1,0 +1,503 @@
+{
+  "schema_version": 1,
+  "run_id": "3f9c2d7e8a1b4c5d9e0f1a2b3c4d5e6f",
+  "mode": "ci",
+  "app_version": "0.6.0",
+  "started_at": "2026-11-10T22:31:04Z",
+  "finished_at": "2026-11-10T22:32:10Z",
+  "duration_ms": 66000,
+  "user_id": "auditor-seed-user",
+  "options": {
+    "portfolio_ids": [
+      9101,
+      9102,
+      9104,
+      9106
+    ],
+    "groups": null,
+    "rule_ids": [
+      "A-STRESS-SHOCK-TABLE",
+      "B-PAC-SUM",
+      "C-DIV-CURRENCY",
+      "D-LSE-QUOTE-CURRENCY",
+      "D-PERF-RECOMPUTE"
+    ],
+    "include_aggregate": true,
+    "include_instruments": true,
+    "fail_on": "P1",
+    "strict_known": false
+  },
+  "rules": [
+    {
+      "id": "A-STRESS-SHOCK-TABLE",
+      "group": "A",
+      "severity": "P0",
+      "area": "stress",
+      "title": "Lo stress test applica a ogni classe di attivo lo shock previsto",
+      "findings": [
+        "V365-002"
+      ],
+      "scopes": [
+        "portfolio",
+        "aggregate"
+      ],
+      "known_defect": null
+    },
+    {
+      "id": "B-PAC-SUM",
+      "group": "B",
+      "severity": "P1",
+      "area": "rebalance",
+      "title": "Nel PAC la somma dei versamenti per strumento è uguale all'importo indicato",
+      "findings": [],
+      "scopes": [
+        "portfolio"
+      ],
+      "known_defect": null
+    },
+    {
+      "id": "C-DIV-CURRENCY",
+      "group": "C",
+      "severity": "P2",
+      "area": "income",
+      "title": "I dividendi incassati sono totalizzati per valuta, senza sommare valute diverse",
+      "findings": [
+        "V-DIV-MIXED-CCY",
+        "V365-009"
+      ],
+      "scopes": [
+        "portfolio"
+      ],
+      "known_defect": null
+    },
+    {
+      "id": "D-LSE-QUOTE-CURRENCY",
+      "group": "D",
+      "severity": "P1",
+      "area": "data",
+      "title": "Gli strumenti quotati a Londra hanno una valuta di quotazione plausibile",
+      "findings": [
+        "V-QUOTE-CCY-L",
+        "V365-008"
+      ],
+      "scopes": [
+        "instrument"
+      ],
+      "known_defect": "TASK-41"
+    },
+    {
+      "id": "D-PERF-RECOMPUTE",
+      "group": "D",
+      "severity": "P1",
+      "area": "performance",
+      "title": "I rendimenti TWR e MWR coincidono con un ricalcolo indipendente",
+      "findings": [
+        "C1-TWR-MIXED"
+      ],
+      "scopes": [
+        "portfolio",
+        "aggregate"
+      ],
+      "known_defect": null
+    }
+  ],
+  "scopes": [
+    {
+      "scope": {
+        "kind": "aggregate",
+        "portfolio_ids": [
+          9101,
+          9102,
+          9103,
+          9104,
+          9105,
+          9106,
+          9107
+        ]
+      },
+      "scope_key": "aggregate:9101,9102,9103,9104,9105,9106,9107"
+    },
+    {
+      "scope": {
+        "kind": "instrument",
+        "portfolio_id": 9104,
+        "symbol": "AUDUK.L"
+      },
+      "scope_key": "instrument:9104:AUDUK.L"
+    },
+    {
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9101
+      },
+      "scope_key": "portfolio:9101"
+    },
+    {
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9102
+      },
+      "scope_key": "portfolio:9102"
+    },
+    {
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9104
+      },
+      "scope_key": "portfolio:9104"
+    },
+    {
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9106
+      },
+      "scope_key": "portfolio:9106"
+    }
+  ],
+  "results": [
+    {
+      "rule_id": "A-STRESS-SHOCK-TABLE",
+      "group": "A",
+      "severity": "P0",
+      "area": "stress",
+      "title": "Lo stress test applica a ogni classe di attivo lo shock previsto",
+      "scope": {
+        "kind": "aggregate",
+        "portfolio_ids": [
+          9101,
+          9102,
+          9103,
+          9104,
+          9105,
+          9106,
+          9107
+        ]
+      },
+      "scope_key": "aggregate:9101,9102,9103,9104,9105,9106,9107",
+      "status": "pass",
+      "reason_code": null,
+      "reason": null,
+      "evidence": [
+        {
+          "tool": "get_aggregate_stress_test",
+          "args": {
+            "portfolio_ids": [
+              9101,
+              9102,
+              9103,
+              9104,
+              9105,
+              9106,
+              9107
+            ]
+          },
+          "path": "scenarios[scenario_name=Global Equity Crash].class_breakdown[asset_class=bond].shock_pct",
+          "observed": -3.0,
+          "expected": -3.0,
+          "tolerance": 0.005,
+          "note": null
+        }
+      ],
+      "evidence_truncated": false,
+      "duration_ms": 41,
+      "known_defect": null
+    },
+    {
+      "rule_id": "A-STRESS-SHOCK-TABLE",
+      "group": "A",
+      "severity": "P0",
+      "area": "stress",
+      "title": "Lo stress test applica a ogni classe di attivo lo shock previsto",
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9102
+      },
+      "scope_key": "portfolio:9102",
+      "status": "fail",
+      "reason_code": "invariant_violated",
+      "reason": "Nello scenario «US Tech Crash» la classe bond riceve lo shock azionario (−30%) invece di +2%.",
+      "evidence": [
+        {
+          "tool": "get_stress_test",
+          "args": {
+            "portfolio_id": 9102
+          },
+          "path": "scenarios[scenario_name=US Tech Crash].class_breakdown[asset_class=bond].shock_pct",
+          "observed": -30.0,
+          "expected": 2.0,
+          "tolerance": 0.005,
+          "note": "tabella SHOCK_SCENARIOS, scenario us_tech_crash"
+        }
+      ],
+      "evidence_truncated": false,
+      "duration_ms": 18,
+      "known_defect": null
+    },
+    {
+      "rule_id": "A-STRESS-SHOCK-TABLE",
+      "group": "A",
+      "severity": "P0",
+      "area": "stress",
+      "title": "Lo stress test applica a ogni classe di attivo lo shock previsto",
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9106
+      },
+      "scope_key": "portfolio:9106",
+      "status": "skip",
+      "reason_code": "empty_portfolio",
+      "reason": "Portafoglio senza posizioni: nessuno scenario da verificare.",
+      "evidence": [],
+      "evidence_truncated": false,
+      "duration_ms": 3,
+      "known_defect": null
+    },
+    {
+      "rule_id": "B-PAC-SUM",
+      "group": "B",
+      "severity": "P1",
+      "area": "rebalance",
+      "title": "Nel PAC la somma dei versamenti per strumento è uguale all'importo indicato",
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9101
+      },
+      "scope_key": "portfolio:9101",
+      "status": "pass",
+      "reason_code": null,
+      "reason": null,
+      "evidence": [
+        {
+          "tool": "calculate_pac_contribution",
+          "args": {
+            "portfolio_id": 9101,
+            "monthly_amount": 500.0
+          },
+          "path": "distribution[*].amount_eur",
+          "observed": 500.0,
+          "expected": 500.0,
+          "tolerance": 0.02,
+          "note": "somma su 2 righe"
+        }
+      ],
+      "evidence_truncated": false,
+      "duration_ms": 12,
+      "known_defect": null
+    },
+    {
+      "rule_id": "D-LSE-QUOTE-CURRENCY",
+      "group": "D",
+      "severity": "P1",
+      "area": "data",
+      "title": "Gli strumenti quotati a Londra hanno una valuta di quotazione plausibile",
+      "scope": {
+        "kind": "instrument",
+        "portfolio_id": 9104,
+        "symbol": "AUDUK.L"
+      },
+      "scope_key": "instrument:9104:AUDUK.L",
+      "status": "fail",
+      "reason_code": "invariant_violated",
+      "reason": "Il listing di Londra AUDUK.L risulta quotato in EUR.",
+      "evidence": [
+        {
+          "tool": "search_asset_info",
+          "args": {
+            "portfolio_id": 9104,
+            "symbol": "AUDUK.L"
+          },
+          "path": "currency",
+          "observed": "EUR",
+          "expected": [
+            "GBP",
+            "GBp",
+            "GBX",
+            "USD"
+          ],
+          "tolerance": null,
+          "note": null
+        }
+      ],
+      "evidence_truncated": false,
+      "duration_ms": 5,
+      "known_defect": "TASK-41"
+    },
+    {
+      "rule_id": "D-PERF-RECOMPUTE",
+      "group": "D",
+      "severity": "P1",
+      "area": "performance",
+      "title": "I rendimenti TWR e MWR coincidono con un ricalcolo indipendente",
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9101
+      },
+      "scope_key": "portfolio:9101",
+      "status": "error",
+      "reason_code": "timeout",
+      "reason": "Superato il limite di 60 s.",
+      "evidence": [],
+      "evidence_truncated": false,
+      "duration_ms": 60004,
+      "known_defect": null
+    },
+    {
+      "rule_id": "C-DIV-CURRENCY",
+      "group": "C",
+      "severity": "P2",
+      "area": "income",
+      "title": "I dividendi incassati sono totalizzati per valuta, senza sommare valute diverse",
+      "scope": {
+        "kind": "portfolio",
+        "portfolio_id": 9104
+      },
+      "scope_key": "portfolio:9104",
+      "status": "pass",
+      "reason_code": null,
+      "reason": null,
+      "evidence": [
+        {
+          "tool": "get_dividend_summary",
+          "args": {
+            "portfolio_id": 9104
+          },
+          "path": "dividends_by_currency.GBP.total",
+          "observed": 42.5,
+          "expected": 42.5,
+          "tolerance": 0.01,
+          "note": null
+        },
+        {
+          "tool": "ctx.transactions",
+          "args": {
+            "portfolio_id": 9104
+          },
+          "path": "[side=dividend][trade_currency=GBP]",
+          "observed": 42.5,
+          "expected": null,
+          "tolerance": null,
+          "note": "ricalcolo: somma quantity × price"
+        }
+      ],
+      "evidence_truncated": false,
+      "duration_ms": 9,
+      "known_defect": null
+    }
+  ],
+  "counts": {
+    "total": 7,
+    "by_status": {
+      "pass": 3,
+      "fail": 2,
+      "skip": 1,
+      "error": 1
+    },
+    "by_severity": {
+      "P0": {
+        "pass": 1,
+        "fail": 1,
+        "skip": 1,
+        "error": 0
+      },
+      "P1": {
+        "pass": 1,
+        "fail": 1,
+        "skip": 0,
+        "error": 1
+      },
+      "P2": {
+        "pass": 1,
+        "fail": 0,
+        "skip": 0,
+        "error": 0
+      }
+    },
+    "known_defect_failures": 1
+  },
+  "by_scope": {
+    "aggregate:9101,9102,9103,9104,9105,9106,9107": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "error": 0
+    },
+    "instrument:9104:AUDUK.L": {
+      "pass": 0,
+      "fail": 1,
+      "skip": 0,
+      "error": 0
+    },
+    "portfolio:9101": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "error": 1
+    },
+    "portfolio:9102": {
+      "pass": 0,
+      "fail": 1,
+      "skip": 0,
+      "error": 0
+    },
+    "portfolio:9104": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "error": 0
+    },
+    "portfolio:9106": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 1,
+      "error": 0
+    }
+  },
+  "by_rule": {
+    "A-STRESS-SHOCK-TABLE": {
+      "pass": 1,
+      "fail": 1,
+      "skip": 1,
+      "error": 0
+    },
+    "B-PAC-SUM": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "error": 0
+    },
+    "C-DIV-CURRENCY": {
+      "pass": 1,
+      "fail": 0,
+      "skip": 0,
+      "error": 0
+    },
+    "D-LSE-QUOTE-CURRENCY": {
+      "pass": 0,
+      "fail": 1,
+      "skip": 0,
+      "error": 0
+    },
+    "D-PERF-RECOMPUTE": {
+      "pass": 0,
+      "fail": 0,
+      "skip": 0,
+      "error": 1
+    }
+  },
+  "tool_calls": {
+    "total": 9,
+    "cache_hits": 3,
+    "errors": 0,
+    "by_tool": {
+      "calculate_pac_contribution": 1,
+      "ctx.transactions": 1,
+      "get_aggregate_stress_test": 1,
+      "get_dividend_summary": 1,
+      "get_positions": 2,
+      "get_stress_test": 2,
+      "search_asset_info": 1
+    }
+  },
+  "deadline_exceeded": false,
+  "exit_code": 1
+}
