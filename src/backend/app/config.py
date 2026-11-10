@@ -120,6 +120,11 @@ class Settings(BaseSettings):
     # matching /api/doctor/... endpoints answer 404 feature_disabled.
     doctor_policy_enabled: bool = True
     doctor_simulator_enabled: bool = True
+    # Tribunale del portafoglio (docs/tribunale/api-contracts.md §2, §8.6). When False
+    # /api/doctor/tribunal/... answer 404 feature_disabled. The daily limit counts new
+    # sessions paid with the server key (0 = only with the user's own key).
+    doctor_tribunal_enabled: bool = True
+    doctor_tribunal_daily_limit: int = 3
 
     # Copilot (AI assistant) — multi-provider
     # provider: "openai" | "anthropic" | "gemini" | "openrouter" | "local"

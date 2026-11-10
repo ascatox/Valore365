@@ -1,7 +1,7 @@
 ---
 id: TASK-65
 title: 'Tribunale: orchestratore della seduta ed endpoint SSE'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -28,14 +28,14 @@ Con fascicolo, chiamata strutturata, voci e verificatore pronti, serve il pezzo 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 L'endpoint di avvio seduta risponde in SSE con gli eventi, l'ordine e gli schemi di `docs/tribunale/api-contracts.md`, per portafoglio singolo e vista aggregata
-- [ ] #2 Le tre voci di una stessa fase sono interrogate in parallelo e ogni argomento ammesso viene inviato appena verificato, senza attendere le altre voci
-- [ ] #3 Se una voce fallisce o tutti i suoi argomenti sono scartati, la seduta prosegue con le altre e l'utente viene informato; con meno di due voci valide la seduta termina con un errore chiaro
-- [ ] #4 La seduta rispetta un timeout complessivo e invia keepalive durante le attese, come il Copilot
-- [ ] #5 Una variabile `DOCTOR_TRIBUNAL_ENABLED` (default `true`) spegne la funzione: gli endpoint rispondono 404 `feature_disabled` e `GET /api/doctor/features` lo espone
-- [ ] #6 L'endpoint di stato dice se il Tribunale è utilizzabile con la configurazione Copilot dell'utente (chiave propria o del server, provider con risposta strutturata) e, se no, perché
-- [ ] #7 Fascicolo e argomenti non vengono scritti nei log; i log riportano solo conteggi, durate e codici di scarto
-- [ ] #8 Test con LLM finto coprono seduta completa, voce che fallisce, tutto scartato, timeout, feature spenta e scope di un altro utente
+- [x] #1 L'endpoint di avvio seduta risponde in SSE con gli eventi, l'ordine e gli schemi di `docs/tribunale/api-contracts.md`, per portafoglio singolo e vista aggregata
+- [x] #2 Le tre voci di una stessa fase sono interrogate in parallelo e ogni argomento ammesso viene inviato appena verificato, senza attendere le altre voci
+- [x] #3 Se una voce fallisce o tutti i suoi argomenti sono scartati, la seduta prosegue con le altre e l'utente viene informato; con meno di due voci valide la seduta termina con un errore chiaro
+- [x] #4 La seduta rispetta un timeout complessivo e invia keepalive durante le attese, come il Copilot
+- [x] #5 Una variabile `DOCTOR_TRIBUNAL_ENABLED` (default `true`) spegne la funzione: gli endpoint rispondono 404 `feature_disabled` e `GET /api/doctor/features` lo espone
+- [x] #6 L'endpoint di stato dice se il Tribunale è utilizzabile con la configurazione Copilot dell'utente (chiave propria o del server, provider con risposta strutturata) e, se no, perché
+- [x] #7 Fascicolo e argomenti non vengono scritti nei log; i log riportano solo conteggi, durate e codici di scarto
+- [x] #8 Test con LLM finto coprono seduta completa, voce che fallisce, tutto scartato, timeout, feature spenta e scope di un altro utente
 <!-- AC:END -->
 
 ## Implementation Notes

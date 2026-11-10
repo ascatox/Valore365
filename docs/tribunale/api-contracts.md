@@ -1364,3 +1364,43 @@ Nessuna deviazione dalle firme di `architecture.md` §3.1; solo aggiunte compati
   errore di rete prima di qualunque evento → `network_error`; una risposta HTTP non 2xx senza
   `error.code` → `internal_error` (≥ 500) o `invalid_request` (4xx), con `retryable` da
   `details.retryable` se presente, altrimenti `status ≥ 500`.
+
+### TASK-65
+
+Nessuna deviazione da eventi, ordine, schemi, codici e status; solo aggiunte compatibili e
+letture dove il contratto lascia margine:
+
+- **Firme** (`architecture.md` §2.1): `TribunalOrchestrator.__init__` ha in più, keyword-only
+  con default, `finance_client`, `justetf_client` (passati a `build_case_file`; `justetf_client`
+  solo se `settings.justetf_xray_auto_enrich_enabled_resolved`, come `routes_copilot.py`),
+  `case_file_builder` (default `build_case_file`), `clock`, `session_timeout_s`,
+  `heartbeat_interval_s` (per i test). `register_tribunal_routes` ha in più `service_getter`,
+  `finance_client`, `justetf_client` (usati solo per l'orchestratore di default, creato una
+  volta alla prima richiesta). `orchestrator.py` esporta anche `TribunalError` (`AppError` con
+  `headers`: la route lo rende con l'header `Retry-After`, che l'handler globale non supporta),
+  `replay_session(session)` (§9.4), `next_rome_midnight(now)` e `DEFAULT_DAILY_LIMIT`.
+- **Lock** (§8.5): insieme in memoria a livello di modulo (uno per processo, condiviso da tutte
+  le istanze). Lo stream restituito da `start` libera il lock a fine stream, alla chiusura e
+  anche se viene abbandonato senza essere mai letto. Poiché il controllo 4 precede il 7, al
+  controllo del limite l'utente non ha altre sedute in corso nel processo: il termine «sedute in
+  corso» di §8.6 vale 0 e si confronta `count_today` con il limite.
+- **`voice_error.retryable`**: `false` solo per `unsupported_provider`. Un'eccezione inattesa
+  (non `StructuredOutputError`) sollevata dalla chiamata al modello è trattata come
+  `provider_error`; un'eccezione inattesa altrove (es. verificatore) → `error` `internal_error`.
+- **`status`**: con chiave del server `limit` è presente anche quando `reason` è
+  `provider_not_supported`; `remaining = max(0, daily_limit - used_today)` e
+  `daily_limit_reached` quando `remaining = 0` (quindi sempre con limite `0`). I `message` sono i
+  testi di `ui-spec.md` §4.1; quello di `daily_limit_reached` non contiene l'ora (la UI la
+  ricava da `resets_at`).
+- **`latest`**: lo scope è verificato anche con lo store nullo (400/404); il fascicolo è
+  ricostruito solo se c'è una seduta salvata.
+- **Salvataggio**: `done.saved` è `false` con lo store nullo o se `store.save` solleva (la seduta
+  resta valida per l'utente, log con il solo nome dell'eccezione).
+- **Log**: oltre a `tribunal.phase` e `tribunal.session` (con `codes=codice:n,…`,
+  `error:<codice>` per una voce fallita, `-` se nessuno; `outcome` ∈ `completed`, `replay`,
+  `too_few_voices`, `synthesis_failed`, `timeout`, `disconnected`, `internal_error`), una riga
+  `tribunal.call phase=… voice=… error=<NomeClasse>` per ogni chiamata fallita.
+- **Fuori dai file di TASK-65**: aggiungere il campo obbligatorio `tribunal_enabled` a
+  `DoctorFeaturesRead` cambia la risposta di `GET /api/doctor/features`; l'asserzione di
+  `tests/unit/test_doctor_policy_routes.py::test_features_reflect_flags` è stata aggiornata di
+  conseguenza (due righe).

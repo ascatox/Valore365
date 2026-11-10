@@ -169,6 +169,7 @@ class DoctorPolicyService:
         return DoctorFeaturesRead(
             policy_enabled=bool(getattr(settings, "doctor_policy_enabled", True)),
             simulator_enabled=bool(getattr(settings, "doctor_simulator_enabled", True)),
+            tribunal_enabled=bool(getattr(settings, "doctor_tribunal_enabled", True)),
         )
 
     @staticmethod
