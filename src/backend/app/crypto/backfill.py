@@ -166,6 +166,15 @@ TARGETS: tuple[Target, ...] = (
         pending="name is not null and name not like 'enc:v1:%'",
         transform=_simple("doctor_policy_sets", "name"),
     ),
+    # TASK-66: the saved Tribunale session (JSON text), written encrypted when the
+    # keys are configured; only rows saved without keys (dev) are pending.
+    Target(
+        table="tribunal_sessions",
+        key="id",
+        columns="id, owner_user_id, payload",
+        pending="payload is not null and payload not like 'enc:v1:%'",
+        transform=_simple("tribunal_sessions", "payload"),
+    ),
 )
 
 

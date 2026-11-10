@@ -18,9 +18,11 @@ date, ID e dati di mercato restano in chiaro.
 | `csv_import_batches` | `original_filename` | `original_filename_bidx`: blind index del nome esatto |
 | `csv_import_batches` | `preview_data` (jsonb) | `source_sha256` in colonna dedicata (hash del file, in chiaro) |
 | `doctor_policy_sets` | `name` | nessuna |
+| `tribunal_sessions` | `payload` (seduta del Tribunale in JSON, TASK-66) | nessuna (la ricerca è per `owner_user_id` + `scope_fingerprint` in chiaro) |
 
 Le API restituiscono i valori in chiaro: i contratti non cambiano. La decifratura avviene nel
-repository (`app/repository/*`, `app/services/doctor_policy/store.py`, `app/auth.py`), quindi
+repository (`app/repository/*`, `app/services/doctor_policy/store.py`,
+`app/services/tribunal/store.py`, `app/auth.py`), quindi
 anche Copilot, MCP ed export vedono i valori in chiaro.
 
 Il rilevamento degli import CSV duplicati, che prima leggeva `preview_data->>'source_sha256'`
@@ -154,7 +156,10 @@ select 'csv_import_batches.preview_data', count(*)
     and not (jsonb_typeof(preview_data) = 'object' and preview_data ? '_enc')
 union all
 select 'doctor_policy_sets.name', count(*)
-  from doctor_policy_sets where name is not null and name not like 'enc:v1:%';
+  from doctor_policy_sets where name is not null and name not like 'enc:v1:%'
+union all
+select 'tribunal_sessions.payload', count(*)
+  from tribunal_sessions where payload is not null and payload not like 'enc:v1:%';
 ```
 
 ### Esecuzione manuale (script)

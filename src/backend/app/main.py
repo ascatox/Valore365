@@ -197,6 +197,14 @@ def _apply_pending_migrations():
         logging.getLogger(__name__).info("doctor policy tables ensured")
     except Exception as exc:
         logging.getLogger(__name__).warning("Doctor policy migration check failed: %s", exc)
+    # Tribunale (TASK-66): last saved session and daily usage, own transaction.
+    try:
+        with _engine.begin() as conn:
+            from .sql import load_sql
+            conn.execute(text(load_sql("migrations/create_tribunal_sessions")))
+        logging.getLogger(__name__).info("tribunal session tables ensured")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Tribunal session migration check failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
