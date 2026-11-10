@@ -1492,6 +1492,7 @@ export interface CopilotStatus {
 export interface DoctorFeatures {
   policy_enabled: boolean;
   simulator_enabled: boolean;
+  tribunal_enabled?: boolean;
 }
 
 export type DoctorPolicyOperator = 'min' | 'max' | 'range';
