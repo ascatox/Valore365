@@ -1431,3 +1431,68 @@ Nessuna deviazione dalle props di `architecture.md` §3.2; letture dove `ui-spec
   navigazione verso una card). `TribunalFactChip.tsx` esporta anche `TribunalQualityBadge`;
   `TribunalVoices.tsx` esporta `buildVoiceViews` e `voiceOfCard`; `TribunalSection.tsx`
   esporta `TRIBUNAL_COMPACT_QUERY` e il tipo `TribunalSectionState`.
+
+### TASK-66
+
+Nessuna deviazione da firme (`architecture.md` §2.1, `SessionStore` di `orchestrator.py`),
+schemi, codici ed eventi; scelte dove il contratto lascia margine:
+
+- **Schema** (`database/migrations/20261110_01_tribunal_sessions.sql`, copia identica in
+  `app/sql/migrations/create_tribunal_sessions.sql` applicata all'avvio da `main.py` come il
+  Doctor 2.0; `schema.sql` aggiornato; `supabase_full_setup.sql` non modificato perché non è più
+  mantenuto come schema completo, `docs/doctor2/api-contracts.md`):
+  - `tribunal_sessions`: una riga per `(owner_user_id, scope_fingerprint)` (unique, upsert).
+    `payload` = `TribunalSession` serializzata in JSON, colonna `text` cifrata con
+    `encrypt_field` (AAD `tribunal_sessions:payload:<owner_user_id>`); in chiaro solo
+    `session_id`, `case_file_hash`, `contract_version`, `prompt_version`, `key_source`,
+    `created_at`, `completed_at`, `saved_at`.
+  - `tribunal_session_members`: `(tribunal_session_id, portfolio_id)`, FK su
+    `tribunal_sessions` e su `portfolios(id)`, entrambe `on delete cascade`; un trigger
+    (`trg_tribunal_session_members_cleanup`) cancella la seduta quando sparisce un suo membro.
+  - `tribunal_daily_usage`: `(owner_user_id, usage_day)` → `sessions`, giorno di calendario
+    `Europe/Rome`. RLS attiva senza policy sulle tre tabelle.
+- **Conteggio**: `save` con `key_source = "server"` incrementa il contatore nella stessa
+  transazione del salvataggio; il giorno è quello di `completed_at` della seduta (orologio
+  dell'orchestratore, lo stesso passato a `count_today(now=...)`). Il contatore è separato dalle
+  sedute: sovrascrivere una seduta o cancellarla (anche eliminando il portafoglio) non
+  restituisce sedute al limite del giorno. Righe del contatore più vecchie di 31 giorni vengono
+  potate al salvataggio. Se `save` fallisce non resta né la seduta né il conteggio
+  (`done.saved: false`): quella seduta, pagata dal server, non consuma il limite (accettato).
+- **Cancellazione del portafoglio**: gestita dal database (FK + trigger), quindi
+  `delete_portfolio` in `_portfolio_crud.py` non cambia. Scope aggregato: si cancella **ogni**
+  seduta il cui scope include il portafoglio eliminato (la sua seduta singola e le aggregate),
+  le altre restano.
+- **Cancellazione dell'account**: il backend non ha un flusso di cancellazione dell'account;
+  `TribunalStore.delete_for_user(user_id) -> int` cancella sedute (e membri) e contatori
+  dell'utente e restituisce il numero di sedute cancellate, ma nessun endpoint lo chiama.
+- **Lettura**: `get_latest` restituisce la seduta salvata identica a quella passata a `save`;
+  una seduta che non si decifra più (DEK cancellata, valore alterato) è trattata come assente
+  (`null`, log con il solo nome dell'eccezione).
+- **Validazione**: `save` solleva `ValueError` (niente scritto) se `key_source` non è
+  `user`/`server`, se `scope.fingerprint` della seduta non corrisponde a `portfolio_ids` o se
+  mancano `session_id`, `case_file.hash`, `contract_version`.
+- **Firme in più**, keyword-only con default: `TribunalStore(engine, *, clock=None)`; `conn=None`
+  su tutti i metodi (transazione del chiamante, come `DoctorPolicyStore`). Il modulo esporta
+  anche `rome_day(moment)` e `USAGE_RETENTION_DAYS`.
+- **`_default_store(repo)`**: `TribunalStore(repo.engine)`; un repository senza `engine` (solo
+  test) ottiene ancora `NullSessionStore`.
+- **Backfill**: `tribunal_sessions.payload` è registrata nei target di `app/crypto/backfill.py`
+  (cifra le sedute salvate in chiaro in dev senza chiavi) e in `docs/field-encryption.md`.
+
+### TASK-69
+
+Nessuna deviazione da `ui-spec.md` §1 e `architecture.md` §3.3; letture dove la specifica lascia
+margine:
+
+- **Griglia 2×2 su mobile** (< 48em, `useIsMobile`): la `Tabs.List` ha `display: grid;
+  grid-template-columns: 1fr 1fr` al posto di `grow`; ogni tab ha `paddingInline: 6`,
+  `white-space: normal` e la sezione dell'icona `margin-inline-end: 6`, così a 320px tutte e
+  quattro le etichette stanno su una riga; con una scala del testo maggiore vanno a capo, mai
+  troncate. La `Tabs.List` espone `data-testid="doctor-section-tabs"` e `data-layout="grid" | "row"`
+  per test ed E2E.
+- **Visibilità**: la tab segue `DOCTOR_TRIBUNAL_UI_ENABLED && useTribunalFeature().enabled`
+  (stessa query di `useDoctorFeatures`, nessuna richiesta in più); `TribunalSection` è montata
+  solo quando la sezione è selezionata (come Parametri e Laboratorio), quindi con la feature spenta
+  non è nel DOM e la pagina non chiama gli endpoint del Tribunale.
+- **Indicatore di freschezza** (`FreshnessIndicator`, della valutazione di «I miei parametri»):
+  resta sopra tutte le sezioni, Tribunale compresa, come oggi per il Laboratorio.

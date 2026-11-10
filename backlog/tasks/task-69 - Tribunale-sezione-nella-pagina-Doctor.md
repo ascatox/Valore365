@@ -1,7 +1,7 @@
 ---
 id: TASK-69
 title: 'Tribunale: sezione nella pagina Doctor'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -25,13 +25,13 @@ I componenti della seduta vanno resi raggiungibili: una quarta sezione «Tribuna
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 La pagina Doctor ha la sezione «Tribunale», visibile solo se la funzione è attiva nelle feature del backend
-- [ ] #2 La sezione usa lo scope selezionato (portafoglio singolo o vista aggregata) e si azzera quando lo scope cambia
-- [ ] #3 All'apertura mostra l'ultima seduta salvata, se esiste, con la data e l'indicazione che i dati sono cambiati quando è il caso; l'utente avvia una nuova seduta con un'azione esplicita, mai in automatico
-- [ ] #4 Se il Copilot non è configurato o il provider non è adatto, la sezione lo spiega e rimanda a Impostazioni → Copilot
-- [ ] #5 Un errore nella sezione non rompe le altre sezioni del Doctor
-- [ ] #6 La navigazione su mobile funziona con quattro sezioni senza testo troncato
-- [ ] #7 Test di pagina coprono visibilità con funzione attiva e spenta, cambio di scope, vista aggregata e Copilot non configurato
+- [x] #1 La pagina Doctor ha la sezione «Tribunale», visibile solo se la funzione è attiva nelle feature del backend
+- [x] #2 La sezione usa lo scope selezionato (portafoglio singolo o vista aggregata) e si azzera quando lo scope cambia
+- [x] #3 All'apertura mostra l'ultima seduta salvata, se esiste, con la data e l'indicazione che i dati sono cambiati quando è il caso; l'utente avvia una nuova seduta con un'azione esplicita, mai in automatico
+- [x] #4 Se il Copilot non è configurato o il provider non è adatto, la sezione lo spiega e rimanda a Impostazioni → Copilot
+- [x] #5 Un errore nella sezione non rompe le altre sezioni del Doctor
+- [x] #6 La navigazione su mobile funziona con quattro sezioni senza testo troncato
+- [x] #7 Test di pagina coprono visibilità con funzione attiva e spenta, cambio di scope, vista aggregata e Copilot non configurato
 <!-- AC:END -->
 
 ## Implementation Notes

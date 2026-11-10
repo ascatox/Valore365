@@ -30,6 +30,7 @@ import {
   IconChartBubble,
   IconFlask,
   IconRobot,
+  IconScale,
   IconSparkles,
   IconStethoscope,
 } from '@tabler/icons-react';
@@ -62,12 +63,18 @@ import { FreshnessIndicator } from '../components/doctor/policy/FreshnessIndicat
 import { useDoctorFeatures, useDoctorMetrics, useDoctorPolicyState, useInvalidateDoctorPolicy } from '../components/doctor/policy/hooks';
 import { isEvaluation, ruleName } from '../components/doctor/policy/policyFormat';
 import { DoctorLabSection, type LabPrefill } from '../components/doctor/lab/DoctorLabSection';
+import { TribunalSection } from '../components/doctor/tribunal/TribunalSection';
+import { useTribunalFeature } from '../components/doctor/tribunal/useTribunalSession';
+import { DOCTOR_TRIBUNAL_UI_ENABLED } from '../features';
 
 const PRIVACY_MASK = '******';
 
 /** Doctor areas, deep-linkable with `?section=`. */
-type DoctorSection = 'diagnosi' | 'parametri' | 'laboratorio';
-const DOCTOR_SECTIONS: DoctorSection[] = ['diagnosi', 'parametri', 'laboratorio'];
+type DoctorSection = 'diagnosi' | 'parametri' | 'laboratorio' | 'tribunale';
+const DOCTOR_SECTIONS: DoctorSection[] = ['diagnosi', 'parametri', 'laboratorio', 'tribunale'];
+/** Section tab in the 2-column mobile grid: full label, wrapped rather than cut. */
+const MOBILE_TAB_STYLE = { minWidth: 0, paddingInline: 6, whiteSpace: 'normal', lineHeight: 1.25 } as const;
+const MOBILE_TABS_STYLES = { tabSection: { marginInlineEnd: 6 } } as const;
 const RETURN_VISIT_GAP_MS = 30 * 60 * 1000;
 
 function isPrivacyModeEnabled(): boolean {
@@ -307,9 +314,13 @@ export function DoctorPage() {
   // each behind its backend feature flag.
   const [searchParams, setSearchParams] = useSearchParams();
   const features = useDoctorFeatures();
+  // Tribunale: the tab appears only once `/doctor/features` reports it enabled.
+  const tribunalFeature = useTribunalFeature();
+  const tribunalEnabled = DOCTOR_TRIBUNAL_UI_ENABLED && tribunalFeature.enabled;
   const availableSections = DOCTOR_SECTIONS.filter((item) => item === 'diagnosi'
     || (item === 'parametri' && features.policyEnabled)
-    || (item === 'laboratorio' && features.simulatorEnabled));
+    || (item === 'laboratorio' && features.simulatorEnabled)
+    || (item === 'tribunale' && tribunalEnabled));
   const requestedSection = searchParams.get('section') as DoctorSection | null;
   const section: DoctorSection = requestedSection && availableSections.includes(requestedSection) ? requestedSection : 'diagnosi';
   const setSection = useCallback((next: DoctorSection) => {
@@ -621,14 +632,22 @@ export function DoctorPage() {
           )}
 
           {showSectionTabs && (
-            <Tabs value={section} onChange={(value) => value && setSection(value as DoctorSection)} keepMounted={false}>
-              <Tabs.List grow={Boolean(isMobile)}>
-                <Tabs.Tab value="diagnosi" leftSection={<IconStethoscope size={16} />}>Diagnosi</Tabs.Tab>
+            <Tabs value={section} onChange={(value) => value && setSection(value as DoctorSection)} keepMounted={false} styles={isMobile ? MOBILE_TABS_STYLES : undefined}>
+              {/* Mobile: a 2-column grid, so four full labels fit without truncation. */}
+              <Tabs.List
+                data-testid="doctor-section-tabs"
+                data-layout={isMobile ? 'grid' : 'row'}
+                style={isMobile ? { display: 'grid', gridTemplateColumns: '1fr 1fr' } : undefined}
+              >
+                <Tabs.Tab value="diagnosi" leftSection={<IconStethoscope size={16} />} style={isMobile ? MOBILE_TAB_STYLE : undefined}>Diagnosi</Tabs.Tab>
                 {features.policyEnabled && (
-                  <Tabs.Tab value="parametri" leftSection={<IconAdjustments size={16} />}>I miei parametri</Tabs.Tab>
+                  <Tabs.Tab value="parametri" leftSection={<IconAdjustments size={16} />} style={isMobile ? MOBILE_TAB_STYLE : undefined}>I miei parametri</Tabs.Tab>
                 )}
                 {features.simulatorEnabled && (
-                  <Tabs.Tab value="laboratorio" leftSection={<IconFlask size={16} />}>Laboratorio</Tabs.Tab>
+                  <Tabs.Tab value="laboratorio" leftSection={<IconFlask size={16} />} style={isMobile ? MOBILE_TAB_STYLE : undefined}>Laboratorio</Tabs.Tab>
+                )}
+                {tribunalEnabled && (
+                  <Tabs.Tab value="tribunale" leftSection={<IconScale size={16} />} style={isMobile ? MOBILE_TAB_STYLE : undefined}>Tribunale</Tabs.Tab>
                 )}
               </Tabs.List>
             </Tabs>
@@ -941,6 +960,12 @@ export function DoctorPage() {
                 onAskCopilot={handleAskCopilot}
                 onSnapshotChanged={() => { void invalidateDoctorPolicy(policyState.fingerprint); }}
               />
+            </DoctorSectionErrorBoundary>
+          )}
+
+          {section === 'tribunale' && scope != null && (
+            <DoctorSectionErrorBoundary key={`tribunale-${scopeKeyString}`} area="Tribunale">
+              <TribunalSection portfolioIds={scopeIds} isAggregate={isAggregate} privacy={privacy} />
             </DoctorSectionErrorBoundary>
           )}
         </Stack>
