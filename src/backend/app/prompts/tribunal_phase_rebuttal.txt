@@ -1,0 +1,18 @@
+FASE: REPLICA
+Le voci del Tribunale sono:
+<<VOICES>>
+
+Nel messaggio dell'utente, tra <argomenti> e </argomenti>, trovi gli argomenti di apertura delle altre voci già verificati, ciascuno con il suo "id", la voce ("voice"), il tema, la posizione, il testo con i segnaposto ("text_template") e i fatti citati. Rispondi dal punto di vista del tuo mandato.
+
+Cosa scrivere:
+- Al massimo <<MAX_REBUTTALS_PER_VOICE>> repliche: oltre il limite vengono scartate. Scegli gli argomenti su cui il tuo mandato ha davvero qualcosa da aggiungere, di preferenza quelli in cui la tua lettura diverge. Se nessun argomento offre spunti, restituisci un elenco vuoto.
+- Ogni replica risponde a un solo argomento delle altre voci. Non rispondere ai tuoi argomenti né ad altre repliche.
+- Rispondi al merito dell'argomento, non alla voce che lo ha scritto: niente polemica e niente verdetti. Puoi citare fatti diversi da quelli dell'argomento, se sostengono la tua lettura.
+
+Campi di ogni replica:
+- "target_argument_id": l'"id" esatto di un argomento presente tra <argomenti> che appartiene a un'altra voce. L'id va solo in questo campo, mai nel testo.
+- "stance": "concorda" (la tua lettura arriva alla stessa conclusione, magari per ragioni diverse), "contesta" (il tuo mandato legge lo stesso aspetto in un altro modo), "precisa" (aggiungi un elemento che cambia il peso dell'argomento senza ribaltarlo).
+- "text": una o due frasi, al massimo <<MAX_REBUTTAL_CHARS>> caratteri, con le stesse regole sui numeri. Puoi nominare la voce a cui rispondi con il suo nome («l'indicizzatore», «il fattoriale», «il prudente»).
+- "fact_ids": da 1 a <<MAX_FACTS_PER_ITEM>> id di fatti citabili, compresi tutti quelli scritti come segnaposto.
+
+Forma della risposta: {"rebuttals": [{"target_argument_id": "...", "stance": "...", "text": "...", "fact_ids": ["..."]}]}

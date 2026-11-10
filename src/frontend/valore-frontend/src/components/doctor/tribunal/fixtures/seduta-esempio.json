@@ -1,0 +1,1349 @@
+{
+  "description": "Seduta di esempio del Tribunale del portafoglio (contratto docs/tribunale/api-contracts.md). 'session' è la seduta conclusa come la restituisce GET /api/doctor/tribunal/sessions/latest; 'raw' sono le risposte del modello prima del verificatore; 'expected_discards' gli scarti attesi.",
+  "contract_version": "tribunale-1.0",
+  "session": {
+    "session_id": "trb_5f0c2a9e7d41b386",
+    "scope": {
+      "portfolio_ids": [
+        19
+      ],
+      "scope_type": "single",
+      "fingerprint": "p:19"
+    },
+    "created_at": "2026-11-10T14:03:12Z",
+    "completed_at": "2026-11-10T14:04:01Z",
+    "contract_version": "tribunale-1.0",
+    "prompt_version": "tribunale-prompt-1",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "voices": [
+      {
+        "id": "indicizzatore",
+        "code": "IND",
+        "name": "L'indicizzatore",
+        "mandate": "Basso costo, ampia diversificazione, semplicità."
+      },
+      {
+        "id": "fattoriale",
+        "code": "FAT",
+        "name": "Il fattoriale",
+        "mandate": "Inclinazioni volute, concentrazione consapevole."
+      },
+      {
+        "id": "prudente",
+        "code": "PRU",
+        "name": "Il prudente",
+        "mandate": "Protezione del capitale, reddito, tenuta nei ribassi."
+      }
+    ],
+    "case_file": {
+      "schema_version": 1,
+      "contract_version": "tribunale-1.0",
+      "status": "ready",
+      "scope": {
+        "portfolio_ids": [
+          19
+        ],
+        "scope_type": "single",
+        "fingerprint": "p:19"
+      },
+      "generated_at": "2026-11-10T14:03:11Z",
+      "as_of": "2026-11-09T17:35:00Z",
+      "methodology_version": "doctor-policy-1.0",
+      "hash": "6717b0c12c6dbc1f0ef107b75528bf84ee90211ea8b47eb6b2b9fa7fe56d6b21",
+      "instruments": [
+        {
+          "symbol": "VWCE.DE",
+          "isin": "IE00BK5BQT80",
+          "name": "Vanguard FTSE All-World UCITS ETF (USD) Accumulating"
+        },
+        {
+          "symbol": "AGGH",
+          "isin": "IE00BDBRDM35",
+          "name": "iShares Core Global Aggregate Bond UCITS ETF EUR Hedged (Dis…"
+        },
+        {
+          "symbol": "SXRV.DE",
+          "isin": "IE00B53SZB19",
+          "name": "iShares Nasdaq 100 UCITS ETF (Acc)"
+        },
+        {
+          "symbol": "EIMI",
+          "isin": "IE00BKM4GZ66",
+          "name": "iShares Core MSCI EM IMI UCITS ETF (Acc)"
+        },
+        {
+          "symbol": "SGLD",
+          "isin": "IE00B579F325",
+          "name": "Invesco Physical Gold ETC"
+        },
+        {
+          "symbol": "ENEL.MI",
+          "isin": "IT0003128367",
+          "name": "Enel"
+        }
+      ],
+      "facts": [
+        {
+          "id": "F1",
+          "key": "metric.equity_weight_pct",
+          "group": "composizione",
+          "label": "Quota azionaria",
+          "value": 75.6,
+          "unit": "pct",
+          "formatted": "75,6%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F2",
+          "key": "metric.bond_weight_pct",
+          "group": "composizione",
+          "label": "Quota obbligazionaria",
+          "value": 17.4,
+          "unit": "pct",
+          "formatted": "17,4%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F3",
+          "key": "metric.gold_weight_pct",
+          "group": "composizione",
+          "label": "Quota oro / metalli preziosi",
+          "value": 7.0,
+          "unit": "pct",
+          "formatted": "7,0%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F4",
+          "key": "metric.usa_exposure_pct",
+          "group": "composizione",
+          "label": "Esposizione USA (look-through)",
+          "value": 52.3,
+          "unit": "pct",
+          "formatted": "52,3%",
+          "source": "doctor_metrics",
+          "quality": "partial",
+          "citable": true,
+          "reason": "Stima sul 91,2% del valore investito classificato; intervallo tra 47,7% e 56,5%.",
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F5",
+          "key": "metric.max_single_position_pct",
+          "group": "concentrazione",
+          "label": "Peso massimo singola posizione",
+          "value": 46.6,
+          "unit": "pct",
+          "formatted": "46,6%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "VWCE.DE",
+          "sensitive": false
+        },
+        {
+          "id": "F6",
+          "key": "metric.top3_positions_pct",
+          "group": "concentrazione",
+          "label": "Peso prime tre posizioni",
+          "value": 78.2,
+          "unit": "pct",
+          "formatted": "78,2%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F7",
+          "key": "metric.etf_overlap_pct",
+          "group": "concentrazione",
+          "label": "Overlap ETF",
+          "value": 31.5,
+          "unit": "pct",
+          "formatted": "31,5%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F8",
+          "key": "positions.count",
+          "group": "concentrazione",
+          "label": "Numero di posizioni",
+          "value": 6,
+          "unit": "count",
+          "formatted": "6",
+          "source": "positions",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F9",
+          "key": "metric.weighted_ter_pct",
+          "group": "costi",
+          "label": "TER medio ponderato",
+          "value": 0.19,
+          "unit": "pct",
+          "formatted": "0,19%",
+          "source": "doctor_metrics",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F10",
+          "key": "health.score",
+          "group": "salute",
+          "label": "Punteggio di salute del Doctor",
+          "value": 71,
+          "unit": "score",
+          "formatted": "71/100",
+          "source": "health_score",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": true
+        },
+        {
+          "id": "F11",
+          "key": "health.volatility_pct",
+          "group": "salute",
+          "label": "Volatilità annua stimata del portafoglio",
+          "value": 13.8,
+          "unit": "pct",
+          "formatted": "13,8%",
+          "source": "health_score",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F12",
+          "key": "health.alert.position_concentration",
+          "group": "salute",
+          "label": "Avviso del Doctor: Una posizione ha un peso elevato nel portafoglio (46.6%).",
+          "value": "attenzione",
+          "unit": "text",
+          "formatted": "attenzione",
+          "source": "health_alerts",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F13",
+          "key": "health.alert.etf_overlap",
+          "group": "salute",
+          "label": "Avviso del Doctor: Diverse posizioni risultano ridondanti: la sovrapposizione tra ETF è alta (31.5%).",
+          "value": "attenzione",
+          "unit": "text",
+          "formatted": "attenzione",
+          "source": "health_alerts",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F14",
+          "key": "xray.coverage_pct",
+          "group": "esposizione",
+          "label": "Copertura del look-through X-Ray",
+          "value": 88.0,
+          "unit": "pct",
+          "formatted": "88,0%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F15",
+          "key": "xray.country.Stati Uniti",
+          "group": "esposizione",
+          "label": "Esposizione per paese (parte scomposta): Stati Uniti",
+          "value": 57.4,
+          "unit": "pct",
+          "formatted": "57,4%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "Stati Uniti",
+          "sensitive": false
+        },
+        {
+          "id": "F16",
+          "key": "xray.country.Giappone",
+          "group": "esposizione",
+          "label": "Esposizione per paese (parte scomposta): Giappone",
+          "value": 5.2,
+          "unit": "pct",
+          "formatted": "5,2%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "Giappone",
+          "sensitive": false
+        },
+        {
+          "id": "F17",
+          "key": "xray.country.Regno Unito",
+          "group": "esposizione",
+          "label": "Esposizione per paese (parte scomposta): Regno Unito",
+          "value": 3.4,
+          "unit": "pct",
+          "formatted": "3,4%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "Regno Unito",
+          "sensitive": false
+        },
+        {
+          "id": "F18",
+          "key": "xray.sector.Tecnologia",
+          "group": "esposizione",
+          "label": "Esposizione per settore (parte scomposta): Tecnologia",
+          "value": 29.7,
+          "unit": "pct",
+          "formatted": "29,7%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "Tecnologia",
+          "sensitive": false
+        },
+        {
+          "id": "F19",
+          "key": "xray.sector.Finanza",
+          "group": "esposizione",
+          "label": "Esposizione per settore (parte scomposta): Finanza",
+          "value": 13.1,
+          "unit": "pct",
+          "formatted": "13,1%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "Finanza",
+          "sensitive": false
+        },
+        {
+          "id": "F20",
+          "key": "xray.sector.Sanità",
+          "group": "esposizione",
+          "label": "Esposizione per settore (parte scomposta): Sanità",
+          "value": 9.6,
+          "unit": "pct",
+          "formatted": "9,6%",
+          "source": "xray",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": "Sanità",
+          "sensitive": false
+        },
+        {
+          "id": "F21",
+          "key": "stress.gfc_2008.impact",
+          "group": "stress",
+          "label": "Stress test «Global Financial Crisis» (2008): impatto stimato",
+          "value": -38.2,
+          "unit": "pct",
+          "formatted": "-38,2%",
+          "source": "stress_test",
+          "quality": "partial",
+          "citable": true,
+          "reason": "Stima con proxy di classe: prezzi reali su meno del 60% del peso nel periodo.",
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F22",
+          "key": "stress.gfc_2008.recovery_months",
+          "group": "stress",
+          "label": "Stress test «Global Financial Crisis» (2008): mesi per il recupero",
+          "value": 49,
+          "unit": "months",
+          "formatted": "49 mesi",
+          "source": "stress_test",
+          "quality": "partial",
+          "citable": true,
+          "reason": "Stima con proxy di classe: prezzi reali su meno del 60% del peso nel periodo.",
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F23",
+          "key": "stress.dotcom_crash.impact",
+          "group": "stress",
+          "label": "Stress test «Dot-Com Crash» (2000-2002): impatto stimato",
+          "value": -34.5,
+          "unit": "pct",
+          "formatted": "-34,5%",
+          "source": "stress_test",
+          "quality": "partial",
+          "citable": true,
+          "reason": "Stima con proxy di classe: prezzi reali su meno del 60% del peso nel periodo.",
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F24",
+          "key": "stress.dotcom_crash.recovery_months",
+          "group": "stress",
+          "label": "Stress test «Dot-Com Crash» (2000-2002): mesi per il recupero",
+          "value": null,
+          "unit": "months",
+          "formatted": "N/D",
+          "source": "stress_test",
+          "quality": "missing",
+          "citable": false,
+          "reason": "Tempo di recupero non disponibile per questo scenario.",
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F25",
+          "key": "stress.covid_crash.impact",
+          "group": "stress",
+          "label": "Stress test «Covid Crash» (Feb-Mar 2020): impatto stimato",
+          "value": -24.1,
+          "unit": "pct",
+          "formatted": "-24,1%",
+          "source": "stress_test",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F26",
+          "key": "stress.covid_crash.recovery_months",
+          "group": "stress",
+          "label": "Stress test «Covid Crash» (Feb-Mar 2020): mesi per il recupero",
+          "value": 6,
+          "unit": "months",
+          "formatted": "6 mesi",
+          "source": "stress_test",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F27",
+          "key": "stress.bear_market_2022.impact",
+          "group": "stress",
+          "label": "Stress test «Bear Market 2022» (2022): impatto stimato",
+          "value": -17.9,
+          "unit": "pct",
+          "formatted": "-17,9%",
+          "source": "stress_test",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F28",
+          "key": "stress.bear_market_2022.recovery_months",
+          "group": "stress",
+          "label": "Stress test «Bear Market 2022» (2022): mesi per il recupero",
+          "value": 20,
+          "unit": "months",
+          "formatted": "20 mesi",
+          "source": "stress_test",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F29",
+          "key": "mc.y10.p10",
+          "group": "scenari",
+          "label": "Monte Carlo a 10 anni, 10° percentile (base 100)",
+          "value": 101.3,
+          "unit": "index",
+          "formatted": "101,3",
+          "source": "monte_carlo",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F30",
+          "key": "mc.y10.p50",
+          "group": "scenari",
+          "label": "Monte Carlo a 10 anni, mediana (base 100)",
+          "value": 158.7,
+          "unit": "index",
+          "formatted": "158,7",
+          "source": "monte_carlo",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F31",
+          "key": "mc.y10.p90",
+          "group": "scenari",
+          "label": "Monte Carlo a 10 anni, 90° percentile (base 100)",
+          "value": 246.2,
+          "unit": "index",
+          "formatted": "246,2",
+          "source": "monte_carlo",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F32",
+          "key": "mc.y20.p10",
+          "group": "scenari",
+          "label": "Monte Carlo a 20 anni, 10° percentile (base 100)",
+          "value": 118.9,
+          "unit": "index",
+          "formatted": "118,9",
+          "source": "monte_carlo",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F33",
+          "key": "mc.y20.p50",
+          "group": "scenari",
+          "label": "Monte Carlo a 20 anni, mediana (base 100)",
+          "value": 251.6,
+          "unit": "index",
+          "formatted": "251,6",
+          "source": "monte_carlo",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F34",
+          "key": "mc.y20.p90",
+          "group": "scenari",
+          "label": "Monte Carlo a 20 anni, 90° percentile (base 100)",
+          "value": 525.0,
+          "unit": "index",
+          "formatted": "525,0",
+          "source": "monte_carlo",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F35",
+          "key": "policy.failed_count",
+          "group": "regole",
+          "label": "Regole personali violate",
+          "value": 1,
+          "unit": "count",
+          "formatted": "1",
+          "source": "doctor_policy",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F36",
+          "key": "policy.rule.max-single",
+          "group": "regole",
+          "label": "Tua regola «Max singolo ETF»: Peso massimo singola posizione, al massimo 35%",
+          "value": "violata",
+          "unit": "text",
+          "formatted": "violata",
+          "source": "doctor_policy",
+          "quality": "ok",
+          "citable": true,
+          "reason": null,
+          "subject": null,
+          "sensitive": false
+        },
+        {
+          "id": "F37",
+          "key": "policy.rule.usa-max",
+          "group": "regole",
+          "label": "Tua regola «USA al massimo 50%»: Esposizione USA (look-through), al massimo 50%",
+          "value": "non verificabile",
+          "unit": "text",
+          "formatted": "non verificabile",
+          "source": "doctor_policy",
+          "quality": "partial",
+          "citable": false,
+          "reason": "Non possiamo verificare il limite USA: l'esposizione è tra 47,7% e 56,5%.",
+          "subject": null,
+          "sensitive": false
+        }
+      ],
+      "counts": {
+        "total": 37,
+        "citable": 35
+      },
+      "notes": []
+    },
+    "arguments": [
+      {
+        "id": "A-IND-1",
+        "voice": "indicizzatore",
+        "phase": "apertura",
+        "theme": "costi",
+        "stance": "punto_di_forza",
+        "text": "Il costo complessivo è contenuto: il TER medio ponderato è 0,19%, un livello coerente con una gestione passiva a basso costo.",
+        "text_template": "Il costo complessivo è contenuto: il TER medio ponderato è {F9}, un livello coerente con una gestione passiva a basso costo.",
+        "fact_ids": [
+          "F9"
+        ]
+      },
+      {
+        "id": "A-IND-2",
+        "voice": "indicizzatore",
+        "phase": "apertura",
+        "theme": "concentrazione",
+        "stance": "criticita",
+        "text": "Una sola posizione, VWCE.DE, pesa 46,6% e le prime tre arrivano a 78,2%: la diversificazione dipende quasi tutta da un unico fondo.",
+        "text_template": "Una sola posizione, VWCE.DE, pesa {F5} e le prime tre arrivano a {F6}: la diversificazione dipende quasi tutta da un unico fondo.",
+        "fact_ids": [
+          "F5",
+          "F6"
+        ]
+      },
+      {
+        "id": "A-IND-3",
+        "voice": "indicizzatore",
+        "phase": "apertura",
+        "theme": "diversificazione",
+        "stance": "criticita",
+        "text": "Tra i fondi c'è una sovrapposizione rilevante: l'overlap ETF è 31,5%, quindi parte dell'esposizione azionaria è duplicata.",
+        "text_template": "Tra i fondi c'è una sovrapposizione rilevante: l'overlap ETF è {F7}, quindi parte dell'esposizione azionaria è duplicata.",
+        "fact_ids": [
+          "F7"
+        ]
+      },
+      {
+        "id": "A-FAT-1",
+        "voice": "fattoriale",
+        "phase": "apertura",
+        "theme": "esposizione_settoriale",
+        "stance": "neutro",
+        "text": "L'inclinazione verso la tecnologia è marcata: il settore pesa 29,7% sulla parte scomposta, un tilt che amplifica i cicli del comparto.",
+        "text_template": "L'inclinazione verso la tecnologia è marcata: il settore pesa {F18} sulla parte scomposta, un tilt che amplifica i cicli del comparto.",
+        "fact_ids": [
+          "F18"
+        ]
+      },
+      {
+        "id": "A-FAT-2",
+        "voice": "fattoriale",
+        "phase": "apertura",
+        "theme": "concentrazione",
+        "stance": "punto_di_forza",
+        "text": "La concentrazione può essere una scelta consapevole: con 6 posizioni e un peso massimo di 46,6% il portafoglio resta leggibile e coerente con poche convinzioni chiare.",
+        "text_template": "La concentrazione può essere una scelta consapevole: con {F8} posizioni e un peso massimo di {F5} il portafoglio resta leggibile e coerente con poche convinzioni chiare.",
+        "fact_ids": [
+          "F8",
+          "F5"
+        ]
+      },
+      {
+        "id": "A-FAT-3",
+        "voice": "fattoriale",
+        "phase": "apertura",
+        "theme": "composizione",
+        "stance": "punto_di_forza",
+        "text": "La quota azionaria di 75,6% e i mercati emergenti presenti tramite EIMI danno al portafoglio un orientamento alla crescita di lungo periodo.",
+        "text_template": "La quota azionaria di {F1} e i mercati emergenti presenti tramite EIMI danno al portafoglio un orientamento alla crescita di lungo periodo.",
+        "fact_ids": [
+          "F1"
+        ]
+      },
+      {
+        "id": "A-PRU-1",
+        "voice": "prudente",
+        "phase": "apertura",
+        "theme": "rischio",
+        "stance": "criticita",
+        "text": "In uno scenario come la crisi del 2008 il portafoglio avrebbe registrato un impatto stimato di -38,2%, con un recupero stimato in 49 mesi: una tenuta debole nei ribassi profondi.",
+        "text_template": "In uno scenario come la crisi del 2008 il portafoglio avrebbe registrato un impatto stimato di {F21}, con un recupero stimato in {F22}: una tenuta debole nei ribassi profondi.",
+        "fact_ids": [
+          "F21",
+          "F22"
+        ]
+      },
+      {
+        "id": "A-PRU-2",
+        "voice": "prudente",
+        "phase": "apertura",
+        "theme": "composizione",
+        "stance": "neutro",
+        "text": "La componente difensiva è limitata: le obbligazioni sono 17,4% e l'oro 7,0% del portafoglio.",
+        "text_template": "La componente difensiva è limitata: le obbligazioni sono {F2} e l'oro {F3} del portafoglio.",
+        "fact_ids": [
+          "F2",
+          "F3"
+        ]
+      },
+      {
+        "id": "A-PRU-3",
+        "voice": "prudente",
+        "phase": "apertura",
+        "theme": "scenari",
+        "stance": "criticita",
+        "text": "Nello scenario sfavorevole della simulazione Monte Carlo il valore a orizzonte decennale è 101,3: il capitale resterebbe appena sopra il punto di partenza.",
+        "text_template": "Nello scenario sfavorevole della simulazione Monte Carlo il valore a orizzonte decennale è {F29}: il capitale resterebbe appena sopra il punto di partenza.",
+        "fact_ids": [
+          "F29"
+        ]
+      }
+    ],
+    "rebuttals": [
+      {
+        "id": "R-IND-1",
+        "voice": "indicizzatore",
+        "phase": "replica",
+        "target_argument_id": "A-FAT-2",
+        "target_voice": "fattoriale",
+        "stance": "contesta",
+        "text": "Una concentrazione consapevole resta una concentrazione: le prime tre posizioni valgono 78,2% e una sola ne pesa 46,6%, quindi il risultato dipende da pochi strumenti.",
+        "text_template": "Una concentrazione consapevole resta una concentrazione: le prime tre posizioni valgono {F6} e una sola ne pesa {F5}, quindi il risultato dipende da pochi strumenti.",
+        "fact_ids": [
+          "F6",
+          "F5"
+        ]
+      },
+      {
+        "id": "R-IND-2",
+        "voice": "indicizzatore",
+        "phase": "replica",
+        "target_argument_id": "A-PRU-2",
+        "target_voice": "prudente",
+        "stance": "precisa",
+        "text": "La parte difensiva è ridotta, ma il costo resta basso anche sulla componente obbligazionaria: il TER medio ponderato complessivo è 0,19%.",
+        "text_template": "La parte difensiva è ridotta, ma il costo resta basso anche sulla componente obbligazionaria: il TER medio ponderato complessivo è {F9}.",
+        "fact_ids": [
+          "F9"
+        ]
+      },
+      {
+        "id": "R-FAT-1",
+        "voice": "fattoriale",
+        "phase": "replica",
+        "target_argument_id": "A-IND-2",
+        "target_voice": "indicizzatore",
+        "stance": "contesta",
+        "text": "Il peso di VWCE.DE non è una scommessa su un singolo titolo: il fondo è già diversificato e il punteggio di salute complessivo è 71/100.",
+        "text_template": "Il peso di VWCE.DE non è una scommessa su un singolo titolo: il fondo è già diversificato e il punteggio di salute complessivo è {F10}.",
+        "fact_ids": [
+          "F10"
+        ]
+      },
+      {
+        "id": "R-PRU-1",
+        "voice": "prudente",
+        "phase": "replica",
+        "target_argument_id": "A-FAT-3",
+        "target_voice": "fattoriale",
+        "stance": "contesta",
+        "text": "Una quota azionaria di 75,6% significa accettare cali come quello stimato per il 2022, pari a -17,9%: l'orientamento alla crescita ha un costo in termini di oscillazioni.",
+        "text_template": "Una quota azionaria di {F1} significa accettare cali come quello stimato per il 2022, pari a {F27}: l'orientamento alla crescita ha un costo in termini di oscillazioni.",
+        "fact_ids": [
+          "F1",
+          "F27"
+        ]
+      }
+    ],
+    "synthesis": {
+      "shared_points": [
+        {
+          "id": "S1",
+          "text": "Le voci concordano che il portafoglio è orientato alla crescita, con una quota azionaria di 75,6%.",
+          "text_template": "Le voci concordano che il portafoglio è orientato alla crescita, con una quota azionaria di {F1}.",
+          "fact_ids": [
+            "F1"
+          ],
+          "argument_ids": [
+            "A-FAT-3",
+            "R-PRU-1"
+          ],
+          "voices": [
+            "fattoriale",
+            "prudente"
+          ]
+        },
+        {
+          "id": "S2",
+          "text": "La componente difensiva è ridotta: obbligazioni al 17,4% e oro al 7,0%.",
+          "text_template": "La componente difensiva è ridotta: obbligazioni al {F2} e oro al {F3}.",
+          "fact_ids": [
+            "F2",
+            "F3"
+          ],
+          "argument_ids": [
+            "A-PRU-2",
+            "R-IND-2"
+          ],
+          "voices": [
+            "indicizzatore",
+            "prudente"
+          ]
+        }
+      ],
+      "contested_points": [
+        {
+          "id": "C1",
+          "text": "Quanto pesa la concentrazione su VWCE.DE, che vale 46,6% del portafoglio.",
+          "text_template": "Quanto pesa la concentrazione su VWCE.DE, che vale {F5} del portafoglio.",
+          "fact_ids": [
+            "F5"
+          ],
+          "metric_codes": [
+            "max_single_position_pct",
+            "top3_positions_pct"
+          ],
+          "sides": [
+            {
+              "voices": [
+                "indicizzatore"
+              ],
+              "argument_ids": [
+                "A-IND-2",
+                "R-IND-1"
+              ],
+              "summary": "Per l'indicizzatore la diversificazione dipende troppo da pochi strumenti: le prime tre posizioni valgono 78,2%.",
+              "summary_template": "Per l'indicizzatore la diversificazione dipende troppo da pochi strumenti: le prime tre posizioni valgono {F6}.",
+              "fact_ids": [
+                "F6"
+              ]
+            },
+            {
+              "voices": [
+                "fattoriale"
+              ],
+              "argument_ids": [
+                "A-FAT-2",
+                "R-FAT-1"
+              ],
+              "summary": "Per il fattoriale è una concentrazione consapevole su un fondo già diversificato, con 6 posizioni in tutto.",
+              "summary_template": "Per il fattoriale è una concentrazione consapevole su un fondo già diversificato, con {F8} posizioni in tutto.",
+              "fact_ids": [
+                "F8"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "C2",
+          "text": "La tenuta del portafoglio nei ribassi profondi, stimata in -38,2% per uno scenario come il 2008.",
+          "text_template": "La tenuta del portafoglio nei ribassi profondi, stimata in {F21} per uno scenario come il 2008.",
+          "fact_ids": [
+            "F21"
+          ],
+          "metric_codes": [
+            "equity_weight_pct"
+          ],
+          "sides": [
+            {
+              "voices": [
+                "prudente"
+              ],
+              "argument_ids": [
+                "A-PRU-1",
+                "R-PRU-1"
+              ],
+              "summary": "Per il prudente una perdita stimata di -38,2% in uno scenario come il 2008 segnala una tenuta debole.",
+              "summary_template": "Per il prudente una perdita stimata di {F21} in uno scenario come il 2008 segnala una tenuta debole.",
+              "fact_ids": [
+                "F21"
+              ]
+            },
+            {
+              "voices": [
+                "fattoriale"
+              ],
+              "argument_ids": [
+                "A-FAT-3"
+              ],
+              "summary": "Per il fattoriale le oscillazioni sono il prezzo di un orientamento alla crescita, con una quota azionaria di 75,6%.",
+              "summary_template": "Per il fattoriale le oscillazioni sono il prezzo di un orientamento alla crescita, con una quota azionaria di {F1}.",
+              "fact_ids": [
+                "F1"
+              ]
+            }
+          ]
+        }
+      ],
+      "open_questions": [
+        {
+          "id": "Q1",
+          "text": "Quanta oscillazione temporanea del valore saresti disposto ad accettare senza cambiare piano?"
+        },
+        {
+          "id": "Q2",
+          "text": "Che ruolo vuoi dare alla componente obbligazionaria e all'oro nei prossimi anni?"
+        }
+      ]
+    },
+    "discarded": [
+      {
+        "phase": "apertura",
+        "voice": "indicizzatore",
+        "admitted": 3,
+        "discarded": 1,
+        "by_code": {
+          "cifra_libera": 1
+        }
+      },
+      {
+        "phase": "apertura",
+        "voice": "fattoriale",
+        "admitted": 3,
+        "discarded": 1,
+        "by_code": {
+          "strumento_non_ammesso": 1
+        }
+      },
+      {
+        "phase": "apertura",
+        "voice": "prudente",
+        "admitted": 3,
+        "discarded": 2,
+        "by_code": {
+          "fatto_non_citabile": 1,
+          "segnaposto_non_citato": 1
+        }
+      },
+      {
+        "phase": "replica",
+        "voice": "indicizzatore",
+        "admitted": 2,
+        "discarded": 0,
+        "by_code": {}
+      },
+      {
+        "phase": "replica",
+        "voice": "fattoriale",
+        "admitted": 1,
+        "discarded": 1,
+        "by_code": {
+          "riferimento_non_ammesso": 1
+        }
+      },
+      {
+        "phase": "replica",
+        "voice": "prudente",
+        "admitted": 1,
+        "discarded": 1,
+        "by_code": {
+          "indicazione_operativa": 1
+        }
+      },
+      {
+        "phase": "sintesi",
+        "voice": null,
+        "admitted": 6,
+        "discarded": 1,
+        "by_code": {
+          "indicazione_operativa": 1
+        }
+      }
+    ],
+    "voice_errors": [],
+    "totals": {
+      "arguments": 9,
+      "rebuttals": 4,
+      "shared_points": 2,
+      "contested_points": 2,
+      "open_questions": 2,
+      "discarded": 7
+    }
+  },
+  "raw": {
+    "apertura": {
+      "indicizzatore": {
+        "arguments": [
+          {
+            "theme": "costi",
+            "stance": "punto_di_forza",
+            "text": "Il costo complessivo è contenuto: il TER medio ponderato è {F9}, un livello coerente con una gestione passiva a basso costo.",
+            "fact_ids": [
+              "F9"
+            ]
+          },
+          {
+            "theme": "concentrazione",
+            "stance": "criticita",
+            "text": "Una sola posizione, VWCE.DE, pesa {F5} e le prime tre arrivano a {F6}: la diversificazione dipende quasi tutta da un unico fondo.",
+            "fact_ids": [
+              "F5",
+              "F6"
+            ]
+          },
+          {
+            "theme": "diversificazione",
+            "stance": "criticita",
+            "text": "Tra i fondi c'è una sovrapposizione rilevante: l'overlap ETF è {F7}, quindi parte dell'esposizione azionaria è duplicata.",
+            "fact_ids": [
+              "F7"
+            ]
+          },
+          {
+            "theme": "esposizione_geografica",
+            "stance": "neutro",
+            "text": "Gli Stati Uniti pesano circa il 57% sulla parte scomposta, in linea con un indice globale.",
+            "fact_ids": [
+              "F15"
+            ]
+          }
+        ]
+      },
+      "fattoriale": {
+        "arguments": [
+          {
+            "theme": "esposizione_settoriale",
+            "stance": "neutro",
+            "text": "L'inclinazione verso la tecnologia è marcata: il settore pesa {F18} sulla parte scomposta, un tilt che amplifica i cicli del comparto.",
+            "fact_ids": [
+              "F18"
+            ]
+          },
+          {
+            "theme": "concentrazione",
+            "stance": "punto_di_forza",
+            "text": "La concentrazione può essere una scelta consapevole: con {F8} posizioni e un peso massimo di {F5} il portafoglio resta leggibile e coerente con poche convinzioni chiare.",
+            "fact_ids": [
+              "F8",
+              "F5"
+            ]
+          },
+          {
+            "theme": "composizione",
+            "stance": "punto_di_forza",
+            "text": "La quota azionaria di {F1} e i mercati emergenti presenti tramite EIMI danno al portafoglio un orientamento alla crescita di lungo periodo.",
+            "fact_ids": [
+              "F1"
+            ]
+          },
+          {
+            "theme": "scenari",
+            "stance": "punto_di_forza",
+            "text": "Nella simulazione Monte Carlo la mediana a vent'anni è {F33}, e un ETF value come IWVL potrebbe rafforzare il tilt.",
+            "fact_ids": [
+              "F33"
+            ]
+          }
+        ]
+      },
+      "prudente": {
+        "arguments": [
+          {
+            "theme": "rischio",
+            "stance": "criticita",
+            "text": "In uno scenario come la crisi del 2008 il portafoglio avrebbe registrato un impatto stimato di {F21}, con un recupero stimato in {F22}: una tenuta debole nei ribassi profondi.",
+            "fact_ids": [
+              "F21",
+              "F22"
+            ]
+          },
+          {
+            "theme": "composizione",
+            "stance": "neutro",
+            "text": "La componente difensiva è limitata: le obbligazioni sono {F2} e l'oro {F3} del portafoglio.",
+            "fact_ids": [
+              "F2",
+              "F3"
+            ]
+          },
+          {
+            "theme": "scenari",
+            "stance": "criticita",
+            "text": "Nello scenario sfavorevole della simulazione Monte Carlo il valore a orizzonte decennale è {F29}: il capitale resterebbe appena sopra il punto di partenza.",
+            "fact_ids": [
+              "F29"
+            ]
+          },
+          {
+            "theme": "qualita_dati",
+            "stance": "neutro",
+            "text": "Il tempo di recupero dopo la bolla delle dot-com non è noto: {F24}.",
+            "fact_ids": [
+              "F24"
+            ]
+          },
+          {
+            "theme": "rischio",
+            "stance": "criticita",
+            "text": "La volatilità annua stimata è {F11} e il punteggio di salute si ferma a {F10}.",
+            "fact_ids": [
+              "F11"
+            ]
+          }
+        ]
+      }
+    },
+    "replica": {
+      "indicizzatore": {
+        "rebuttals": [
+          {
+            "target_argument_id": "A-FAT-2",
+            "stance": "contesta",
+            "text": "Una concentrazione consapevole resta una concentrazione: le prime tre posizioni valgono {F6} e una sola ne pesa {F5}, quindi il risultato dipende da pochi strumenti.",
+            "fact_ids": [
+              "F6",
+              "F5"
+            ]
+          },
+          {
+            "target_argument_id": "A-PRU-2",
+            "stance": "precisa",
+            "text": "La parte difensiva è ridotta, ma il costo resta basso anche sulla componente obbligazionaria: il TER medio ponderato complessivo è {F9}.",
+            "fact_ids": [
+              "F9"
+            ]
+          }
+        ]
+      },
+      "fattoriale": {
+        "rebuttals": [
+          {
+            "target_argument_id": "A-IND-2",
+            "stance": "contesta",
+            "text": "Il peso di VWCE.DE non è una scommessa su un singolo titolo: il fondo è già diversificato e il punteggio di salute complessivo è {F10}.",
+            "fact_ids": [
+              "F10"
+            ]
+          },
+          {
+            "target_argument_id": "A-FAT-1",
+            "stance": "concorda",
+            "text": "Confermo l'inclinazione tecnologica: il settore pesa {F18} sulla parte scomposta.",
+            "fact_ids": [
+              "F18"
+            ]
+          }
+        ]
+      },
+      "prudente": {
+        "rebuttals": [
+          {
+            "target_argument_id": "A-FAT-3",
+            "stance": "contesta",
+            "text": "Una quota azionaria di {F1} significa accettare cali come quello stimato per il 2022, pari a {F27}: l'orientamento alla crescita ha un costo in termini di oscillazioni.",
+            "fact_ids": [
+              "F1",
+              "F27"
+            ]
+          },
+          {
+            "target_argument_id": "A-IND-1",
+            "stance": "concorda",
+            "text": "I costi bassi aiutano, ma conviene comprare più obbligazioni per ridurre le oscillazioni del portafoglio.",
+            "fact_ids": [
+              "F9"
+            ]
+          }
+        ]
+      }
+    },
+    "sintesi": {
+      "shared_points": [
+        {
+          "text": "Le voci concordano che il portafoglio è orientato alla crescita, con una quota azionaria di {F1}.",
+          "fact_ids": [
+            "F1"
+          ],
+          "argument_ids": [
+            "A-FAT-3",
+            "R-PRU-1"
+          ]
+        },
+        {
+          "text": "La componente difensiva è ridotta: obbligazioni al {F2} e oro al {F3}.",
+          "fact_ids": [
+            "F2",
+            "F3"
+          ],
+          "argument_ids": [
+            "A-PRU-2",
+            "R-IND-2"
+          ]
+        }
+      ],
+      "contested_points": [
+        {
+          "text": "Quanto pesa la concentrazione su VWCE.DE, che vale {F5} del portafoglio.",
+          "fact_ids": [
+            "F5"
+          ],
+          "sides": [
+            {
+              "argument_ids": [
+                "A-IND-2",
+                "R-IND-1"
+              ],
+              "summary": "Per l'indicizzatore la diversificazione dipende troppo da pochi strumenti: le prime tre posizioni valgono {F6}.",
+              "fact_ids": [
+                "F6"
+              ]
+            },
+            {
+              "argument_ids": [
+                "A-FAT-2",
+                "R-FAT-1"
+              ],
+              "summary": "Per il fattoriale è una concentrazione consapevole su un fondo già diversificato, con {F8} posizioni in tutto.",
+              "fact_ids": [
+                "F8"
+              ]
+            }
+          ]
+        },
+        {
+          "text": "La tenuta del portafoglio nei ribassi profondi, stimata in {F21} per uno scenario come il 2008.",
+          "fact_ids": [
+            "F21"
+          ],
+          "sides": [
+            {
+              "argument_ids": [
+                "A-PRU-1",
+                "R-PRU-1"
+              ],
+              "summary": "Per il prudente una perdita stimata di {F21} in uno scenario come il 2008 segnala una tenuta debole.",
+              "fact_ids": [
+                "F21"
+              ]
+            },
+            {
+              "argument_ids": [
+                "A-FAT-3"
+              ],
+              "summary": "Per il fattoriale le oscillazioni sono il prezzo di un orientamento alla crescita, con una quota azionaria di {F1}.",
+              "fact_ids": [
+                "F1"
+              ]
+            }
+          ]
+        }
+      ],
+      "open_questions": [
+        {
+          "text": "Quanta oscillazione temporanea del valore saresti disposto ad accettare senza cambiare piano?"
+        },
+        {
+          "text": "La concentrazione su un singolo fondo globale è una scelta voluta o il risultato di acquisti successivi?"
+        },
+        {
+          "text": "Che ruolo vuoi dare alla componente obbligazionaria e all'oro nei prossimi anni?"
+        }
+      ]
+    }
+  },
+  "expected_discards": [
+    {
+      "phase": "apertura",
+      "voice": "indicizzatore",
+      "path": "arguments[3]",
+      "code": "cifra_libera"
+    },
+    {
+      "phase": "apertura",
+      "voice": "fattoriale",
+      "path": "arguments[3]",
+      "code": "strumento_non_ammesso"
+    },
+    {
+      "phase": "apertura",
+      "voice": "prudente",
+      "path": "arguments[3]",
+      "code": "fatto_non_citabile"
+    },
+    {
+      "phase": "apertura",
+      "voice": "prudente",
+      "path": "arguments[4]",
+      "code": "segnaposto_non_citato"
+    },
+    {
+      "phase": "replica",
+      "voice": "fattoriale",
+      "path": "rebuttals[1]",
+      "code": "riferimento_non_ammesso"
+    },
+    {
+      "phase": "replica",
+      "voice": "prudente",
+      "path": "rebuttals[1]",
+      "code": "indicazione_operativa"
+    },
+    {
+      "phase": "sintesi",
+      "voice": null,
+      "path": "open_questions[1]",
+      "code": "indicazione_operativa"
+    }
+  ]
+}

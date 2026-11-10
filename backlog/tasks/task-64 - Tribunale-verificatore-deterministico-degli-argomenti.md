@@ -1,7 +1,7 @@
 ---
 id: TASK-64
 title: 'Tribunale: verificatore deterministico degli argomenti'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -24,13 +24,13 @@ Un modello può citare un fatto che non esiste, scrivere un numero a memoria o s
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Un argomento è ammesso solo se cita almeno un fatto, tutti i fatti citati esistono nel fascicolo e sono citabili, e ogni segnaposto `{Fn}` nel testo corrisponde a un fatto citato
-- [ ] #2 Un argomento con cifre scritte fuori dai segnaposto viene scartato
-- [ ] #3 Un argomento che nomina un ISIN o un ticker assente dal fascicolo, o che contiene un'indicazione esplicita di acquisto o vendita, viene scartato
-- [ ] #4 Sono applicati i limiti del contratto su lunghezza del testo e numero di argomenti per voce; una replica deve riferirsi a un argomento ammesso di un'altra voce
-- [ ] #5 Gli argomenti ammessi escono con il testo finale in italiano (valori sostituiti e formattati) e con l'elenco dei fatti citati; gli scartati escono con il codice di scarto del contratto
-- [ ] #6 Il verificatore è una funzione pura: stesso ingresso, stessa uscita, nessun accesso a rete o database
-- [ ] #7 Test unitari coprono ogni codice di scarto, i casi limite di formato e un caso con tutti gli argomenti scartati
+- [x] #1 Un argomento è ammesso solo se cita almeno un fatto, tutti i fatti citati esistono nel fascicolo e sono citabili, e ogni segnaposto `{Fn}` nel testo corrisponde a un fatto citato
+- [x] #2 Un argomento con cifre scritte fuori dai segnaposto viene scartato
+- [x] #3 Un argomento che nomina un ISIN o un ticker assente dal fascicolo, o che contiene un'indicazione esplicita di acquisto o vendita, viene scartato
+- [x] #4 Sono applicati i limiti del contratto su lunghezza del testo e numero di argomenti per voce; una replica deve riferirsi a un argomento ammesso di un'altra voce
+- [x] #5 Gli argomenti ammessi escono con il testo finale in italiano (valori sostituiti e formattati) e con l'elenco dei fatti citati; gli scartati escono con il codice di scarto del contratto
+- [x] #6 Il verificatore è una funzione pura: stesso ingresso, stessa uscita, nessun accesso a rete o database
+- [x] #7 Test unitari coprono ogni codice di scarto, i casi limite di formato e un caso con tutti gli argomenti scartati
 <!-- AC:END -->
 
 ## Implementation Notes
