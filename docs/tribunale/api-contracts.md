@@ -1404,3 +1404,30 @@ letture dove il contratto lascia margine:
   `DoctorFeaturesRead` cambia la risposta di `GET /api/doctor/features`; l'asserzione di
   `tests/unit/test_doctor_policy_routes.py::test_features_reflect_flags` è stata aggiornata di
   conseguenza (due righe).
+
+### TASK-68
+
+Nessuna deviazione dalle props di `architecture.md` §3.2; letture dove `ui-spec.md` lascia margine:
+
+- **Precedenza degli stati all'apertura** (§4): `unavailable` e `limit_reached` prevalgono sulla
+  seduta salvata, che resta visibile sotto in sola lettura (`data-read-only="true"` sul
+  contenuto, senza «Rifai la seduta» né slot `renderContestedActions`); con il Tribunale
+  disponibile la seduta salvata dà `completed` con `data-source="saved"`.
+- **Seduta salvata**: è mostrata da `sessionToState(latest.session)` senza chiamare `loadSaved`,
+  così lo stato dell'hook resta `idle` e uno stato derivato dallo `status` (non disponibile,
+  limite) non viene coperto. Lo stato risultante è identico.
+- **Feature spenta** (`tribunal_enabled: false` o `404 feature_disabled` dallo status): la
+  radice resta montata ma nascosta con `data-state="disabled"` (stato in più rispetto a §4,
+  serve solo ai test; TASK-69 non mostra comunque la tab).
+- **Errore dello status** (rete o HTTP): `data-state="error"` con «Riprova» che ripete la lettura.
+  Un errore HTTP prima dello stream senza contenuto arrivato mostra sotto l'eventuale seduta
+  salvata in sola lettura (senza la nota «Seduta incompleta»).
+- **Stepper su mobile** (< 62em): le quattro etichette non entrano a 320–390px senza troncarsi;
+  lo Stepper mostra solo i cerchi (con `aria-label` e `aria-current="step"`) e sotto la riga
+  «Fase N di 4: <fase>» (o «Fasi completate: …»).
+- **Schede mobili**: nome della voce su una riga, sotto pallino del colore e numero di argomenti
+  (o `Loader`), per evitare troncamenti a 320px.
+- File in più: `tribunalContext.ts` (contesto condiviso: fatti, voci, Privacy, resa compatta,
+  navigazione verso una card). `TribunalFactChip.tsx` esporta anche `TribunalQualityBadge`;
+  `TribunalVoices.tsx` esporta `buildVoiceViews` e `voiceOfCard`; `TribunalSection.tsx`
+  esporta `TRIBUNAL_COMPACT_QUERY` e il tipo `TribunalSectionState`.
