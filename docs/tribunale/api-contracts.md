@@ -190,7 +190,7 @@ Ultima seduta **conclusa e salvata** per `(utente, fingerprint esatto)`.
 ```json
 {
   "session": { "...": "TribunalSession (§8.7)" },
-  "current_case_file_hash": "28744f95d1b8dd2ec7173c0643b451f06ec57a24e7d50c8ee2bb5c8274d65765",
+  "current_case_file_hash": "6717b0c12c6dbc1f0ef107b75528bf84ee90211ea8b47eb6b2b9fa7fe56d6b21",
   "data_changed": false
 }
 ```
@@ -358,8 +358,8 @@ frontend: nessun altro modulo riformatta un fatto.
 ### 4.6 Hash del fascicolo
 
 ```python
-HASH_FACT_FIELDS = ("id", "key", "group", "label", "value", "unit", "formatted", "source",
-                    "quality", "citable", "reason", "subject", "sensitive")
+HASH_FACT_FIELDS = ("id", "key", "group", "label", "unit", "formatted", "source",
+                    "quality", "citable", "reason", "subject", "sensitive")   # value escluso
 payload = {
     "contract_version": cf["contract_version"],
     "schema_version": cf["schema_version"],
@@ -372,10 +372,11 @@ data = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", 
 cf["hash"] = hashlib.sha256(data).hexdigest()   # 64 caratteri esadecimali minuscoli
 ```
 
-Esclusi: `generated_at`, `as_of`, `counts`, `notes`, `hash`, `status`. Quindi una nuova quota che
-non cambia nessun valore formattato né la qualità **non** cambia l'hash; un valore, una qualità
-o una citabilità diversa lo cambiano. Il valore di esempio della fixture
-(`28744f95…5765`) è ricalcolabile con questo codice.
+Esclusi: `generated_at`, `as_of`, `counts`, `notes`, `hash`, `status` e, nei fatti, `value`
+(l'hash segue `formatted`, cioè ciò che l'utente vede). Quindi una nuova quota che non cambia
+nessun valore formattato né la qualità **non** cambia l'hash e la seduta salvata si riusa
+(§8.6); un valore formattato, una qualità o una citabilità diversa lo cambiano. Il valore di
+esempio della fixture (`6717b0c1…6b21`) è ricalcolabile con questo codice.
 
 ### 4.7 JSON Schema
 
@@ -1305,3 +1306,61 @@ Nessuna deviazione dalle regole; alcune letture del testo dove il contratto lasc
 - Una lista grezza assente o non lista (`arguments`, `rebuttals`, punti, domande) è trattata
   come vuota (nessun ammesso, nessuno scarto): la forma della risposta la garantisce già
   `call_structured` (§6.4). Una voce sconosciuta solleva `ValueError`.
+
+### TASK-63
+
+Nessuna deviazione dalle firme né dagli schemi (gli schemi di §6.4 sono restituiti identici,
+con sole `description` aggiunte). Precisazioni sul contenuto del messaggio `user`, coerenti con
+`architecture.md` §2.1:
+
+- il JSON tra `<fascicolo>` e `</fascicolo>` è `{"instruments": [...], "facts": [...], "notes": [...]}`:
+  oltre ai campi previsti di fatti e strumenti include `notes` (es. la nota sulle quotazioni non
+  aggiornate), trattate come dato; nel JSON `<`, `>` e `&` sono in escape `<`, `>`,
+  `&`, così nessun valore può chiudere un marcatore;
+- tra `<argomenti>` e `</argomenti>`: replica `{"arguments": [...]}`, sintesi
+  `{"arguments": [...], "rebuttals": [...]}`; argomenti con `id, voice, theme, stance,
+  text_template, fact_ids`, repliche con `id, voice, target_argument_id, target_voice, stance,
+  text_template, fact_ids`; mai `text`;
+- difesa in profondità: `build_rebuttal_request` esclude gli argomenti della voce stessa e
+  `build_*` scartano gli elementi senza id verificato (`A-…`/`R-…`), ordinando per voce canonica
+  e numero; i limiti del verificatore sono ripetuti in `personas.PROMPT_LIMITS` (per il test di
+  confronto di TASK-71).
+
+### TASK-61
+
+Nessuna deviazione da nomi, tipi, ordine, formattazione e algoritmo di hash (il codice di §4.6
+riproduce l'hash della fixture). Letture dove il contratto lascia margine:
+
+- **Hash e nuove quote** (§4.6): risolto, l'hash esclude `value` e usa `formatted`, come dice il testo di §4.6.
+- **`build_case_file`**: due parametri keyword-only in più, `finance_client=None` e
+  `justetf_client=None`, passati a `compute_portfolio_xray` come nelle route del Doctor. Senza,
+  l'X-Ray usa solo l'arricchimento salvato (TASK-65 può passarli).
+- **Motivi delle metriche parziali**: «Stima sul X% del valore investito classificato; intervallo
+  tra L% e U%.» (TER: «… del valore investito con TER noto.», senza intervallo perché manca il
+  limite superiore); copertura assente → «Copertura insufficiente (N/D).». Metrica mancante:
+  `reason` = l'ultima nota del Doctor che non riguarda le quote.
+- **Stress test**: uno scenario con `method = "not_available"` o non restituito dal servizio
+  produce entrambe le righe `missing` («Scenario non calcolabile per questo portafoglio.»), mai
+  l'impatto `0.0` del servizio. Il tempo di recupero di uno scenario `proxy` eredita qualità
+  `partial` e `reason` dell'impatto.
+- **X-Ray**: nel `reason` di `xray.coverage_pct` va la quota «Non classificato» della
+  distribuzione per paese; paesi e settori con peso ≤ 0 non entrano nel top.
+- **Taglio a `MAX_FACTS`**: se anche le righe variabili non bastano, si tolgono le altre righe
+  dal fondo con lo stesso ordine dei gruppi, sempre senza metriche e `health.score`.
+
+### TASK-67
+
+Nessuna deviazione dalle firme di `architecture.md` §3.1; solo aggiunte compatibili:
+
+- `services/api/tribunal.ts` esporta anche `createTribunalSseParser(onEvent)` (parser incrementale
+  usato dallo stream), `parseTribunalSseText(text)` (usato dalla fixture) e il tipo
+  `StreamTribunalSessionOptions`; `tribunalTypes.ts` esporta anche `TribunalEventType`.
+- `useTribunalSession.ts` esporta anche `sessionToReplayEvents(session)` (eventi della
+  riproduzione §9.4); `sessionToState` è definito come la riduzione di quegli eventi.
+- `fixtures/index.ts` esporta anche `tribunalSseFixtureText` e accetta in
+  `createFakeTribunalResponse` l'opzione in più `pauseAfterEvents` (lo stream resta aperto dopo
+  n eventi, per provare «Interrompi»); `failAfterEvents` fa fallire lo stream con `TypeError`.
+- Errori lato client: uno stream che cade dopo almeno un evento → `stream_interrupted`; un
+  errore di rete prima di qualunque evento → `network_error`; una risposta HTTP non 2xx senza
+  `error.code` → `internal_error` (≥ 500) o `invalid_request` (4xx), con `retryable` da
+  `details.retryable` se presente, altrimenti `status ≥ 500`.
