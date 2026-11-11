@@ -102,6 +102,24 @@ class Settings(BaseSettings):
     market_data_sync_auth_failure_limit_requests: int = 30
     market_data_sync_rate_limit_window_seconds: int = 3600
 
+    # TASK-80: corsa notturna dell'Auditor dei calcoli in produzione
+    # (services/auditor/store.py, docs/auditor/architecture.md §6.1, §8). Token Bearer
+    # degli endpoint /api/internal/auditor/... (vuoto = endpoint disattivati, 404).
+    auditor_run_token: str = ""
+    # Utenti valutati in parallelo (ognuno con le regole in sequenza): tiene bassa
+    # l'occupazione del pool di connessioni condiviso con le richieste degli utenti.
+    auditor_max_concurrency: int = 2
+    # Durata massima dell'intera corsa e di un singolo utente, in secondi.
+    auditor_max_duration_s: float = 1800.0
+    auditor_user_max_duration_s: float = 300.0
+    # Tetto al timeout di una regola (RunOptions.rule_timeout_s).
+    auditor_rule_timeout_s: float = 30.0
+    # Limiti degli endpoint interni (per IP del chiamante, finestra in secondi).
+    auditor_run_rate_limit_requests: int = 4
+    auditor_run_rate_limit_window_seconds: int = 3600
+    auditor_status_rate_limit_requests: int = 240
+    auditor_auth_failure_limit_requests: int = 30
+
     clerk_auth_enabled: bool = False
     clerk_jwks_url: str = ""
     clerk_authorized_parties: str = ""

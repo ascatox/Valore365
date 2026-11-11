@@ -1,7 +1,7 @@
 ---
 id: TASK-83
 title: 'PAC: calculate_pac_contribution dichiara allocato un importo non distribuito'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T09:00:00Z'
 labels:
@@ -34,7 +34,7 @@ Riprodotto anche in `src/backend/tests/unit/test_auditor_rules_rebalance.py::tes
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Con nessuno strumento sottopesato `calculate_pac_contribution` distribuisce l'importo secondo una regola dichiarata (per esempio in proporzione ai target) oppure risponde con distribuzione vuota, `total_allocated` 0 e una nota che spiega perché; in ogni caso `Σ distribution[].amount_eur == total_allocated` entro 0,01 €
-- [ ] #2 Test unitari sui due casi (tutti gli strumenti esattamente a target; target che sommano meno di 100 con tutti gli strumenti sopra il target); `test_pac_sum_on_real_service_with_no_underweight_holding` aggiornato al nuovo comportamento
-- [ ] #3 Rimosso `known_defect` da `B-PAC-SUM` in `src/backend/app/services/auditor/rules/rebalance_simulation.py`, riga tolta dalla sezione «Difetti noti» di `docs/auditor/rules.md`, e il test `test_known_defect_pac_sum_reproduced_on_seed` aggiornato perché la regola dia `pass`
+- [x] #1 Con nessuno strumento sottopesato `calculate_pac_contribution` distribuisce l'importo secondo una regola dichiarata (per esempio in proporzione ai target) oppure risponde con distribuzione vuota, `total_allocated` 0 e una nota che spiega perché; in ogni caso `Σ distribution[].amount_eur == total_allocated` entro 0,01 €
+- [x] #2 Test unitari sui due casi (tutti gli strumenti esattamente a target; target che sommano meno di 100 con tutti gli strumenti sopra il target); `test_pac_sum_on_real_service_with_no_underweight_holding` aggiornato al nuovo comportamento
+- [x] #3 Rimosso `known_defect` da `B-PAC-SUM` in `src/backend/app/services/auditor/rules/rebalance_simulation.py`, riga tolta dalla sezione «Difetti noti» di `docs/auditor/rules.md`, e il test `test_known_defect_pac_sum_reproduced_on_seed` aggiornato perché la regola dia `pass`
 <!-- AC:END -->

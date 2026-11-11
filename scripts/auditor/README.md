@@ -3,6 +3,8 @@
 | file | cosa fa |
 |---|---|
 | `audit_seed.sql` | seed dell'Auditor (TASK-78): utente `auditor-seed-user`, portafogli 9101-9107 in EUR, 13 strumenti fittizi `AUD*` (id 9101-9113), prezzi, storico degli stress test, cambi EUR/USD ed EUR/GBP, TER, schede justETF e metadati yFinance. Date relative a `current_date`, nessuna rete. |
+| `agent_stack.sh` | stack locale usa e getta per l'agente settimanale (TASK-82): Postgres 16 su socket Unix, schema, migrazioni e seed; `start` (idempotente, stampa `DATABASE_URL=...`), `url`, `env`, `status`, `reseed`, `stop`. Variabili `PG_BIN`, `AGENT_DIR`, `PG_PORT`, `DB_NAME`. |
+| `mcp_call.py` | chiama un tool del server MCP in processo come `auditor-seed-user`, senza Clerk, finance client offline, solo database locali; argomenti JSON, risultato JSON; `--list`, `--schema TOOL`, `--batch FILE.jsonl`, `--save`, `--debug`. |
 
 Contratto: `docs/auditor/rules.md` §1 (portafogli, strumenti, regole esercitate) e
 `docs/auditor/architecture.md` §6 e §9 (CI su Postgres effimero, determinismo, provider offline).
@@ -147,3 +149,14 @@ ogni regola (52) verifica sul seed la precondizione per non andare in `skip`:
   devono dare `pass`; i difetti si reintroducono nei test unitari delle regole.
 - **Output troncato** (30 righe di `get_positions`, 20 di `get_cost_breakdown`): nessun portafoglio
   supera le 4 posizioni, `skip`/`truncated_output` non è esercitato dal seed.
+
+## Agente settimanale (TASK-82)
+
+```bash
+scripts/auditor/agent_stack.sh start && eval "$(scripts/auditor/agent_stack.sh env)"
+python3 scripts/auditor/mcp_call.py --list
+python3 scripts/auditor/mcp_call.py get_cost_breakdown '{"portfolio_id": 9103}'
+scripts/auditor/agent_stack.sh stop
+```
+
+Istruzioni complete, divieti e prompt della sessione programmata: `docs/auditor/agent-playbook.md` §2 e §7.

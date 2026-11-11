@@ -282,8 +282,8 @@ def test_declarations_match_catalog():
         assert r["scopes"] == ["portfolio"]
         assert r["title"] and r["id"] not in r["title"]
         assert callable(r["check"]) and r["tools"]
-        # Difetti noti (rules.md §6, TASK-79): solo B-PAC-SUM, task TASK-83.
-        assert r.get("known_defect") == {"B-PAC-SUM": "TASK-83"}.get(r["id"])
+        # Difetti noti (rules.md §6): nessuno aperto nel gruppo B (B-PAC-SUM risolto da TASK-83).
+        assert r.get("known_defect") is None
 
 
 def test_rules_module_imports_only_stdlib():
@@ -624,7 +624,30 @@ def test_pac_sum_fails_when_total_differs_from_amount():
     put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
     outcome = evaluate(rs.check_pac_sum, responses)
     assert_status(outcome, "fail")
-    assert outcome["evidence"][0]["path"] == "total_allocated"
+    assert outcome["evidence"][0]["path"] == "total_allocated + unallocated_amount"
+
+
+def test_pac_sum_fails_when_unallocated_amount_has_no_note():
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0},
+                               targets={"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, cash=0.0)
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    assert pac["unallocated_amount"] == 500.0
+    pac.pop("note")
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_pac_sum, responses)
+    assert_status(outcome, "fail")
+    assert [e["path"] for e in outcome["evidence"]] == ["note"]
+
+
+def test_pac_sum_fails_when_unallocated_amount_does_not_close_the_total():
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0},
+                               targets={"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, cash=0.0)
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    pac["unallocated_amount"] = 300.0
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_pac_sum, responses)
+    assert_status(outcome, "fail")
+    assert outcome["evidence"][0]["path"] == "total_allocated + unallocated_amount"
 
 
 @pytest.mark.parametrize("targets", [
@@ -632,21 +655,23 @@ def test_pac_sum_fails_when_total_differs_from_amount():
     {"AUDEQ.MI": 50.0, "AUDBD.MI": 50.0},          # tutti esattamente a target
 ], ids=["targets-sum-90", "all-at-target"])
 def test_pac_sum_on_real_service_with_no_underweight_holding(targets):
-    """TASK-75: verifica del difetto probabile segnalato da TASK-72 sulla funzione reale.
+    """TASK-83 (difetto trovato da TASK-75/TASK-79, ora risolto).
 
-    Con nessuno strumento sottopesato `_calculate_pac_contribution` restituisce una
-    distribuzione vuota ma `total_allocated` = importo: B-PAC-SUM deve fallire.
+    Con nessuno strumento sottopesato `_calculate_pac_contribution` non distribuisce nulla e lo
+    dichiara: distribuzione vuota, `total_allocated` 0, `unallocated_amount` = importo e una nota.
+    B-PAC-SUM dà `pass`.
     """
     repo = make_repo({"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets, 0.0)
     raw = copilot_tools._calculate_pac_contribution({"monthly_amount": 500.0}, repo, MagicMock(), PID, "u")
-    assert raw["distribution"] == []                  # difetto reale confermato
-    assert raw["total_allocated"] == 500.0
+    assert raw["distribution"] == []
+    assert raw["total_allocated"] == 0.0 and raw["unallocated_amount"] == 500.0
+    assert raw["note"]
     responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets=targets, cash=0.0)
     assert get(responses, "calculate_pac_contribution", PAC_ARGS) == sanitize_output(raw)
     outcome = evaluate(rs.check_pac_sum, responses)
-    assert_status(outcome, "fail", "invariant_violated")
+    assert_status(outcome, "pass")
     ev = next(e for e in outcome["evidence"] if e["path"] == "distribution[*].amount_eur")
-    assert (ev["observed"], ev["expected"]) == (0, 500.0)
+    assert (ev["observed"], ev["expected"]) == (0, 0.0)
     # La regola gemella non giudica una distribuzione vuota.
     assert_status(evaluate(rs.check_pac_underweight_only, responses), "skip", "not_applicable")
 

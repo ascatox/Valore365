@@ -7,9 +7,9 @@ scope dell'utente ``auditor-seed-user``) e verifica, sul codice attuale:
 - nessun ``fail`` né ``error`` fuori dai difetti noti (regole con ``known_defect``), a ogni severità;
 - nessuna regola in ``skip`` su uno scope della colonna «Prova» del catalogo (``docs/auditor/rules.md``);
 - i ``known_defect`` delle dichiarazioni coincidono con la sezione «Difetti noti» del catalogo;
-- la CLI della CI (``--mode ci --fail-on P1``) esce con 0 e scrive JSON valido e Markdown;
-- il difetto noto B-PAC-SUM (TASK-83) si riproduce sul seed e non blocca l'uscita salvo
-  ``--strict-known``.
+- la CLI della CI (``--mode ci --fail-on P1 --strict-known``) esce con 0 e scrive JSON valido e Markdown;
+- B-PAC-SUM con nessuno strumento sottopesato (target 60/30 su 9105, ex difetto noto TASK-83)
+  dà ``pass`` e l'uscita è 0 anche con ``--strict-known``.
 
 I tool del Doctor usano il servizio di processo legato al ``DATABASE_URL`` dell'app: qui viene
 sostituito con uno legato al database del seed (architecture.md, Deviazioni TASK-78). La rete è
@@ -243,6 +243,9 @@ def test_no_fail_or_error_outside_known_defects(report):
     assert not bad, "fail/error fuori dai difetti noti:\n" + _describe(bad)
     assert report["exit_code"] == 0
     assert exit_code_for(report, fail_on="P2") == 0
+    # Nessun difetto noto aperto (TASK-83 risolto): l'uscita è 0 anche con --strict-known.
+    assert report["counts"]["known_defect_failures"] == 0
+    assert exit_code_for(report, fail_on="P2", strict_known=True) == 0
 
 
 def test_no_skip_where_catalog_expects_evaluation(report):
@@ -283,7 +286,7 @@ def test_cli_ci_mode_on_seed(seed_db, tmp_path):
     env = {**os.environ, "DATABASE_URL": seed_db["url"]}
     proc = subprocess.run(
         [sys.executable, "-m", "app.services.auditor", "--user", USER, "--mode", "ci", "--fail-on", "P1",
-         "--json-out", str(json_out), "--md-out", str(md_out)],
+         "--strict-known", "--json-out", str(json_out), "--md-out", str(md_out)],
         cwd=BACKEND_DIR, env=env, capture_output=True, text=True, timeout=600,
     )
     assert proc.returncode == 0, proc.stderr[-4000:] + proc.stdout[-4000:]
@@ -295,16 +298,17 @@ def test_cli_ci_mode_on_seed(seed_db, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Difetto noto B-PAC-SUM (TASK-83) riprodotto sul seed
+# B-PAC-SUM senza strumenti sottopesati (ex difetto noto TASK-83, risolto)
 # ---------------------------------------------------------------------------
 
 
-def test_known_defect_pac_sum_reproduced_on_seed(seed_db, audit_env):
+def test_pac_sum_without_underweight_holding_passes_on_seed(seed_db, audit_env):
     """Target 60/30 su 9105 (pesi 66,67/33,33: nessuno strumento sottopesato).
 
-    Sul codice attuale `calculate_pac_contribution` risponde con distribuzione vuota e
-    `total_allocated` 500: B-PAC-SUM fallisce, marcato come difetto noto, quindi l'uscita resta 0
-    salvo `strict_known`. Quando TASK-83 è risolto questo test va aggiornato (pass, nessun known_defect).
+    Prima di TASK-83 `calculate_pac_contribution` rispondeva con distribuzione vuota e
+    `total_allocated` 500 (difetto noto). Ora non distribuisce nulla e lo dichiara
+    (`total_allocated` 0, `unallocated_amount` 500, nota): B-PAC-SUM dà `pass`, nessun difetto
+    noto, e l'uscita è 0 anche con `strict_known`.
     """
     engine = seed_db["engine"]
     with engine.begin() as conn:
@@ -314,16 +318,18 @@ def test_known_defect_pac_sum_reproduced_on_seed(seed_db, audit_env):
     try:
         options = dict(mode="ci", portfolio_ids=[9105], rule_ids=["B-PAC-SUM"],
                        include_aggregate=False, include_instruments=False)
-        defect = audit_env(RunOptions(**options))
-        [result] = defect["results"]
-        assert result["status"] == "fail", _describe([result])
-        assert result["known_defect"] == "TASK-83"
+        run = audit_env(RunOptions(**options))
+        [result] = run["results"]
+        assert result["status"] == "pass", _describe([result])
+        assert not result.get("known_defect")
         [evidence] = [e for e in result["evidence"] if e["path"] == "distribution[*].amount_eur"]
-        assert evidence["observed"] == 0 and evidence["expected"] == pytest.approx(500.0)
-        assert defect["counts"]["known_defect_failures"] == 1
-        assert defect["exit_code"] == 0
+        assert evidence["observed"] == 0 and evidence["expected"] == 0
+        assert run["counts"]["known_defect_failures"] == 0
+        assert run["exit_code"] == 0
         strict = audit_env(RunOptions(**options, strict_known=True))
-        assert strict["exit_code"] == 1
+        [strict_result] = strict["results"]
+        assert strict_result["status"] == "pass", _describe([strict_result])
+        assert strict["exit_code"] == 0
     finally:
         with engine.begin() as conn:
             conn.execute(text("delete from portfolio_target_allocations where portfolio_id = 9105"))

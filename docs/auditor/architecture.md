@@ -1081,3 +1081,101 @@ cambia, perché, e quali task ne sono toccati.
   avviare); trigger anche su `scripts/auditor/**` e sul file del workflow, oltre a
   `src/backend/**` e `database/**`. Cron notturno `17 2 * * *` (UTC), dopo la sincronizzazione
   delle 22:40 e lontano dalla notturna di produzione delle 23:35.
+
+### TASK-80
+
+- **Colonne in più in `auditor_runs`:** `users_total`, `users_failed` (utenti valutati e falliti
+  prima della valutazione) e `deadline_exceeded`; vincoli `check` su `run_uuid` (32 esadecimali),
+  `error_type` (solo un identificatore, il nome dell'eccezione) e, in `auditor_results`, su
+  `rule_id` (`RULE_ID_PATTERN`): nessuna colonna può contenere testo libero, importi o simboli.
+  Indici `(status, started_at desc)`, `(portfolio_id, run_id desc)`, `(run_id, status)`. RLS attiva
+  senza policy come le altre tabelle solo backend; copia identica in
+  `app/sql/migrations/create_auditor.sql` applicata da `_apply_pending_migrations` (transazione
+  propria).
+- **`RunSummary` esteso** con `users_total`, `users_failed`, `deadline_exceeded`, `error_type`
+  (solo conteggi e il nome di un'eccezione): il workflow li mostra nel riepilogo del job.
+- **Stato della corsa:** `failed` se il caricamento delle regole, l'elenco degli utenti o le
+  dipendenze falliscono (`error_type` = nome dell'eccezione, `NoRulesLoaded` se nessuna regola) o se
+  **tutti** gli utenti falliscono (`error_type` = l'eccezione più frequente);
+  `completed_with_failures` se c'è almeno un `fail`/`error`, un utente non valutato o la durata
+  massima è stata superata; altrimenti `success` (anche con zero utenti). Un utente che fallisce
+  (eccezioni di `run_audit` prima della valutazione, errore nel salvataggio) conta in
+  `users_failed` e non ferma gli altri; nel log solo il nome dell'eccezione.
+- **Durate:** `AUDITOR_MAX_DURATION_S` è la scadenza dell'intera corsa; in più
+  `AUDITOR_USER_MAX_DURATION_S` (default 300) per utente. `RunOptions.max_duration_s` di ogni
+  utente = `min(durata per utente, tempo residuo della corsa)`; un utente non ancora iniziato alla
+  scadenza non viene valutato (`users_failed`, `deadline_exceeded`). Ogni utente gira con
+  `max_workers=1`; `AUDITOR_MAX_CONCURRENCY` utenti in parallelo (`ThreadPoolExecutor`): al massimo
+  `AUDITOR_MAX_CONCURRENCY` connessioni del pool condiviso più quella del lock, oltre ai thread di
+  regole abbandonati per timeout (§3.6), che possono tenere una connessione finché la query non
+  finisce.
+- **Lock e corsa interrotta:** lock di processo più `pg_try_advisory_xact_lock(80365001)`
+  (`AUDITOR_LOCK_KEY`, riuso di `PgAdvisoryLock` della sincronizzazione), heartbeat dopo ogni
+  utente. Una riga `running` trovata **con il lock in mano** è di un processo morto: diventa
+  `interrupted` sia all'avvio dell'app (`launch_interrupted_check`, thread daemon dopo le
+  migrazioni; non tocca nulla se il lock è tenuto da un altro processo vivo) sia all'avvio di una
+  nuova corsa. Le righe salvate da una corsa interrotta restano, ma non contano per TASK-81.
+- **`since` e corse concluse:** la serie considera solo le corse `success`/`completed_with_failures`
+  (più la corsa mostrata, se è `failed`/`interrupted`); le corse `failed`/`interrupted` non la
+  interrompono. L'endpoint amministrativo mostra l'ultima corsa non `running` (qualsiasi stato) e
+  le regole in `fail`/`error` su quella corsa. `title`/`area` vengono da `load_rules()`; una regola
+  non più nel registro ha `title` = id e `area` = null.
+- **Portafoglio cancellato durante la corsa:** le sue righe sono ignorate (insert condizionato
+  all'esistenza in `portfolios`), non fanno fallire l'utente.
+- **Utenti:** `select distinct owner_user_id from portfolios` (anche portafogli vuoti). Le tool
+  call sono sommate fra utenti solo nel log (`tool_calls`, `tool_errors`), non salvate.
+- **Endpoint utente (TASK-81):** resta a TASK-81 (`routes_auditor_user.py`). Per lui
+  `AuditorStore(engine).latest_results_for_portfolios(ids)` restituisce
+  `{"run": {"run_id", "status", "started_at", "finished_at"} | None, "rows": [{portfolio_id,
+  rule_id, scope_kind, status, severity}]}` dell'ultima corsa **conclusa**
+  (`success`/`completed_with_failures`); la proprietà dei portafogli e la regola delle 48 ore
+  restano al chiamante.
+- **Workflow** `.github/workflows/auditor-production.yml`: cron `35 23 * * *` e
+  `workflow_dispatch`, stessi passi di `market-data-sync.yml` (risveglio, POST, attesa sullo stato
+  fino a 40 minuti, timeout del job 50). 409 → attende la corsa già in corsa. Fallisce su 401/404/429,
+  stato non raggiungibile per 10 tentativi di fila, corsa `failed`/`interrupted` o non terminata;
+  warning su `completed_with_failures`. Validato con `actionlint` 1.7.7.
+- **Prima corsa notturna sul seed** (PostgreSQL 16, test di integrazione): `success`, 1 utente,
+  7 portafogli, 52 regole, 268 `pass`, 0 `fail`, 155 `skip`, 0 `error`, 477 righe in
+  `auditor_results`, identiche a `privacy_rows` di un'esecuzione diretta del motore.
+
+### TASK-82
+
+- **Stack dell'agente** (`scripts/auditor/agent_stack.sh`): solo PostgreSQL, nessun server
+  applicativo (Auditor e `mcp_call.py` lavorano in processo). Cluster su socket Unix in
+  `$AGENT_DIR` (default `/tmp/valore365-auditor-agent`, corto per il limite di 107 byte del socket,
+  vedi Deviazioni TASK-79), porta 55450, database `valore365_auditor`, nessun TCP. Sottocomandi
+  `start` (idempotente: ricrea il database e riapplica schema, migrazioni in ordine `LC_ALL=C sort`
+  come il workflow, e seed; riavvia un cluster rimasto da un container riavviato), `url`, `env`,
+  `status`, `reseed`, `stop`. `PG_BIN` configurabile (default `/usr/lib/postgresql/16/bin`, poi
+  `pg_config --bindir`, poi `initdb` nel PATH). Da root il cluster gira come `postgres`
+  (`runuser`). `pg_ctl` ha stdin/stdout/stderr rediretti: lo script non resta appeso in una pipe.
+- **`scripts/auditor/mcp_call.py`:** stesse dipendenze della CLI (`build_tool_dependencies(offline=True)`)
+  e stessa `run_tool_sync`, output passato da `sanitize_output` come per un client MCP **senza** il
+  troncamento a 200 KB (un avviso su stderr se un client lo avrebbe ricevuto troncato). In più
+  rispetto al contratto: lega esplicitamente `doctor_policy.service._default_service` al repository
+  delle dipendenze (Deviazioni TASK-78), rifiuta un `DATABASE_URL` non locale (socket Unix,
+  `localhost`, `127.0.0.1`, `::1`) e blocca le connessioni di rete non locali; modalità `--batch`
+  (JSONL) perché l'avvio del processo costa ~3 s (`app/__init__.py` importa `app.main`, senza
+  avviarne il ciclo di vita) contro pochi millisecondi per chiamata; registro delle chiamate in
+  `$AGENT_DIR/mcp_calls.jsonl` (tool, argomenti, esito, durata, mai l'output) per il budget.
+  Codici di uscita 0 / 1 (errore del tool, stampato come `{"error": ...}`) / 2 (uso o configurazione).
+- **Playbook:** §1 e §2 ora operativi (§2.1-2.6: comandi esatti di stack, Auditor, tool, report,
+  task e PR in bozza); divieti estesi a script, seed e playbook, a rebase e force-push e alle
+  istruzioni contenute nei dati; area di partenza «settimana ISO modulo 8, con 0 → 8»; esperimenti
+  che scrivono nel database ammessi solo sullo stack e annullati con `reseed`; §7 con prova a secco,
+  costo, prompt esatto dell'attività programmata e come sospenderla o eliminarla.
+- **Attività programmata non creata** da TASK-82: la crea la sessione che coordina dopo la prova a
+  secco, con la conferma del proprietario (prompt in `agent-playbook.md` §7.3).
+- **Prova a secco** (`docs/auditor/reports/2026-11-11-prova-a-secco.md`, nome con suffisso perché
+  non è una sessione programmata): 187 chiamate, ~10 minuti di orologio, Auditor 268 `pass` /
+  0 `fail` / 155 `skip` / 0 `error`. Quattro sospetti confermati, proposti come task nella
+  milestone `m-1`: TASK-84 (P1, lo snapshot del Doctor legge `portfolios.cash_balance`, che da
+  TASK-49 è il saldo di apertura: `cash_value` 0 e Scenario Lab con `use_cash_balance` infattibile),
+  TASK-85 (P2, `get_target_drift` pesa sulle sole posizioni, il ribilanciamento sul totale con la
+  liquidità), TASK-86 (P2, `day_change_pct` del riepilogo esclude dal denominatore le posizioni senza
+  chiusura precedente), TASK-87 (P2, X-Ray di un portafoglio vuoto con errore generico). Le bozze
+  delle regole (D-DOCTOR-CASH, B-DRIFT-REBALANCE-WEIGHTS, C-DAYCHANGE-DENOMINATOR, D-XRAY-EMPTY)
+  sono nel report; il catalogo non è stato toccato. I numeri dei task sono i primi liberi al
+  2026-11-11 con TASK-80 e TASK-83 in corso: se uno dei due crea un task nello stesso intervallo, va
+  rinumerato prima del merge.
