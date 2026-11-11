@@ -873,3 +873,168 @@ Le chiavi della risposta finta devono essere quelle **reali** dei tool (`copilot
 
 Ogni task che si discosta da questo contratto aggiunge qui una sottosezione `### TASK-NN` con cosa
 cambia, perché, e quali task ne sono toccati.
+
+### TASK-75
+
+- **Campo `tools` delle regole B-REB-\*, B-PAC-\*:** oltre ai tool della scheda di `rules.md` §3
+  elenca anche `get_positions`, che ogni regola legge per lo `skip`/`empty_portfolio` (§0.3 del
+  catalogo; stessa convenzione di C-MC-YEARS). Nessun'altra lettura e nessun argomento fuori da §5.2.
+  Nessun task toccato (il campo è informativo per il report).
+- **Interpretazioni dove la scheda non decide:** (1) `calculate_rebalance_orders` senza `totals` in
+  tutte le modalità → `skip`/`no_targets`; senza `totals` solo in alcune → `fail` (incoerenza, non
+  mancanza di dati). (2) B-REB-SELL-CAP: una violazione accertata (`amount_eur` oltre il valore, o
+  simbolo assente con righe non troncate) prevale sul `truncated_output` di un'altra vendita.
+  (3) Un campo numerico atteso ma `null` (non finito dopo `sanitize_output`) è un `fail` con
+  evidenza, mai un `pass`.
+- **B-PAC-SUM e difetto reale:** verificato in `test_auditor_rules_rebalance.py` sulla funzione
+  reale `_calculate_pac_contribution` (target che sommano a 90 con tutti gli strumenti sopra il
+  target, oppure tutti esattamente a target): `distribution == []` e `total_allocated == 500.0`;
+  la regola fallisce (somma della distribuzione 0 contro 500). Il servizio non è corretto qui:
+  spetta a TASK-79 aprire il task e marcare `known_defect`.
+
+### TASK-74
+
+- **Nessuna deviazione dal contratto:** le 11 regole del gruppo A sono implementate come scritte in
+  `rules.md` §2 (id, titoli, severità, scope, tool, tolleranze, skip). Nessun task toccato.
+- **Interpretazioni dove la scheda non decide:** (1) quando uno scope ha dati ma nessuna verifica
+  della scheda è applicabile (nessuna riga `class_breakdown` negli scenari a shock, nessuno scenario
+  storico nell'output, nessuno scenario a shock per A-CLASS-UNKNOWN-DECLARED, nessuna coppia di
+  portafogli con composizione diversa per A-STRESS-HIST-DISTINCT) la regola dà
+  `skip`/`not_applicable`, mai `pass`. (2) A-STRESS-PROXY-TABLE considera «calcolato» ogni scenario
+  storico con `method` diverso da `not_available`, compreso uno senza `method` (forma dell'output
+  prima di TASK-38): così l'output originale di V365-001 fallisce per `class_breakdown` assente.
+  (3) A-STRESS-HIST-DISTINCT: un portafoglio con scenari storici calcolati ma senza lo scenario
+  «Global Equity Crash» (composizione per classe non leggibile) è un `fail`. (4)
+  A-CLASS-STRESS-CONSISTENT: una scheda `search_asset_info` senza `asset_class` per un simbolo
+  detenuto è un `fail` con evidenza. (5) Gli scenari storici in `most_impacted` sono verificati solo
+  nel segno (`loss_pct` < 0), come da scheda; le voci senza `asset_class` negli scenari a shock solo
+  nel segno.
+
+### TASK-76
+
+- **Campo `tools` di C-INCOME-BUCKETS-SUM, C-MC-PERCENTILES, C-MC-MEDIAN-DRIFT:** oltre ai tool
+  della scheda di `rules.md` §4 elencano `get_positions` (e, per lo scope `aggregate`,
+  `get_aggregate_positions`), letto solo per lo `skip`/`empty_portfolio` di §0.3 del catalogo
+  (le schede Monte Carlo rimandano a «come C-MC-YEARS», che già lo legge). Le regole Monte Carlo
+  elencano sia il tool del portafoglio sia quello aggregato. Nessun task toccato.
+- **Portafoglio vuoto nelle regole di costo (C-TER-RANGE, C-COST-\*):** riconosciuto da
+  `get_cost_breakdown.position_costs == []`, senza leggere `get_positions`: `position_costs` ha una
+  riga per ogni posizione di `repo.get_positions` (le prime 20), quindi è vuota esattamente quando
+  `get_positions` lo è. Così il campo `tools` resta quello del catalogo.
+- **Interpretazioni dove la scheda non decide:** (1) un campo numerico atteso ma `null`, o una
+  chiave dell'output assente (es. `dividends_by_currency`, `excluded_no_previous_close`), è un
+  `fail` con evidenza, mai un `pass`. (2) C-DIV-CURRENCY: il ramo «se `mixed_currencies`» segue il
+  ricalcolo dalle transazioni (più di una valuta), non il flag del tool, che è verificato a parte.
+  (3) C-INCOME-CLASS-RECOMPUTE: un `search_asset_info` che risponde con `error` su un simbolo
+  detenuto è un `fail`. (4) C-DAYMOVERS-NONZERO-INCLUDED: una riga con `day_change_pct` `null`
+  non entra nell'insieme F.
+- **Limite di C-DAYMOVERS-CONSISTENCY:** il difetto «`day_change_pct = 0.0` di default trattato come
+  variazione» è intercettato sull'output reale di `5ffa5da` (nessun conteggio
+  `excluded_no_previous_close`, quindi la somma dei conteggi non è verificabile). Un'implementazione
+  che esponesse il conteggio ma contasse fra le valide la posizione senza chiusura precedente non
+  sarebbe rilevabile: `get_positions` non espone `previous_close_available` (catalogo §9).
+
+### TASK-73
+
+- **`app/__init__.py` importa `app.main`:** qualunque `import app.*` (CLI compresa) esegue il livello
+  modulo di `main.py` (impostazioni, `engine` senza connessione, costruzione dei servizi, rotte), ma
+  **non** il ciclo di vita (scheduler, migrazioni, `init_field_crypto`, catch-up). La CLI non importa
+  `app.main` esplicitamente e non avvia mai il lifespan; `build_tool_dependencies` usa
+  `app.db.engine` (stesso `DATABASE_URL`). TASK-79: l'ambiente della CI deve permettere l'import di
+  `app` come per i test.
+- **`rules/__init__.py`:** contiene solo `RULE_MODULES` (§2); l'«importazione tollerante» chiesta dal
+  task è in `load_rules`. Nessun decoratore: i moduli delle regole non possono importare il motore
+  (§0.5), quindi la registrazione è solo per dichiarazione `RULES` (`load_rules` accetta anche
+  istanze di `Rule`). `load_rules(modules)`: un nome senza punti è relativo a
+  `app.services.auditor.rules`, uno con punti è assoluto.
+- **Validazione più stretta delle dichiarazioni:** oltre a §3.1 rifiuta chiavi sconosciute, `tools`
+  vuota, elementi duplicati o vuoti in `findings`/`scopes`/`tools`. Le 52 regole presenti oggi
+  (A, B, C, D) passano.
+- **Nomi pubblici in più:** `context.ScopeSelectionError(ValueError)` (id di portafoglio non
+  dell'utente in `discover_scopes`, CLI 2); `report.ReportValidationError(ValueError)` sollevata da
+  `validate_report`; `report.load_report_schema()`; `report.exit_code_from_results(results, ...)`, a
+  cui `runner.exit_code_for` delega (evita l'import circolare runner ↔ report).
+- **`performance_audit` con 2+ id:** id ordinati e distinti; memo sotto la chiave di
+  `get_aggregate_performance_audit` (condivisa con una chiamata diretta, in `call_stats` conta come
+  quel tool); l'errore è rilanciato come `AuditToolError(tool="ctx.performance_audit")`.
+- **Timeout e scadenza:** ogni valutazione gira in un thread daemon dedicato (un thread abbandonato
+  non blocca né le altre regole né l'uscita del processo); `max_workers` > 1 usa un
+  `ThreadPoolExecutor` sulle coppie (regola, scope). Una regola interrotta perché il tempo residuo
+  dell'esecuzione era minore del suo timeout riceve `deadline_exceeded`, non `timeout`.
+  `reason` del timeout: «Superato il limite di N s.» come nell'esempio.
+- **RuleResult:** un `tool_error` porta un'evidenza `{tool, args, path: "", note: messaggio}`;
+  un esito con `NaN`/`Infinity` è `invalid_outcome` (non è JSON valido). Il report usa
+  `options.mode`; `user_id` è null solo in `nightly`; `by_scope` contiene ogni scope scoperto e
+  `by_rule` ogni regola selezionata (anche a zero); timestamp con millisecondi e `Z`.
+- **Scope:** ordinati per `scope_key` come stringa (`portfolio:10` prima di `portfolio:9`). Scope
+  instrument: simboli distinti, esclusi vuoti o oltre 64 caratteri (limite dello schema); se
+  `get_positions` di un portafoglio fallisce, nessuno scope instrument per quel portafoglio (le
+  regole sullo scope portfolio ricevono lo stesso `tool_error` dalla memo).
+- **`ctx.transactions`:** `fees`/`taxes` null → 0.0; `trade_at` senza fuso trattato come UTC.
+- **Markdown:** le evidenze di `pass` e `skip` non sono mai stampate; oltre 1 MB si omettono la
+  tabella delle regole saltate, poi quella per scope, infine taglio con avviso (le evidenze di
+  fail/error restano finché possibile); valori delle evidenze tagliati a 200 caratteri.
+- **CLI:** un errore nel caricamento delle regole (anche `ImportError`) esce con 2 e un messaggio,
+  non con traceback. `--list-rules` non richiede `--user` né il database, rispetta `--group`/`--rule`
+  e stampa righe separate da tab. `build_tool_dependencies(offline=False)` usa
+  `make_finance_client` solo per diagnosi manuali: nessun percorso dell'Auditor lo usa.
+
+### TASK-77
+
+- **Script offline:** `scripts/audit/twr_mwr_offline_auditor.py` delega a
+  `app/services/auditor/offline_returns.py` caricandolo **per percorso del file** (relativo alla
+  posizione dello script, `importlib.util.spec_from_file_location`) invece di aggiungere
+  `<repo>/src/backend` a `sys.path` e importare il package: `app/__init__.py` importa `app.main`
+  (FastAPI, impostazioni), quindi l'import per package renderebbe lo script lento e dipendente dalle
+  librerie del backend. CLI, `--help`, output ed esiti invariati (verificato su tre export prima e
+  dopo; test di non regressione con l'output di prima). Nessun task toccato.
+- **`findings`:** si copiano solo gli id; i riferimenti fra parentesi delle schede (es. «C2-CASH-FX
+  (TASK-47, TASK-49)», «V365-007 (decisione 6)», «C6 (TASK-48)») restano nel catalogo.
+  D-SUMMARY-PERFORMANCE-VALUE dichiara `["C1-TWR-MIXED", "TASK-49"]`, D-WEIGHTS-SUM e
+  D-SUMMARY-POSITIONS `[]` («—»).
+- **D-AGG-PERFORMANCE-VALUE:** la scheda dice «Skip: nessuno», ma §0.3 di `rules.md` impone
+  `no_transactions` per l'aggregato quando **tutti** i membri sono senza transazioni (l'export non è
+  garantito): si applica §0.3.
+- **D-HEALTH-SCORE-BREAKDOWN, D-XRAY-SUMS:** lo skip `empty_portfolio` di §0.3 richiede
+  `get_positions` / `get_aggregate_positions`, aggiunti a `tools`. D-DOCTOR-CONCENTRATION, che nella
+  scheda legge solo `read_doctor_metrics` e `get_portfolio_health`, riconosce il portafoglio vuoto
+  da `is_empty` di `read_doctor_metrics`.
+- **D-DOCTOR-CLASS-WEIGHTS:** se `class_breakdown` è tutto liquidità (100 − w(cash) = 0, formula
+  non definita) → `skip`/`empty_portfolio`; scenario «Global Equity Crash» assente → `fail`.
+- **D-AGG-POSITIONS:** le righe non verificabili per troncamento (simbolo assente da un singolo con
+  30 righe) non bloccano le altre: esito `pass` con un'evidenza per riga saltata se almeno una riga è
+  stata verificata, `skip`/`truncated_output` se nessuna.
+- **Errori del Doctor:** le regole Doctor usano `try_call` solo per riconoscere
+  `POLICY_DISABLED_MESSAGE`; ogni altro errore viene rilanciato con `ctx.call` (stessa memo) e
+  diventa `error`/`tool_error` nel motore.
+
+### TASK-78
+
+- **Nessuna differenza fra catalogo e valori calcolati:** composizioni, metodi degli stress test,
+  classi, TER, reddito, dividendi, variazioni giornaliere e precondizioni di tutte le 52 regole
+  (colonna «Prova») sono verificati con `run_tool_sync` sul seed in
+  `test_auditor_seed_postgres.py`. Valori documentati in `scripts/auditor/README.md`.
+- **Copertura storica condivisa:** `AUDEQ.MI` (e `AUDBD.MI`) hanno lo storico degli stress perché
+  sono in 9101, quindi «solo barre recenti» di 9103 vale per gli altri strumenti: la copertura degli
+  scenari storici di 9103 è 25% (metodo `proxy`, come atteso), di 9104 29,11%, di 9107 31,25%,
+  dell'aggregato 57,31% (tutti `proxy`); 9105 (`AUDEQ.MI` + `AUDBD.MI`) è `historical` al 100%.
+  Nessun task toccato.
+- **Servizio del Doctor legato a `app.main.repo`:** `read_doctor_metrics` (e gli altri tool di
+  `DOCTOR_SCOPE_TOOLS`) usano `get_doctor_policy_service`, singleton di processo creato da
+  `app/main.py` su `RuntimeDependencyProxy(lambda: repo)`, quindi sul `DATABASE_URL` dell'app e non
+  sul `repo` di `ToolDependencies`. Con `build_tool_dependencies` sullo stesso `DATABASE_URL` (CLI,
+  CI) coincide; un test che costruisce le dipendenze su un altro engine deve sostituire
+  `app.services.doctor_policy.service._default_service` (come fa il test di TASK-78). Tocca
+  TASK-73 e TASK-79 (test di integrazione del motore).
+- **Argomenti di `search_asset_info`:** lo schema MCP richiede anche `portfolio_id`; `{"symbol": s}`
+  di §5.2 va passato come `extra_args` di `ctx.scoped` (→ `{"portfolio_id": pid, "symbol": s}`), una
+  chiamata `ctx.call("search_asset_info", {"symbol": s})` è rifiutata dalla validazione.
+- **`get_xray_summary` su un portafoglio vuoto** (9106) risponde con errore («Errore nell'esecuzione
+  del tool get_xray_summary»), non con un output vuoto: lo `skip`/`empty_portfolio` va deciso da
+  `get_positions` prima di leggerlo (già così in TASK-77).
+- **Casi non riproducibili con il seed:** import duplicato (come da `rules.md` §1: lotto confermato
+  più coppia legittima, duplicato vero nei test unitari di TASK-77); `skip`/`truncated_output` (nessun
+  portafoglio supera 4 posizioni). I difetti dei finding non sono nel seed, che rappresenta lo stato
+  corretto dei dati.
+- **Cambi** salvati con provider `auditor-seed` (le letture non filtrano per provider), così la
+  riapplicazione del seed non tocca cambi di altri provider.
