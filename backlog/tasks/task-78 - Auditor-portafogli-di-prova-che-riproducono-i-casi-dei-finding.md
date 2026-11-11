@@ -1,7 +1,7 @@
 ---
 id: TASK-78
 title: 'Auditor: portafogli di prova che riproducono i casi dei finding'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -23,11 +23,11 @@ Le regole servono a poco se i dati di prova non contengono i casi che hanno caus
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Esiste uno script SQL di seed dell'Auditor, applicabile dopo schema e migrazioni, con date relative a `current_date` come `scripts/e2e/doctor2_seed.sql`
-- [ ] #2 Ogni regola del catalogo ha almeno un portafoglio di prova su cui viene valutata (non `skip`); il catalogo in `docs/auditor/rules.md` indica quale
-- [ ] #3 Prezzi e storico sono abbastanza lunghi da coprire le finestre degli stress test storici per almeno un portafoglio, e assenti per un altro (per esercitare il ramo proxy)
-- [ ] #4 Il seed non richiede rete: nessuna chiamata a Yahoo o justETF durante l'esecuzione; i TER e l'arricchimento necessari sono nel seed
-- [ ] #5 Un test di integrazione su Postgres applica schema, migrazioni e seed e verifica che i portafogli attesi esistano con i valori documentati
+- [x] #1 Esiste uno script SQL di seed dell'Auditor, applicabile dopo schema e migrazioni, con date relative a `current_date` come `scripts/e2e/doctor2_seed.sql`
+- [x] #2 Ogni regola del catalogo ha almeno un portafoglio di prova su cui viene valutata (non `skip`); il catalogo in `docs/auditor/rules.md` indica quale
+- [x] #3 Prezzi e storico sono abbastanza lunghi da coprire le finestre degli stress test storici per almeno un portafoglio, e assenti per un altro (per esercitare il ramo proxy)
+- [x] #4 Il seed non richiede rete: nessuna chiamata a Yahoo o justETF durante l'esecuzione; i TER e l'arricchimento necessari sono nel seed
+- [x] #5 Un test di integrazione su Postgres applica schema, migrazioni e seed e verifica che i portafogli attesi esistano con i valori documentati
 <!-- AC:END -->
 
 ## Implementation Notes

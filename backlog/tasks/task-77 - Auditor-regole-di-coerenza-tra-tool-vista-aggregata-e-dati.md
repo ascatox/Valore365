@@ -1,7 +1,7 @@
 ---
 id: TASK-77
 title: 'Auditor: regole di coerenza tra tool, vista aggregata e dati'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -26,11 +26,11 @@ Gruppo D: coerenza tra tool diversi e qualità dei dati. È il gruppo che proteg
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sono implementate tutte le regole del gruppo D del catalogo
-- [ ] #2 Tra le regole: i pesi delle posizioni sommano a cento entro la tolleranza; il valore del riepilogo è uguale alla somma delle posizioni più la liquidità; la vista aggregata coincide con la somma dei singoli portafogli per valore, posizioni e liquidità; le metriche del Doctor coincidono con i valori di X-Ray e health da cui derivano; nessuna coppia di transazioni identiche da import diversi; prezzo × quantità coerente con il controvalore; strumenti quotati a Londra con valuta di quotazione plausibile
-- [ ] #3 La regola sulla performance ricalcola TWR e MWR dall'export di audit con la logica dello script offline e confronta con i valori del servizio entro la tolleranza del contratto
-- [ ] #4 Le regole vanno in `skip` quando lo scope non lo consente (vista aggregata con un solo portafoglio, nessuna transazione)
-- [ ] #5 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
+- [x] #1 Sono implementate tutte le regole del gruppo D del catalogo
+- [x] #2 Tra le regole: i pesi delle posizioni sommano a cento entro la tolleranza; il valore del riepilogo è uguale alla somma delle posizioni più la liquidità; la vista aggregata coincide con la somma dei singoli portafogli per valore, posizioni e liquidità; le metriche del Doctor coincidono con i valori di X-Ray e health da cui derivano; nessuna coppia di transazioni identiche da import diversi; prezzo × quantità coerente con il controvalore; strumenti quotati a Londra con valuta di quotazione plausibile
+- [x] #3 La regola sulla performance ricalcola TWR e MWR dall'export di audit con la logica dello script offline e confronta con i valori del servizio entro la tolleranza del contratto
+- [x] #4 Le regole vanno in `skip` quando lo scope non lo consente (vista aggregata con un solo portafoglio, nessuna transazione)
+- [x] #5 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
 <!-- AC:END -->
 
 ## Implementation Notes
