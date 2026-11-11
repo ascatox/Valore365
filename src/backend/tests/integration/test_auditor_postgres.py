@@ -8,7 +8,7 @@ scope dell'utente ``auditor-seed-user``) e verifica, sul codice attuale:
 - nessuna regola in ``skip`` su uno scope della colonna «Prova» del catalogo (``docs/auditor/rules.md``);
 - i ``known_defect`` delle dichiarazioni coincidono con la sezione «Difetti noti» del catalogo;
 - la CLI della CI (``--mode ci --fail-on P1 --strict-known``) esce con 0 e scrive JSON valido e Markdown;
-- B-PAC-SUM con nessuno strumento sottopesato (target 60/30 su 9105, ex difetto noto TASK-83)
+- B-PAC-SUM con nessuno strumento sottopesato (target 45/20 su 9105, ex difetto noto TASK-83)
   dà ``pass`` e l'uscita è 0 anche con ``--strict-known``.
 
 I tool del Doctor usano il servizio di processo legato al ``DATABASE_URL`` dell'app: qui viene
@@ -95,6 +95,7 @@ PROOF: dict[str, list[str]] = {
     "B-REB-SELL-CAP": [_p(9101)],
     "B-PAC-SUM": [_p(9101)],
     "B-PAC-UNDERWEIGHT-ONLY": [_p(9101)],
+    "B-DRIFT-REBALANCE-WEIGHTS": [_p(9101)],
     "B-WHATIF-BUY-WEIGHT": [_p(9101)],
     "B-WHATIF-SELL-BOUND": [_p(9101)],
     "C-TER-RANGE": [_p(9101), _p(9102), _p(9103)],
@@ -308,9 +309,11 @@ def test_cli_ci_mode_on_seed(seed_db, tmp_path):
 
 
 def test_pac_sum_without_underweight_holding_passes_on_seed(seed_db, audit_env):
-    """Target 60/30 su 9105 (pesi 66,67/33,33: nessuno strumento sottopesato).
+    """Target 45/20 su 9105 (pesi 48,67/24,34: nessuno strumento sottopesato).
 
-    Prima di TASK-83 `calculate_pac_contribution` rispondeva con distribuzione vuota e
+    Da TASK-85 i pesi del PAC sono sul totale con la liquidità (10.000 + 5.000 + 5.545 =
+    20.545 €), non più sulle sole posizioni (66,67/33,33): con i target 60/30 di prima
+    entrambi gli strumenti risulterebbero sottopesati. Prima di TASK-83 `calculate_pac_contribution` rispondeva con distribuzione vuota e
     `total_allocated` 500 (difetto noto). Ora non distribuisce nulla e lo dichiara
     (`total_allocated` 0, `unallocated_amount` 500, nota): B-PAC-SUM dà `pass`, nessun difetto
     noto, e l'uscita è 0 anche con `strict_known`.
@@ -319,7 +322,7 @@ def test_pac_sum_without_underweight_holding_passes_on_seed(seed_db, audit_env):
     with engine.begin() as conn:
         conn.execute(text(
             "insert into portfolio_target_allocations (portfolio_id, asset_id, weight_pct, owner_user_id) "
-            "values (9105, 9101, 60, :u), (9105, 9102, 30, :u)"), {"u": USER})
+            "values (9105, 9101, 45, :u), (9105, 9102, 20, :u)"), {"u": USER})
     try:
         options = dict(mode="ci", portfolio_ids=[9105], rule_ids=["B-PAC-SUM"],
                        include_aggregate=False, include_instruments=False)

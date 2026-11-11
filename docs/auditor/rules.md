@@ -9,7 +9,7 @@ Ogni condizione usa **i nomi reali dei campi** dell'output dei tool (`src/backen
 `sanitize_output`. Gli id, i titoli, le severità, gli scope e le tolleranze di questo catalogo sono
 vincolanti: le dichiarazioni `RULES` li copiano esattamente.
 
-Totale: **55 regole** — A 11, B 10, C 12, D 22.
+Totale: **56 regole** — A 11, B 11, C 12, D 22.
 
 ## 0. Convenzioni
 
@@ -383,6 +383,30 @@ n = numero di ordini (o di righe della distribuzione).
 - **Skip:** `empty_portfolio`; `no_targets`; distribuzione vuota → `not_applicable`.
 - **Prova:** 9101.
 - **Difetto:** versamento su uno strumento sovrappesato.
+
+### B-DRIFT-REBALANCE-WEIGHTS
+- **Titolo:** Scostamento dal target, PAC e ribilanciamento partono dagli stessi pesi
+- **Sev.** P2 · **Area** rebalance · **Finding** S-2026-11-11-02 (TASK-85) · **Scope** portfolio
+- **Tool:** `get_positions`; `get_target_drift`; `get_portfolio_summary`; `calculate_rebalance_orders`
+  con R; `calculate_pac_contribution` `{"monthly_amount": 500.0}`.
+- **Condizione:** decisione del proprietario (TASK-85, 2026-11-11): un solo peso per strumento, sulla
+  base del ribilanciamento (valore degli strumenti con target + liquidità attuale, decisione 9). Con
+  T = `get_target_drift.total_value`, C = `cash_balance` del riepilogo e v_i = `market_value` delle
+  righe di `drift`: (1) T presente e > 0, `|T − (Σ v_i + max(C, 0))| ≤ T_sum_eur(n + 1)` e per ogni
+  riga `|current_weight − v_i / T × 100| ≤ T_pp2`; (2) `|total_value − T| ≤ T_eur` per R e per il
+  PAC; (3) per ogni ordine di R e ogni riga di `distribution` del PAC esiste la riga di `drift` con lo
+  stesso `symbol` e `|current_weight_pct − current_weight| ≤ T_pp` (PAC: `current_weight`),
+  `|target_weight_pct − target_weight| ≤ T_pp` (PAC: `target_weight`).
+- **Tolleranze:** `T_sum_eur(n + 1)` (n + 1 importi arrotondati a 2 decimali); `T_pp2` (peso
+  ricalcolato da importi arrotondati); `T_pp` e `T_eur` fra i tool (lo stesso numero arrotondato
+  allo stesso modo da `current_target_weights` di `services/rebalance.py`).
+- **Skip:** `empty_portfolio`; `drift` vuoto → `no_targets`. Nessun ordine in R o PAC senza righe
+  **non** è `skip` (la bozza del report lo prevedeva): le verifiche (1) e (2) restano.
+- **Prova:** 9101 (AUDEQ.MI 64,07, AUDBD.MI 18,31, AUDTECH.DE 9,15 in tutti e tre i tool; T =
+  109.256,50).
+- **Difetto:** `get_target_drift` con i pesi delle sole posizioni e senza `total_value` (codice prima
+  di TASK-85: AUDTECH.DE 10,0 «in linea» contro 9,15 del ribilanciamento, che lo compra); PAC con una
+  base diversa; base delle sole posizioni dichiarata (`total_value` 100.000 contro 109.256,50).
 
 ### B-WHATIF-BUY-WEIGHT
 - **Titolo:** La simulazione di un acquisto ricalcola correttamente il peso

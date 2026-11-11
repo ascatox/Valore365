@@ -343,6 +343,11 @@ def render_snapshot_markdown(
         lines.append("")
         lines.append("## Scostamento dai target di allocazione")
         lines.append("")
+        lines.append(
+            "Pesi sul valore degli strumenti con target più la liquidità, "
+            "come nel ribilanciamento e nel PAC."
+        )
+        lines.append("")
         lines.extend(_md_table(
             ["Simbolo", "Peso attuale", "Peso target", "Drift"],
             [

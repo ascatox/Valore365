@@ -129,8 +129,19 @@ non toglie punti.
 ## 7. Ribilanciamento (`calculate_rebalance_orders`, `services/rebalance.py`)
 
 - Modalità: `rebalance` (predefinita: vendite che finanziano gli acquisti), `buy_only`, `sell_only`.
-- Totale = valore delle posizioni + liquidità del portafoglio + `available_cash` (liquidità
-  **aggiuntiva**); i pesi includono la liquidità (decisioni TASK-37).
+- Totale = valore delle posizioni **con un target** + liquidità del portafoglio + `available_cash`
+  (liquidità **aggiuntiva**); i pesi includono la liquidità (decisioni TASK-37). Le posizioni senza
+  target restano fuori dal totale e non vengono negoziate (`untargeted_holdings`).
+- **Stessi pesi in scostamento e PAC (TASK-85, decisione del 2026-11-11):** `get_target_drift`,
+  `calculate_pac_contribution` e lo scostamento dello snapshot del Copilot usano la stessa base
+  (`current_target_weights` in `services/rebalance.py`, senza `available_cash`): peso attuale =
+  valore dello strumento / (valore degli strumenti con target + liquidità attuale del modello della
+  performance) × 100, dichiarato come `total_value`. Nel PAC il peso dopo il versamento è
+  (valore + versamento) / (`total_value` + importo mensile). Il peso di `get_positions` (e di
+  `calculate_what_if`, che misura la concentrazione) resta sul valore delle sole posizioni.
+  Esempio, portafoglio 9101 del seed (70.000 / 20.000 / 10.000 €, liquidità 9.256,50, target
+  50/40/10): 64,07 / 18,31 / 9,15 % in tutti e tre i tool, contro 70,0 / 20,0 / 10,0 % di prima in
+  `get_target_drift` e nel PAC.
 - Banda di tolleranza 0,5 pp **come soglia di attivazione**: se almeno uno strumento supera la
   banda, tutti tornano al target.
 - Ordine: prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,

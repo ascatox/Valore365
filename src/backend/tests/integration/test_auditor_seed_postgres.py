@@ -742,7 +742,7 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         if rule_id == "A-STRESS-NONEQUITY-POSITION-SHOCK":
             return any(s.get("most_impacted") for s in _stress(tools, pid).values())
         return _hist_available(tools, pid) or rule_id in ("A-STRESS-CONTRIB-SUM", "A-STRESS-SHOCK-TABLE")
-    if rule_id.startswith("B-REB") or rule_id.startswith("B-PAC"):
+    if rule_id.startswith("B-REB") or rule_id.startswith("B-PAC") or rule_id == "B-DRIFT-REBALANCE-WEIGHTS":
         if not _has_targets(tools, pid):
             return False
         if rule_id in ("B-REB-SELLS-REACH-TARGET", "B-REB-DRIFT-NONINCREASING"):
@@ -818,6 +818,7 @@ PROOF = {
     "B-REB-SELL-CAP": [9101],
     "B-PAC-SUM": [9101],
     "B-PAC-UNDERWEIGHT-ONLY": [9101],
+    "B-DRIFT-REBALANCE-WEIGHTS": [9101],  # TASK-85: skip solo senza target (drift vuoto)
     "B-WHATIF-BUY-WEIGHT": [9101],
     "B-WHATIF-SELL-BOUND": [9101],
     "C-TER-RANGE": [9101, 9102, 9103],

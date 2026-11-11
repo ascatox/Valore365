@@ -239,7 +239,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
                           <Group gap={4} wrap="nowrap" justify="flex-end">
                             <Text size="xs">{formatNum(target, 1)}%</Text>
                             {warn && (
-                              <Tooltip label={`Scostamento: ${delta > 0 ? '+' : ''}${formatNum(delta, 1)}%`} withArrow>
+                              <Tooltip label={`Scostamento sul peso fra le posizioni (liquidità esclusa): ${delta > 0 ? '+' : ''}${formatNum(delta, 1)}%`} withArrow>
                                 <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
                               </Tooltip>
                             )}

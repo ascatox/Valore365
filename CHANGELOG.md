@@ -83,6 +83,14 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Fixed
 
+- Scostamento dal target e PAC (Copilot e MCP `get_target_drift`, `calculate_pac_contribution`,
+  scostamento nello snapshot del Copilot e nell'export Markdown) usano gli stessi pesi del
+  ribilanciamento: valore degli strumenti con target più la liquidità attuale, invece del valore
+  delle sole posizioni; i tool dichiarano la base (`total_value`, `weight_basis_note`). Un solo peso
+  per strumento nei tre tool (seed dell'Auditor, 9101: AUDTECH.DE 9,15% e 0,85 pp sotto target
+  ovunque, prima «in linea» al 10,0% per lo scostamento ma comprato dal ribilanciamento; il PAC da
+  500 € va 481,14 € su AUDBD.MI e 18,86 € su AUDTECH.DE invece di tutto su AUDBD.MI). Nuova regola
+  dell'Auditor B-DRIFT-REBALANCE-WEIGHTS (TASK-85).
 - Liquidità del Portfolio Doctor e del Laboratorio (Scenario Lab, MCP/Copilot
   `build_doctor_scenario` / `compare_doctor_scenarios`, Tribunale): lo snapshot usa la liquidità
   attuale del riepilogo (modello della performance; nella vista aggregata la somma dei portafogli)

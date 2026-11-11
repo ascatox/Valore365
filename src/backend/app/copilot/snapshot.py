@@ -6,6 +6,23 @@ from ..services.performance_service import PerformanceService
 from ..repository import PortfolioRepository
 from ..services.portfolio_doctor import analyze_portfolio_health, compute_weighted_ter, run_monte_carlo_projection
 from ..services.portfolio_doctor._holdings import _load_holdings
+from ..services.rebalance import current_target_weights
+
+
+def _target_drift_rows(positions, target_alloc, summary) -> list[dict]:
+    """Drift rows on the same base as get_target_drift, the PAC and
+    calculate_rebalance_orders: targeted holdings + current cash (TASK-85)."""
+    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
+    rows = []
+    for ta in target_alloc:
+        current = weights.current_weight_pct(ta.asset_id)
+        rows.append({
+            "symbol": ta.symbol,
+            "current_weight": round(current, 2),
+            "target_weight": round(ta.weight_pct, 2),
+            "drift": round(current - ta.weight_pct, 2),
+        })
+    return rows
 
 
 _DEFAULT_LIGHT_SNAPSHOT_SCOPE: dict[str, object] = {
@@ -167,7 +184,6 @@ def build_portfolio_snapshot_light(
     scope = _resolve_light_snapshot_scope(page_context)
     summary = repo.get_summary(portfolio_id, user_id)
     positions = repo.get_positions(portfolio_id, user_id) if bool(scope["include_positions"]) or bool(scope["include_weighted_ter"]) else []
-    allocation = repo.get_allocation(portfolio_id, user_id) if bool(scope["include_target_drift"]) else []
 
     snapshot: dict = {
         "portfolio": {
@@ -466,7 +482,6 @@ def build_portfolio_snapshot(
     """Build a compact JSON snapshot of the portfolio for the LLM context."""
     summary = repo.get_summary(portfolio_id, user_id)
     positions = repo.get_positions(portfolio_id, user_id)
-    allocation = repo.get_allocation(portfolio_id, user_id)
 
     # Target allocation (may not exist)
     try:

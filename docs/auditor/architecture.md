@@ -1248,3 +1248,25 @@ cambia, perché, e quali task ne sono toccati.
   (`day_change_pct` −0,09, atteso −0,088 su P = 16.025,46 €); `fail` col codice di prima (−0,13).
   Sul seed: `pass` su 9101, 9102, 9103, 9105, 9107; `skip` `not_applicable` su 9104 ed
   `empty_portfolio` su 9106.
+
+### TASK-85
+
+- **Correzione:** `get_target_drift`, `calculate_pac_contribution` e lo scostamento dello snapshot
+  del Copilot (`copilot/snapshot.py`) prendono il peso attuale da `current_target_weights` di
+  `services/rebalance.py`, la stessa base di `calculate_rebalance_orders` (decisione del
+  proprietario del 2026-11-11): valore degli strumenti con target + liquidità attuale
+  (`summary.cash_balance`, modello della performance di TASK-49), posizioni senza target escluse.
+  `get_target_drift` e il PAC dichiarano `total_value` e `weight_basis_note`; `get_target_drift`
+  anche `cash_balance` e `untargeted_holdings`.
+- **B-DRIFT-REBALANCE-WEIGHTS** (gruppo B, P2, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) niente ramo «denominatore delle posizioni dichiarato» (opzione scartata dal
+  proprietario): i pesi devono coincidere (`T_pp`); (2) confronta anche le righe del PAC; (3)
+  ricalcola la base di `get_target_drift` da `market_value` delle righe e `cash_balance` del
+  riepilogo, quindi nessun ordine in R **non** è `skip`. Nessun nuovo argomento canonico (§5.2).
+- **Test di integrazione:** `test_pac_sum_without_underweight_holding_passes_on_seed` usa i target
+  45/20 su 9105 invece di 60/30: sulla nuova base (20.545 € con 5.545 € di liquidità) i pesi sono
+  48,67/24,34 e con 60/30 entrambi gli strumenti sarebbero sottopesati.
+- **Prova su 9101** (stack di `scripts/auditor/agent_stack.sh`): `pass` col codice corretto
+  (AUDEQ.MI 64,07, AUDBD.MI 18,31, AUDTECH.DE 9,15 nei tre tool, `total_value` 109.256,50); `fail`
+  con il `_get_target_drift` di prima (70,0 / 20,0 / 10,0, `total_value` assente). Sul resto del
+  seed: `skip` `no_targets` su 9102…9105 e 9107, `empty_portfolio` su 9106.
