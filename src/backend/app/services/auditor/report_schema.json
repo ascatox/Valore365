@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://valore365.app/schemas/auditor/report.schema.json",
+  "title": "Auditor dei calcoli: report di un'esecuzione",
+  "description": "Contratto in docs/auditor/architecture.md §4. $defs/Outcome è l'esito restituito da check(ctx, scope); $defs/RuleResult il risultato di una regola su uno scope prodotto dal motore.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "run_id", "mode", "app_version", "started_at", "finished_at", "duration_ms",
+    "user_id", "options", "rules", "scopes", "results", "counts", "by_scope", "by_rule",
+    "tool_calls", "deadline_exceeded", "exit_code"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "pattern": "^[0-9a-f]{32}$"},
+    "mode": {"enum": ["ci", "local", "nightly", "agent"]},
+    "app_version": {"type": "string", "minLength": 1},
+    "started_at": {"$ref": "#/$defs/Timestamp"},
+    "finished_at": {"$ref": "#/$defs/Timestamp"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "user_id": {"type": ["string", "null"]},
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["portfolio_ids", "groups", "rule_ids", "include_aggregate", "include_instruments", "fail_on", "strict_known"],
+      "properties": {
+        "portfolio_ids": {"type": ["array", "null"], "items": {"type": "integer", "minimum": 1}},
+        "groups": {"type": ["array", "null"], "items": {"$ref": "#/$defs/Group"}},
+        "rule_ids": {"type": ["array", "null"], "items": {"$ref": "#/$defs/RuleId"}},
+        "include_aggregate": {"type": "boolean"},
+        "include_instruments": {"type": "boolean"},
+        "fail_on": {"$ref": "#/$defs/Severity"},
+        "strict_known": {"type": "boolean"}
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "group", "severity", "area", "title", "findings", "scopes", "known_defect"],
+        "properties": {
+          "id": {"$ref": "#/$defs/RuleId"},
+          "group": {"$ref": "#/$defs/Group"},
+          "severity": {"$ref": "#/$defs/Severity"},
+          "area": {"$ref": "#/$defs/Area"},
+          "title": {"type": "string", "minLength": 1},
+          "findings": {"type": "array", "items": {"type": "string", "minLength": 1}},
+          "scopes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/ScopeKind"}},
+          "known_defect": {"$ref": "#/$defs/KnownDefect"}
+        }
+      }
+    },
+    "scopes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scope", "scope_key"],
+        "properties": {
+          "scope": {"$ref": "#/$defs/Scope"},
+          "scope_key": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "results": {"type": "array", "items": {"$ref": "#/$defs/RuleResult"}},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "by_status", "by_severity", "known_defect_failures"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "by_status": {"$ref": "#/$defs/StatusCounts"},
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["P0", "P1", "P2"],
+          "properties": {
+            "P0": {"$ref": "#/$defs/StatusCounts"},
+            "P1": {"$ref": "#/$defs/StatusCounts"},
+            "P2": {"$ref": "#/$defs/StatusCounts"}
+          }
+        },
+        "known_defect_failures": {"type": "integer", "minimum": 0}
+      }
+    },
+    "by_scope": {"type": "object", "additionalProperties": {"$ref": "#/$defs/StatusCounts"}},
+    "by_rule": {
+      "type": "object",
+      "propertyNames": {"$ref": "#/$defs/RuleId"},
+      "additionalProperties": {"$ref": "#/$defs/StatusCounts"}
+    },
+    "tool_calls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "cache_hits", "errors", "by_tool"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "cache_hits": {"type": "integer", "minimum": 0},
+        "errors": {"type": "integer", "minimum": 0},
+        "by_tool": {"type": "object", "additionalProperties": {"type": "integer", "minimum": 0}}
+      }
+    },
+    "deadline_exceeded": {"type": "boolean"},
+    "exit_code": {"enum": [0, 1]}
+  },
+  "$defs": {
+    "Timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?(Z|\\+00:00)$"
+    },
+    "RuleId": {"type": "string", "pattern": "^[ABCD]-[A-Z0-9]+(?:-[A-Z0-9]+)*$"},
+    "Group": {"enum": ["A", "B", "C", "D"]},
+    "Severity": {"enum": ["P0", "P1", "P2"]},
+    "Area": {
+      "enum": ["stress", "classification", "rebalance", "simulation", "costs", "income", "montecarlo",
+               "daily", "values", "aggregate", "performance", "doctor", "data"]
+    },
+    "ScopeKind": {"enum": ["portfolio", "aggregate", "instrument", "user"]},
+    "KnownDefect": {"type": ["string", "null"], "pattern": "^TASK-[0-9]+$"},
+    "PortfolioId": {"type": "integer", "minimum": 1},
+    "Scope": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "portfolio_id"],
+          "properties": {"kind": {"const": "portfolio"}, "portfolio_id": {"$ref": "#/$defs/PortfolioId"}}
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "portfolio_ids"],
+          "properties": {
+            "kind": {"const": "aggregate"},
+            "portfolio_ids": {"type": "array", "minItems": 2, "maxItems": 20, "uniqueItems": true, "items": {"$ref": "#/$defs/PortfolioId"}}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "portfolio_id", "symbol"],
+          "properties": {
+            "kind": {"const": "instrument"},
+            "portfolio_id": {"$ref": "#/$defs/PortfolioId"},
+            "symbol": {"type": "string", "minLength": 1, "maxLength": 64}
+          }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "portfolio_ids"],
+          "properties": {
+            "kind": {"const": "user"},
+            "portfolio_ids": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/PortfolioId"}}
+          }
+        }
+      ]
+    },
+    "Evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "args", "path", "observed", "expected", "tolerance", "note"],
+      "properties": {
+        "tool": {"type": "string", "minLength": 1},
+        "args": {"type": "object"},
+        "path": {"type": "string"},
+        "observed": {},
+        "expected": {},
+        "tolerance": {"type": ["number", "null"], "minimum": 0},
+        "note": {"type": ["string", "null"]}
+      }
+    },
+    "SkipCode": {
+      "enum": ["empty_portfolio", "no_targets", "scenario_not_available", "truncated_output",
+               "no_reference_data", "not_applicable", "aggregate_too_small", "no_transactions",
+               "no_history", "feature_disabled"]
+    },
+    "ErrorCode": {"enum": ["exception", "timeout", "tool_error", "invalid_outcome", "deadline_exceeded"]},
+    "FailCode": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+    "Outcome": {
+      "description": "Valore restituito da check(ctx, scope). error non è ammesso: lo produce solo il motore.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "reason_code", "reason", "evidence"],
+      "properties": {
+        "status": {"enum": ["pass", "fail", "skip"]},
+        "reason_code": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/Evidence"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}}},
+          "then": {"properties": {"reason_code": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "fail"}}},
+          "then": {
+            "properties": {
+              "reason_code": {"$ref": "#/$defs/FailCode"},
+              "reason": {"type": "string", "minLength": 1},
+              "evidence": {"minItems": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "skip"}}},
+          "then": {
+            "properties": {
+              "reason_code": {"$ref": "#/$defs/SkipCode"},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          }
+        }
+      ]
+    },
+    "RuleResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "rule_id", "group", "severity", "area", "title", "scope", "scope_key", "status", "reason_code",
+        "reason", "evidence", "evidence_truncated", "duration_ms", "known_defect"
+      ],
+      "properties": {
+        "rule_id": {"$ref": "#/$defs/RuleId"},
+        "group": {"$ref": "#/$defs/Group"},
+        "severity": {"$ref": "#/$defs/Severity"},
+        "area": {"$ref": "#/$defs/Area"},
+        "title": {"type": "string", "minLength": 1},
+        "scope": {"$ref": "#/$defs/Scope"},
+        "scope_key": {"type": "string", "minLength": 1},
+        "status": {"enum": ["pass", "fail", "skip", "error"]},
+        "reason_code": {"type": ["string", "null"]},
+        "reason": {"type": ["string", "null"]},
+        "evidence": {"type": "array", "maxItems": 50, "items": {"$ref": "#/$defs/Evidence"}},
+        "evidence_truncated": {"type": "boolean"},
+        "duration_ms": {"type": "integer", "minimum": 0},
+        "known_defect": {"$ref": "#/$defs/KnownDefect"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"status": {"const": "pass"}}},
+          "then": {"properties": {"reason_code": {"type": "null"}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "fail"}}},
+          "then": {
+            "properties": {
+              "reason_code": {"$ref": "#/$defs/FailCode"},
+              "reason": {"type": "string", "minLength": 1},
+              "evidence": {"minItems": 1}
+            }
+          }
+        },
+        {
+          "if": {"properties": {"status": {"const": "skip"}}},
+          "then": {"properties": {"reason_code": {"$ref": "#/$defs/SkipCode"}, "reason": {"type": "string", "minLength": 1}}}
+        },
+        {
+          "if": {"properties": {"status": {"const": "error"}}},
+          "then": {"properties": {"reason_code": {"$ref": "#/$defs/ErrorCode"}, "reason": {"type": "string", "minLength": 1}}}
+        }
+      ]
+    },
+    "StatusCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pass", "fail", "skip", "error"],
+      "properties": {
+        "pass": {"type": "integer", "minimum": 0},
+        "fail": {"type": "integer", "minimum": 0},
+        "skip": {"type": "integer", "minimum": 0},
+        "error": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}
