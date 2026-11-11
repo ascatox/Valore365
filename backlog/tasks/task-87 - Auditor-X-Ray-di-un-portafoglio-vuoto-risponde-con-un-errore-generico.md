@@ -1,7 +1,7 @@
 ---
 id: TASK-87
 title: 'Auditor: X-Ray di un portafoglio vuoto risponde con un errore generico'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T12:00:00Z'
 labels:
@@ -34,7 +34,7 @@ Deduplica: il comportamento è annotato in `docs/auditor/architecture.md`, Devia
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `get_xray_summary` su un portafoglio vuoto risponde con un output vuoto dichiarato (coperture 0 o null, esposizioni vuote, nota) oppure con un errore esplicito «portafoglio senza posizioni», distinto dall'errore generico; stesso comportamento per l'aggregato composto solo da portafogli vuoti
-- [ ] #2 Test unitario e verifica sul portafoglio 9106 del seed
-- [ ] #3 Attivata la regola proposta `D-XRAY-EMPTY` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9106; aggiornata la nota delle Deviazioni TASK-78
+- [x] #1 `get_xray_summary` su un portafoglio vuoto risponde con un output vuoto dichiarato (coperture 0 o null, esposizioni vuote, nota) oppure con un errore esplicito «portafoglio senza posizioni», distinto dall'errore generico; stesso comportamento per l'aggregato composto solo da portafogli vuoti
+- [x] #2 Test unitario e verifica sul portafoglio 9106 del seed
+- [x] #3 Attivata la regola proposta `D-XRAY-EMPTY` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9106; aggiornata la nota delle Deviazioni TASK-78
 <!-- AC:END -->

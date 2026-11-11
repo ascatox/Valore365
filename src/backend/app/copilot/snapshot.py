@@ -216,16 +216,9 @@ def build_portfolio_snapshot_light(
         try:
             target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
             if target_alloc:
-                alloc_map = {a.asset_id: a.weight_pct for a in allocation}
-                snapshot["target_drift"] = [
-                    {
-                        "symbol": ta.symbol,
-                        "current_weight": round(alloc_map.get(ta.asset_id, 0.0), 2),
-                        "target_weight": round(ta.weight_pct, 2),
-                        "drift": round(alloc_map.get(ta.asset_id, 0.0) - ta.weight_pct, 2),
-                    }
-                    for ta in target_alloc
-                ]
+                snapshot["target_drift"] = _target_drift_rows(
+                    positions or repo.get_positions(portfolio_id, user_id) or [], target_alloc, summary,
+                )
         except Exception:
             pass
 
@@ -512,17 +505,8 @@ def build_portfolio_snapshot(
         for p in sorted_positions
     ]
 
-    # Target drift
-    alloc_map = {a.asset_id: a.weight_pct for a in allocation}
-    drift_list = []
-    for ta in target_alloc:
-        current = alloc_map.get(ta.asset_id, 0.0)
-        drift_list.append({
-            "symbol": ta.symbol,
-            "current_weight": round(current, 2),
-            "target_weight": round(ta.weight_pct, 2),
-            "drift": round(current - ta.weight_pct, 2),
-        })
+    # Target drift (same weights as get_target_drift, TASK-85)
+    drift_list = _target_drift_rows(positions, target_alloc, summary) if target_alloc else []
 
     snapshot = {
         "portfolio": {
