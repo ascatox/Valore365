@@ -361,16 +361,17 @@ n = numero di ordini (o di righe della distribuzione).
 - **Titolo:** Nel PAC la somma dei versamenti per strumento è uguale all'importo indicato
 - **Sev.** P1 · **Area** rebalance · **Finding** — (proprietà di conservazione; audit §E) · **Scope** portfolio
 - **Tool:** `calculate_pac_contribution` `{"monthly_amount": 500.0}`.
-- **Condizione:** `monthly_amount == 500.0`; `|total_allocated − 500.0| ≤ T_eur`;
+- **Condizione:** `monthly_amount == 500.0`; `|total_allocated + unallocated_amount − 500.0| ≤ T_eur`
+  (`unallocated_amount` assente vale 0); se `unallocated_amount > T_eur`, `note` non vuota;
   `|Σ distribution[].amount_eur − total_allocated| ≤ T_sum_eur(n)`.
 - **Tolleranze:** `T_eur`, `T_sum_eur(n)`.
 - **Skip:** `empty_portfolio`; `no_targets`.
 - **Prova:** 9101.
-- **Difetto:** distribuzione vuota con `total_allocated` 500 (tutti gli strumenti già a target o
-  sopra: il ramo «remaining» del codice attuale distribuisce il residuo solo sulle righe già presenti
-  e azzera `remaining` anche se non ce ne sono). Nota: è un **difetto probabile del codice attuale**
-  quando i target sommano meno di 100 o nessuno strumento è sottopesato; TASK-79 verifica e, se si
-  conferma, apre il task e marca `known_defect`.
+- **Difetto:** distribuzione vuota con `total_allocated` 500, cioè un importo dichiarato allocato
+  senza alcuno strumento di destinazione; somma dei versamenti diversa da `total_allocated`.
+  Con nessuno strumento sottopesato (tutti a target o sopra, per esempio target che sommano meno di
+  100) il tool, da TASK-83, risponde con distribuzione vuota, `total_allocated` 0,
+  `unallocated_amount` 500 e una nota: la regola dà `pass`. Era il difetto noto TASK-83 (§6).
 
 ### B-PAC-UNDERWEIGHT-ONLY
 - **Titolo:** Il PAC versa solo sugli strumenti sotto il peso obiettivo
@@ -842,7 +843,17 @@ attiva con `known_defect` nella dichiarazione.
 
 | regola | difetto | task | dal |
 |---|---|---|---|
-| `B-PAC-SUM` | `calculate_pac_contribution` con nessuno strumento sottopesato (tutti a target o sopra, per esempio target che sommano meno di 100): `distribution` vuota ma `total_allocated` pari all'intero importo. Il seed non lo esercita (in 9101 `AUDBD.MI` è sottopesato, la regola dà `pass`); riprodotto sul seed con target 60/30 su 9105 in `tests/integration/test_auditor_postgres.py` e in `tests/unit/test_auditor_rules_rebalance.py` | TASK-83 | 2026-11-11 |
+
+Nessun difetto noto aperto.
+
+Risolti:
+
+- `B-PAC-SUM` — `calculate_pac_contribution` con nessuno strumento sottopesato dichiarava allocato
+  l'intero importo con `distribution` vuota (riprodotto con target 60/30 su 9105). Risolto da
+  TASK-83 (2026-11-11): distribuzione vuota, `total_allocated` 0, `unallocated_amount` e una nota;
+  versamenti ripartiti al centesimo (la somma delle righe è esattamente `total_allocated`). Campo
+  `known_defect` tolto; `tests/integration/test_auditor_postgres.py` verifica `pass` e uscita 0
+  anche con `--strict-known`.
 
 Come si marca un difetto noto: `"known_defect": "TASK-NN"` nella dichiarazione della regola, una riga
 qui, il task nel backlog con l'evidenza del report. Un `fail` su una regola marcata non fa fallire la
@@ -920,7 +931,8 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
 - **`get_recent_transactions`** restituisce solo 20 righe e la tabella `transactions` non ha l'id del
   lotto d'import: duplicati e prezzi d'import richiedono `ctx.transactions` e il criterio «righe
   identiche».
-- **`calculate_pac_contribution`**: con nessuno strumento sottopesato la distribuzione è vuota ma
-  `total_allocated` vale l'importo (B-PAC-SUM lo segnala).
+- **`calculate_pac_contribution`**: con nessuno strumento sottopesato non distribuisce nulla e lo
+  dichiara (`total_allocated` 0, `unallocated_amount`, `note`; TASK-83, prima `total_allocated`
+  valeva l'importo).
 - **TASK-78** parla di «tentativo di import duplicato»: un seed SQL non passa dal flusso d'import;
   il caso è rappresentato come in §1.

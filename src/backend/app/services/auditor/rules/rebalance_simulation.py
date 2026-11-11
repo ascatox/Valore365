@@ -487,9 +487,20 @@ def check_pac_sum(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
     (passed if monthly == PAC_MONTHLY_AMOUNT else violations).append(ev)
 
     total = _num(pac.get("total_allocated"))
-    ev = _ev(PAC_TOOL, args, "total_allocated", pac.get("total_allocated"), PAC_MONTHLY_AMOUNT, T_EUR,
-             "totale allocato = importo indicato")
-    (violations if total is None or abs(total - PAC_MONTHLY_AMOUNT) > T_EUR + EPS else passed).append(ev)
+    # TASK-83: con nessuno strumento sottopesato il tool non distribuisce nulla e lo dichiara
+    # (total_allocated 0, unallocated_amount = importo, nota). Conservazione:
+    # total_allocated + unallocated_amount = importo indicato.
+    unallocated = _num(pac.get("unallocated_amount", 0.0))
+    if unallocated is None:
+        unallocated = 0.0
+    declared = None if total is None else total + unallocated
+    ev = _ev(PAC_TOOL, args, "total_allocated + unallocated_amount", None if declared is None else _r(declared, 2),
+             PAC_MONTHLY_AMOUNT, T_EUR, "totale allocato + non allocato = importo indicato")
+    (violations if declared is None or abs(declared - PAC_MONTHLY_AMOUNT) > T_EUR + EPS else passed).append(ev)
+    if unallocated > T_EUR + EPS:
+        ev = _ev(PAC_TOOL, args, "note", pac.get("note"), "testo", None,
+                 "importo non allocato spiegato da una nota")
+        (passed if isinstance(pac.get("note"), str) and pac["note"].strip() else violations).append(ev)
 
     rows = [d for d in (pac.get("distribution") or []) if isinstance(d, dict)]
     amounts = [_num(d.get("amount_eur")) for d in rows]
@@ -747,9 +758,6 @@ RULES: list[dict[str, Any]] = [
         "scopes": ["portfolio"],
         "tools": ["calculate_pac_contribution", "get_positions"],
         "check": check_pac_sum,
-        # Difetto reale del codice attuale (distribuzione vuota con total_allocated pieno):
-        # rules.md §6 «Difetti noti». Togliere quando TASK-83 è chiuso.
-        "known_defect": "TASK-83",
     },
     {
         "id": "B-PAC-UNDERWEIGHT-ONLY",

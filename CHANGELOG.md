@@ -93,6 +93,12 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
   riconduce a lettere latine prima dei controlli su strumenti, indicazioni operative e verdetti.
 - Copilot (chiamata strutturata): i log e i messaggi d'errore di una risposta fuori schema
   non riportano più il testo prodotto dal modello, solo il percorso e la regola violata.
+- PAC (`calculate_pac_contribution`, Copilot e MCP): con nessuno strumento sotto il peso
+  obiettivo (tutti a target o sopra, per esempio target che sommano meno di 100) il tool
+  dichiarava allocato l'intero importo con una distribuzione vuota. Ora risponde con
+  `total_allocated` 0, `unallocated_amount` pari all'importo e una nota che spiega perché; i
+  versamenti sono ripartiti al centesimo, quindi la loro somma è sempre esattamente
+  `total_allocated`. La regola dell'Auditor `B-PAC-SUM` non è più un difetto noto (TASK-83).
 
 ### Security
 

@@ -237,7 +237,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Calcola come distribuire un versamento periodico (PAC) mensile "
             "tra gli asset del portafoglio per avvicinarsi al target. "
-            "Prioritizza le posizioni piu' sotto-pesate."
+            "Versa solo sulle posizioni sotto-pesate, in proporzione allo scostamento "
+            "dal target. Se nessuna posizione e' sotto il target restituisce "
+            "distribuzione vuota, total_allocated 0, unallocated_amount e una nota."
         ),
         "parameters": {
             "type": "object",
@@ -1209,27 +1211,55 @@ def _calculate_pac_contribution(
     # Sort: most under-weight first
     assets_with_drift.sort(key=lambda a: a["drift"])
 
-    # Distribute: proportional to negative drift, capped
-    total_negative_drift = sum(abs(a["drift"]) for a in assets_with_drift if a["drift"] < 0)
-    remaining = monthly_amount
-    distribution = []
-
-    new_total = total_value + monthly_amount
-
-    for asset in assets_with_drift:
-        if remaining <= 0:
-            break
-        if asset["drift"] >= 0:
-            # Already at or above target, skip
-            continue
-        # Allocate proportionally to drift
-        if total_negative_drift > 0:
-            share = abs(asset["drift"]) / total_negative_drift
+    # TASK-83: the amount is split in whole cents, so the rows always add up
+    # exactly to ``total_allocated`` and nothing is declared allocated without
+    # a destination.
+    total_cents = int(round(float(monthly_amount) * 100))
+    if total_cents <= 0:
+        return {"error": "Importo mensile deve essere almeno 0,01 EUR"}
+    underweight = [a for a in assets_with_drift if a["drift"] < 0]
+    if not underweight:
+        # No instrument is below its target (all at target or above, e.g. when
+        # the targets add up to less than 100): there is no declared rule to
+        # pick a destination, so nothing is allocated and the note says why.
+        target_sum = sum(ta.weight_pct for ta in target_alloc)
+        note = (
+            "Nessuno strumento è sotto il proprio peso obiettivo: l'importo non è "
+            "stato distribuito (totale allocato 0)."
+        )
+        if target_sum < 100 - 0.01:
+            note += (
+                f" I pesi obiettivo sommano a {round(target_sum, 2)}% invece di 100%: "
+                "completa i target per ricevere una ripartizione del PAC."
+            )
         else:
-            share = 1.0 / len(assets_with_drift)
-        amount = min(round(share * monthly_amount, 2), remaining)
-        remaining -= amount
+            note += (
+                " Per mantenere il portafoglio sui target puoi ripartire il versamento "
+                "in proporzione ai pesi obiettivo."
+            )
+        return {
+            "monthly_amount": monthly_amount,
+            "distribution": [],
+            "total_allocated": 0.0,
+            "unallocated_amount": round(total_cents / 100, 2),
+            "note": note,
+        }
 
+    # Distribute proportionally to the negative drift (largest remainder on cents).
+    total_negative_drift = sum(-a["drift"] for a in underweight)
+    raw_cents = [(-a["drift"]) / total_negative_drift * total_cents for a in underweight]
+    cents = [int(c) for c in raw_cents]
+    leftover = total_cents - sum(cents)
+    by_remainder = sorted(range(len(underweight)), key=lambda i: (cents[i] - raw_cents[i], i))
+    for i in by_remainder[:leftover]:
+        cents[i] += 1
+
+    new_total = total_value + total_cents / 100
+    distribution = []
+    for asset, c in zip(underweight, cents):
+        if c <= 0:
+            continue
+        amount = c / 100
         pos = pos_map.get(asset["symbol"])
         old_value = pos.market_value if pos else 0
         new_value = old_value + amount
@@ -1247,17 +1277,11 @@ def _calculate_pac_contribution(
             "new_weight_after": round(new_weight, 2),
         })
 
-    # If there's remaining cash (all at target), distribute proportionally to targets
-    if remaining > 0.01 and target_alloc:
-        for d in distribution:
-            bonus = remaining * (d["target_weight"] / 100)
-            d["amount_eur"] = round(d["amount_eur"] + bonus, 2)
-        remaining = 0
-
     return {
         "monthly_amount": monthly_amount,
         "distribution": distribution,
-        "total_allocated": round(monthly_amount - remaining, 2),
+        "total_allocated": round(sum(cents) / 100, 2),
+        "unallocated_amount": 0.0,
     }
 
 
