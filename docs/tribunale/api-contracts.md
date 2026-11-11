@@ -1496,3 +1496,47 @@ margine:
   non è nel DOM e la pagina non chiama gli endpoint del Tribunale.
 - **Indicatore di freschezza** (`FreshnessIndicator`, della valutazione di «I miei parametri»):
   resta sopra tutte le sezioni, Tribunale compresa, come oggi per il Laboratorio.
+
+### TASK-70
+
+Props e `buildContestedCopilotPrompt` come in `architecture.md` §3.3; testo del prompt come in
+`ui-spec.md` §9. Letture e scostamenti:
+
+- **Editor delle regole (file di «I miei parametri», fuori dalla tabella di proprietà)**: la bozza
+  esistente (`initialDraft`) sostituisce le regole e si presenta come «Bozza del Copilot», quindi
+  non va bene per una regola nata dal Tribunale. Aggiunte due prop opzionali, senza cambiare il
+  resto: `DoctorParametriSection.ruleToAdd` / `onRuleToAddConsumed` (apre l'editor solo dopo il
+  caricamento della policy salvata e delle metriche, così le regole esistenti restano) e
+  `DoctorPolicyRuleEditor.addMetricCode`. L'editor aggiunge alle regole salvate una regola sulla
+  metrica con `newRule` (soglie vuote, `source` `manual`) e la evidenzia; se esiste già una regola su
+  quella metrica evidenzia quella senza duplicarla; avviso `data-testid="editor-tribunal-rule"`
+  (`data-kind`: `added`, `existing`, `full` con 20 regole, `unknown`). Il salvataggio passa sempre
+  da «Verifica e anteprima» → «Conferma e salva». I componenti di TASK-68 non sono modificati.
+- **Metriche**: la pagina passa al componente solo i `metric_codes` presenti nel registry del Doctor
+  (`/doctor/metrics`, se caricato); con più codici il pulsante apre un menu «Su quale metrica?» con
+  l'etichetta del fatto `metric.<code>` del fascicolo.
+- **Laboratorio**: l'azione azzera anche un eventuale `labPrefill` lasciato da «Simula» su una
+  regola, così lo scenario parte vuoto.
+- **Vista aggregata**: le tre azioni restano (§9); sotto i pulsanti, se compaiono Parametri o
+  Laboratorio, la nota «Parametri e scenari valgono per l'insieme dei portafogli selezionati.»
+- **Privacy Mode nel prompt**: oltre a omettere i fatti `sensitive` da «Dati citati», nel testo del
+  punto e dei lati il loro valore diventa «[dato nascosto]»; `maskMoneyInText` sul testo libero.
+- File in più: `TribunalContestedActions.tsx` esporta anche `contestedFactIds` e
+  `metricLabelFromCaseFile`; test di pagina in `src/pages/Doctor.tribunalActions.test.tsx`.
+
+### TASK-71
+
+Correzioni di difetti trovati dalle prove avversarie (`tests/integration/test_tribunal_adversarial.py`,
+`docs/tribunale/test-report.md`); nessun cambiamento a eventi, schemi o codici:
+
+- **Verificatore, omoglifi** (§7.5–§7.7): prima dei controlli su ISIN, ticker, emittenti, indicazioni
+  operative e verdetti il testo (già NFKC) è anche ripiegato su lettere latine: lettere cirilliche,
+  greche e armene identiche a lettere latine → lettera latina, poi NFKD senza segni diacritici
+  combinanti (categoria `Mn`). Così «cоmprare» (о cirillica), «cómprare» (accento combinante) e
+  «VWСE» (С cirillica) sono scartati con `indicazione_operativa` / `strumento_non_ammesso` come le
+  forme latine. Il controllo delle cifre libere (§7.4) resta sul testo NFKC. Effetto collaterale
+  accettato: una parola maiuscola accentata di 2–6 lettere (es. «PIÙ») diventa un ticker non ammesso,
+  come già le parole maiuscole per enfasi.
+- **Chiamata strutturata** (§8.4): il messaggio di `_SchemaMismatch` (log `Structured output non
+  conforme …` e messaggio di `StructuredOutputSchemaError`) riporta solo il percorso e la regola dello
+  schema violata, non più `ValidationError.message`, che conteneva il valore prodotto dal modello.

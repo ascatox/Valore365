@@ -27,7 +27,7 @@ Gruppo C: costi, reddito, dividendi, Monte Carlo e variazioni giornaliere. Copro
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 Sono implementate tutte le regole del gruppo C del catalogo
-- [ ] #2 Tra le regole: il TER di un ETF è nell'intervallo plausibile del contratto e il costo annuo è coerente con TER medio e valore coperto; il reddito di un ETF obbligazionario non è classificato come azionario; il Monte Carlo restituisce esattamente gli anni previsti con percentili ordinati (p10 ≤ p50 ≤ p90); i totali dei dividendi sono separati per valuta; una variazione giornaliera assente non è riportata come zero
+- [ ] #2 Tra le regole: il TER di un ETF è nell'intervallo plausibile del contratto e il costo annuo è coerente con TER medio e valore coperto; il reddito di un ETF obbligazionario non è classificato come azionario; il Monte Carlo restituisce esattamente gli anni previsti con percentili ordinati (p25 ≤ p50 ≤ p75, quelli esposti da `get_monte_carlo`); i totali dei dividendi sono separati per valuta; una variazione giornaliera assente non è riportata come zero
 - [ ] #3 Le regole vanno in `skip` quando i dati di riferimento mancano (TER non noto, nessun dividendo, mercato chiuso)
 - [ ] #4 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
 <!-- AC:END -->

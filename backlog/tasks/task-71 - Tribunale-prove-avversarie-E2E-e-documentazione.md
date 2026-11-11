@@ -1,7 +1,7 @@
 ---
 id: TASK-71
 title: 'Tribunale: prove avversarie, E2E e documentazione'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T09:00:00Z'
 labels:
@@ -26,13 +26,13 @@ La promessa del Tribunale è che nessun numero inventato e nessun consiglio d'ac
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Un LLM finto produce a comando: numeri scritti nel testo, fatti inesistenti, indicazioni di acquisto, strumenti fuori dal portafoglio, JSON non valido, risposta lenta; per ciascun caso un test dimostra che nulla di scorretto compare negli eventi inviati al frontend
-- [ ] #2 Un portafoglio di prova con un'istruzione nascosta nel nome di uno strumento non altera il comportamento delle voci
-- [ ] #3 Un test verifica su una seduta completa che ogni numero visibile all'utente coincide con un valore del fascicolo
-- [ ] #4 Un E2E su stack reale copre: avvio della seduta dal Doctor, comparsa progressiva delle tre voci, apertura di un fatto citato, sintesi, riapertura con seduta salvata, vista aggregata, mobile
-- [ ] #5 Uno script opzionale esegue una seduta contro un provider reale sui portafogli di esempio e riporta argomenti ammessi e scartati per voce e per codice, per valutare modifiche a prompt e modello
-- [ ] #6 README e CHANGELOG descrivono il Tribunale e la variabile `DOCTOR_TRIBUNAL_ENABLED`; `docs/tribunale/test-report.md` riporta cosa è stato eseguito e l'esito
-- [ ] #7 La suite backend e frontend esistente passa per intero
+- [x] #1 Un LLM finto produce a comando: numeri scritti nel testo, fatti inesistenti, indicazioni di acquisto, strumenti fuori dal portafoglio, JSON non valido, risposta lenta; per ciascun caso un test dimostra che nulla di scorretto compare negli eventi inviati al frontend
+- [x] #2 Un portafoglio di prova con un'istruzione nascosta nel nome di uno strumento non altera il comportamento delle voci
+- [x] #3 Un test verifica su una seduta completa che ogni numero visibile all'utente coincide con un valore del fascicolo
+- [x] #4 Un E2E su stack reale copre: avvio della seduta dal Doctor, comparsa progressiva delle tre voci, apertura di un fatto citato, sintesi, riapertura con seduta salvata, vista aggregata, mobile
+- [x] #5 Uno script opzionale esegue una seduta contro un provider reale sui portafogli di esempio e riporta argomenti ammessi e scartati per voce e per codice, per valutare modifiche a prompt e modello
+- [x] #6 README e CHANGELOG descrivono il Tribunale e la variabile `DOCTOR_TRIBUNAL_ENABLED`; `docs/tribunale/test-report.md` riporta cosa è stato eseguito e l'esito
+- [x] #7 La suite backend e frontend esistente passa per intero
 <!-- AC:END -->
 
 ## Implementation Notes

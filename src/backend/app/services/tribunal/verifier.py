@@ -123,6 +123,31 @@ VERDICT_RE = re.compile(
     r"\b(?:vince|vincono|vincitore|vincitrice|vincente|vincenti|perdente|perdenti|sconfitt\w*|verdetto"
     r"|ha ragione|hanno ragione|ha torto|hanno torto|la voce migliore|la tesi migliore)\b")
 
+# TASK-71: lettere di altri alfabeti identiche a lettere latine (omoglifi) e segni diacritici
+# combinanti aggirerebbero le regex ASCII di §7.5–§7.7 («cоmprare» con la «о» cirillica, «VWСE»
+# con la «С» cirillica, «cómprare» con l'accento combinante). Solo per questi controlli il testo
+# è ripiegato su lettere latine senza segni diacritici (§7.4 resta sul testo NFKC).
+_CONFUSABLES = str.maketrans({
+    # cirillico
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P", "С": "C",
+    "Т": "T", "У": "Y", "Х": "X", "Ѕ": "S", "І": "I", "Ј": "J", "Ԛ": "Q", "Ԝ": "W", "Ү": "Y",
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x", "ѕ": "s", "і": "i",
+    "ј": "j", "ԁ": "d", "ԛ": "q", "ԝ": "w", "һ": "h", "ӏ": "l", "ү": "y", "ɡ": "g",
+    # greco
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M", "Ν": "N",
+    "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "α": "a", "ι": "i", "κ": "k", "ν": "v",
+    "ο": "o", "ρ": "p", "υ": "u",
+    # armeno e latino esteso
+    "օ": "o", "ս": "u", "ı": "i", "ȷ": "j",
+})
+
+
+def _fold(scan: str) -> str:
+    """Omoglifi → lettere latine, poi via i segni diacritici (NFKD senza categoria Mn)."""
+    decomposed = unicodedata.normalize("NFKD", scan.translate(_CONFUSABLES))
+    return unicodedata.normalize("NFC", "".join(ch for ch in decomposed if unicodedata.category(ch) != "Mn"))
+
+
 _WS_RE = re.compile(r"\s+")
 _ITEM_REF_RE = re.compile(r"^[AR]-(IND|FAT|PRU)-[1-9]$")
 
@@ -229,7 +254,7 @@ class _Context:
                 isins.add(isin)
             name = inst.get("name")
             if isinstance(name, str):
-                names.append(name.lower())
+                names.append(_fold(name).lower())
         prefixes = {s.split(".", 1)[0] for s in symbols if "." in s}
         self.isins = frozenset(isins)
         self.tickers_ok = frozenset(symbols | prefixes | ALLOWED_ACRONYMS)
@@ -291,13 +316,16 @@ def _has_free_figure(scan: str, fact_ids: list[str], ctx: _Context) -> bool:
 def _check_content(template: str, fact_ids: list[str], ctx: _Context) -> str | None:
     """Checks 11–14 on one normalized text; returns the first code or ``None``."""
     scan = _scan_text(template)
+    folded = _fold(scan)
     try:
         _check_instruments(scan, ctx)
+        if folded != scan:
+            _check_instruments(folded, ctx)
     except _Reject as exc:
         return exc.code
     if _has_free_figure(scan, fact_ids, ctx):
         return "cifra_libera"
-    lower = scan.lower()
+    lower = folded.lower()
     if OPERATIVE_RE.search(lower):
         return "indicazione_operativa"
     if VERDICT_RE.search(lower):

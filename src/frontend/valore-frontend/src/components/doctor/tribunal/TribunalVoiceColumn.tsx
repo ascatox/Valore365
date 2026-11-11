@@ -3,7 +3,7 @@ import { IconArrowBackUp, IconMessageOff } from '@tabler/icons-react';
 import type { TribunalArgument, TribunalRebuttal, TribunalVoiceError, TribunalVoiceInfo } from '../../../services/api/tribunalTypes';
 import { TribunalArgumentCard } from './TribunalArgumentCard';
 import { useTribunalView } from './tribunalContext';
-import { voiceColorVar, voiceErrorMessage, voiceName } from './tribunalFormat';
+import { voiceColorVar, voiceErrorMessage, voiceWithPreposition } from './tribunalFormat';
 
 /** Dati di una voce già pronti per la resa (vedi `buildVoiceViews`). */
 export interface TribunalVoiceView {
@@ -40,7 +40,7 @@ interface TribunalVoiceColumnProps {
 
 /** Colonna di una voce: nome, mandato, stato e argomenti (ui-spec §2, §3.2, §4). */
 export function TribunalVoiceColumn({ view, rebuttalsByTarget }: TribunalVoiceColumnProps) {
-  const { voices, privacy, goTo } = useTribunalView();
+  const { privacy, goTo } = useTribunalView();
   const { info } = view;
   const openingError = view.errors.find((error) => error.phase === 'apertura') ?? null;
   const laterErrors = view.errors.filter((error) => error.phase !== 'apertura');
@@ -114,7 +114,7 @@ export function TribunalVoiceColumn({ view, rebuttalsByTarget }: TribunalVoiceCo
               onClick={() => goTo(rebuttal.target_argument_id)}
               styles={{ label: { whiteSpace: 'normal', textAlign: 'left' }, root: { height: 'auto', minHeight: 28 } }}
             >
-              {`Ha replicato a ${voiceName(rebuttal.target_voice, voices)}`}
+              {`Ha replicato ${voiceWithPreposition('a', rebuttal.target_voice)}`}
             </Button>
           ))}
         </Stack>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActionIcon,
   Alert,
@@ -59,6 +59,11 @@ interface DoctorPolicyRuleEditorProps {
   focusRuleId?: string | null;
   /** Copilot draft loaded instead of the saved rules (still validated, previewed and confirmed here). */
   initialDraft?: DoctorPolicyDraftPayload | null;
+  /**
+   * Metric of a new rule to add to the saved rules, with empty thresholds (from the Tribunale).
+   * If a rule on that metric already exists it is highlighted instead; nothing is saved here.
+   */
+  addMetricCode?: string | null;
   onSaved: (policy: DoctorPolicyRead) => void;
   onReload: () => void;
   isMobile: boolean;
@@ -103,12 +108,40 @@ const templateKey = (template: DoctorPolicyTemplate) => template.template_id ?? 
 const RULE_FIELD = /^rules\[(\d+)\]\.(\w+)$/;
 
 export function DoctorPolicyRuleEditor({
-  onClose, portfolioIds, scopeLabel, policy, metrics, templates, focusRuleId, initialDraft, onSaved, onReload, isMobile,
+  onClose, portfolioIds, scopeLabel, policy, metrics, templates, focusRuleId, initialDraft, addMetricCode, onSaved, onReload, isMobile,
 }: DoctorPolicyRuleEditorProps) {
   const baseVersion = policy?.current_version ?? null;
   const draftDocument = initialDraft?.preview.normalized_document ?? null;
   const [name, setName] = useState(initialDraft?.name?.trim() || policy?.name || DEFAULT_POLICY_NAME);
-  const [rules, setRules] = useState<DoctorPolicyRule[]>(() => cloneRules(draftDocument?.rules ?? policy?.document.rules ?? []));
+  // Rule requested from the Tribunale (computed once, at opening): added without thresholds, or
+  // the existing rule on the same metric.
+  const [metricRequest] = useState(() => {
+    if (!addMetricCode || draftDocument) return null;
+    const savedRules = policy?.document.rules ?? [];
+    const existing = savedRules.find((rule) => rule.metric_code === addMetricCode);
+    if (existing) return { kind: 'existing' as const, rule: existing };
+    const metric = metrics.find((item) => item.code === addMetricCode);
+    if (!metric) return { kind: 'unknown' as const };
+    if (savedRules.length >= MAX_RULES) return { kind: 'full' as const };
+    return { kind: 'added' as const, rule: newRule(metric) };
+  });
+  const [rules, setRules] = useState<DoctorPolicyRule[]>(() => {
+    const initial = cloneRules(draftDocument?.rules ?? policy?.document.rules ?? []);
+    return metricRequest?.kind === 'added' ? [...initial, { ...metricRequest.rule }] : initial;
+  });
+  const highlightRuleId = focusRuleId
+    ?? (metricRequest?.kind === 'added' || metricRequest?.kind === 'existing' ? metricRequest.rule.rule_id : null);
+  const requestedRuleId = metricRequest?.kind === 'added' || metricRequest?.kind === 'existing' ? metricRequest.rule.rule_id : null;
+
+  useEffect(() => {
+    if (!requestedRuleId) return undefined;
+    // The modal renders in a portal: bring the requested rule into view once it is mounted.
+    const frame = window.requestAnimationFrame(() => {
+      const card = window.document.querySelector(`[data-testid="rule-editor-${requestedRuleId}"]`);
+      card?.scrollIntoView?.({ block: 'nearest' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [requestedRuleId]);
   const [source, setSource] = useState<DoctorPolicySource>(draftDocument ? 'copilot' : 'manual');
   const [fieldErrors, setFieldErrors] = useState<DoctorFieldError[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -254,6 +287,18 @@ export function DoctorPolicyRuleEditor({
               Bozza del Copilot caricata: rivedi le regole, poi verifica e conferma. Nulla è salvato finché non confermi.
             </Alert>
           )}
+          {metricRequest && addMetricCode && (
+            <Alert color="blue" variant="light" data-testid="editor-tribunal-rule" data-kind={metricRequest.kind}>
+              {metricRequest.kind === 'added'
+                && `Nuova regola su «${metricLabel(addMetricCode, metrics)}» aggiunta senza soglie: scegli tu i valori, poi verifica e conferma. Nulla è salvato finché non confermi.`}
+              {metricRequest.kind === 'existing'
+                && `Hai già una regola su «${metricLabel(addMetricCode, metrics)}»: è evidenziata qui sotto. Nulla è salvato finché non confermi.`}
+              {metricRequest.kind === 'full'
+                && `Hai già ${MAX_RULES} regole: per aggiungerne una su «${metricLabel(addMetricCode, metrics)}» rimuovine prima un'altra.`}
+              {metricRequest.kind === 'unknown'
+                && 'Questa metrica non è tra quelle che puoi usare nelle regole: scegline una qui sotto.'}
+            </Alert>
+          )}
           {conflictAlert}
           {error && <Alert color="red" variant="light">{error}</Alert>}
           {generalErrors.length > 0 && (
@@ -290,7 +335,7 @@ export function DoctorPolicyRuleEditor({
           {rules.map((rule, index) => {
             const metric = metrics.find((item) => item.code === rule.metric_code);
             const operators = metric?.operators ?? ['min', 'max', 'range'];
-            const highlighted = focusRuleId === rule.rule_id;
+            const highlighted = highlightRuleId === rule.rule_id;
             return (
               <Card
                 key={`${rule.rule_id}-${index}`}

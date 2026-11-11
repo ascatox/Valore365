@@ -1,7 +1,7 @@
 ---
 id: TASK-72
 title: 'Auditor: contratto, catalogo delle regole e architettura'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -24,13 +24,13 @@ L'Auditor rende l'audit continuo, su due livelli: regole deterministiche (invari
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Esiste `docs/auditor/architecture.md` con: moduli in `src/backend/app/services/auditor/`, firme pubbliche di registro, regola, contesto, esecutore, risultato e report; la tabella task → file di proprietà per TASK-73…82; le tre modalità di esecuzione (CI su fixture, notturna in produzione, agente settimanale) con cosa leggono e dove scrivono
-- [ ] #2 Il documento definisce lo schema del risultato di una regola e del report di un'esecuzione (JSON Schema ed esempio), con codici di esito `pass` / `fail` / `skip` / `error`, severità P0/P1/P2 e codice di uscita della CLI
-- [ ] #3 Il contesto chiama i tool tramite `run_tool_sync` di `app/mcp_server/tools.py` con memoizzazione per esecuzione; il documento elenca quali tool usa ciascun gruppo di regole e come si ottengono gli scope (singolo, aggregato, strumento)
-- [ ] #4 Esiste `docs/auditor/rules.md`: catalogo di tutte le regole previste (id, titolo, severità, finding di origine, tool letti, condizione esatta, tolleranze numeriche, quando la regola va in `skip`) per i quattro gruppi di TASK-74…77; ogni finding P0 e P1 del rapporto di novembre è coperto da almeno una regola oppure è indicato perché non è verificabile con un'invariante
-- [ ] #5 Il documento fissa la privacy: cosa contiene un'evidenza in CI (tutto, sono dati di prova), cosa si salva della corsa notturna in produzione (solo id regola, esito, portafoglio, severità, nessun importo né nome di strumento) e cosa vede l'utente
-- [ ] #6 Esiste `docs/auditor/agent-playbook.md` con il mandato dell'agente settimanale: metodologia (dalla metodologia dell'audit di novembre), formato di un sospetto, criteri per promuoverlo a finding, deduplica con backlog e regole, divieto di correggere codice
-- [ ] #7 Nessun codice applicativo viene modificato
+- [x] #1 Esiste `docs/auditor/architecture.md` con: moduli in `src/backend/app/services/auditor/`, firme pubbliche di registro, regola, contesto, esecutore, risultato e report; la tabella task → file di proprietà per TASK-73…82; le tre modalità di esecuzione (CI su fixture, notturna in produzione, agente settimanale) con cosa leggono e dove scrivono
+- [x] #2 Il documento definisce lo schema del risultato di una regola e del report di un'esecuzione (JSON Schema ed esempio), con codici di esito `pass` / `fail` / `skip` / `error`, severità P0/P1/P2 e codice di uscita della CLI
+- [x] #3 Il contesto chiama i tool tramite `run_tool_sync` di `app/mcp_server/tools.py` con memoizzazione per esecuzione; il documento elenca quali tool usa ciascun gruppo di regole e come si ottengono gli scope (singolo, aggregato, strumento)
+- [x] #4 Esiste `docs/auditor/rules.md`: catalogo di tutte le regole previste (id, titolo, severità, finding di origine, tool letti, condizione esatta, tolleranze numeriche, quando la regola va in `skip`) per i quattro gruppi di TASK-74…77; ogni finding P0 e P1 del rapporto di novembre è coperto da almeno una regola oppure è indicato perché non è verificabile con un'invariante
+- [x] #5 Il documento fissa la privacy: cosa contiene un'evidenza in CI (tutto, sono dati di prova), cosa si salva della corsa notturna in produzione (solo id regola, esito, portafoglio, severità, nessun importo né nome di strumento) e cosa vede l'utente
+- [x] #6 Esiste `docs/auditor/agent-playbook.md` con il mandato dell'agente settimanale: metodologia (dalla metodologia dell'audit di novembre), formato di un sospetto, criteri per promuoverlo a finding, deduplica con backlog e regole, divieto di correggere codice
+- [x] #7 Nessun codice applicativo viene modificato
 <!-- AC:END -->
 
 ## Implementation Notes

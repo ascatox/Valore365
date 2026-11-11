@@ -40,12 +40,16 @@ export interface TribunalVoiceMeta {
   color: 'blue' | 'grape' | 'orange';
   /** Testo esatto di `VoiceInfo.mandate` (contratto §5.1), usato finché il backend non risponde. */
   mandate: string;
+  /** Articolo determinativo del nome, per le preposizioni articolate («del», «dell'»). */
+  article: 'il' | "l'";
+  /** Nome senza articolo, in minuscolo («fattoriale»). */
+  noun: string;
 }
 
 export const TRIBUNAL_VOICES: readonly TribunalVoiceMeta[] = [
-  { id: 'indicizzatore', code: 'IND', name: "L'indicizzatore", tabLabel: 'Indicizzatore', color: 'blue', mandate: 'Basso costo, ampia diversificazione, semplicità.' },
-  { id: 'fattoriale', code: 'FAT', name: 'Il fattoriale', tabLabel: 'Fattoriale', color: 'grape', mandate: 'Inclinazioni volute, concentrazione consapevole.' },
-  { id: 'prudente', code: 'PRU', name: 'Il prudente', tabLabel: 'Prudente', color: 'orange', mandate: 'Protezione del capitale, reddito, tenuta nei ribassi.' },
+  { id: 'indicizzatore', code: 'IND', name: "L'indicizzatore", tabLabel: 'Indicizzatore', color: 'blue', mandate: 'Basso costo, ampia diversificazione, semplicità.', article: "l'", noun: 'indicizzatore' },
+  { id: 'fattoriale', code: 'FAT', name: 'Il fattoriale', tabLabel: 'Fattoriale', color: 'grape', mandate: 'Inclinazioni volute, concentrazione consapevole.', article: 'il', noun: 'fattoriale' },
+  { id: 'prudente', code: 'PRU', name: 'Il prudente', tabLabel: 'Prudente', color: 'orange', mandate: 'Protezione del capitale, reddito, tenuta nei ribassi.', article: 'il', noun: 'prudente' },
 ];
 
 const VOICE_BY_ID = new Map(TRIBUNAL_VOICES.map((voice) => [voice.id, voice]));
@@ -65,6 +69,29 @@ export function resolveVoices(voices: TribunalVoiceInfo[] | null | undefined): T
 
 export function voiceName(id: TribunalVoiceId, voices?: TribunalVoiceInfo[] | null): string {
   return voices?.find((voice) => voice.id === id)?.name ?? voiceMeta(id).name;
+}
+
+export type ItalianPreposition = 'di' | 'a' | 'da' | 'in' | 'su' | 'con' | 'per' | 'tra';
+
+/** Preposizioni articolate con «il» e «l'»; con, per, tra restano separate dall'articolo. */
+const ARTICULATED: Record<ItalianPreposition, Record<TribunalVoiceMeta['article'], string>> = {
+  di: { il: 'del ', "l'": "dell'" },
+  a: { il: 'al ', "l'": "all'" },
+  da: { il: 'dal ', "l'": "dall'" },
+  in: { il: 'nel ', "l'": "nell'" },
+  su: { il: 'sul ', "l'": "sull'" },
+  con: { il: 'con il ', "l'": "con l'" },
+  per: { il: 'per il ', "l'": "per l'" },
+  tra: { il: 'tra il ', "l'": "tra l'" },
+};
+
+/**
+ * Nome della voce dopo una preposizione, a partire dall'id: «del fattoriale», «dell'indicizzatore»,
+ * «al prudente», «con l'indicizzatore». Usa sempre il nome canonico in minuscolo.
+ */
+export function voiceWithPreposition(preposition: ItalianPreposition, id: TribunalVoiceId): string {
+  const meta = voiceMeta(id);
+  return `${ARTICULATED[preposition][meta.article]}${meta.noun}`;
 }
 
 /** `var(--mantine-color-<colore>-6)`: token del tema, uguale in chiaro e in scuro. */

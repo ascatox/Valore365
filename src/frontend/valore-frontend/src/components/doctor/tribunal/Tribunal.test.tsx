@@ -20,6 +20,8 @@ import {
   formatSessionDate,
   splitTemplate,
   tribunalMessage,
+  voiceName,
+  voiceWithPreposition,
 } from './tribunalFormat';
 
 // ---------------------------------------------------------------- harness
@@ -179,6 +181,30 @@ describe('tribunalFormat', () => {
     expect(discardedTitle(7)).toBe('7 affermazioni scartate dal controllo automatico');
     expect(formatSessionDate('2026-11-10T14:03:12Z')).toMatch(/^\d{1,2} novembre 2026, \d{2}:\d{2}$/);
   });
+
+  it('joins prepositions with the voice article (del, dell\', al, all\', …; con, per, tra stay apart)', () => {
+    const expected: Record<string, [string, string, string]> = {
+      di: ["dell'indicizzatore", 'del fattoriale', 'del prudente'],
+      a: ["all'indicizzatore", 'al fattoriale', 'al prudente'],
+      da: ["dall'indicizzatore", 'dal fattoriale', 'dal prudente'],
+      in: ["nell'indicizzatore", 'nel fattoriale', 'nel prudente'],
+      su: ["sull'indicizzatore", 'sul fattoriale', 'sul prudente'],
+      con: ["con l'indicizzatore", 'con il fattoriale', 'con il prudente'],
+      per: ["per l'indicizzatore", 'per il fattoriale', 'per il prudente'],
+      tra: ["tra l'indicizzatore", 'tra il fattoriale', 'tra il prudente'],
+    };
+    for (const [preposition, forms] of Object.entries(expected)) {
+      expect([
+        voiceWithPreposition(preposition as Parameters<typeof voiceWithPreposition>[0], 'indicizzatore'),
+        voiceWithPreposition(preposition as Parameters<typeof voiceWithPreposition>[0], 'fattoriale'),
+        voiceWithPreposition(preposition as Parameters<typeof voiceWithPreposition>[0], 'prudente'),
+      ]).toEqual(forms);
+    }
+    // i nomi da soli restano con l'articolo maiuscolo
+    expect(['indicizzatore', 'fattoriale', 'prudente'].map((id) => voiceName(id as 'indicizzatore'))).toEqual(
+      ["L'indicizzatore", 'Il fattoriale', 'Il prudente'],
+    );
+  });
 });
 
 // ---------------------------------------------------------------- stati
@@ -279,12 +305,12 @@ describe('TribunalSection states', () => {
 
     // replica sotto il bersaglio, nella colonna della voce bersaglio, con aria-describedby
     const rebuttal = within(argumentCard('A-IND-2')).getByTestId('tribunal-rebuttal');
-    expect(rebuttal).toHaveTextContent('Replica di Il fattoriale · Contesta');
+    expect(rebuttal).toHaveTextContent('Replica del fattoriale · Contesta');
     expect(rebuttal).toHaveAttribute('aria-describedby', 'tribunal-A-IND-2-text');
     expect(document.getElementById('tribunal-A-IND-2-text')).not.toBeNull();
     expect(within(screen.getByTestId('tribunal-voice-indicizzatore')).getByTestId('tribunal-rebuttal')).toBe(rebuttal);
     // la voce che replica ha il collegamento al bersaglio
-    const given = within(screen.getByTestId('tribunal-voice-fattoriale')).getByRole('button', { name: "Ha replicato a L'indicizzatore" });
+    const given = within(screen.getByTestId('tribunal-voice-fattoriale')).getByRole('button', { name: "Ha replicato all'indicizzatore" });
     fireEvent.click(given);
     await waitFor(() => expect(document.activeElement).toBe(argumentCard('A-IND-2')));
 
@@ -553,8 +579,8 @@ describe('Tribunal on mobile', () => {
     expect(section().style.minWidth).toBe('0px');
     expect(screen.getByTestId('tribunal-redo')).toHaveAttribute('data-block', 'true');
 
-    // «Ha replicato a …» cambia scheda e porta il focus sul bersaglio
-    fireEvent.click(within(screen.getByTestId('tribunal-voice-indicizzatore')).getByRole('button', { name: 'Ha replicato a Il fattoriale' }));
+    // «Ha replicato al/all' …» cambia scheda e porta il focus sul bersaglio
+    fireEvent.click(within(screen.getByTestId('tribunal-voice-indicizzatore')).getByRole('button', { name: 'Ha replicato al fattoriale' }));
     await waitFor(() => expect(tabs[1]).toHaveAttribute('aria-selected', 'true'));
     await waitFor(() => expect(document.activeElement).toBe(argumentCard('A-FAT-2')));
 
