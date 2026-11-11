@@ -1,7 +1,7 @@
 ---
 id: TASK-89
 title: 'Test del Doctor che falliscono su main: valutazione della policy senza regole violate'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T20:00:00Z'
 labels:
@@ -29,8 +29,14 @@ Sintomo comune: la valutazione della policy del Doctor restituisce `summary.fail
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Causa individuata e documentata nelle note del task (con il commit che l'ha introdotta, se rintracciabile)
-- [ ] #2 Se è un difetto del codice: corretto, con un test che lo dimostra; se è un difetto dei test: test corretti senza indebolire ciò che verificano
-- [ ] #3 I quattro test passano e la suite unitaria è interamente verde
-- [ ] #4 Se il difetto riguarda numeri visibili all'utente, aggiunta o aggiornata una regola dell'Auditor che lo intercetta
+- [x] #1 Causa individuata e documentata nelle note del task (con il commit che l'ha introdotta, se rintracciabile)
+- [x] #2 Se è un difetto del codice: corretto, con un test che lo dimostra; se è un difetto dei test: test corretti senza indebolire ciò che verificano
+- [x] #3 I quattro test passano e la suite unitaria è interamente verde
+- [x] #4 Se il difetto riguarda numeri visibili all'utente, aggiunta o aggiornata una regola dell'Auditor che lo intercetta
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Causa: difetto dei test, non del codice. Le fixture datano i prezzi 2026-11-03 e `DoctorPolicyService` usava l'orologio reale; con `max_data_age_days` = 5, dal 2026-11-09 i prezzi risultano vecchi e la regola `max-single` passa correttamente da FAIL a UNKNOWN. Fragilità introdotta con `bfb04c8` (2026-11-04), che creava i test senza poter iniettare l'orologio nel servizio. Correzione: `DoctorPolicyService` accetta un `clock` facoltativo (default l'orologio reale) e i test lo fissano al 2026-11-04; nuovo test sul confine 2026-11-08 FAIL / 2026-11-09 UNKNOWN. Nessun numero visibile all'utente cambia, quindi nessuna regola dell'Auditor (AC #4 non applicabile).
+<!-- SECTION:NOTES:END -->
