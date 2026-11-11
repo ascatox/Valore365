@@ -737,9 +737,9 @@ n = numero di ordini (o di righe della distribuzione).
 - **Sev.** P2 · **Area** doctor · **Finding** V365-010 · **Scope** portfolio
 - **Tool:** `read_doctor_metrics`, `get_portfolio_health`.
 - **Condizione:** con d = `value` di `max_single_position_pct` e h = `max_position_weight`: se le
-  `notes` della metrica contengono «Stesso strumento (ISIN)» allora `d ≥ h − T_pp2`, altrimenti
-  `|d − h| ≤ T_pp2`.
-- **Tolleranze:** `T_pp2`.
+  `notes` della metrica contengono «Stesso strumento (ISIN)» allora `d ≥ h − T_pp1`, altrimenti
+  `|d − h| ≤ T_pp1`.
+- **Tolleranze:** `T_pp1` = 0,055 (la salute arrotonda `max_position_weight` a un decimale; corretta in TASK-79).
 - **Skip:** `empty_portfolio`; d null → `no_reference_data`; funzione spenta → `feature_disabled`.
 - **Prova:** 9101, 9103.
 - **Difetto:** concentrazione calcolata sul totale con la liquidità.
@@ -842,7 +842,12 @@ attiva con `known_defect` nella dichiarazione.
 
 | regola | difetto | task | dal |
 |---|---|---|---|
-| — | — | — | — |
+| `B-PAC-SUM` | `calculate_pac_contribution` con nessuno strumento sottopesato (tutti a target o sopra, per esempio target che sommano meno di 100): `distribution` vuota ma `total_allocated` pari all'intero importo. Il seed non lo esercita (in 9101 `AUDBD.MI` è sottopesato, la regola dà `pass`); riprodotto sul seed con target 60/30 su 9105 in `tests/integration/test_auditor_postgres.py` e in `tests/unit/test_auditor_rules_rebalance.py` | TASK-83 | 2026-11-11 |
+
+Come si marca un difetto noto: `"known_defect": "TASK-NN"` nella dichiarazione della regola, una riga
+qui, il task nel backlog con l'evidenza del report. Un `fail` su una regola marcata non fa fallire la
+CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti noti»). Quando il task
+è chiuso si tolgono il campo e la riga.
 
 ## 7. Copertura dei finding di novembre
 

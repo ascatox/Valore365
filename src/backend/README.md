@@ -233,3 +233,110 @@ Suite presenti:
 - `tests/integration`
 
 Se i test integration dipendono da DB/provider, prepara variabili e database coerenti con l'ambiente locale.
+
+## Auditor dei calcoli
+
+L'Auditor (`app/services/auditor/`) verifica i numeri esposti dai tool MCP con 52 regole
+deterministiche (stress test, ribilanciamento e PAC, costi e reddito, coerenza fra tool). Catalogo:
+[`docs/auditor/rules.md`](../../docs/auditor/rules.md); contratto e codici:
+[`docs/auditor/architecture.md`](../../docs/auditor/architecture.md). Non scrive nel database e non
+usa la rete (provider di mercato offline).
+
+### Eseguirlo in locale
+
+Serve un PostgreSQL con schema, migrazioni e il seed dei portafogli di prova
+(`scripts/auditor/audit_seed.sql`, utente `auditor-seed-user`, portafogli 9101-9107). Meglio un
+database dedicato, così il seed non si mescola con i dati di sviluppo. Con il `db` di docker compose,
+da root repository:
+
+```bash
+docker compose up -d db
+export PGURL=postgresql://postgres:postgres@localhost:5432/valore365_auditor
+psql postgresql://postgres:postgres@localhost:5432/postgres -c "create database valore365_auditor"
+psql "$PGURL" -v ON_ERROR_STOP=1 -f database/schema.sql
+for f in $(ls database/migrations/*.sql | sort); do psql "$PGURL" -v ON_ERROR_STOP=1 -f "$f"; done
+psql "$PGURL" -v ON_ERROR_STOP=1 -f scripts/auditor/audit_seed.sql
+```
+
+Il seed è riapplicabile (cancella e ricrea i propri dati) e ha date relative a oggi: riapplicalo se
+il database ha qualche giorno. Poi, da `src/backend`, con `DATABASE_URL` puntato a quel database
+(anche i tool del Doctor lo leggono da lì):
+
+```bash
+export DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/valore365_auditor
+python -m app.services.auditor --user auditor-seed-user --mode ci --fail-on P1 \
+    --json-out auditor-report.json --md-out auditor-report.md
+```
+
+Opzioni utili: `--rule B-PAC-SUM` e `--group A` (ripetibili) per restringere le regole,
+`--portfolio 9101` per un solo portafoglio, `--no-aggregate` / `--no-instruments` per saltare la
+vista aggregata o gli scope per strumento, `--strict-known` per far contare anche i difetti noti,
+`--list-rules` per l'elenco (non serve il database). Codici di uscita: **0** nessun `fail`/`error`
+alla soglia (`--fail-on`, default P1: contano P0 e P1), **1** almeno uno, **2** l'Auditor non è
+partito (argomenti, database, utente senza portafogli, report non valido).
+
+Lo stesso giro, senza database da preparare a mano, lo fa il test di integrazione
+`tests/integration/test_auditor_postgres.py` (cluster Postgres 16 usa e getta, binari in
+`/usr/lib/postgresql/16/bin` o `$PG_BIN`; saltato se mancano):
+
+```bash
+python -m pytest tests/integration/test_auditor_postgres.py tests/integration/test_auditor_seed_postgres.py -q
+```
+
+### In CI
+
+`.github/workflows/auditor.yml` gira sulle PR che toccano `src/backend/**`, `database/**`,
+`scripts/auditor/**` o il workflow, ogni notte e a mano (*Run workflow*). Avvia un `postgres:16`,
+applica schema, migrazioni e seed, esegue il comando sopra e fallisce se il codice di uscita non è 0.
+Il report Markdown è nel riepilogo del job (*Summary*), il JSON nell'artefatto `auditor-report`,
+anche quando il job fallisce.
+
+### Leggere il report
+
+- **Titolo**: `superato` (codice di uscita 0) o `non superato`.
+- **Tabella severità × esito**: conteggi di `pass`, `fail`, `skip`, `error` per P0 (numero sbagliato
+  che porta a una decisione sbagliata), P1 (numeri incoerenti fra tool o incompleti presentati come
+  completi), P2 (trasparenza, metadati). Sotto, il numero di `fail` su difetti noti.
+- **Fallimenti ed errori**: per regola e per scope (`portfolio:9101`, `aggregate:9101,…`,
+  `instrument:9104:AUDUS.L`, `user`), il motivo e le evidenze nella forma
+  `campo` (tool): osservato → atteso, tolleranza. Gli argomenti esatti della chiamata sono nel JSON
+  (`results[].evidence[].args`), così il caso si riproduce con lo stesso tool.
+- **Regole saltate**: `skip` con il codice (`empty_portfolio`, `no_targets`, `not_applicable`,
+  `no_reference_data`, …). Uno `skip` non è un esito negativo, ma sui portafogli della colonna
+  «Prova» del catalogo non deve esserci: lo verifica il test di integrazione.
+- **Esiti per scope** e **Chiamate ai tool** (totali, dalla memo, errori: i rifiuti attesi, come una
+  vendita oltre il valore della posizione nel what-if, contano fra gli errori dei tool ma non sono
+  `error` delle regole).
+- `error` è del motore, non della regola: `exception`, `timeout`, `tool_error` (il tool ha risposto
+  con un errore inatteso), `invalid_outcome`, `deadline_exceeded`.
+
+### Quando una regola fallisce
+
+1. Riproduci con `--rule <ID> --portfolio <id>` e leggi la scheda della regola in `rules.md`
+   (condizione, tolleranze e il loro motivo in §0.2).
+2. Stabilisci di chi è il difetto:
+   - **codice applicativo** (il numero è davvero sbagliato o incoerente): è il caso per cui
+     l'Auditor esiste. Correggi il codice nella stessa PR, oppure, se la correzione è un lavoro a sé,
+     marcalo come difetto noto (sotto). Non si indebolisce mai una regola per farla passare;
+   - **regola o seed** (tolleranza che non tiene conto di un arrotondamento che il tool fa davvero,
+     precondizione sbagliata, dato del seed incoerente): correggi la regola o il seed con un test
+     unitario che lo dimostri e una nota nella sottosezione del tuo task in «Deviazioni» di
+     `architecture.md`;
+   - **ambiente** (database non aggiornato, seed vecchio di giorni, migrazione mancante): di solito
+     dà `error` o codice di uscita 2; riapplica schema, migrazioni e seed.
+
+### Marcare un difetto noto
+
+Quando una regola trova un difetto reale che non si corregge subito:
+
+1. apri un task nel backlog (`backlog/tasks/task-NN - ….md`, milestone `m-1` se riguarda
+   l'accuratezza dei calcoli) con descrizione, evidenza dal report (comando, scope, evidenze) e
+   criteri di accettazione;
+2. aggiungi `"known_defect": "TASK-NN"` alla dichiarazione della regola in
+   `app/services/auditor/rules/*.py` (la regola resta attiva);
+3. aggiungi la riga nella sezione «Difetti noti» di `docs/auditor/rules.md` (il test di
+   integrazione verifica che dichiarazioni e sezione coincidano e che il task esista).
+
+Un `fail` su una regola marcata compare nel report ma non fa fallire la CI (`--strict-known` lo
+rende di nuovo bloccante); un `error` conta sempre. Quando il task è chiuso si tolgono il campo e la
+riga. Oggi è marcata solo `B-PAC-SUM` (TASK-83).

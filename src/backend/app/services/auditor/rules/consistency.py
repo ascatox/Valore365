@@ -23,6 +23,10 @@ EPS = 1e-9
 T_EUR = 0.01
 T_PP = 0.005
 T_PP2 = 0.02
+# Una percentuale arrotondata a 1 decimale (0,05) confrontata con una a 2 decimali (0,005):
+# get_portfolio_health.max_position_weight è round(x, 1) in compute_max_position_weight
+# (portfolio_doctor/_health.py). TASK-79, vedi architecture.md «Deviazioni».
+T_PP1 = 0.055
 T_RET = 0.01
 R_PX_MIN = 1.0 / 20.0
 R_PX_MAX = 20.0
@@ -707,12 +711,12 @@ def check_doctor_concentration(ctx: Any, scope: dict[str, Any]) -> dict[str, Any
     health = ctx.scoped("get_portfolio_health", scope)
     h = _num(health.get("max_position_weight"))
     same_isin = any(SAME_ISIN_NOTE in str(n) for n in metric.get("notes") or [])
-    evs = [_ev("read_doctor_metrics", args, "metrics[code=max_single_position_pct].value", d, h, T_PP2,
+    evs = [_ev("read_doctor_metrics", args, "metrics[code=max_single_position_pct].value", d, h, T_PP1,
                ">= salute (stesso ISIN aggregato)" if same_isin else None),
            _ev("get_portfolio_health", args, "max_position_weight", h)]
     if h is None:
         return _fail("La salute non riporta il peso della posizione più grande.", evs)
-    ok = d >= h - T_PP2 - EPS if same_isin else abs(d - h) <= T_PP2 + EPS
+    ok = d >= h - T_PP1 - EPS if same_isin else abs(d - h) <= T_PP1 + EPS
     if not ok:
         return _fail("Il peso della posizione più grande è diverso nel Doctor e nella salute.", evs)
     return _pass(evs)

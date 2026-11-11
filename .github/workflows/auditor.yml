@@ -1,0 +1,160 @@
+name: Auditor dei calcoli
+
+# TASK-79: l'Auditor dei calcoli (src/backend/app/services/auditor) sui portafogli di prova.
+# Postgres effimero (servizio del job) con database/schema.sql, tutte le migrazioni e
+# scripts/auditor/audit_seed.sql; poi la CLI in modalità ci con soglia P1.
+# Esito: job fallito se c'è almeno un fail/error di severità P0 o P1 (difetti noti esclusi,
+# docs/auditor/rules.md §6) o se l'Auditor non parte (codice di uscita 2).
+# Report: Markdown nel riepilogo del job, JSON come artefatto (anche quando fallisce).
+# Contratto: docs/auditor/architecture.md §6; istruzioni in src/backend/README.md («Auditor»).
+
+on:
+  pull_request:
+    paths:
+      - "src/backend/**"
+      - "database/**"
+      - "scripts/auditor/**"
+      - ".github/workflows/auditor.yml"
+  schedule:
+    # Ogni notte (UTC), lontano dalla sincronizzazione dei dati delle 22:40.
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auditor-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  auditor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: valore365
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d valore365"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGURL: postgresql://postgres:postgres@localhost:5432/valore365
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/valore365
+      AUDITOR_USER: auditor-seed-user
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r src/backend/requirements.txt
+
+      - name: Install psql client
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql --version
+
+      - name: Bootstrap database (schema + migrations + Auditor seed)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for _ in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres -d valore365 >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          psql "$PGURL" -q -v ON_ERROR_STOP=1 -f database/schema.sql
+          # Stesso ordine dei test (sorted) e di backend-rest-e2e-smoke.yml (ls | sort).
+          while IFS= read -r migration; do
+            echo "Applying migration: ${migration}"
+            psql "$PGURL" -q -v ON_ERROR_STOP=1 -f "${migration}"
+          done < <(find database/migrations -maxdepth 1 -name '*.sql' | LC_ALL=C sort)
+          psql "$PGURL" -q -v ON_ERROR_STOP=1 -f scripts/auditor/audit_seed.sql
+          psql "$PGURL" -tA -v ON_ERROR_STOP=1 \
+            -c "select count(*) || ' portafogli di prova' from portfolios where owner_user_id = '${AUDITOR_USER}'"
+
+      - name: Run Auditor (CI mode, fail on P1)
+        id: audit
+        working-directory: src/backend
+        shell: bash
+        run: |
+          set +e
+          python -m app.services.auditor \
+            --user "${AUDITOR_USER}" \
+            --mode ci \
+            --fail-on P1 \
+            --json-out auditor-report.json \
+            --md-out auditor-report.md \
+            > /dev/null
+          code=$?
+          set -e
+          echo "exit_code=${code}" >> "$GITHUB_OUTPUT"
+          echo "Auditor exit code: ${code}"
+
+      - name: Publish Markdown report to job summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f src/backend/auditor-report.md ]; then
+            cat src/backend/auditor-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "# Auditor dei calcoli — non eseguito"
+              echo
+              echo "Report non prodotto (codice di uscita: ${{ steps.audit.outputs.exit_code || 'n/d' }})."
+              echo "Vedi il log del passo «Run Auditor»."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditor-report
+          path: |
+            src/backend/auditor-report.json
+            src/backend/auditor-report.md
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Fail on Auditor exit code
+        if: always()
+        shell: bash
+        env:
+          AUDIT_EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+        run: |
+          if [ -z "${AUDIT_EXIT_CODE}" ]; then
+            echo "::error::L'Auditor non è stato eseguito."
+            exit 1
+          fi
+          if [ "${AUDIT_EXIT_CODE}" != "0" ]; then
+            echo "::error::Auditor dei calcoli non superato (codice di uscita ${AUDIT_EXIT_CODE}): vedi il riepilogo del job e l'artefatto auditor-report."
+            exit "${AUDIT_EXIT_CODE}"
+          fi
+          echo "Auditor dei calcoli superato."

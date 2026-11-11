@@ -1038,3 +1038,46 @@ cambia, perché, e quali task ne sono toccati.
   corretto dei dati.
 - **Cambi** salvati con provider `auditor-seed` (le letture non filtrano per provider), così la
   riapplicazione del seed non tocca cambi di altri provider.
+
+### TASK-79
+
+- **Prima esecuzione sul seed** (CLI `--mode ci --fail-on P1`, PostgreSQL 16, codice di `main`):
+  52 regole, 27 scope, 423 risultati; 266 `pass`, 2 `fail` (P2), 155 `skip`, 0 `error`; codice di
+  uscita 0. I 155 `skip` sono tutti fuori dalla colonna «Prova» (9106 vuoto, portafogli senza
+  target, strumenti a cui la regola non si applica, dati di riferimento assenti per costruzione).
+  Le 6 chiamate ai tool in errore sono i rifiuti attesi di `calculate_what_if` con vendita oltre il
+  valore della posizione (B-WHATIF-SELL-BOUND).
+- **D-DOCTOR-CONCENTRATION, difetto della regola (tolleranza):** i due `fail` (9104: Doctor 36,83,
+  salute 36,8; 9105: 66,67 contro 66,7) non sono un'incoerenza dei calcoli ma l'arrotondamento a
+  **1 decimale** di `max_position_weight` (`compute_max_position_weight`,
+  `portfolio_doctor/_health.py`: `round(max(...), 1)`), che la scheda confrontava con `T_pp2`
+  (0,02, pensata per valori a 2 decimali). Come vuole §0.2 del catalogo («le tolleranze compensano
+  solo gli arrotondamenti che i tool fanno davvero») la regola usa ora `T_pp1` = 0,055 pp (mezza
+  unità di un valore a 1 decimale, 0,05, più mezza unità di uno a 2 decimali, 0,005), in entrambi i
+  rami della condizione. Il difetto del finding (concentrazione sul totale con la liquidità:
+  70,00 contro 63,94) resta un `fail`; test
+  `test_doctor_concentration_tolerates_one_decimal_rounding_of_health` in
+  `tests/unit/test_auditor_rules_consistency.py` (verifica anche l'arrotondamento reale di
+  `compute_max_position_weight`). La scheda di `rules.md` §5 vale con `T_pp1` al posto di `T_pp2`.
+  Tocca TASK-77 (proprietario della regola).
+- **B-PAC-SUM, difetto reale non esercitato dal seed:** sul seed la regola dà `pass` (in 9101
+  `AUDBD.MI` è sottopesato, quindi la distribuzione non è vuota). Il difetto segnalato da TASK-75 è
+  confermato sul seed con target aggiunti a 9105 (60/30, entrambi gli strumenti sopra il target):
+  `distribution: []`, `total_allocated` 500. Aperto **TASK-83** (milestone m-1), regola marcata
+  `known_defect: "TASK-83"`, riga in `rules.md` §6. Il seed non è stato modificato (i valori
+  documentati da TASK-78 restano veri): il caso è riprodotto da
+  `test_known_defect_pac_sum_reproduced_on_seed` in `tests/integration/test_auditor_postgres.py`
+  su una copia del database del seed.
+- **Punti di TASK-77 verificati sul seed:** D-PERF-RECOMPUTE (`pass` su 9101…9105, 9107 e
+  aggregato: il ricalcolo offline coincide con il servizio sugli stessi dati dell'export),
+  D-AGG-PERFORMANCE-VALUE (`pass`: l'aggregato comprende 9106, saldo 0 e nessuna transazione, e
+  somma i valori dei membri), D-SUMMARY-PERFORMANCE-VALUE (`pass` anche su 9104, con cambi USD/GBP
+  giornalieri nel seed; nessun giorno senza prezzo nei cambi del seed, quindi il caso «cambio nei
+  giorni senza prezzo» non è esercitato).
+- **Cluster locale:** il percorso del socket Unix sotto lo scratchpad supera i 107 byte ammessi da
+  Postgres; per le prove locali il cluster ascolta su TCP (`127.0.0.1`), come il servizio
+  `postgres` del workflow. I test usano `pg_engine` (socket in una cartella temporanea corta).
+- **Workflow:** servizio `postgres:16` di GitHub Actions invece di docker compose (nessuna API da
+  avviare); trigger anche su `scripts/auditor/**` e sul file del workflow, oltre a
+  `src/backend/**` e `database/**`. Cron notturno `17 2 * * *` (UTC), dopo la sincronizzazione
+  delle 22:40 e lontano dalla notturna di produzione delle 23:35.

@@ -747,6 +747,9 @@ RULES: list[dict[str, Any]] = [
         "scopes": ["portfolio"],
         "tools": ["calculate_pac_contribution", "get_positions"],
         "check": check_pac_sum,
+        # Difetto reale del codice attuale (distribuzione vuota con total_allocated pieno):
+        # rules.md §6 «Difetti noti». Togliere quando TASK-83 è chiuso.
+        "known_defect": "TASK-83",
     },
     {
         "id": "B-PAC-UNDERWEIGHT-ONLY",
