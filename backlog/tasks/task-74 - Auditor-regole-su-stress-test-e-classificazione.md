@@ -1,7 +1,7 @@
 ---
 id: TASK-74
 title: 'Auditor: regole su stress test e classificazione'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -27,11 +27,11 @@ Gruppo A, dal catalogo di `docs/auditor/rules.md`: stress test e classificazione
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sono implementate tutte le regole del gruppo A del catalogo, con id, severità e tolleranze del contratto
-- [ ] #2 Tra le regole: due portafogli con composizione diversa non hanno impatti storici identici su tutti gli scenari; nessuna posizione classificata obbligazionaria, oro o commodity riceve lo shock azionario negli scenari a shock; le contribuzioni per classe sommano all'impatto entro la tolleranza; un ETC su metalli preziosi non è classificato come azione
-- [ ] #3 Le regole vanno in `skip` con motivo quando i dati non bastano (portafoglio vuoto, scenario `not_available`), mai in `pass`
-- [ ] #4 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
-- [ ] #5 Le evidenze riportano tool, argomenti, valore osservato e valore atteso
+- [x] #1 Sono implementate tutte le regole del gruppo A del catalogo, con id, severità e tolleranze del contratto
+- [x] #2 Tra le regole: due portafogli con composizione diversa non hanno impatti storici identici su tutti gli scenari; nessuna posizione classificata obbligazionaria, oro o commodity riceve lo shock azionario negli scenari a shock; le contribuzioni per classe sommano all'impatto entro la tolleranza; un ETC su metalli preziosi non è classificato come azione
+- [x] #3 Le regole vanno in `skip` con motivo quando i dati non bastano (portafoglio vuoto, scenario `not_available`), mai in `pass`
+- [x] #4 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
+- [x] #5 Le evidenze riportano tool, argomenti, valore osservato e valore atteso
 <!-- AC:END -->
 
 ## Implementation Notes
