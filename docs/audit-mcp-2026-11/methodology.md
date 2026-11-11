@@ -293,6 +293,24 @@ non toglie punti.
   non arrotondati; `day_change_pct` = variazione / valore precedente delle posizioni (liquidità
   esclusa); un prezzo vecchio di oltre 7 giorni contribuisce 0 ma resta nel denominatore. La somma
   delle percentuali arrotondate delle posizioni non ricostruisce il summary (atteso).
+- **Perimetro di `day_change_pct` (decisione TASK-86):** il denominatore è **sempre tutto il
+  valore investito** (liquidità esclusa). Ogni posizione vi entra: con una variazione misurabile
+  col suo valore alla chiusura precedente (q × chiusura_prec × FX_prec); con un prezzo vecchio di
+  oltre 7 giorni con lo stesso valore precedente e contributo 0; **senza variazione misurabile**
+  (nessuna chiusura precedente: una sola barra e nessun tick; barre dello stesso giorno; metadati,
+  cambio o prezzo non validi) col suo `market_value` corrente e contributo 0. Prima di TASK-86
+  queste ultime uscivano anche dal denominatore e la percentuale si gonfiava (seed dell'Auditor,
+  9107: −0,13% invece di −0,09%; aggregato −0,13% invece di −0,12%). È la stessa definizione di
+  `get_day_movers` (§11) letta da un altro lato: le quotazioni ferme e senza chiusura precedente non
+  hanno una variazione del giorno (fuori dalla classifica migliori/peggiori, contributo 0 al
+  riepilogo) ma restano posizioni del portafoglio (contate in `excluded_*`, valore nel
+  denominatore). Così la percentuale è «variazione di oggi / valore del portafoglio» per tutti i
+  consumatori: Dashboard (KPI «Oggi», hero mobile, griglia dell'analisi mostrano
+  `summary.day_change_pct` senza ricalcolarla), tool Copilot/MCP `get_portfolio_summary` e
+  `get_aggregate_summary`, export Markdown; lo snapshot aggregato del Copilot
+  (`copilot/snapshot.py`) usa già `day_change / (market_value − day_change)`, che conta tutte le
+  posizioni. `day_change` (importo) non cambia. Verifica: regola dell'Auditor
+  C-DAYCHANGE-DENOMINATOR (`docs/auditor/rules.md`).
 - **Quantità:** nessun arrotondamento all'origine; output arrotondato a 8 decimali; nessuna
   tolleranza contabile (un residuo resta una posizione). Costo medio ponderato (non FIFO).
 

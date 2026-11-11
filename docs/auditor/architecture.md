@@ -563,6 +563,7 @@ argomenti oltre `portfolio_id` / `portfolio_ids` aggiunti da `scoped`):
 | `get_dividend_summary` | — | C |
 | `search_asset_info` | `{"symbol": <simbolo esatto della posizione>}` | A, C, D |
 | `read_doctor_metrics` | — (nessun `metric_codes`) | D |
+| `build_doctor_scenario` | `{"mode": "new_cash_only", "new_cash": 100.0}` (D-DOCTOR-CASH, TASK-84) | D |
 | `calculate_rebalance_orders` | `{"mode": "rebalance"}`; `{"mode": "buy_only", "available_cash": 1000.0}`; `{"mode": "sell_only"}` | B |
 | `calculate_pac_contribution` | `{"monthly_amount": 500.0}` | B |
 | `calculate_what_if` | `{"action": "buy", "symbol": S, "amount_eur": 1000.0}`; `{"action": "sell", "symbol": S, "amount_eur": round(V/2, 2)}`; `{"action": "sell", "symbol": S, "amount_eur": round(V + 1000.0, 2)}` con S = simbolo della prima riga di `get_positions` (peso maggiore) e V = il suo `market_value` | B |
@@ -613,7 +614,7 @@ finance client in altro modo, l'esito sarebbe `error`/`tool_error`, non un dato 
 | A — stress test e classificazione | 74 | `get_stress_test`, `get_aggregate_stress_test`, `get_positions`, `search_asset_info`, `get_cost_breakdown` | portfolio, aggregate, instrument, user |
 | B — ribilanciamento, PAC, simulazioni | 75 | `calculate_rebalance_orders`, `calculate_pac_contribution`, `calculate_what_if`, `get_positions`, `get_portfolio_summary`, `get_target_drift` | portfolio |
 | C — costi, reddito, dividendi, Monte Carlo, variazioni | 76 | `get_cost_breakdown`, `get_income_projection`, `get_dividend_summary`, `get_monte_carlo`, `get_aggregate_monte_carlo`, `get_day_movers`, `get_positions`, `search_asset_info`, `ctx.transactions` | portfolio, aggregate |
-| D — coerenza fra tool, aggregata, dati | 77 | `get_portfolio_summary`, `get_positions`, `get_cash_balance`, `get_performance`, `get_portfolio_health`, `get_stress_test`, `get_xray_summary`, `get_cost_breakdown`, `read_doctor_metrics`, `search_asset_info`, tutti i `get_aggregate_*` tranne `recent_transactions`, `ctx.transactions`, `ctx.performance_audit` | portfolio, aggregate, instrument |
+| D — coerenza fra tool, aggregata, dati | 77 | `get_portfolio_summary`, `get_positions`, `get_cash_balance`, `get_performance`, `get_portfolio_health`, `get_stress_test`, `get_xray_summary`, `get_cost_breakdown`, `read_doctor_metrics`, `build_doctor_scenario` (TASK-84), `search_asset_info`, tutti i `get_aggregate_*` tranne `recent_transactions`, `ctx.transactions`, `ctx.performance_audit` | portfolio, aggregate, instrument |
 
 Il dettaglio per regola (tool, argomenti, percorsi dei campi) è in `rules.md`.
 
@@ -1029,9 +1030,17 @@ cambia, perché, e quali task ne sono toccati.
 - **Argomenti di `search_asset_info`:** lo schema MCP richiede anche `portfolio_id`; `{"symbol": s}`
   di §5.2 va passato come `extra_args` di `ctx.scoped` (→ `{"portfolio_id": pid, "symbol": s}`), una
   chiamata `ctx.call("search_asset_info", {"symbol": s})` è rifiutata dalla validazione.
-- **`get_xray_summary` su un portafoglio vuoto** (9106) risponde con errore («Errore nell'esecuzione
-  del tool get_xray_summary»), non con un output vuoto: lo `skip`/`empty_portfolio` va deciso da
-  `get_positions` prima di leggerlo (già così in TASK-77).
+- **`get_xray_summary` su un portafoglio vuoto** (9106): fino a TASK-87 rispondeva con errore
+  («Errore nell'esecuzione del tool get_xray_summary»), non con un output vuoto. **Risolto in
+  TASK-87:** `compute_portfolio_xray` restituisce un X-Ray vuoto dichiarato (`is_empty: true`,
+  coperture 0, `applicable_lookthrough_coverage_pct` null, titoli ed esposizioni vuoti,
+  `coverage_note` «Portafoglio senza posizioni: niente da scomporre.»), come salute, stress test e
+  Monte Carlo; stesso esito per l'aggregato di soli portafogli vuoti e, via REST, 200 invece di 404
+  (un portafoglio inesistente resta un errore). Lo verifica D-XRAY-EMPTY (prova: 9106). Le regole che
+  leggono l'X-Ray (D-XRAY-SUMS) decidono ancora `skip`/`empty_portfolio` da `get_positions` prima di
+  leggerlo (TASK-77): ora potrebbero deciderlo da `is_empty` dell'X-Ray stessa, ma non sono state
+  cambiate (con `is_empty` le quote `available_pct` + `not_applicable_pct` + `missing_pct` valgono
+  0, non 100, quindi lo skip resta necessario).
 - **Casi non riproducibili con il seed:** import duplicato (come da `rules.md` §1: lotto confermato
   più coppia legittima, duplicato vero nei test unitari di TASK-77); `skip`/`truncated_output` (nessun
   portafoglio supera 4 posizioni). I difetti dei finding non sono nel seed, che rappresenta lo stato
@@ -1139,6 +1148,32 @@ cambia, perché, e quali task ne sono toccati.
   7 portafogli, 52 regole, 268 `pass`, 0 `fail`, 155 `skip`, 0 `error`, 477 righe in
   `auditor_results`, identiche a `privacy_rows` di un'esecuzione diretta del motore.
 
+### TASK-81
+
+- **Endpoint utente** `GET /api/doctor/auditor/summary` come da §6.1, in
+  `api/routes_auditor_user.py`, registrato in `main.py` dopo gli endpoint di TASK-80. Auth
+  `require_auth_rate_limited` (cioè `require_auth` più il limite per utente, come il Doctor).
+  Scope come il Doctor: `normalize_scope_ids` (1..20 id) + `resolve_portfolio_scope`; portafoglio
+  altrui → 404 `not_found`, scope vuoto/malformato o valute base diverse → 400 `invalid_request`.
+- **`available: false` anche senza controlli mostrabili** (nessuna riga `pass`/`fail` dello scope,
+  per esempio un portafoglio creato dopo l'ultima corsa o con sole righe `skip`/`error`): evita un
+  indicatore «0 controlli superati». Quando `available` è `false` il payload è sempre
+  `{available: false, run_finished_at: null, checks_passed: 0, checks_in_review: 0, areas: []}`.
+  Il limite delle 48 ore è inclusivo (`now - finished_at <= 48h`) e vale su `finished_at`.
+- **Errore del DB o del registro** → `available: false` con un warning che riporta solo il nome
+  dell'eccezione: l'indicatore è accessorio e non deve mai far fallire il Doctor.
+- **Ordinamento:** aree in verifica per prime, poi nell'ordine di `AREAS`; nell'area i controlli in
+  verifica per primi, poi per titolo. Una regola non più nel registro non è mostrata (il suo id non
+  esce mai). Il registro si carica una volta per processo.
+- **Frontend:** `AuditIndicator` (Doctor, sezione «Diagnosi», sotto l'indicatore di freschezza) è
+  una riga che si espande sull'elenco per area; nascosto se `available` è `false`, se la richiesta
+  fallisce o se il payload ha una forma inattesa (`normalizeAuditorSummary` ricalcola i conteggi
+  dai controlli). In Privacy Mode il contenuto non cambia: non contiene importi, pesi né simboli.
+  La vista Admin (`AuditorAdminPanel` in `Admin.page.tsx`) compare dopo la verifica dell'accesso
+  amministrativo e mostra, oltre a §7.3, stato e conteggi della corsa e le regole in `error`;
+  le etichette delle aree sono duplicate nel client (`AUDITOR_AREA_LABELS`), con l'area grezza come
+  ripiego.
+
 ### TASK-82
 
 - **Stack dell'agente** (`scripts/auditor/agent_stack.sh`): solo PostgreSQL, nessun server
@@ -1179,3 +1214,37 @@ cambia, perché, e quali task ne sono toccati.
   sono nel report; il catalogo non è stato toccato. I numeri dei task sono i primi liberi al
   2026-11-11 con TASK-80 e TASK-83 in corso: se uno dei due crea un task nello stesso intervallo, va
   rinumerato prima del merge.
+
+### TASK-84
+
+- **Correzione:** `doctor_policy/snapshot.py:_load_scope` prende la liquidità dello scope dal
+  modello della performance (`_cash_balance_details` sulla stessa connessione della verifica di
+  proprietà; aggregato = somma delle liquidità dei portafogli, come `get_current_cash_balance_detail_multi`)
+  invece di `portfolios.cash_balance` (saldo di apertura da TASK-49, già dentro il modello). Il
+  ramo senza `engine` (repository finti) usa `get_current_cash_balance_value_multi` se c'è.
+- **D-DOCTOR-CASH** (gruppo D, P1, scope portfolio e aggregate): rispetto alla bozza del report del
+  2026-11-11, (1) le posizioni di tipo `cash` si riconoscono con `search_asset_info` per riga (gli
+  argomenti canonici di D-DOCTOR-TER), perché `get_positions` non espone il tipo; per l'aggregato si
+  leggono `get_positions` e `search_asset_info` di ogni portafoglio; (2) `total_value` contro
+  `invested_value + cash_value` usa `T_sum_eur(1)` = 0,015 € (tre importi arrotondati a 2 decimali da
+  `_compact_side`), non `T_eur`; (3) Scenario Lab spento → `feature_disabled` col messaggio
+  `SIMULATOR_DISABLED_MESSAGE` (non quello delle policy). Nuovo argomento canonico in §5.2.
+- **Conteggi nei test di integrazione:** `test_auditor_postgres.py` e `test_auditor_seed_postgres.py`
+  leggono il numero di regole dalla riga «Totale» di `rules.md` e `test_auditor_store_postgres.py` da
+  `load_rules()`, invece di un numero fisso (più task aggiungevano regole in parallelo).
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101…9107 e
+  sull'aggregato col codice corretto; col `_load_scope` di prima 7 `fail` (`cash_value` 0 contro
+  9.256,50 / 8.144,00 / 2.492,00 / 3.705,97 / 5.545,00 / 4.047,00 e 33.190,47 sull'aggregato) e
+  `pass` su 9106 (0 = 0).
+
+### TASK-86
+
+- **C-DAYCHANGE-DENOMINATOR solo con scope `portfolio`** (la bozza del report diceva anche
+  `aggregate`): la valuta di quotazione si legge con `search_asset_info`, che non ha una variante
+  aggregata (§5.2, `scoped_tool_args` la rifiuta con argomenti extra). Sul seed l'aggregato
+  [9101…9107] comprende 9104 (`AUDUS.L` in USD, `AUDUK.L` in GBP) e sarebbe comunque
+  `not_applicable`. Gruppo C: tool letti in più `get_portfolio_summary` (§5.6).
+- **Prova su 9107** (stack di `scripts/auditor/agent_stack.sh`): `pass` col codice corretto
+  (`day_change_pct` −0,09, atteso −0,088 su P = 16.025,46 €); `fail` col codice di prima (−0,13).
+  Sul seed: `pass` su 9101, 9102, 9103, 9105, 9107; `skip` `not_applicable` su 9104 ed
+  `empty_portfolio` su 9106.

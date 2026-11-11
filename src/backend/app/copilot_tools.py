@@ -1654,6 +1654,8 @@ def _get_xray_summary(
         return out
 
     return {
+        # TASK-87: no positions -> empty X-Ray declared here and in coverage_note, not an error.
+        "is_empty": xray.is_empty,
         "etf_count": xray.etf_count,
         # Legacy: same as funds_with_holdings_pct (weight of funds with some top holdings).
         "coverage_pct": round(xray.coverage_pct, 1),

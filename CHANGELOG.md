@@ -83,6 +83,25 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Fixed
 
+- Liquidità del Portfolio Doctor e del Laboratorio (Scenario Lab, MCP/Copilot
+  `build_doctor_scenario` / `compare_doctor_scenarios`, Tribunale): lo snapshot usa la liquidità
+  attuale del riepilogo (modello della performance; nella vista aggregata la somma dei portafogli)
+  invece del saldo di apertura `portfolios.cash_balance`. `cash_value` e `total_value` dello
+  scenario tornano coerenti con riepilogo e saldo di cassa e con `use_cash_balance` un acquisto
+  coperto dalla liquidità non è più infattibile (seed dell'Auditor, 9101: 9.256,50 € invece di 0);
+  le metriche del Doctor non cambiano (escludono la liquidità). Nuova regola dell'Auditor
+  D-DOCTOR-CASH (TASK-84).
+- Variazione giornaliera percentuale del riepilogo (`day_change_pct`: Dashboard, Copilot, MCP
+  `get_portfolio_summary` / `get_aggregate_summary`): le posizioni senza chiusura precedente (o
+  senza variazione misurabile) restano nel denominatore con contributo nullo, come le quotazioni
+  ferme, invece di uscirne e gonfiare la percentuale (seed dell'Auditor, 9107: −0,09% invece di
+  −0,13%); definizione unica in `methodology.md` §9; nuova regola dell'Auditor
+  C-DAYCHANGE-DENOMINATOR (TASK-86).
+- X-Ray (Doctor, Copilot e MCP `get_xray_summary` / `get_aggregate_xray`): un portafoglio senza
+  posizioni (o un aggregato di soli portafogli vuoti) riceve un X-Ray vuoto dichiarato
+  (`is_empty`, coperture 0, esposizioni vuote, nota «Portafoglio senza posizioni: niente da
+  scomporre.») invece dell'errore generico del tool (404 via REST); nuova regola dell'Auditor
+  D-XRAY-EMPTY (TASK-87).
 - Doctor: ordine degli argomenti nel prompt Copilot aperto dai dettagli di un alert
   (`handleDoctorPrompt(prompt, alert)`), che prima scambiava prompt e alert; aggiunto
   test `Doctor.alertPrompt.test.tsx`.

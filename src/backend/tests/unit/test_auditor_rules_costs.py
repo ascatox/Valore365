@@ -395,6 +395,7 @@ CATALOG = {
     "C-DIV-CURRENCY": ("P2", "income", ["V-DIV-MIXED-CCY", "V365-009"], ["portfolio"]),
     "C-DAYMOVERS-NONZERO-INCLUDED": ("P1", "daily", ["V365-005", "V-DAYMOVERS-ROOT"], ["portfolio"]),
     "C-DAYMOVERS-CONSISTENCY": ("P1", "daily", ["V-DAYMOVERS-ROOT", "V365-005"], ["portfolio"]),
+    "C-DAYCHANGE-DENOMINATOR": ("P2", "daily", ["S-2026-11-11-03"], ["portfolio"]),
 }
 
 
@@ -837,6 +838,131 @@ def test_daymovers_skips(repo):
     ])
     assert_status(run_rule("C-DAYMOVERS-NONZERO-INCLUDED", ctx, scope_of(9301)), "skip", "no_reference_data")
     assert_status(run_rule("C-DAYMOVERS-CONSISTENCY", ctx, scope_of(9301)), "pass")
+
+
+# ---------------------------------------------------------------------------
+# Denominatore della variazione giornaliera del riepilogo (S-2026-11-11-03, TASK-86)
+# ---------------------------------------------------------------------------
+
+
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def mappings(self):
+        return self
+
+    def all(self):
+        return list(self._rows)
+
+
+class _BarsConn:
+    """Le tre letture di _summary_from_positions: barre giornaliere, tick (nessuno), cambi (nessuno)."""
+
+    def __init__(self, bars):
+        self.bars = bars
+
+    def execute(self, statement, _params):
+        sql = " ".join(str(statement).split())
+        if "ranked_daily" in sql:
+            return _Rows(self.bars)
+        return _Rows([])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+def _bars_of(stub: StubRepo, pid: int) -> list[dict]:
+    """Barre coerenti con le posizioni finte (prezzo 100): oggi e ieri per una variazione, due barre
+    vecchie e uguali per una quotazione ferma, una sola barra senza chiusura precedente."""
+    bars = []
+    for h in stub._portfolios[pid]:
+        aid = SYMBOL_ID[h["symbol"]]
+        if h["stale"]:
+            day = h["price_date"]
+            bars += [{"asset_id": aid, "price_date": day, "close": 100.0, "rn": 1},
+                     {"asset_id": aid, "price_date": day - timedelta(days=1), "close": 100.0, "rn": 2}]
+        elif not h["previous_close"]:
+            bars.append({"asset_id": aid, "price_date": TODAY, "close": 100.0, "rn": 1})
+        else:
+            bars += [{"asset_id": aid, "price_date": TODAY, "close": 100.0, "rn": 1},
+                     {"asset_id": aid, "price_date": YESTERDAY, "close": 100.0 / (1 + h["day_change_pct"] / 100.0),
+                      "rn": 2}]
+    return bars
+
+
+def _real_summary(stub: StubRepo, pid: int):
+    """PortfolioSummary del vero SummaryMixin (app/repository/_summary.py) sulle barre del portafoglio finto."""
+    from app.repository._base import AssetMeta
+    from app.repository._summary import SummaryMixin
+
+    conn = _BarsConn(_bars_of(stub, pid))
+
+    class _SummaryRepo(SummaryMixin):
+        engine = SimpleNamespace(begin=lambda: conn)
+
+        def _get_asset_meta(self, _conn, asset_ids):
+            return {aid: AssetMeta(symbol=ASSETS[aid]["symbol"], quote_currency="EUR") for aid in asset_ids}
+
+    return _SummaryRepo()._summary_from_positions(pid, "EUR", stub.get_positions(pid, USER), 0.0)
+
+
+def daychange_ctx(stub: StubRepo, pid: int, summary_override: dict | None = None) -> FakeAuditContext:
+    summary_obj = _real_summary(stub, pid)
+    summary_repo = SimpleNamespace(get_summary=lambda _pid, _uid: summary_obj)
+    summary = summary_override or sanitize_output(
+        ct._TOOL_HANDLERS["get_portfolio_summary"]({}, summary_repo, None, pid, USER))
+    args = {"portfolio_id": pid}
+    responses = [("get_positions", args, tool("get_positions", stub, pid)),
+                 ("get_portfolio_summary", args, summary)]
+    for p in stub.get_positions(pid, USER):
+        responses.append(("search_asset_info", {"portfolio_id": pid, "symbol": p.symbol},
+                          tool("search_asset_info", stub, pid, {"symbol": p.symbol})))
+    return FakeAuditContext(responses)
+
+
+@pytest.mark.parametrize("pid", [9101, 9107])
+def test_daychange_denominator_passes_on_the_real_summary(repo, pid):
+    # Sul codice prima di TASK-86 (AUDNPC.MI fuori dal denominatore) 9107 dà fail: 0,51 contro 0,42.
+    outcome = run_rule("C-DAYCHANGE-DENOMINATOR", daychange_ctx(repo, pid), scope_of(pid))
+    assert_status(outcome, "pass")
+
+
+def test_daychange_denominator_9107_counts_every_position(repo):
+    # AUDEQ.MI 3.000 (+0,8512%), AUDSTL.MI 2.000 ferma, AUDNPC.MI 1.000 senza chiusura precedente.
+    summary = _real_summary(repo, 9107)
+    previous_eq = 3000.0 / 1.008512
+    assert summary.day_change == round(3000.0 - previous_eq, 2)
+    assert summary.day_change_pct == round((3000.0 - previous_eq) / (previous_eq + 3000.0) * 100.0, 2)
+
+
+def test_daychange_denominator_fails_when_no_previous_close_leaves_the_denominator(repo):
+    # Difetto di S-2026-11-11-03 (codice prima di TASK-86): AUDNPC.MI esce dal ciclo con `continue` prima di
+    # previous_market_value, la percentuale è calcolata su 3.000/1,008512 + 2.000 invece che anche su 1.000.
+    ctx_ok = daychange_ctx(repo, 9107)
+    summary = copy.deepcopy(ctx_ok.call("get_portfolio_summary", {"portfolio_id": 9107}))
+    previous_without_npc = 3000.0 / 1.008512 + 2000.0
+    summary["day_change_pct"] = round(summary["day_change"] / previous_without_npc * 100.0, 2)
+    outcome = run_rule("C-DAYCHANGE-DENOMINATOR", daychange_ctx(repo, 9107, summary), scope_of(9107))
+    assert_status(outcome, "fail", "invariant_violated")
+    assert outcome["evidence"][0]["path"] == "day_change_pct"
+
+
+def test_daychange_denominator_skips(repo):
+    assert_status(run_rule("C-DAYCHANGE-DENOMINATOR", daychange_ctx(repo, 9106), scope_of(9106)),
+                  "skip", "empty_portfolio")
+    # 9104: AUDUS.L in USD, AUDUK.L in GBP → la variazione della posizione non include il cambio.
+    outcome = run_rule("C-DAYCHANGE-DENOMINATOR", daychange_ctx(repo, 9104), scope_of(9104))
+    assert_status(outcome, "skip", "not_applicable")
+    assert {e["args"]["symbol"] for e in outcome["evidence"]} == {"AUDUS.L", "AUDUK.L"}
+    # Giornata piatta: nessuna variazione.
+    flat = StubRepo({9301: [holding("AUDEQ.MI", 1000.0), holding("AUDBD.MI", 500.0, previous_close=False)]},
+                    {9301: []})
+    assert_status(run_rule("C-DAYCHANGE-DENOMINATOR", daychange_ctx(flat, 9301), scope_of(9301)),
+                  "skip", "no_reference_data")
 
 
 def test_tool_errors_propagate(repo):

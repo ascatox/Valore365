@@ -648,6 +648,34 @@ def test_empty_portfolio_9106(tools):
     assert _positions(tools, 9106) == []
     assert tools.call("get_stress_test", {"portfolio_id": 9106})["scenarios"] == []
     assert tools.call("get_cash_balance", {"portfolio_id": 9106})["total_cash"] == 0.0
+    # TASK-87: X-Ray vuoto dichiarato, non l'errore generico del tool.
+    xray = tools.call("get_xray_summary", {"portfolio_id": 9106})
+    assert xray["is_empty"] is True and xray["coverage_pct"] == 0.0
+    assert xray["top_underlying_holdings"] == [] and xray["funds"] == []
+    assert xray["geographic_exposure"] == {} and xray["sector_exposure"] == {}
+    assert xray["coverage_note"] == "Portafoglio senza posizioni: niente da scomporre."
+
+
+def test_doctor_cash_is_current_cash_task84(tools):
+    """TASK-84 (S-2026-11-11-01): il Doctor e lo Scenario Lab vedono la liquidità del riepilogo."""
+    scenario = tools.call("build_doctor_scenario", {
+        "portfolio_id": 9101, "mode": "manual", "constraints": {"use_cash_balance": True},
+        "operations": [{"symbol": "AUDBD.MI", "action": "buy", "amount": 5000}],
+    })
+    assert scenario["feasible"] is True, scenario.get("infeasible_reason")
+    assert scenario["infeasible_code"] is None and not scenario["required_new_cash"]
+    assert scenario["before"]["cash_value"] == 9256.50
+    assert scenario["before"]["total_value"] == 109256.50
+    assert scenario["after"]["cash_value"] == 4256.50
+    for pid in PORTFOLIO_IDS:
+        before = tools.call("build_doctor_scenario", {"portfolio_id": pid, "mode": "new_cash_only", "new_cash": 100.0})["before"]
+        summary = tools.call("get_portfolio_summary", {"portfolio_id": pid})
+        assert before["cash_value"] == DOCUMENTED[pid][1] == summary["cash_balance"]
+        assert before["total_value"] == round(summary["market_value"] + summary["cash_balance"], 2)
+    before = tools.call("build_doctor_scenario", {"portfolio_id": 9101, "portfolio_ids": PORTFOLIO_IDS,
+                                                  "mode": "new_cash_only", "new_cash": 100.0})["before"]
+    assert before["cash_value"] == 33190.47
+    assert before["cash_value"] == tools.call("get_aggregate_summary", {"portfolio_ids": PORTFOLIO_IDS})["cash_balance"]
 
 
 # ---------------------------------------------------------------------------
@@ -704,6 +732,10 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return True  # D-HELD-SYMBOL-MATCH: nessuno skip
     if rule_id == "D-CASH-CONSISTENCY":
         return True
+    if rule_id == "D-DOCTOR-CASH":  # TASK-84: anche il portafoglio vuoto (0 = 0); skip solo con 30 righe
+        return len(_positions(tools, pid)) < 30
+    if rule_id == "D-XRAY-EMPTY":  # TASK-87: valutata solo sul portafoglio vuoto
+        return not _has_positions(tools, pid)
     if not _has_positions(tools, pid):
         return False
     if rule_id.startswith("A-STRESS") or rule_id == "A-CLASS-STRESS-CONSISTENT":
@@ -733,6 +765,11 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return _has_dividend_tx(tools, pid)
     if rule_id == "C-DAYMOVERS-NONZERO-INCLUDED":
         return any(not r["price_stale"] and r["price_date"] and r["day_change_pct"] != 0 for r in _positions(tools, pid))
+    if rule_id == "C-DAYCHANGE-DENOMINATOR":  # TASK-86: tutte le posizioni nella valuta base, una variazione
+        base = tools.call("get_portfolio_summary", {"portfolio_id": pid})["base_currency"]
+        rows = _positions(tools, pid)
+        return (all(_info(tools, pid, r["symbol"])["currency"] == base for r in rows)
+                and any(r["day_change_pct"] != 0 for r in rows))
     if rule_id in ("D-SUMMARY-PERFORMANCE-VALUE", "D-PERF-RECOMPUTE", "D-PERF-TOOL-MATCH", "D-DUP-TRANSACTIONS"):
         return _has_transactions(tools, pid)
     if rule_id == "D-TRADE-PRICE-SCALE":
@@ -794,6 +831,7 @@ PROOF = {
     "C-DIV-CURRENCY": [9104, 9105, 9101],
     "C-DAYMOVERS-NONZERO-INCLUDED": [9101, 9107],
     "C-DAYMOVERS-CONSISTENCY": [9107, 9101],
+    "C-DAYCHANGE-DENOMINATOR": [9107, 9101],
     "D-WEIGHTS-SUM": [*NON_EMPTY, AGG],
     "D-SUMMARY-POSITIONS": [*NON_EMPTY, AGG],
     "D-POSITION-VALUE-PRICE": [*NON_EMPTY, AGG],
@@ -807,8 +845,10 @@ PROOF = {
     "D-DOCTOR-TER": [9101, 9103],
     "D-DOCTOR-CLASS-WEIGHTS": [9101, 9102, 9103],
     "D-DOCTOR-CONCENTRATION": [9101, 9103],
+    "D-DOCTOR-CASH": [*PORTFOLIO_IDS, AGG],
     "D-HEALTH-SCORE-BREAKDOWN": [9101, 9103, AGG],
     "D-XRAY-SUMS": [9101, 9103, AGG],
+    "D-XRAY-EMPTY": [9106],
     "D-DUP-TRANSACTIONS": [9105, 9101, 9104],
     "D-TRADE-PRICE-SCALE": [9101, 9104],
     "D-LSE-QUOTE-CURRENCY": [(9104, "AUDUS.L"), (9104, "AUDUK.L")],
@@ -822,7 +862,8 @@ def test_proof_table_covers_the_whole_catalog():
     import re
 
     rule_ids = re.findall(r"^### ([ABCD]-[A-Z0-9-]+)\s*$", catalog, flags=re.MULTILINE)
-    assert len(rule_ids) == 52
+    # Totale dichiarato in testa al catalogo (rules.md: «Totale: **N regole**»).
+    assert len(rule_ids) == int(re.search(r"^Totale: \*\*(\d+) regole\*\*", catalog, re.MULTILINE).group(1))
     assert sorted(PROOF) == sorted(rule_ids)
 
 

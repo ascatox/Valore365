@@ -195,13 +195,13 @@ def test_nightly_run_on_seed_saves_results_per_run_portfolio_rule(nightly, env):
     assert run["trigger"] == "external" and run["finished_at"] is not None
     assert run["users_total"] == 1 and run["users_failed"] == 0
     assert run["portfolios_total"] == len(PORTFOLIO_IDS)
-    assert run["rules_total"] == 52 and run["error_count"] == 0 and run["error_type"] is None
+    assert run["rules_total"] == len(load_rules()) and run["error_count"] == 0 and run["error_type"] is None
     assert run["deadline_exceeded"] is False
     saved = _rows(env["engine"], "select portfolio_id, rule_id, scope_kind, status, severity "
                                  "from auditor_results where run_id = :id order by portfolio_id, rule_id, scope_kind",
                   id=run["id"])
     assert {r["portfolio_id"] for r in saved} == set(PORTFOLIO_IDS)
-    assert len({r["rule_id"] for r in saved}) == 52
+    assert len({r["rule_id"] for r in saved}) == len(load_rules())
 
     # Stessi esiti di un'esecuzione diretta del motore (stesso codice, stessi dati, modalità notturna).
     ctx = AuditContext(env["deps"], USER, run_id=uuid.uuid4().hex, mode="nightly")

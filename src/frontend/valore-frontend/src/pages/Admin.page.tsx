@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Card, Group, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
+import { Alert, Badge, Card, Group, Loader, Paper, SimpleGrid, Stack, Text, ThemeIcon, Title } from '@mantine/core';
 import { useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import {
   IconChartBar,
@@ -11,10 +11,18 @@ import {
   IconCalendar,
   IconSparkles,
   IconUsersGroup,
+  IconShieldCheck,
 } from '@tabler/icons-react';
 import { PageHeader } from '../components/layout/PageHeader';
 import { PageLayout } from '../components/layout/PageLayout';
 import { getAdminUsageSummary, type AdminUsageSummary } from '../services/api';
+import {
+  AUDITOR_AREA_LABELS,
+  getAuditorAdminLatest,
+  type AuditorAdminLatest,
+  type AuditorRunStatus,
+  type AuditorSeverity,
+} from '../services/api/auditor';
 
 const METRIC_ICONS: Record<string, { icon: typeof IconUsers; color: string }> = {
   registered_users: { icon: IconUsers, color: 'blue' },
@@ -62,6 +70,134 @@ function MetricCard({ label, value, metricKey }: { label: string; value: number;
       </Group>
     </Card>
   );
+}
+
+// --- Auditor dei calcoli (TASK-81): ultima corsa notturna --------------------------------------
+
+const RUN_STATUS: Record<AuditorRunStatus, { label: string; color: string }> = {
+  running: { label: 'In corso', color: 'blue' },
+  success: { label: 'Tutto in ordine', color: 'teal' },
+  completed_with_failures: { label: 'Conclusa con regole che falliscono', color: 'orange' },
+  failed: { label: 'Corsa fallita', color: 'red' },
+  interrupted: { label: 'Interrotta', color: 'gray' },
+};
+
+const SEVERITY_COLOR: Record<AuditorSeverity, string> = { P0: 'red', P1: 'orange', P2: 'yellow' };
+
+function formatAdminDateTime(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+const portfoliosLabel = (count: number) => (count === 1 ? '1 portafoglio' : `${count.toLocaleString('it-IT')} portafogli`);
+const involvedLabel = (count: number) => (count === 1 ? '1 portafoglio coinvolto' : `${count.toLocaleString('it-IT')} portafogli coinvolti`);
+
+/** Ultima corsa notturna: regole che falliscono, quanti portafogli, da quando, severità. Solo conteggi. */
+export function AuditorAdminPanel({ data, error, loading }: { data: AuditorAdminLatest | null; error: string | null; loading: boolean }) {
+  const run = data?.run ?? null;
+  const status = run ? RUN_STATUS[run.status] ?? { label: run.status, color: 'gray' } : null;
+  const failing = data?.failing ?? [];
+  const errors = data?.errors ?? [];
+
+  return (
+    <Card withBorder radius="xl" padding="lg" data-testid="admin-auditor">
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start" gap="xs">
+          <Group gap="xs" wrap="nowrap">
+            <ThemeIcon color="teal" variant="light" size="sm" radius="xl">
+              <IconShieldCheck size={14} />
+            </ThemeIcon>
+            <Text fw={700}>Controlli notturni dei calcoli</Text>
+          </Group>
+          {status && <Badge color={status.color} variant="light" data-testid="admin-auditor-status">{status.label}</Badge>}
+        </Group>
+
+        {loading && <Group gap="sm"><Loader size="sm" /><Text size="sm" c="dimmed">Caricamento dell'ultima corsa…</Text></Group>}
+        {error && <Alert color="red" variant="light">{error}</Alert>}
+        {!loading && !error && !run && (
+          <Text size="sm" c="dimmed" data-testid="admin-auditor-empty">Nessuna corsa notturna registrata.</Text>
+        )}
+
+        {run && (
+          <>
+            <Text size="sm" c="dimmed">
+              {`Avviata ${formatAdminDateTime(run.started_at)} · conclusa ${formatAdminDateTime(run.finished_at)} · `
+                + `${run.rules_total} regole su ${portfoliosLabel(run.portfolios_total)}`}
+            </Text>
+            <Group gap="xs">
+              <Badge color="teal" variant="light">{run.counts.pass === 1 ? '1 superato' : `${run.counts.pass} superati`}</Badge>
+              <Badge color={run.counts.fail ? 'orange' : 'gray'} variant="light">{run.counts.fail === 1 ? '1 fallito' : `${run.counts.fail} falliti`}</Badge>
+              <Badge color={run.counts.error ? 'red' : 'gray'} variant="light">{run.counts.error === 1 ? '1 errore' : `${run.counts.error} errori`}</Badge>
+              <Badge color="gray" variant="light">{run.counts.skip === 1 ? '1 non applicabile' : `${run.counts.skip} non applicabili`}</Badge>
+            </Group>
+            {run.error_type && <Text size="sm" c="red">{`Eccezione: ${run.error_type}`}</Text>}
+
+            {failing.length === 0 ? (
+              <Text size="sm" data-testid="admin-auditor-none-failing">Nessuna regola fallisce nell'ultima corsa.</Text>
+            ) : (
+              <Stack gap="xs" data-testid="admin-auditor-failing">
+                <Text size="sm" fw={600}>{failing.length === 1 ? '1 regola fallisce' : `${failing.length} regole falliscono`}</Text>
+                {failing.map((rule) => (
+                  <Paper key={rule.rule_id} withBorder radius="md" p="sm" data-testid="admin-auditor-rule">
+                    <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
+                      <Stack gap={2} style={{ minWidth: 0 }}>
+                        <Text size="sm" fw={600} style={{ overflowWrap: 'anywhere' }}>{rule.title}</Text>
+                        <Text size="xs" c="dimmed" style={{ overflowWrap: 'anywhere' }}>
+                          {`${rule.rule_id}${rule.area ? ` · ${AUDITOR_AREA_LABELS[rule.area] ?? rule.area}` : ''}`}
+                        </Text>
+                        <Text size="xs">
+                          {`${involvedLabel(rule.portfolios_failing)} · dal ${formatAdminDateTime(rule.since)}`}
+                        </Text>
+                      </Stack>
+                      <Badge color={SEVERITY_COLOR[rule.severity] ?? 'gray'} variant="filled" style={{ flexShrink: 0 }}>
+                        {rule.severity}
+                      </Badge>
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+
+            {errors.length > 0 && (
+              <Stack gap={4} data-testid="admin-auditor-errors">
+                <Text size="sm" fw={600}>Regole in errore</Text>
+                {errors.map((item) => (
+                  <Text key={item.rule_id} size="xs" c="dimmed">{`${item.rule_id} · ${portfoliosLabel(item.portfolios)}`}</Text>
+                ))}
+              </Stack>
+            )}
+          </>
+        )}
+      </Stack>
+    </Card>
+  );
+}
+
+function AuditorAdminSection() {
+  const [data, setData] = useState<AuditorAdminLatest | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    getAuditorAdminLatest()
+      .then((response) => {
+        if (active) setData(response);
+      })
+      .catch((err) => {
+        if (active) setError(err instanceof Error ? err.message : "Impossibile caricare l'ultima corsa");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return <AuditorAdminPanel data={data} error={error} loading={loading} />;
 }
 
 export function AdminPage() {
@@ -161,6 +297,8 @@ export function AdminPage() {
             </Card>
           </>
         )}
+
+        {summary && <AuditorAdminSection />}
       </Stack>
     </PageLayout>
   );

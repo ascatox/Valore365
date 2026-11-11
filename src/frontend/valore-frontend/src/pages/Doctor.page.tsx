@@ -57,6 +57,7 @@ import { getCopilotStatus } from '../services/api';
 import type { DoctorPolicyDraftPayload, DoctorPolicyRead, DoctorRuleResult, PortfolioHealthAlert, PortfolioHealthResponse } from '../services/api';
 import { doctorScopeFingerprint } from '../services/api/doctor';
 import { DoctorSectionErrorBoundary } from '../components/doctor/DoctorSectionErrorBoundary';
+import { AuditIndicator } from '../components/doctor/AuditIndicator';
 import { DoctorPolicySummaryCard } from '../components/doctor/policy/DoctorPolicySummaryCard';
 import { DoctorParametriSection } from '../components/doctor/policy/DoctorParametriSection';
 import { FreshnessIndicator } from '../components/doctor/policy/FreshnessIndicator';
@@ -694,6 +695,8 @@ export function DoctorPage() {
           {evaluation && (
             <FreshnessIndicator dataQuality={evaluation.data_quality} snapshotAsOf={evaluation.snapshot_as_of} />
           )}
+
+          {section === 'diagnosi' && selectedPortfolio && <AuditIndicator portfolioIds={scopeIds} />}
 
           {section === 'diagnosi' && (
           <DoctorSectionErrorBoundary key={`diagnosi-${scopeKeyString}`} area="Diagnosi">

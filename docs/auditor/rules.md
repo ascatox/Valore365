@@ -9,7 +9,7 @@ Ogni condizione usa **i nomi reali dei campi** dell'output dei tool (`src/backen
 `sanitize_output`. Gli id, i titoli, le severità, gli scope e le tolleranze di questo catalogo sono
 vincolanti: le dichiarazioni `RULES` li copiano esattamente.
 
-Totale: **52 regole** — A 11, B 10, C 11, D 20.
+Totale: **55 regole** — A 11, B 10, C 12, D 22.
 
 ## 0. Convenzioni
 
@@ -569,6 +569,27 @@ n = numero di ordini (o di righe della distribuzione).
 - **Difetto:** `day_change_pct = 0.0` di default trattato come variazione (posizione senza chiusura
   precedente indicata come «peggiore» a 0%).
 
+### C-DAYCHANGE-DENOMINATOR
+- **Titolo:** La variazione giornaliera del portafoglio è calcolata su tutte le posizioni
+- **Sev.** P2 · **Area** daily · **Finding** S-2026-11-11-03 (TASK-86) · **Scope** portfolio
+- **Tool:** `scoped("get_portfolio_summary")`, `scoped("get_positions")`;
+  `scoped("search_asset_info", {"symbol": S})` per ogni riga (valuta di quotazione).
+- **Condizione:** solo se tutte le posizioni sono quotate nella valuta base del riepilogo (la
+  variazione della posizione è in valuta di quotazione, quella del riepilogo al cambio): con
+  P = Σ `market_value / (1 + day_change_pct / 100)` su tutte le righe (una riga senza chiusura
+  precedente ha `day_change_pct` 0 e conta col suo valore, come una quotazione ferma che il riepilogo
+  tratta a variazione nulla; `methodology.md` §9) e P ≠ 0:
+  `|day_change_pct − day_change / P × 100| ≤ 0,01 pp`. Una riga con `market_value` o
+  `day_change_pct` non numerici (o variazione ≤ −100%) → `fail`.
+- **Tolleranze:** 0,01 pp = `T_pp` del riepilogo più l'errore su P dovuto alle variazioni delle
+  posizioni arrotondate a 2 decimali (≤ 0,005% di ogni valore) e a `day_change` a 2 decimali.
+- **Skip:** `empty_portfolio`; righe troncate (30) → `truncated_output`; una posizione quotata in
+  una valuta diversa dalla base → `not_applicable` (9104); `day_change == 0` e nessuna riga con
+  variazione, o P = 0 → `no_reference_data`.
+- **Prova:** 9107 (fermo + senza chiusura precedente + valido), 9101.
+- **Difetto:** posizione senza chiusura precedente esclusa da `previous_market_value` (codice prima di
+  TASK-86: 9107 mostrava −0,13% contro −0,088%).
+
 ## 5. Gruppo D — coerenza fra tool, vista aggregata e dati (TASK-77, `rules/consistency.py`)
 
 ### D-WEIGHTS-SUM
@@ -745,6 +766,29 @@ n = numero di ordini (o di righe della distribuzione).
 - **Prova:** 9101, 9103.
 - **Difetto:** concentrazione calcolata sul totale con la liquidità.
 
+### D-DOCTOR-CASH
+- **Titolo:** La liquidità del Doctor è la stessa del riepilogo
+- **Sev.** P1 · **Area** doctor · **Finding** S-2026-11-11-01 (TASK-84) · **Scope** portfolio, aggregate
+- **Tool:** `scoped("build_doctor_scenario", {"mode": "new_cash_only", "new_cash": 100.0})` (per
+  l'aggregato con `portfolio_id` = primo id e `portfolio_ids`, architettura §3.5);
+  `scoped("get_portfolio_summary")`; `get_cash_balance` per lo scope portfolio; per ogni portafoglio
+  dello scope `get_positions` e `search_asset_info` `{"symbol": S}` per riga (posizioni di tipo
+  `cash`).
+- **Condizione:** con c = `before.cash_value`, s = `cash_balance` del riepilogo (aggregato: somma
+  delle liquidità attuali dei portafogli) e k = Σ `market_value` delle righe con `type == "cash"`
+  (il Doctor le conta nella liquidità, il riepilogo nel valore delle posizioni):
+  `|c − (s + k)| ≤ T_eur` (con righe cash `T_sum_eur(n_cash + 1)`); scope portfolio anche
+  `|s − total_cash| ≤ T_eur`; `|before.total_value − (before.invested_value + c)| ≤ T_sum_eur(1)`.
+- **Tolleranze:** `T_eur` (c e s arrotondati a 2 decimali dai tool); `T_sum_eur(1)` = 0,015 € per tre
+  importi arrotondati a 2 decimali.
+- **Skip:** Scenario Lab spento (`SIMULATOR_DISABLED_MESSAGE`) → `feature_disabled`; righe troncate
+  (30) in un portafoglio → `truncated_output`. Il portafoglio vuoto **non** è `skip` (`before` c'è
+  anche con `infeasible_code: "empty_portfolio"`; atteso 0 = 0).
+- **Prova:** tutti i portafogli, compreso 9106, aggregato.
+- **Difetto:** snapshot del Doctor che legge `portfolios.cash_balance` (saldo di apertura da TASK-49)
+  come liquidità: prima di TASK-84 `cash_value` 0 su tutto il seed (9101: 0 contro 9.256,50;
+  aggregato: 0 contro 33.190,47) e Scenario Lab con `use_cash_balance` infattibile.
+
 ### D-HEALTH-SCORE-BREAKDOWN
 - **Titolo:** Il punteggio di salute è la somma dei punteggi di categoria e delle penalità dichiarate
 - **Sev.** P2 · **Area** doctor · **Finding** V365-010 · **Scope** portfolio, aggregate
@@ -767,6 +811,22 @@ n = numero di ordini (o di righe della distribuzione).
 - **Skip:** `empty_portfolio`.
 - **Prova:** 9101, 9103, aggregato (X-Ray offline: solo schede justETF del seed).
 - **Difetto:** esposizioni sul totale con la liquidità (somma < 100) o senza «Non classificato».
+
+### D-XRAY-EMPTY
+- **Titolo:** L'analisi X-Ray di un portafoglio vuoto risponde senza errori
+- **Sev.** P2 · **Area** classification · **Finding** S-2026-11-11-04 (TASK-87) · **Scope** portfolio
+- **Tool:** `get_positions`; `ctx.try_call("get_xray_summary")`.
+- **Condizione:** se `positions == []`: nessun errore, oppure un errore il cui messaggio non è quello
+  generico «Errore nell'esecuzione del tool …» (né vuoto); senza errore,
+  `top_underlying_holdings == []`, `geographic_exposure` e `sector_exposure` vuoti o al 100%
+  «Non classificato», `coverage_pct` 0 o null.
+- **Tolleranze:** nessuna (0,05 sul 100% di «Non classificato»).
+- **Skip:** portafoglio non vuoto → `not_applicable`.
+- **Prova:** 9106.
+- **Difetto:** `ValueError` di `compute_portfolio_xray` sul portafoglio vuoto, mascherato dal server
+  MCP con l'errore generico (lo stesso di un guasto). Dopo TASK-87 il tool risponde con un X-Ray
+  vuoto dichiarato (`is_empty: true`, coperture 0, `applicable_lookthrough_coverage_pct` null,
+  esposizioni vuote, `coverage_note` «Portafoglio senza posizioni: niente da scomporre.»).
 
 ### D-DUP-TRANSACTIONS
 - **Titolo:** Non ci sono transazioni importate due volte
@@ -897,7 +957,7 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
 | V-LOOSE-SYMBOL | D-HELD-SYMBOL-MATCH |
 | V-BOND-QUOTETYPE | A-CLASS-BOND-TYPE (solo stato salvato) |
 | C2-CASH-FX | D-CASH-CONSISTENCY |
-| C3 `day_change` del riepilogo contro le posizioni | nessuna regola: differenza attesa e documentata (prezzi non arrotondati, FX corrente e precedente) |
+| C3 `day_change` del riepilogo contro le posizioni | nessuna regola sull'importo: differenza attesa e documentata (prezzi non arrotondati, FX corrente e precedente); il denominatore di `day_change_pct` (tutte le posizioni, S-2026-11-11-03) è verificato da C-DAYCHANGE-DENOMINATOR |
 | C4-FX-FALLBACK | D-FX-FLAGS-DECLARED |
 | C4-CCY `currency` di `search_asset_info` | D-LSE-QUOTE-CURRENCY |
 | C5 reddito contro rendimento totale | nessuna regola: limite del modello dichiarato (`missing_yield_symbols`) |
@@ -910,7 +970,9 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
 
 - **Scenario Lab** (`build_doctor_scenario`, `compare_doctor_scenarios`): le invarianti di capitale
   sono già testate in `services/doctor_policy/scenario.py` e l'input richiede scenari costruiti per
-  portafoglio; candidate per un secondo giro (proposte dall'agente settimanale).
+  portafoglio; candidate per un secondo giro (proposte dall'agente settimanale). Eccezione:
+  D-DOCTOR-CASH (TASK-84) legge la situazione di partenza (`before`) di uno scenario fisso
+  `new_cash_only` per confrontare la liquidità del Doctor con quella del riepilogo.
 - **Soglie euristiche dell'health score** (USA > 60%, TER > 0,75%…): sono scelte di prodotto, non
   invarianti; D-HEALTH-SCORE-BREAKDOWN verifica solo che i punti tornino.
 - **Freschezza globale dei prezzi** (`data_freshness`): dipende dall'ora della corsa e dalla

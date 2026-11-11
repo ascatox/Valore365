@@ -108,6 +108,7 @@ PROOF: dict[str, list[str]] = {
     "C-DIV-CURRENCY": [_p(9104), _p(9105), _p(9101)],
     "C-DAYMOVERS-NONZERO-INCLUDED": [_p(9101), _p(9107)],
     "C-DAYMOVERS-CONSISTENCY": [_p(9107), _p(9101)],
+    "C-DAYCHANGE-DENOMINATOR": [_p(9107), _p(9101)],
     "D-WEIGHTS-SUM": [*(_p(p) for p in NON_EMPTY), AGG],
     "D-SUMMARY-POSITIONS": [*(_p(p) for p in NON_EMPTY), AGG],
     "D-POSITION-VALUE-PRICE": [*(_p(p) for p in NON_EMPTY), AGG],
@@ -121,8 +122,10 @@ PROOF: dict[str, list[str]] = {
     "D-DOCTOR-TER": [_p(9101), _p(9103)],
     "D-DOCTOR-CLASS-WEIGHTS": [_p(9101), _p(9102), _p(9103)],
     "D-DOCTOR-CONCENTRATION": [_p(9101), _p(9103)],
+    "D-DOCTOR-CASH": [*(_p(p) for p in PORTFOLIO_IDS), AGG],
     "D-HEALTH-SCORE-BREAKDOWN": [_p(9101), _p(9103), AGG],
     "D-XRAY-SUMS": [_p(9101), _p(9103), AGG],
+    "D-XRAY-EMPTY": [_p(9106)],
     "D-DUP-TRANSACTIONS": [_p(9105), _p(9101), _p(9104)],
     "D-TRADE-PRICE-SCALE": [_p(9101), _p(9104)],
     "D-LSE-QUOTE-CURRENCY": [_i(9104, "AUDUS.L"), _i(9104, "AUDUK.L")],
@@ -226,7 +229,9 @@ def _known_defects_from_catalog() -> dict[str, str]:
 
 def test_full_run_covers_catalog_and_seed(report):
     catalog_ids = re.findall(r"^### ([ABCD]-[A-Z0-9-]+)\s*$", RULES_MD.read_text(encoding="utf-8"), flags=re.MULTILINE)
-    assert len(catalog_ids) == 52
+    # Totale dichiarato in testa al catalogo (rules.md: «Totale: **N regole**»).
+    declared = int(re.search(r"^Totale: \*\*(\d+) regole\*\*", RULES_MD.read_text(encoding="utf-8"), re.MULTILINE).group(1))
+    assert len(catalog_ids) == declared
     assert sorted(r["id"] for r in report["rules"]) == sorted(catalog_ids)
     assert sorted(PROOF) == sorted(catalog_ids)
     scope_keys = {s["scope_key"] for s in report["scopes"]}
