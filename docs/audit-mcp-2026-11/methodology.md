@@ -129,8 +129,19 @@ non toglie punti.
 ## 7. Ribilanciamento (`calculate_rebalance_orders`, `services/rebalance.py`)
 
 - Modalità: `rebalance` (predefinita: vendite che finanziano gli acquisti), `buy_only`, `sell_only`.
-- Totale = valore delle posizioni + liquidità del portafoglio + `available_cash` (liquidità
-  **aggiuntiva**); i pesi includono la liquidità (decisioni TASK-37).
+- Totale = valore delle posizioni **con un target** + liquidità del portafoglio + `available_cash`
+  (liquidità **aggiuntiva**); i pesi includono la liquidità (decisioni TASK-37). Le posizioni senza
+  target restano fuori dal totale e non vengono negoziate (`untargeted_holdings`).
+- **Stessi pesi in scostamento e PAC (TASK-85, decisione del 2026-11-11):** `get_target_drift`,
+  `calculate_pac_contribution` e lo scostamento dello snapshot del Copilot usano la stessa base
+  (`current_target_weights` in `services/rebalance.py`, senza `available_cash`): peso attuale =
+  valore dello strumento / (valore degli strumenti con target + liquidità attuale del modello della
+  performance) × 100, dichiarato come `total_value`. Nel PAC il peso dopo il versamento è
+  (valore + versamento) / (`total_value` + importo mensile). Il peso di `get_positions` (e di
+  `calculate_what_if`, che misura la concentrazione) resta sul valore delle sole posizioni.
+  Esempio, portafoglio 9101 del seed (70.000 / 20.000 / 10.000 €, liquidità 9.256,50, target
+  50/40/10): 64,07 / 18,31 / 9,15 % in tutti e tre i tool, contro 70,0 / 20,0 / 10,0 % di prima in
+  `get_target_drift` e nel PAC.
 - Banda di tolleranza 0,5 pp **come soglia di attivazione**: se almeno uno strumento supera la
   banda, tutti tornano al target.
 - Ordine: prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,
@@ -293,6 +304,24 @@ non toglie punti.
   non arrotondati; `day_change_pct` = variazione / valore precedente delle posizioni (liquidità
   esclusa); un prezzo vecchio di oltre 7 giorni contribuisce 0 ma resta nel denominatore. La somma
   delle percentuali arrotondate delle posizioni non ricostruisce il summary (atteso).
+- **Perimetro di `day_change_pct` (decisione TASK-86):** il denominatore è **sempre tutto il
+  valore investito** (liquidità esclusa). Ogni posizione vi entra: con una variazione misurabile
+  col suo valore alla chiusura precedente (q × chiusura_prec × FX_prec); con un prezzo vecchio di
+  oltre 7 giorni con lo stesso valore precedente e contributo 0; **senza variazione misurabile**
+  (nessuna chiusura precedente: una sola barra e nessun tick; barre dello stesso giorno; metadati,
+  cambio o prezzo non validi) col suo `market_value` corrente e contributo 0. Prima di TASK-86
+  queste ultime uscivano anche dal denominatore e la percentuale si gonfiava (seed dell'Auditor,
+  9107: −0,13% invece di −0,09%; aggregato −0,13% invece di −0,12%). È la stessa definizione di
+  `get_day_movers` (§11) letta da un altro lato: le quotazioni ferme e senza chiusura precedente non
+  hanno una variazione del giorno (fuori dalla classifica migliori/peggiori, contributo 0 al
+  riepilogo) ma restano posizioni del portafoglio (contate in `excluded_*`, valore nel
+  denominatore). Così la percentuale è «variazione di oggi / valore del portafoglio» per tutti i
+  consumatori: Dashboard (KPI «Oggi», hero mobile, griglia dell'analisi mostrano
+  `summary.day_change_pct` senza ricalcolarla), tool Copilot/MCP `get_portfolio_summary` e
+  `get_aggregate_summary`, export Markdown; lo snapshot aggregato del Copilot
+  (`copilot/snapshot.py`) usa già `day_change / (market_value − day_change)`, che conta tutte le
+  posizioni. `day_change` (importo) non cambia. Verifica: regola dell'Auditor
+  C-DAYCHANGE-DENOMINATOR (`docs/auditor/rules.md`).
 - **Quantità:** nessun arrotondamento all'origine; output arrotondato a 8 decimali; nessuna
   tolleranza contabile (un residuo resta una posizione). Costo medio ponderato (non FIFO).
 

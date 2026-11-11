@@ -257,8 +257,10 @@ CATALOG = {
     "D-DOCTOR-TER": ("P1", "doctor", ["V365-007"], ["portfolio"]),
     "D-DOCTOR-CLASS-WEIGHTS": ("P1", "doctor", ["V365-002"], ["portfolio"]),
     "D-DOCTOR-CONCENTRATION": ("P2", "doctor", ["V365-010"], ["portfolio"]),
+    "D-DOCTOR-CASH": ("P1", "doctor", ["S-2026-11-11-01"], ["portfolio", "aggregate"]),
     "D-HEALTH-SCORE-BREAKDOWN": ("P2", "doctor", ["V365-010"], ["portfolio", "aggregate"]),
     "D-XRAY-SUMS": ("P2", "values", ["C6"], ["portfolio", "aggregate"]),
+    "D-XRAY-EMPTY": ("P2", "classification", ["S-2026-11-11-04"], ["portfolio"]),
     "D-DUP-TRANSACTIONS": ("P1", "data", ["V365-009", "V-DUP-IMPORT"], ["portfolio"]),
     "D-TRADE-PRICE-SCALE": ("P1", "data", ["V-XLSX-1000", "V365-008", "V-QUOTE-CCY-L"], ["portfolio"]),
     "D-LSE-QUOTE-CURRENCY": ("P1", "data", ["V-QUOTE-CCY-L", "V365-008"], ["instrument"]),
@@ -1005,6 +1007,186 @@ def test_doctor_concentration_skips():
 
 
 # --------------------------------------------------------------------------
+# D-DOCTOR-CASH (TASK-84)
+# --------------------------------------------------------------------------
+
+DOCTOR_CASH_ARGS = {"mode": "new_cash_only", "new_cash": 100.0}
+
+
+class _SnapConn:
+    def execute(self, statement, params=None):
+        rows = []
+        if "from assets" in str(statement):
+            rows = [{"id": aid, "asset_type": "etf", "quote_currency": "EUR", "isin": None, "category": None,
+                     "index_tracked": None, "investment_focus": None, "enrichment_name": None}
+                    for aid in params["asset_ids"]]
+        return SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+
+
+class _SnapBegin:
+    def __enter__(self):
+        return _SnapConn()
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _SnapRepo:
+    """Repository per ``build_snapshot`` con il ramo vero di ``_load_scope``: ``portfolios.cash_balance``
+    è il saldo di apertura, ``_cash_balance_details`` la liquidità attuale (modello della performance)."""
+
+    engine = SimpleNamespace(begin=lambda: _SnapBegin())
+
+    def __init__(self, holdings: list, *, opening: float, current: float) -> None:
+        from app.models import Position
+
+        self.opening, self.current = opening, current
+        self.positions = [
+            Position(asset_id=h.asset_id, symbol=h.symbol, name=h.name, asset_type="etf", quantity=h.quantity,
+                     avg_cost=h.avg_cost, market_price=h.market_price, market_value=h.market_value,
+                     unrealized_pl=0, unrealized_pl_pct=0, weight=h.weight)
+            for h in holdings
+        ]
+
+    def _get_portfolio_for_user(self, conn, portfolio_id, user_id):
+        from app.repository._base import PortfolioData
+
+        return PortfolioData(id=portfolio_id, base_currency="EUR", cash_balance=self.opening)
+
+    def _cash_balance_details(self, conn, portfolios):
+        return {p.id: SimpleNamespace(balance=self.current) for p in portfolios}
+
+    def get_positions(self, portfolio_id, user_id):
+        return self.positions
+
+    def get_market_data_sync_overview(self):
+        raise RuntimeError("no sync table")
+
+    def get_etf_enrichment_bulk(self, ids):
+        return {}
+
+    def get_asset_metadata_bulk(self, ids):
+        return {}
+
+
+def doctor_scenario_out(snapshot, ids: list[int]) -> dict:
+    """Output di build_doctor_scenario (stessa funzione del tool) sullo snapshot dato."""
+    from app.copilot_doctor_tools import _scenario_input, _scenario_result
+    from app.services.doctor_policy.scenario import preview_scenario
+
+    payload = {"portfolio_ids": list(ids), "snapshot_id": None, "policy_version": None,
+               **_scenario_input(DOCTOR_CASH_ARGS)}
+    return _scenario_result(preview_scenario(snapshot, payload, policy_document=None, now=None), ids)
+
+
+def snapshot_out(holdings: list, cash: float, ids: list[int], extra=()) -> dict:
+    from app.services.doctor_policy import snapshot_from_holdings
+    from app.services.portfolio_doctor import AnalyzedHolding
+
+    rows = [AnalyzedHolding(asset_id=h.asset_id, symbol=h.symbol, name=h.name, asset_type="etf", quote_currency="EUR",
+                            market_value=h.market_value, weight_pct=0.0) for h in holdings] + list(extra)
+    return doctor_scenario_out(snapshot_from_holdings(rows, portfolio_ids=ids, cash_value=cash), ids)
+
+
+def _doctor_cash_ctx(doctor: Any, summary_cash: float, total_cash: float | None = None, *,
+                     holdings=None, info_type: dict | None = None, pid: int = P1) -> FakeAuditContext:
+    holdings = p1_holdings() if holdings is None else holdings
+    info_type = info_type or {}
+    responses = [
+        ("build_doctor_scenario", {"portfolio_id": pid, **DOCTOR_CASH_ARGS}, doctor),
+        ("get_portfolio_summary", {"portfolio_id": pid}, summary_out(summary_of(holdings, summary_cash))),
+        ("get_cash_balance", {"portfolio_id": pid},
+         cash_out(summary_cash if total_cash is None else total_cash, CASH_91)),
+        ("get_positions", {"portfolio_id": pid}, positions_out(holdings)),
+    ]
+    responses += [("search_asset_info", {"portfolio_id": pid, "symbol": h.symbol},
+                   search_info_out(h.symbol, type_=info_type.get(h.symbol, "etf"))) for h in holdings]
+    return FakeAuditContext(responses)
+
+
+def test_doctor_cash_pass_on_fixed_snapshot_and_fail_on_reintroduced_defect(monkeypatch):
+    """S-2026-11-11-01 (seed 9101): saldo di apertura 0, liquidità attuale 544,80 (esempio §9.1)."""
+    from app.services.doctor_policy import build_snapshot
+    from app.services.doctor_policy import snapshot as snapshot_module
+
+    repo = _SnapRepo(p1_holdings(), opening=0.0, current=544.80)
+    fixed = doctor_scenario_out(build_snapshot(repo, [P1], "u"), [P1])
+    assert fixed["before"]["cash_value"] == 544.80 and fixed["before"]["total_value"] == 1544.80
+    out = check(D.check_doctor_cash, _doctor_cash_ctx(fixed, 544.80), SCOPE_P1)
+    assert_status(out, "pass")
+
+    def opening_balance_scope(repo, ids, user_id):  # _load_scope prima di TASK-84
+        from app.repository._scope import load_scope_portfolios
+
+        with repo.engine.begin() as conn:
+            _ids, portfolios = load_scope_portfolios(repo, conn, ids, user_id)
+        return portfolios[0].base_currency, sum(float(p.cash_balance or 0.0) for p in portfolios)
+
+    monkeypatch.setattr(snapshot_module, "_load_scope", opening_balance_scope)
+    broken = doctor_scenario_out(build_snapshot(repo, [P1], "u"), [P1])
+    assert broken["before"]["cash_value"] == 0.0
+    out = check(D.check_doctor_cash, _doctor_cash_ctx(broken, 544.80), SCOPE_P1)
+    assert_status(out, "fail", "invariant_violated")
+    ev = next(e for e in out["evidence"] if e["path"] == "before.cash_value")
+    assert (ev["observed"], ev["expected"]) == (0.0, 544.80)
+
+
+def test_doctor_cash_aggregate_is_sum_of_current_cash():
+    ids = [P1, P3]
+    holdings = merge(p1_holdings(), p3_holdings())
+    summary = agg_summary_out(summary_of(holdings, 744.80), ids)
+
+    def ctx(doctor: dict) -> FakeAuditContext:
+        responses = [
+            ("build_doctor_scenario", {"portfolio_id": P1, "portfolio_ids": ids, **DOCTOR_CASH_ARGS}, doctor),
+            ("get_aggregate_summary", {"portfolio_ids": ids}, summary),
+        ]
+        for pid, rows in ((P1, p1_holdings()), (P3, p3_holdings())):
+            responses.append(("get_positions", {"portfolio_id": pid}, positions_out(rows)))
+            responses += [("search_asset_info", {"portfolio_id": pid, "symbol": h.symbol}, search_info_out(h.symbol))
+                          for h in rows]
+        return FakeAuditContext(responses)
+
+    assert_status(check(D.check_doctor_cash, ctx(snapshot_out(holdings, 744.80, ids)), SCOPE_AGG), "pass")
+    # Difetto: somma dei saldi di apertura (0) invece delle liquidità attuali.
+    assert_status(check(D.check_doctor_cash, ctx(snapshot_out(holdings, 0.0, ids)), SCOPE_AGG), "fail")
+
+
+def test_doctor_cash_counts_cash_positions_and_checks_the_total():
+    from app.services.portfolio_doctor import AnalyzedHolding
+
+    holdings = weigh(p1_holdings() + [holding("AUDCASH", 1, 300.0, 300.0, asset_id=9299)])
+    cash_row = AnalyzedHolding(asset_id=9299, symbol="AUDCASH", name="Conto", asset_type="cash", quote_currency="EUR",
+                               market_value=300.0, weight_pct=0.0)
+    doctor = snapshot_out(holdings[:3], 544.80 + 300.0, [P1], extra=[cash_row])
+    ctx = _doctor_cash_ctx(doctor, 544.80, holdings=holdings, info_type={"AUDCASH": "cash"})
+    assert_status(check(D.check_doctor_cash, ctx, SCOPE_P1), "pass")
+    # Posizione di liquidità dimenticata dal Doctor.
+    doctor = snapshot_out(holdings[:3], 544.80, [P1])
+    ctx = _doctor_cash_ctx(doctor, 544.80, holdings=holdings, info_type={"AUDCASH": "cash"})
+    assert_status(check(D.check_doctor_cash, ctx, SCOPE_P1), "fail")
+    # total_value diverso da invested_value + cash_value; riepilogo diverso dal saldo di cassa.
+    doctor = snapshot_out(p1_holdings(), 544.80, [P1])
+    doctor["before"]["total_value"] = 1000.0
+    assert_status(check(D.check_doctor_cash, _doctor_cash_ctx(doctor, 544.80), SCOPE_P1), "fail")
+    doctor = snapshot_out(p1_holdings(), 544.80, [P1])
+    assert_status(check(D.check_doctor_cash, _doctor_cash_ctx(doctor, 544.80, total_cash=500.0), SCOPE_P1), "fail")
+
+
+def test_doctor_cash_empty_portfolio_is_evaluated_and_disabled_skips():
+    from app.copilot_doctor_tools import SIMULATOR_DISABLED_MESSAGE
+
+    empty = snapshot_out([], 0.0, [P6])
+    assert empty["infeasible_code"] == "empty_portfolio" and empty["before"]["cash_value"] == 0.0
+    ctx = _doctor_cash_ctx(empty, 0.0, holdings=[], pid=P6)
+    assert_status(check(D.check_doctor_cash, ctx, SCOPE_P6), "pass")
+    ctx = _doctor_cash_ctx(RuntimeError(SIMULATOR_DISABLED_MESSAGE), 544.80)
+    assert_status(check(D.check_doctor_cash, ctx, SCOPE_P1), "skip", "feature_disabled")
+    with pytest.raises(FakeToolError):
+        D.check_doctor_cash(_doctor_cash_ctx(RuntimeError("Portfolio non trovato"), 544.80), SCOPE_P1)
+
+
+# --------------------------------------------------------------------------
 # D-HEALTH-SCORE-BREAKDOWN
 # --------------------------------------------------------------------------
 
@@ -1088,6 +1270,82 @@ def test_xray_sums_fails_on_exposure_over_total_with_cash_or_without_unclassifie
 def test_xray_sums_skips_empty():
     assert_status(check(D.check_xray_sums, _xray_ctx(xray_out(GEO, SECTOR), holdings=[]), SCOPE_P1),
                   "skip", "empty_portfolio")
+
+
+# --------------------------------------------------------------------------
+# D-XRAY-EMPTY (TASK-87)
+# --------------------------------------------------------------------------
+
+
+class _EmptyXrayRepo:
+    def get_positions(self, portfolio_id, user_id, stale_days=5):
+        return []
+
+
+def empty_xray_tool_out() -> dict:
+    """Output vero di get_xray_summary su un portafoglio senza posizioni (handler di copilot_tools)."""
+    from app.copilot_tools import _get_xray_summary
+
+    return _get_xray_summary({}, _EmptyXrayRepo(), None, P1, "u", finance_client=SimpleNamespace(), justetf_client=None)
+
+
+def _xray_empty_ctx(xray, holdings=()) -> FakeAuditContext:
+    return FakeAuditContext([
+        ("get_positions", {"portfolio_id": P1}, positions_out(list(holdings))),
+        ("get_xray_summary", {"portfolio_id": P1}, xray),
+    ])
+
+
+def test_xray_empty_pass_on_declared_empty_output():
+    xray = empty_xray_tool_out()
+    assert xray["is_empty"] is True
+    out = check(D.check_xray_empty, _xray_empty_ctx(xray), SCOPE_P1)
+    assert_status(out, "pass")
+    assert {e["path"] for e in out["evidence"]} >= {"positions", "top_underlying_holdings", "coverage_pct"}
+    # Tutto in «Non classificato» e copertura null valgono come esito vuoto.
+    unclassified = {**xray, "geographic_exposure": {"Non classificato": 100.0}, "coverage_pct": None}
+    assert_status(check(D.check_xray_empty, _xray_empty_ctx(unclassified), SCOPE_P1), "pass")
+
+
+def test_xray_empty_pass_on_explicit_error():
+    ctx = _xray_empty_ctx(RuntimeError("Portafoglio senza posizioni: X-Ray non disponibile"))
+    assert_status(check(D.check_xray_empty, ctx, SCOPE_P1), "pass")
+
+
+def test_xray_empty_fails_on_generic_error_reintroduced(monkeypatch):
+    """Difetto di TASK-87 reintrodotto: compute_portfolio_xray solleva ValueError sul portafoglio vuoto,
+    execute_tool lo trasforma in errore e il server MCP lo maschera con il messaggio generico."""
+    from app import copilot_tools
+    from app.services import portfolio_doctor
+
+    def _old_behaviour(*_a, **_kw):
+        raise ValueError("Portafoglio non trovato o vuoto")
+
+    monkeypatch.setattr(portfolio_doctor, "compute_portfolio_xray", _old_behaviour)
+    result = copilot_tools.execute_tool("get_xray_summary", {}, _EmptyXrayRepo(), None, P1, "u",
+                                        finance_client=SimpleNamespace())
+    assert set(result) == {"error"} and result["error"].startswith("Errore nell'esecuzione del tool get_xray_summary")
+    masked = "Errore nell'esecuzione del tool get_xray_summary"  # mcp_server/tools.py:_run_portfolio_tool
+    out = check(D.check_xray_empty, _xray_empty_ctx(RuntimeError(masked)), SCOPE_P1)
+    assert_status(out, "fail", "invariant_violated")
+    assert out["evidence"][-1]["path"] == "error" and out["evidence"][-1]["observed"] == masked
+
+
+def test_xray_empty_fails_on_non_empty_content():
+    xray = empty_xray_tool_out()
+    holdings = {**xray, "top_underlying_holdings": [{"symbol": "AAPL", "name": "Apple", "aggregated_weight_pct": 5.0}]}
+    assert_status(check(D.check_xray_empty, _xray_empty_ctx(holdings), SCOPE_P1), "fail")
+    geo = {**xray, "geographic_exposure": {"Stati Uniti": 60.0, "Non classificato": 40.0}}
+    out = check(D.check_xray_empty, _xray_empty_ctx(geo), SCOPE_P1)
+    assert_status(out, "fail")
+    assert [e["path"] for e in out["evidence"]] == ["positions", "geographic_exposure"]
+    assert_status(check(D.check_xray_empty, _xray_empty_ctx({**xray, "coverage_pct": 50.0}), SCOPE_P1), "fail")
+
+
+def test_xray_empty_skips_non_empty_portfolio():
+    ctx = _xray_empty_ctx(xray_out(GEO, SECTOR), holdings=p1_holdings())
+    assert_status(check(D.check_xray_empty, ctx, SCOPE_P1), "skip", "not_applicable")
+    assert [c[0] for c in ctx.calls] == ["get_positions"]
 
 
 # --------------------------------------------------------------------------

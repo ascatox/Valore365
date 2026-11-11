@@ -1,7 +1,7 @@
 ---
 id: TASK-81
 title: 'Auditor: indicatore nel Doctor e vista amministrativa'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -23,11 +23,11 @@ I controlli notturni sono un argomento di fiducia: l'utente deve poter vedere ch
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Il Doctor mostra un indicatore discreto «Calcoli verificati: N controlli superati» con la data dell'ultima corsa, per portafoglio singolo e vista aggregata
-- [ ] #2 Aprendo l'indicatore l'utente vede l'elenco dei controlli per titolo, raggruppati per area, con l'esito; nessun gergo tecnico né id interni
-- [ ] #3 Se un controllo fallisce sul suo portafoglio, il testo dice in modo neutro che un calcolo è in verifica e quale area riguarda; se la corsa è vecchia di oltre due giorni o assente, l'indicatore non compare
-- [ ] #4 La pagina Admin mostra l'ultima corsa: regole che falliscono, numero di portafogli coinvolti, da quando, severità
-- [ ] #5 Privacy Mode, temi di colore e mobile sono rispettati; test dei componenti coprono tutti gli stati
+- [x] #1 Il Doctor mostra un indicatore discreto «Calcoli verificati: N controlli superati» con la data dell'ultima corsa, per portafoglio singolo e vista aggregata
+- [x] #2 Aprendo l'indicatore l'utente vede l'elenco dei controlli per titolo, raggruppati per area, con l'esito; nessun gergo tecnico né id interni
+- [x] #3 Se un controllo fallisce sul suo portafoglio, il testo dice in modo neutro che un calcolo è in verifica e quale area riguarda; se la corsa è vecchia di oltre due giorni o assente, l'indicatore non compare
+- [x] #4 La pagina Admin mostra l'ultima corsa: regole che falliscono, numero di portafogli coinvolti, da quando, severità
+- [x] #5 Privacy Mode, temi di colore e mobile sono rispettati; test dei componenti coprono tutti gli stati
 <!-- AC:END -->
 
 ## Implementation Notes

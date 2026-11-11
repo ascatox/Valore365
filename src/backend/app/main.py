@@ -86,6 +86,7 @@ from .api.routes_pac import register_pac_routes
 from .api.routes_copilot import register_copilot_routes
 from .api.routes_internal import register_internal_routes
 from .api.routes_auditor_internal import register_auditor_internal_routes
+from .api.routes_auditor_user import register_auditor_user_routes
 from .mcp_server import register_mcp_routes
 
 # ---------------------------------------------------------------------------
@@ -440,6 +441,12 @@ register_auditor_internal_routes(
     router,
     settings=settings,
     service=RuntimeDependencyProxy(lambda: auditor_nightly),
+)
+# TASK-81: controlli notturni dei propri portafogli, in sola lettura (Doctor).
+register_auditor_user_routes(
+    router,
+    RuntimeDependencyProxy(lambda: repo),
+    store_getter=lambda: auditor_nightly.store,
 )
 
 app.include_router(router, prefix="/api")

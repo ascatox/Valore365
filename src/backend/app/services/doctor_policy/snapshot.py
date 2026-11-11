@@ -70,7 +70,8 @@ class DoctorSnapshot:
     portfolio_ids: list[int]
     holdings: list[AnalyzedHolding]
     base_currency: str | None = None
-    # Cash balance of the portfolios + cash positions (not in any denominator).
+    # Current cash of the portfolios (performance cash model, TASK-49/TASK-84)
+    # + cash positions (not in any denominator).
     cash_value: float = 0.0
     # asset_id -> ISO timestamp of the latest price used (tick or daily close).
     price_as_of: dict[int, str | None] = field(default_factory=dict)
@@ -242,7 +243,13 @@ def snapshot_from_holdings(
 
 
 def _load_scope(repo: Any, ids: list[int], user_id: str) -> tuple[str | None, float]:
-    """Validate ownership of every portfolio; return (base currency, cash balance).
+    """Validate ownership of every portfolio; return (base currency, current cash).
+
+    The cash is the current cash of the performance cash model (TASK-49), the
+    same as summary.cash_balance, ``get_cash_balance``, the rebalance and Monte
+    Carlo; for several portfolios the sum of each portfolio's current cash, as
+    the aggregate summary (TASK-84). ``portfolios.cash_balance`` is only the
+    opening balance (cash before the first transaction), already part of it.
 
     Raises ValueError (not found / mixed currencies) exactly like the
     aggregate Doctor features.
@@ -253,9 +260,13 @@ def _load_scope(repo: Any, ids: list[int], user_id: str) -> tuple[str | None, fl
 
         with engine.begin() as conn:
             _ids, portfolios = load_scope_portfolios(repo, conn, ids, user_id)
-        return portfolios[0].base_currency, sum(float(p.cash_balance or 0.0) for p in portfolios)
+            details = repo._cash_balance_details(conn, portfolios)
+        cash = sum(float(details[p.id].balance or 0.0) for p in portfolios)
+        return portfolios[0].base_currency, cash
     scope = repo.resolve_portfolio_scope(ids, user_id)
-    return getattr(scope, "base_currency", None), 0.0
+    cash_of = getattr(repo, "get_current_cash_balance_value_multi", None)
+    cash = float(cash_of(list(ids), user_id) or 0.0) if callable(cash_of) else 0.0
+    return getattr(scope, "base_currency", None), cash
 
 
 def build_snapshot(repo: Any, portfolio_ids: Iterable[int], user_id: str) -> DoctorSnapshot:

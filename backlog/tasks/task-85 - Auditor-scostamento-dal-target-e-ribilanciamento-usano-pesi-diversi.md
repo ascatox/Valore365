@@ -1,7 +1,7 @@
 ---
 id: TASK-85
 title: 'Auditor: scostamento dal target e ribilanciamento usano pesi diversi'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T12:00:00Z'
 labels:
@@ -36,7 +36,7 @@ Deduplica: nessuna regola confronta i due tool (B-PAC-UNDERWEIGHT-ONLY usa solo 
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Decisione del proprietario: `get_target_drift` (e il PAC) usano lo stesso denominatore del ribilanciamento, oppure dichiarano nell'output il proprio denominatore e la differenza rispetto a `calculate_rebalance_orders`
-- [ ] #2 Test unitario sul caso 9101 del seed (posizioni + liquidità con target 50/40/10)
-- [ ] #3 Attivata la regola proposta `B-DRIFT-REBALANCE-WEIGHTS` (bozza nel report del 2026-11-11), adattata alla decisione, con scheda in `docs/auditor/rules.md`
+- [x] #1 Decisione del proprietario (2026-11-11: stessa base del ribilanciamento, cioè il totale con la liquidità): `get_target_drift` (e il PAC) usano lo stesso denominatore del ribilanciamento, oppure dichiarano nell'output il proprio denominatore e la differenza rispetto a `calculate_rebalance_orders`
+- [x] #2 Test unitario sul caso 9101 del seed (posizioni + liquidità con target 50/40/10)
+- [x] #3 Attivata la regola proposta `B-DRIFT-REBALANCE-WEIGHTS` (bozza nel report del 2026-11-11), adattata alla decisione, con scheda in `docs/auditor/rules.md`
 <!-- AC:END -->

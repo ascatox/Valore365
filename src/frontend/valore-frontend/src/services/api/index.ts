@@ -13,3 +13,4 @@ export * from './settings';
 export * from './aggregate';
 export * from './tribunalTypes';
 export * from './tribunal';
+export * from './auditor';

@@ -243,3 +243,68 @@ def compute_rebalance_plan(
         target_sum_pct=target_sum, untargeted_symbols=[h.symbol for h in untargeted],
         untargeted_value=untargeted_value, buys_scaled=buys_scaled,
     )
+
+
+# ---------------------------------------------------------------------------
+# Current weights against the targets (TASK-85)
+# ---------------------------------------------------------------------------
+
+TARGET_WEIGHT_BASIS_NOTE = (
+    "Pesi attuali sul valore degli strumenti con un peso obiettivo piu' la liquidita' del "
+    "portafoglio (stesso modello della performance), la stessa base di calculate_rebalance_orders "
+    "e calculate_pac_contribution: total_value = valore degli strumenti con target + cash_balance. "
+    "Le posizioni senza target restano fuori dal totale. Il peso di get_positions e' invece sul "
+    "valore delle sole posizioni."
+)
+
+
+@dataclass(frozen=True)
+class TargetWeights:
+    """Current weight of every targeted instrument on the rebalancing base."""
+
+    base_value: float
+    cash: float
+    by_key: dict[Hashable, RebalanceWeight]
+    untargeted_symbols: list[str] = field(default_factory=list)
+    untargeted_value: float = 0.0
+
+    def current_weight_pct(self, key: Hashable) -> float:
+        w = self.by_key.get(key)
+        return w.current_weight_pct if w is not None else 0.0
+
+
+def target_holdings(positions: Iterable, target_alloc: Iterable) -> list[RebalanceHolding]:
+    """Holdings for the rebalancing algorithm: every position (target or not)
+    plus the targeted assets not held yet (value 0). ``positions`` need
+    ``asset_id``, ``symbol``, ``market_value``; targets ``asset_id``,
+    ``symbol``, ``weight_pct``."""
+    targets = {t.asset_id: t for t in target_alloc}
+    held = set()
+    holdings: list[RebalanceHolding] = []
+    for p in positions:
+        held.add(p.asset_id)
+        holdings.append(RebalanceHolding(
+            key=p.asset_id, symbol=p.symbol, current_value=float(p.market_value or 0.0),
+            target_weight_pct=float(targets[p.asset_id].weight_pct) if p.asset_id in targets else None,
+        ))
+    holdings += [
+        RebalanceHolding(key=t.asset_id, symbol=t.symbol, current_value=0.0, target_weight_pct=float(t.weight_pct))
+        for t in targets.values()
+        if t.asset_id not in held
+    ]
+    return holdings
+
+
+def current_target_weights(positions: Iterable, target_alloc: Iterable, cash: float) -> TargetWeights:
+    """Single source of the current weights shown by get_target_drift, the PAC
+    and calculate_rebalance_orders (TASK-85): the base of
+    ``compute_rebalance_plan`` with the portfolio cash and no extra cash
+    (targeted holdings + cash; holdings without a target excluded)."""
+    plan = compute_rebalance_plan(target_holdings(positions, target_alloc), portfolio_cash=cash)
+    return TargetWeights(
+        base_value=plan.base_value,
+        cash=plan.portfolio_cash,
+        by_key={w.key: w for w in plan.weights},
+        untargeted_symbols=list(plan.untargeted_symbols),
+        untargeted_value=plan.untargeted_value,
+    )

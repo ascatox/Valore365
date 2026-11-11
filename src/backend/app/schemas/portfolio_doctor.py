@@ -351,3 +351,6 @@ class XRayResponse(BaseModel):
     aggregated_country_exposure: dict[str, float] = Field(default_factory=dict)
     aggregated_sector_exposure: dict[str, float] = Field(default_factory=dict)
     coverage_issues: list[XRayCoverageIssue] = Field(default_factory=list)
+    # TASK-87: true when the scope has no positions (every field above is then
+    # empty or zero and coverage_note says so); not an error.
+    is_empty: bool = False

@@ -1,7 +1,7 @@
 ---
 id: TASK-86
 title: 'Auditor: variazione giornaliera percentuale senza le posizioni prive di chiusura precedente'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T12:00:00Z'
 labels:
@@ -36,7 +36,7 @@ Deduplica: le regole C-DAYMOVERS-* verificano solo `get_day_movers`; TASK-33 e T
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Una posizione senza chiusura precedente resta nel denominatore di `day_change_pct` con contributo nullo (come una quotazione ferma), oppure il riepilogo dichiara in una nota le posizioni escluse e il perimetro della percentuale; `methodology.md` §9 aggiornata
-- [ ] #2 Test unitario in `tests/unit/test_summary_day_change.py` con una posizione senza chiusura precedente
-- [ ] #3 Attivata la regola proposta `C-DAYCHANGE-DENOMINATOR` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9107
+- [x] #1 Una posizione senza chiusura precedente resta nel denominatore di `day_change_pct` con contributo nullo (come una quotazione ferma), oppure il riepilogo dichiara in una nota le posizioni escluse e il perimetro della percentuale; `methodology.md` §9 aggiornata
+- [x] #2 Test unitario in `tests/unit/test_summary_day_change.py` con una posizione senza chiusura precedente
+- [x] #3 Attivata la regola proposta `C-DAYCHANGE-DENOMINATOR` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9107
 <!-- AC:END -->

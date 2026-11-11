@@ -1,7 +1,7 @@
 ---
 id: TASK-84
 title: 'Auditor: il Doctor legge il saldo iniziale come liquidità attuale'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T12:00:00Z'
 labels:
@@ -38,7 +38,7 @@ Deduplica: nessuna regola confronta la liquidità del Doctor (D-CASH-CONSISTENCY
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Lo snapshot del Doctor usa come liquidità dello scope la stessa liquidità del riepilogo (modello della performance, singolo portafoglio e aggregato), più le posizioni di tipo cash
-- [ ] #2 Sul seed dell'Auditor `build_doctor_scenario` 9101 con acquisto di 5.000 € e `use_cash_balance` è fattibile e `before.cash_value` = 9.256,50; test unitario e di integrazione
-- [ ] #3 Attivata la regola proposta `D-DOCTOR-CASH` (bozza nel report del 2026-11-11) in `rules/consistency.py`, con scheda in `docs/auditor/rules.md` e voce nella colonna «Prova»
+- [x] #1 Lo snapshot del Doctor usa come liquidità dello scope la stessa liquidità del riepilogo (modello della performance, singolo portafoglio e aggregato), più le posizioni di tipo cash
+- [x] #2 Sul seed dell'Auditor `build_doctor_scenario` 9101 con acquisto di 5.000 € e `use_cash_balance` è fattibile e `before.cash_value` = 9.256,50; test unitario e di integrazione
+- [x] #3 Attivata la regola proposta `D-DOCTOR-CASH` (bozza nel report del 2026-11-11) in `rules/consistency.py`, con scheda in `docs/auditor/rules.md` e voce nella colonna «Prova»
 <!-- AC:END -->

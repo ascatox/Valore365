@@ -723,6 +723,91 @@ def check_daymovers_consistency(ctx: Any, scope: dict[str, Any]) -> dict[str, An
     )
 
 
+# Errore ammesso su day_change_pct del riepilogo (rules.md, C-DAYCHANGE-DENOMINATOR): T_pp più l'errore sul
+# denominatore ricostruito da variazioni delle posizioni arrotondate a 2 decimali e da day_change a 2 decimali.
+T_DAYCHANGE_PP = 0.01
+
+
+def check_daychange_denominator(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    """C-DAYCHANGE-DENOMINATOR: ``day_change_pct`` del riepilogo è calcolata su tutte le posizioni.
+
+    Denominatore ricostruito dalle righe di ``get_positions``: P = Σ market_value / (1 + day_change_pct / 100).
+    Una riga senza chiusura precedente ha variazione 0 e conta col suo valore, come una quotazione ferma.
+    """
+    rows, ptool, pargs = _positions(ctx, scope)
+    if not rows:
+        return _empty_skip(ptool, pargs)
+    if len(rows) >= POSITIONS_ROW_LIMIT:
+        return _skip(
+            "truncated_output", "Le posizioni sono troncate a 30 righe: il denominatore non è completo.",
+            [_ev(ptool, pargs, "positions", len(rows), None, None, "righe restituite")],
+        )
+    stool, sargs = _tool_args("get_portfolio_summary", scope)
+    summary = ctx.scoped("get_portfolio_summary", scope)
+    base = summary.get("base_currency")
+    # La variazione della posizione è in valuta di quotazione, quella del riepilogo al cambio: il
+    # ricalcolo vale solo se tutte le posizioni sono quotate nella valuta base.
+    foreign: dict[str, Any] = {}
+    for row in rows:
+        symbol = row.get("symbol")
+        info = ctx.scoped("search_asset_info", scope, {"symbol": symbol})
+        currency = info.get("currency") if isinstance(info, dict) else None
+        if not isinstance(base, str) or currency != base:
+            foreign[str(symbol)] = currency
+    if foreign:
+        return _skip(
+            "not_applicable",
+            "Alcune posizioni non sono quotate nella valuta base: la variazione della posizione non include il cambio.",
+            [_ev("search_asset_info", {**sargs, "symbol": symbol}, "currency", currency, base, None,
+                 "valuta di quotazione diversa dalla base") for symbol, currency in sorted(foreign.items())],
+        )
+
+    day_change = _num(summary.get("day_change"))
+    observed = _num(summary.get("day_change_pct"))
+    previous = 0.0
+    changes = 0
+    violations: list[dict] = []
+    for row in rows:
+        symbol = row.get("symbol")
+        mv, pct = _num(row.get("market_value")), _num(row.get("day_change_pct"))
+        if mv is None or pct is None or pct <= -100.0:
+            violations.append(_ev(ptool, pargs, f"positions{_sel(symbol)}", {"market_value": row.get("market_value"),
+                                  "day_change_pct": row.get("day_change_pct")}, None, None,
+                                  "valore o variazione non validi"))
+            continue
+        if pct != 0:
+            changes += 1
+        previous += mv / (1.0 + pct / 100.0)
+    if day_change is None or observed is None:
+        violations.append(_ev(stool, sargs, "day_change_pct", summary.get("day_change_pct"), None, None,
+                              "variazione del riepilogo assente o non numerica"))
+    if violations:
+        return _fail("I dati della variazione giornaliera non sono validi.", violations)
+    if day_change == 0 and changes == 0:
+        return _skip(
+            "no_reference_data", "Nessuna variazione giornaliera nel portafoglio (mercato chiuso o giornata piatta).",
+            [_ev(stool, sargs, "day_change", day_change, None, None, "nessuna variazione")],
+        )
+    if abs(previous) <= EPS:
+        return _skip(
+            "no_reference_data", "Il valore precedente delle posizioni è nullo: la percentuale non è definita.",
+            [_ev(ptool, pargs, "positions[*].market_value", round(previous, 2), None, None, "valore precedente")],
+        )
+    expected = day_change / previous * 100.0  # type: ignore[operator]
+    evidence = [
+        _ev(stool, sargs, "day_change_pct", observed, round(expected, 4), T_DAYCHANGE_PP,
+            f"day_change {day_change} / valore precedente {round(previous, 2)}"),
+        _ev(ptool, pargs, "positions[*].market_value", round(sum(_num(r.get("market_value")) or 0.0 for r in rows), 2),
+            round(previous, 2), None, "somma: valore attuale e valore precedente (market_value / (1 + variazione))"),
+    ]
+    if abs(observed - expected) > T_DAYCHANGE_PP + EPS:  # type: ignore[operator]
+        return _fail(
+            "La variazione giornaliera percentuale del portafoglio non è calcolata sul valore di tutte le posizioni.",
+            evidence,
+        )
+    return _pass(evidence)
+
+
 # ---------------------------------------------------------------------------
 # Dichiarazioni (rules.md §4)
 # ---------------------------------------------------------------------------
@@ -851,5 +936,18 @@ RULES: list[dict[str, Any]] = [
         "scopes": ["portfolio"],
         "tools": ["get_positions", "get_day_movers"],
         "check": check_daymovers_consistency,
+    },
+    {
+        "id": "C-DAYCHANGE-DENOMINATOR",
+        "group": "C",
+        "title": "La variazione giornaliera del portafoglio è calcolata su tutte le posizioni",
+        "area": "daily",
+        "severity": "P2",
+        "findings": ["S-2026-11-11-03"],
+        # Solo portfolio: search_asset_info (valuta di quotazione) non ha una variante aggregata
+        # (Deviazioni TASK-86).
+        "scopes": ["portfolio"],
+        "tools": ["get_portfolio_summary", "get_positions", "search_asset_info"],
+        "check": check_daychange_denominator,
     },
 ]

@@ -420,6 +420,67 @@ def test_build_snapshot_rejects_not_owned_and_invalid_scope():
         build_snapshot(_FakeRepo(), [], "user")
 
 
+class _CashRepo(_FakeRepo):
+    """Repository with the real scope branch: opening balance 0 in ``portfolios.cash_balance``,
+    current cash (performance cash model) from ``_cash_balance_details`` (TASK-84)."""
+
+    def __init__(self, current_cash, opening=0.0, **kwargs):
+        super().__init__(**kwargs)
+        self.current_cash = current_cash
+        self.opening = opening
+
+    def _get_portfolio_for_user(self, conn, portfolio_id, user_id):
+        from app.repository._base import PortfolioData
+
+        return PortfolioData(id=portfolio_id, base_currency="EUR", cash_balance=self.opening)
+
+    def _cash_balance_details(self, conn, portfolios):
+        from types import SimpleNamespace
+
+        return {p.id: SimpleNamespace(balance=self.current_cash) for p in portfolios}
+
+
+def test_build_snapshot_cash_is_current_cash_not_opening_balance():
+    """TASK-84 (S-2026-11-11-01): seed 9101, opening balance 0, current cash 9.256,50."""
+    repo = _CashRepo(9256.5, opening=0.0, positions=[
+        _position(1, "AUDEQ.MI", "AUD Global Equity UCITS ETF", 70_000),
+        _position(2, "AUDBD.MI", "AUD Global Aggregate Bond UCITS ETF", 20_000),
+        _position(3, "AUDTECH.DE", "AUD Nasdaq-100 Technology UCITS ETF", 10_000),
+    ])
+    snap = build_snapshot(repo, [9101], "user")
+    assert snap.cash_value == pytest.approx(9256.5)
+    assert snap.invested_value == pytest.approx(100_000)
+    # Metrics exclude cash (D02): unchanged by the fix.
+    assert compute_metrics(snap)["max_single_position_pct"].value == pytest.approx(70.0)
+    # An opening balance is already inside the current cash: never added twice.
+    assert build_snapshot(_CashRepo(500.0, opening=500.0, positions=repo.positions), [9101], "user").cash_value == 500.0
+
+    # Scenario Lab on the same snapshot: buying 5.000 € with use_cash_balance is feasible.
+    from app.services.doctor_policy.scenario import preview_scenario
+
+    result = preview_scenario(snap, {
+        "portfolio_ids": [9101], "mode": "manual", "constraints": {"use_cash_balance": True},
+        "operations": [{"symbol": "AUDBD.MI", "action": "buy", "amount": 5000}],
+    }, policy_document=None, now=NOW)
+    assert result.feasible, result.infeasible_reason
+    assert result.required_new_cash in (None, 0)
+    assert result.before.cash_value == pytest.approx(9256.5)
+    assert result.before.total_value == pytest.approx(109_256.5)
+    assert result.after.cash_value == pytest.approx(4256.5)
+
+
+def test_build_snapshot_cash_fallback_uses_current_cash_of_the_scope():
+    class Repo(_FakeRepo):
+        def get_current_cash_balance_value_multi(self, ids, user_id):
+            self.calls.append(("cash", list(ids)))
+            return 33190.47
+
+    repo = Repo(positions_multi=[_position(1, "AUDEQ.MI", "AUD Global Equity UCITS ETF", 1000)])
+    snap = build_snapshot(repo, [9101, 9102], "user")
+    assert snap.cash_value == pytest.approx(33190.47)
+    assert ("cash", [9101, 9102]) in repo.calls
+
+
 # -- Health score unchanged & coexistence (PRD example B) --------------------------
 
 

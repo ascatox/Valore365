@@ -556,6 +556,95 @@ def check_pac_underweight_only(ctx: Any, scope: dict[str, Any]) -> dict[str, Any
 
 
 # ---------------------------------------------------------------------------
+# B-DRIFT-REBALANCE-WEIGHTS (TASK-85)
+# ---------------------------------------------------------------------------
+
+
+def check_drift_rebalance_weights(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    """Scostamento, PAC e ribilanciamento: un solo peso per strumento.
+
+    Decisione del proprietario (TASK-85, 2026-11-11): la base è quella del
+    ribilanciamento, valore degli strumenti con target + liquidità attuale.
+    """
+    pos_args, positions = _positions(ctx, scope)
+    if not positions:
+        return _empty_skip(pos_args)
+    drift_args = _pid_args(scope)
+    drift = ctx.call(TARGET_DRIFT_TOOL, drift_args)
+    rows = [d for d in (drift.get("drift") or []) if isinstance(d, dict)]
+    if not rows:
+        return _skip(
+            "no_targets", "Il portafoglio non ha pesi obiettivo configurati.",
+            [_ev(TARGET_DRIFT_TOOL, drift_args, "drift", [], note="nessun target")],
+        )
+    sum_args = _pid_args(scope)
+    summary = ctx.call(SUMMARY_TOOL, sum_args)
+    r_args = _pid_args(scope, REBALANCE_ARGS["rebalance"])
+    reb = ctx.call(REBALANCE_TOOL, r_args)
+    pac_args = _pid_args(scope, PAC_ARGS)
+    pac = ctx.call(PAC_TOOL, pac_args)
+
+    violations: list[dict[str, Any]] = []
+    passed: list[dict[str, Any]] = []
+
+    # 1. Base dichiarata da get_target_drift = strumenti con target + liquidità del riepilogo.
+    total = _num(drift.get("total_value"))
+    cash = _num(summary.get("cash_balance"))
+    values = [_num(d.get("market_value")) for d in rows]
+    if total is None or total <= EPS:
+        violations.append(_ev(TARGET_DRIFT_TOOL, drift_args, "total_value", drift.get("total_value"),
+                              "numero > 0", None, "base dei pesi non dichiarata"))
+    elif cash is None or any(v is None for v in values):
+        violations.append(_ev(SUMMARY_TOOL, sum_args, "cash_balance", summary.get("cash_balance"),
+                              "numero", None, "liquidità o valori degli strumenti mancanti"))
+    else:
+        expected_total = sum(values) + max(cash, 0.0)
+        tol = t_sum_eur(len(values) + 1)
+        ev = _ev(TARGET_DRIFT_TOOL, drift_args, "total_value", total, _r(expected_total, 2), tol,
+                 f"Σ market_value di drift ({len(values)} strumenti con target) + cash_balance del riepilogo")
+        (violations if abs(total - expected_total) > tol + EPS else passed).append(ev)
+        for i, d in enumerate(rows):
+            cw = _num(d.get("current_weight"))
+            expected_w = values[i] / total * 100.0
+            ev = _ev(TARGET_DRIFT_TOOL, drift_args, f"drift[{i}].current_weight", d.get("current_weight"),
+                     _r(expected_w, 4), T_PP2, f"{d.get('symbol')}: market_value / total_value × 100")
+            (violations if cw is None or abs(cw - expected_w) > T_PP2 + EPS else passed).append(ev)
+
+    # 2. Stessa base negli altri due tool.
+    for tool, args, res in ((REBALANCE_TOOL, r_args, reb), (PAC_TOOL, pac_args, pac)):
+        other = _num(res.get("total_value"))
+        ev = _ev(tool, args, "total_value", res.get("total_value"), drift.get("total_value"), T_EUR,
+                 "stessa base dei pesi di get_target_drift")
+        (violations if other is None or total is None or abs(other - total) > T_EUR + EPS else passed).append(ev)
+
+    # 3. Stesso peso attuale e stesso target per lo stesso strumento.
+    by_symbol = {d.get("symbol"): (i, d) for i, d in enumerate(rows)}
+    compared = (
+        [(REBALANCE_TOOL, r_args, f"orders[{i}]", o, "current_weight_pct", "target_weight_pct")
+         for i, o in enumerate(_orders(reb))]
+        + [(PAC_TOOL, pac_args, f"distribution[{i}]", d, "current_weight", "target_weight")
+           for i, d in enumerate(pac.get("distribution") or []) if isinstance(d, dict)]
+    )
+    for tool, args, path, row, cw_key, tw_key in compared:
+        symbol = row.get("symbol")
+        if symbol not in by_symbol:
+            violations.append(_ev(TARGET_DRIFT_TOOL, drift_args, f"drift[symbol={symbol}]", None, symbol,
+                                  None, f"strumento di {tool} assente dallo scostamento"))
+            continue
+        j, d = by_symbol[symbol]
+        for key, d_key in ((cw_key, "current_weight"), (tw_key, "target_weight")):
+            a, b = _num(row.get(key)), _num(d.get(d_key))
+            ev = _ev(tool, args, f"{path}.{key}", row.get(key), d.get(d_key), T_PP,
+                     f"{symbol}: come drift[{j}].{d_key}")
+            (violations if a is None or b is None or abs(a - b) > T_PP + EPS else passed).append(ev)
+    if violations:
+        return _fail(
+            "Scostamento dal target, PAC e ribilanciamento non partono dagli stessi pesi.", violations,
+        )
+    return _pass(passed)
+
+
+# ---------------------------------------------------------------------------
 # What-if
 # ---------------------------------------------------------------------------
 
@@ -769,6 +858,18 @@ RULES: list[dict[str, Any]] = [
         "scopes": ["portfolio"],
         "tools": ["calculate_pac_contribution", "get_target_drift", "get_positions"],
         "check": check_pac_underweight_only,
+    },
+    {
+        "id": "B-DRIFT-REBALANCE-WEIGHTS",
+        "group": "B",
+        "title": "Scostamento dal target, PAC e ribilanciamento partono dagli stessi pesi",
+        "area": "rebalance",
+        "severity": "P2",
+        "findings": ["S-2026-11-11-02"],
+        "scopes": ["portfolio"],
+        "tools": ["get_target_drift", "calculate_rebalance_orders", "calculate_pac_contribution",
+                  "get_portfolio_summary", "get_positions"],
+        "check": check_drift_rebalance_weights,
     },
     {
         "id": "B-WHATIF-BUY-WEIGHT",

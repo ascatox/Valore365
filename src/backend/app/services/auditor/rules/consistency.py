@@ -723,6 +723,98 @@ def check_doctor_concentration(ctx: Any, scope: dict[str, Any]) -> dict[str, Any
 
 
 # ---------------------------------------------------------------------------
+# D-DOCTOR-CASH (TASK-84)
+# ---------------------------------------------------------------------------
+
+DOCTOR_CASH_SCENARIO: dict[str, Any] = {"mode": "new_cash_only", "new_cash": 100.0}
+
+
+def _is_simulator_disabled(message: Any) -> bool:
+    if not isinstance(message, str):
+        return False
+    try:
+        from app.copilot_doctor_tools import SIMULATOR_DISABLED_MESSAGE
+    except Exception:  # pragma: no cover - import difensivo
+        SIMULATOR_DISABLED_MESSAGE = "Funzione disattivata (feature_disabled): lo Scenario Lab del Portfolio Doctor"
+    return message.strip() == SIMULATOR_DISABLED_MESSAGE.strip() or message.startswith(SIMULATOR_DISABLED_MESSAGE[:60])
+
+
+def _doctor_scenario_args(scope: Mapping[str, Any]) -> dict[str, Any]:
+    """Argomenti di ``ctx.scoped("build_doctor_scenario", scope, DOCTOR_CASH_SCENARIO)``."""
+    if scope["kind"] == "aggregate":
+        ids = list(scope["portfolio_ids"])
+        return {"portfolio_id": ids[0], "portfolio_ids": ids, **DOCTOR_CASH_SCENARIO}
+    return {"portfolio_id": scope["portfolio_id"], **DOCTOR_CASH_SCENARIO}
+
+
+def check_doctor_cash(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    d_args = _doctor_scenario_args(scope)
+    attempt = ctx.try_call("build_doctor_scenario", d_args)
+    if not attempt["ok"]:
+        if _is_simulator_disabled(attempt.get("error")):
+            return _skip("feature_disabled", "Lo Scenario Lab del Doctor è disattivato da configurazione.",
+                         [_ev("build_doctor_scenario", d_args, "error", "feature_disabled")])
+        # Errore inatteso: lo si lascia salire (il motore lo trasforma in error/tool_error).
+        ctx.call("build_doctor_scenario", d_args)
+    before = (attempt["result"] or {}).get("before")
+    if not isinstance(before, dict):
+        return _fail("Lo Scenario Lab non riporta la situazione di partenza.",
+                     [_ev("build_doctor_scenario", d_args, "before", before)])
+    summary, s_name, s_args = _read(ctx, "get_portfolio_summary", scope)
+
+    # Posizioni di tipo liquidità: il Doctor le conta nella liquidità, il riepilogo nel valore.
+    cash_rows: list[dict] = []
+    for pid in _scope_ids(scope):
+        p_args = {"portfolio_id": pid}
+        rows = list(ctx.call("get_positions", p_args).get("positions") or [])
+        if len(rows) >= MAX_POSITION_ROWS:
+            return _truncated_skip("get_positions", p_args, len(rows), None)
+        for row in rows:
+            info = ctx.call("search_asset_info", {**p_args, "symbol": row.get("symbol")})
+            if str(info.get("type") or "").lower() == "cash":
+                cash_rows.append(_ev("get_positions", p_args, f"positions[symbol={row.get('symbol')}].market_value",
+                                     _num(row.get("market_value")), None, None, "posizione di tipo liquidità"))
+    k = sum(float(ev["observed"] or 0.0) for ev in cash_rows)
+
+    c = _num(before.get("cash_value"))
+    inv = _num(before.get("invested_value"))
+    tot = _num(before.get("total_value"))
+    s = _num(summary.get("cash_balance"))
+    failures: list[dict] = []
+    passed: list[dict] = []
+
+    tol = T_EUR if not cash_rows else t_sum_eur(len(cash_rows) + 1)
+    expected = None if s is None else _r(s + k)
+    evs = [_ev("build_doctor_scenario", d_args, "before.cash_value", c, expected, tol,
+               "liquidità del riepilogo + posizioni di tipo liquidità" if cash_rows else "liquidità del riepilogo"),
+           _ev(s_name, s_args, "cash_balance", s)]
+    if c is None or s is None or abs(c - (s + k)) > tol + EPS:
+        failures.extend(evs + cash_rows)
+    else:
+        passed.append(evs[0])
+
+    if scope["kind"] == "portfolio":
+        cash = ctx.scoped("get_cash_balance", scope)
+        total_cash = _num(cash.get("total_cash"))
+        evs = [_ev(s_name, s_args, "cash_balance", s, total_cash, T_EUR),
+               _ev("get_cash_balance", {"portfolio_id": scope["portfolio_id"]}, "total_cash", total_cash)]
+        if s is None or total_cash is None or abs(s - total_cash) > T_EUR + EPS:
+            failures.extend(evs)
+        else:
+            passed.append(evs[0])
+
+    # Tre importi arrotondati a 2 decimali: 0,015 € = T_sum_eur(1).
+    tol_total = t_sum_eur(1)
+    ev = _ev("build_doctor_scenario", d_args, "before.total_value", tot,
+             None if inv is None or c is None else _r(inv + c), tol_total, "invested_value + cash_value")
+    if tot is None or inv is None or c is None or abs(tot - (inv + c)) > tol_total + EPS:
+        failures.append(ev)
+    else:
+        passed.append(ev)
+    return _judge(failures, "La liquidità vista dal Doctor non è quella del riepilogo.", passed)
+
+
+# ---------------------------------------------------------------------------
 # D-HEALTH-SCORE-BREAKDOWN
 # ---------------------------------------------------------------------------
 
@@ -784,6 +876,62 @@ def check_xray_sums(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
                  XRAY_STATUS_TOLERANCE)
         (failures if abs(total - 100.0) > XRAY_STATUS_TOLERANCE + EPS else passed).append(ev)
     return _judge(failures, "Le esposizioni dell'X-Ray non sommano a cento.", passed)
+
+
+# ---------------------------------------------------------------------------
+# D-XRAY-EMPTY (TASK-87)
+# ---------------------------------------------------------------------------
+
+# Messaggio con cui il server MCP maschera un'eccezione del tool (mcp_server/tools.py,
+# _run_portfolio_tool): lo stesso di un guasto vero.
+GENERIC_TOOL_ERROR_PREFIX = "Errore nell'esecuzione del tool"
+# Copia di app.services.portfolio_doctor._xray.UNCLASSIFIED_LABEL (import non ammesso, §3.2).
+XRAY_UNCLASSIFIED_LABEL = "Non classificato"
+
+
+def _xray_empty_distribution(buckets: Any) -> bool:
+    """Vuota, oppure il 100% in «Non classificato»."""
+    if not buckets:
+        return True
+    if not isinstance(buckets, Mapping) or set(buckets) != {XRAY_UNCLASSIFIED_LABEL}:
+        return False
+    value = _num(buckets.get(XRAY_UNCLASSIFIED_LABEL))
+    return value is not None and abs(value - 100.0) <= XRAY_STATUS_TOLERANCE + EPS
+
+
+def check_xray_empty(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    _out, rows, p_name, p_args = _positions(ctx, scope)
+    if rows:
+        return _skip("not_applicable", "Il portafoglio ha posizioni: la regola riguarda il portafoglio vuoto.",
+                     [_ev(p_name, p_args, "positions", len(rows), 0, None, "righe restituite")])
+    p_ev = _ev(p_name, p_args, "positions", [], [], None, "nessuna riga")
+    name, args = _scoped_args("get_xray_summary", scope)
+    attempt = ctx.try_call(name, args)
+    if not attempt["ok"]:
+        message = str(attempt.get("error") or "")
+        generic = message.startswith(GENERIC_TOOL_ERROR_PREFIX) or not message.strip()
+        ev = _ev(name, args, "error", message[:200], None, None,
+                 "errore generico, lo stesso di un guasto" if generic else "errore esplicito")
+        if generic:
+            return _fail("L'X-Ray del portafoglio vuoto risponde con l'errore generico del tool.", [p_ev, ev])
+        return _pass([p_ev, ev])
+    xray = attempt["result"] or {}
+    failures: list[dict] = []
+    passed: list[dict] = [p_ev]
+    top = xray.get("top_underlying_holdings")
+    ev = _ev(name, args, "top_underlying_holdings", top, [])
+    (passed if not top else failures).append(ev)
+    for field in ("geographic_exposure", "sector_exposure"):
+        buckets = xray.get(field)
+        ev = _ev(name, args, field, buckets, {}, XRAY_STATUS_TOLERANCE,
+                 f"vuota o 100% «{XRAY_UNCLASSIFIED_LABEL}»")
+        (passed if _xray_empty_distribution(buckets) else failures).append(ev)
+    coverage = _num(xray.get("coverage_pct"))
+    ev = _ev(name, args, "coverage_pct", xray.get("coverage_pct"), 0.0, None, "0 o null")
+    (passed if coverage is None or abs(coverage) <= EPS else failures).append(ev)
+    if failures:
+        failures.insert(0, p_ev)
+    return _judge(failures, "L'X-Ray del portafoglio vuoto riporta titoli, esposizioni o coperture.", passed)
 
 
 # ---------------------------------------------------------------------------
@@ -1050,6 +1198,14 @@ RULES: list[dict[str, Any]] = [
         "tools": ["read_doctor_metrics", "get_portfolio_health"], "check": check_doctor_concentration,
     },
     {
+        "id": "D-DOCTOR-CASH", "group": "D",
+        "title": "La liquidità del Doctor è la stessa del riepilogo",
+        "area": "doctor", "severity": "P1", "findings": ["S-2026-11-11-01"], "scopes": list(_PA),
+        "tools": ["build_doctor_scenario", "get_portfolio_summary", "get_aggregate_summary", "get_cash_balance",
+                  "get_positions", "search_asset_info"],
+        "check": check_doctor_cash,
+    },
+    {
         "id": "D-HEALTH-SCORE-BREAKDOWN", "group": "D",
         "title": "Il punteggio di salute è la somma dei punteggi di categoria e delle penalità dichiarate",
         "area": "doctor", "severity": "P2", "findings": ["V365-010"], "scopes": list(_PA),
@@ -1061,6 +1217,11 @@ RULES: list[dict[str, Any]] = [
         "area": "values", "severity": "P2", "findings": ["C6"], "scopes": list(_PA),
         "tools": ["get_xray_summary", "get_aggregate_xray", "get_positions", "get_aggregate_positions"],
         "check": check_xray_sums,
+    },
+    {
+        "id": "D-XRAY-EMPTY", "group": "D", "title": "L'analisi X-Ray di un portafoglio vuoto risponde senza errori",
+        "area": "classification", "severity": "P2", "findings": ["S-2026-11-11-04"], "scopes": ["portfolio"],
+        "tools": ["get_positions", "get_xray_summary"], "check": check_xray_empty,
     },
     {
         "id": "D-DUP-TRANSACTIONS", "group": "D", "title": "Non ci sono transazioni importate due volte",

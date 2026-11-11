@@ -165,3 +165,45 @@ def test_a_weekend_old_price_still_counts():
     summary = repo.get_summary(1, "u")
 
     assert summary.day_change == 20.0          # 2 units x (60 - 50)
+
+
+def _single_bar_asset(asset_id: int, close: float) -> list[dict]:
+    # One daily bar and no tick: no previous close to measure a change against.
+    return [_bar(asset_id, TODAY, close, 1)]
+
+
+def test_a_position_without_previous_close_stays_in_the_percentage_denominator():
+    # TASK-86: one fresh asset (+20 on a previous value of 200) and one asset
+    # worth 100 with a single bar and no tick. It has no change to report, but
+    # it is part of the portfolio: like a stale quote it counts in the
+    # denominator at its value, giving 20 / 300 and not 20 / 200.
+    positions = [_Position(1, 2.0, 220.0), _Position(2, 1.0, 100.0)]
+    repo = _Repo(positions, _fresh_asset(1) + _single_bar_asset(2, 100.0), [])
+
+    summary = repo.get_summary(1, "u")
+
+    assert summary.day_change == 20.0
+    assert summary.day_change_pct == round(20.0 / 300.0 * 100.0, 2)
+
+
+def test_stale_and_no_previous_close_positions_share_the_same_denominator_rule():
+    # The 9107 shape of the Auditor seed: a fresh asset, a stale one and one
+    # without previous close. Only the fresh asset moves; the whole portfolio
+    # (200 + 100 previous + 100 current) is the base of the percentage.
+    positions = [_Position(1, 2.0, 220.0), _Position(2, 2.0, 120.0), _Position(3, 1.0, 100.0)]
+    daily = _fresh_asset(1) + _stale_asset(2, 60) + _single_bar_asset(3, 100.0)
+    repo = _Repo(positions, daily, [])
+
+    summary = repo.get_summary(1, "u")
+
+    assert summary.day_change == 20.0
+    assert summary.day_change_pct == round(20.0 / 400.0 * 100.0, 2)
+
+
+def test_only_positions_without_previous_close_report_no_change():
+    repo = _Repo([_Position(1, 1.0, 100.0)], _single_bar_asset(1, 100.0), [])
+
+    summary = repo.get_summary(1, "u")
+
+    assert summary.day_change == 0.0
+    assert summary.day_change_pct == 0.0

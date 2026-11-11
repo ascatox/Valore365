@@ -8,7 +8,7 @@ scope dell'utente ``auditor-seed-user``) e verifica, sul codice attuale:
 - nessuna regola in ``skip`` su uno scope della colonna «Prova» del catalogo (``docs/auditor/rules.md``);
 - i ``known_defect`` delle dichiarazioni coincidono con la sezione «Difetti noti» del catalogo;
 - la CLI della CI (``--mode ci --fail-on P1 --strict-known``) esce con 0 e scrive JSON valido e Markdown;
-- B-PAC-SUM con nessuno strumento sottopesato (target 60/30 su 9105, ex difetto noto TASK-83)
+- B-PAC-SUM con nessuno strumento sottopesato (target 45/20 su 9105, ex difetto noto TASK-83)
   dà ``pass`` e l'uscita è 0 anche con ``--strict-known``.
 
 I tool del Doctor usano il servizio di processo legato al ``DATABASE_URL`` dell'app: qui viene
@@ -95,6 +95,7 @@ PROOF: dict[str, list[str]] = {
     "B-REB-SELL-CAP": [_p(9101)],
     "B-PAC-SUM": [_p(9101)],
     "B-PAC-UNDERWEIGHT-ONLY": [_p(9101)],
+    "B-DRIFT-REBALANCE-WEIGHTS": [_p(9101)],
     "B-WHATIF-BUY-WEIGHT": [_p(9101)],
     "B-WHATIF-SELL-BOUND": [_p(9101)],
     "C-TER-RANGE": [_p(9101), _p(9102), _p(9103)],
@@ -108,6 +109,7 @@ PROOF: dict[str, list[str]] = {
     "C-DIV-CURRENCY": [_p(9104), _p(9105), _p(9101)],
     "C-DAYMOVERS-NONZERO-INCLUDED": [_p(9101), _p(9107)],
     "C-DAYMOVERS-CONSISTENCY": [_p(9107), _p(9101)],
+    "C-DAYCHANGE-DENOMINATOR": [_p(9107), _p(9101)],
     "D-WEIGHTS-SUM": [*(_p(p) for p in NON_EMPTY), AGG],
     "D-SUMMARY-POSITIONS": [*(_p(p) for p in NON_EMPTY), AGG],
     "D-POSITION-VALUE-PRICE": [*(_p(p) for p in NON_EMPTY), AGG],
@@ -121,8 +123,10 @@ PROOF: dict[str, list[str]] = {
     "D-DOCTOR-TER": [_p(9101), _p(9103)],
     "D-DOCTOR-CLASS-WEIGHTS": [_p(9101), _p(9102), _p(9103)],
     "D-DOCTOR-CONCENTRATION": [_p(9101), _p(9103)],
+    "D-DOCTOR-CASH": [*(_p(p) for p in PORTFOLIO_IDS), AGG],
     "D-HEALTH-SCORE-BREAKDOWN": [_p(9101), _p(9103), AGG],
     "D-XRAY-SUMS": [_p(9101), _p(9103), AGG],
+    "D-XRAY-EMPTY": [_p(9106)],
     "D-DUP-TRANSACTIONS": [_p(9105), _p(9101), _p(9104)],
     "D-TRADE-PRICE-SCALE": [_p(9101), _p(9104)],
     "D-LSE-QUOTE-CURRENCY": [_i(9104, "AUDUS.L"), _i(9104, "AUDUK.L")],
@@ -226,7 +230,9 @@ def _known_defects_from_catalog() -> dict[str, str]:
 
 def test_full_run_covers_catalog_and_seed(report):
     catalog_ids = re.findall(r"^### ([ABCD]-[A-Z0-9-]+)\s*$", RULES_MD.read_text(encoding="utf-8"), flags=re.MULTILINE)
-    assert len(catalog_ids) == 52
+    # Totale dichiarato in testa al catalogo (rules.md: «Totale: **N regole**»).
+    declared = int(re.search(r"^Totale: \*\*(\d+) regole\*\*", RULES_MD.read_text(encoding="utf-8"), re.MULTILINE).group(1))
+    assert len(catalog_ids) == declared
     assert sorted(r["id"] for r in report["rules"]) == sorted(catalog_ids)
     assert sorted(PROOF) == sorted(catalog_ids)
     scope_keys = {s["scope_key"] for s in report["scopes"]}
@@ -303,9 +309,11 @@ def test_cli_ci_mode_on_seed(seed_db, tmp_path):
 
 
 def test_pac_sum_without_underweight_holding_passes_on_seed(seed_db, audit_env):
-    """Target 60/30 su 9105 (pesi 66,67/33,33: nessuno strumento sottopesato).
+    """Target 45/20 su 9105 (pesi 48,67/24,34: nessuno strumento sottopesato).
 
-    Prima di TASK-83 `calculate_pac_contribution` rispondeva con distribuzione vuota e
+    Da TASK-85 i pesi del PAC sono sul totale con la liquidità (10.000 + 5.000 + 5.545 =
+    20.545 €), non più sulle sole posizioni (66,67/33,33): con i target 60/30 di prima
+    entrambi gli strumenti risulterebbero sottopesati. Prima di TASK-83 `calculate_pac_contribution` rispondeva con distribuzione vuota e
     `total_allocated` 500 (difetto noto). Ora non distribuisce nulla e lo dichiara
     (`total_allocated` 0, `unallocated_amount` 500, nota): B-PAC-SUM dà `pass`, nessun difetto
     noto, e l'uscita è 0 anche con `strict_known`.
@@ -314,7 +322,7 @@ def test_pac_sum_without_underweight_holding_passes_on_seed(seed_db, audit_env):
     with engine.begin() as conn:
         conn.execute(text(
             "insert into portfolio_target_allocations (portfolio_id, asset_id, weight_pct, owner_user_id) "
-            "values (9105, 9101, 60, :u), (9105, 9102, 30, :u)"), {"u": USER})
+            "values (9105, 9101, 45, :u), (9105, 9102, 20, :u)"), {"u": USER})
     try:
         options = dict(mode="ci", portfolio_ids=[9105], rule_ids=["B-PAC-SUM"],
                        include_aggregate=False, include_instruments=False)

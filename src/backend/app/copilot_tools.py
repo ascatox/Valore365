@@ -29,8 +29,10 @@ from .services.portfolio_doctor._holdings import load_classification_inputs
 from .services.rebalance import (
     DEFAULT_TOLERANCE_PP,
     REBALANCE_MODES,
-    RebalanceHolding,
+    TARGET_WEIGHT_BASIS_NOTE,
     compute_rebalance_plan,
+    current_target_weights,
+    target_holdings,
 )
 from .services.portfolio_doctor._holdings import _load_holdings
 from .copilot_doctor_tools import DOCTOR_TOOL_DEFINITIONS, DOCTOR_TOOL_HANDLERS
@@ -76,7 +78,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Ottieni lo scostamento (drift) di ogni posizione rispetto al peso "
             "target configurato. Utile per capire se il portafoglio e' allineato "
-            "al piano o serve ribilanciare."
+            "al piano o serve ribilanciare. Pesi sul valore degli strumenti con target "
+            "piu' la liquidita' (total_value), la stessa base di calculate_rebalance_orders "
+            "e calculate_pac_contribution."
         ),
         "parameters": {
             "type": "object",
@@ -239,7 +243,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "tra gli asset del portafoglio per avvicinarsi al target. "
             "Versa solo sulle posizioni sotto-pesate, in proporzione allo scostamento "
             "dal target. Se nessuna posizione e' sotto il target restituisce "
-            "distribuzione vuota, total_allocated 0, unallocated_amount e una nota."
+            "distribuzione vuota, total_allocated 0, unallocated_amount e una nota. "
+            "Pesi attuali come get_target_drift e calculate_rebalance_orders "
+            "(strumenti con target piu' liquidita', total_value)."
         ),
         "parameters": {
             "type": "object",
@@ -644,9 +650,6 @@ def _get_target_drift(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    allocation = repo.get_allocation(portfolio_id, user_id)
-    alloc_map = {a.asset_id: a.weight_pct for a in allocation}
-
     try:
         target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
     except Exception:
@@ -655,13 +658,17 @@ def _get_target_drift(
     if not target_alloc:
         return {"drift": [], "note": "Nessun target configurato per questo portafoglio."}
 
-    positions = repo.get_positions(portfolio_id, user_id)
-    pos_map = {p.symbol: p for p in positions}
+    positions = repo.get_positions(portfolio_id, user_id) or []
+    pos_map = {p.asset_id: p for p in positions}
+    # TASK-85: same base as calculate_rebalance_orders and the PAC (targeted
+    # holdings + current cash of the performance cash model, summary.cash_balance).
+    summary = repo.get_summary(portfolio_id, user_id)
+    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
 
     drift_list = []
     for ta in target_alloc:
-        current = alloc_map.get(ta.asset_id, 0.0)
-        pos = pos_map.get(ta.symbol)
+        current = weights.current_weight_pct(ta.asset_id)
+        pos = pos_map.get(ta.asset_id)
         drift_list.append({
             "symbol": ta.symbol,
             "name": ta.name if hasattr(ta, "name") else ta.symbol,
@@ -671,7 +678,13 @@ def _get_target_drift(
             "market_value": round(pos.market_value, 2) if pos else 0,
         })
 
-    return {"drift": drift_list}
+    return {
+        "drift": drift_list,
+        "total_value": round(weights.base_value, 2),
+        "cash_balance": round(weights.cash, 2),
+        "untargeted_holdings": weights.untargeted_symbols,
+        "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE,
+    }
 
 
 PERFORMANCE_PERIODS: tuple[str, ...] = ("1m", "3m", "ytd", "1y")
@@ -999,23 +1012,11 @@ def _calculate_rebalance_orders(
     if not target_alloc:
         return {"mode": mode, "orders": [], "note": "Nessun target configurato."}
 
-    targets = {t.asset_id: t for t in target_alloc}
     pos_by_asset = {p.asset_id: p for p in positions}
-    holdings = [
-        RebalanceHolding(
-            key=p.asset_id, symbol=p.symbol, current_value=float(p.market_value or 0.0),
-            target_weight_pct=float(targets[p.asset_id].weight_pct) if p.asset_id in targets else None,
-        )
-        for p in positions
-    ]
-    holdings += [
-        RebalanceHolding(key=t.asset_id, symbol=t.symbol, current_value=0.0, target_weight_pct=float(t.weight_pct))
-        for t in target_alloc
-        if t.asset_id not in pos_by_asset
-    ]
+    # Same holdings and cash as get_target_drift and the PAC (TASK-85).
     portfolio_cash = float(summary.cash_balance or 0.0)
     plan = compute_rebalance_plan(
-        holdings,
+        target_holdings(positions, target_alloc),
         portfolio_cash=portfolio_cash,
         extra_cash=extra_cash,
         mode=mode,
@@ -1178,10 +1179,8 @@ def _calculate_pac_contribution(
     if monthly_amount <= 0:
         return {"error": "Importo mensile deve essere > 0"}
 
-    positions = repo.get_positions(portfolio_id, user_id)
+    positions = repo.get_positions(portfolio_id, user_id) or []
     summary = repo.get_summary(portfolio_id, user_id)
-    allocation = repo.get_allocation(portfolio_id, user_id)
-    alloc_map = {a.asset_id: a.weight_pct for a in allocation}
 
     try:
         target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
@@ -1191,16 +1190,22 @@ def _calculate_pac_contribution(
     if not target_alloc:
         return {"distribution": [], "note": "Nessun target configurato."}
 
-    pos_map = {p.symbol: p for p in positions}
-    total_value = summary.market_value
+    pos_map = {p.asset_id: p for p in positions}
+    # TASK-85: same weights as get_target_drift and calculate_rebalance_orders
+    # (targeted holdings + current cash); the new money enlarges that base.
+    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
+    total_value = weights.base_value
+    basis = {"total_value": round(total_value, 2), "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE}
 
-    # Calculate drift for each target asset (negative drift = under-weight)
+    # Calculate drift for each target asset (negative drift = under-weight),
+    # on the weight rounded to 2 decimals as shown by get_target_drift.
     assets_with_drift = []
     for ta in target_alloc:
-        current_w = alloc_map.get(ta.asset_id, 0.0)
+        current_w = round(weights.current_weight_pct(ta.asset_id), 2)
         drift = current_w - ta.weight_pct  # negative means under-weight
-        pos = pos_map.get(ta.symbol)
+        pos = pos_map.get(ta.asset_id)
         assets_with_drift.append({
+            "asset_id": ta.asset_id,
             "symbol": ta.symbol,
             "target_weight": ta.weight_pct,
             "current_weight": current_w,
@@ -1243,6 +1248,7 @@ def _calculate_pac_contribution(
             "total_allocated": 0.0,
             "unallocated_amount": round(total_cents / 100, 2),
             "note": note,
+            **basis,
         }
 
     # Distribute proportionally to the negative drift (largest remainder on cents).
@@ -1260,7 +1266,7 @@ def _calculate_pac_contribution(
         if c <= 0:
             continue
         amount = c / 100
-        pos = pos_map.get(asset["symbol"])
+        pos = pos_map.get(asset["asset_id"])
         old_value = pos.market_value if pos else 0
         new_value = old_value + amount
         new_weight = (new_value / new_total * 100) if new_total > 0 else 0
@@ -1282,6 +1288,7 @@ def _calculate_pac_contribution(
         "distribution": distribution,
         "total_allocated": round(sum(cents) / 100, 2),
         "unallocated_amount": 0.0,
+        **basis,
     }
 
 
@@ -1654,6 +1661,8 @@ def _get_xray_summary(
         return out
 
     return {
+        # TASK-87: no positions -> empty X-Ray declared here and in coverage_note, not an error.
+        "is_empty": xray.is_empty,
         "etf_count": xray.etf_count,
         # Legacy: same as funds_with_holdings_pct (weight of funds with some top holdings).
         "coverage_pct": round(xray.coverage_pct, 1),

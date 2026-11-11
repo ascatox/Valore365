@@ -161,6 +161,24 @@ def _resolve_isin_for_holding(repo: PortfolioRepository, holding: AnalyzedHoldin
     return None
 
 
+EMPTY_PORTFOLIO_NOTE = "Portafoglio senza posizioni: niente da scomporre."
+
+
+def empty_xray_response(identity: dict) -> XRayResponse:
+    """X-Ray of a scope without positions (TASK-87): zero coverage, no exposures, is_empty."""
+    return XRayResponse(
+        **identity,
+        etf_count=0,
+        coverage_pct=0.0,
+        applicable_lookthrough_coverage_pct=None,
+        applicable_denominator=APPLICABLE_DENOMINATOR,
+        coverage_denominator=COVERAGE_DENOMINATOR,
+        coverage_note=EMPTY_PORTFOLIO_NOTE,
+        data_as_of=None,
+        is_empty=True,
+    )
+
+
 def compute_portfolio_xray(
     repo: PortfolioRepository,
     portfolio_id: PortfolioRef,
@@ -172,7 +190,11 @@ def compute_portfolio_xray(
     scope_ref, identity = resolve_doctor_scope(repo, portfolio_id, user_id)
     holdings = _load_holdings(repo, scope_ref, user_id)
     if not holdings:
-        raise ValueError("Portafoglio non trovato o vuoto")
+        # TASK-87: a portfolio (or an aggregate) without positions is a valid
+        # input, as for health, stress test and Monte Carlo: an empty X-Ray
+        # that says so, not an error. A portfolio that does not exist or is
+        # not owned still raises (from the positions read above).
+        return empty_xray_response(identity)
 
     # Skip obvious non-fund assets (cash) but try ALL others,
     # because many ETFs are mis-classified as "stock" in the DB.

@@ -249,7 +249,7 @@ REBALANCE_CHECKS = [
     rs.check_reb_cash_conservation, rs.check_reb_cash_nonneg, rs.check_reb_sells_reach_target,
     rs.check_reb_drift_nonincreasing, rs.check_reb_mode_sides, rs.check_reb_sell_cap,
 ]
-PAC_CHECKS = [rs.check_pac_sum, rs.check_pac_underweight_only]
+PAC_CHECKS = [rs.check_pac_sum, rs.check_pac_underweight_only, rs.check_drift_rebalance_weights]
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +265,7 @@ CATALOG = {
     "B-REB-SELL-CAP": ("P1", "rebalance", ["V365-003"]),
     "B-PAC-SUM": ("P1", "rebalance", []),
     "B-PAC-UNDERWEIGHT-ONLY": ("P2", "rebalance", []),
+    "B-DRIFT-REBALANCE-WEIGHTS": ("P2", "rebalance", ["S-2026-11-11-02"]),
     "B-WHATIF-BUY-WEIGHT": ("P2", "simulation", []),
     "B-WHATIF-SELL-BOUND": ("P2", "simulation", []),
 }
@@ -703,7 +704,8 @@ def test_pac_underweight_fails_on_payment_to_overweight_holding():
     outcome = evaluate(rs.check_pac_underweight_only, responses)
     assert_status(outcome, "fail", "invariant_violated")
     ev = outcome["evidence"][0]
-    assert ev["path"].endswith(".current_weight") and ev["observed"] == 70.0 and ev["expected"] == 50.0
+    # TASK-85: peso sul totale con la liquidità (7000 / 10300 = 67,96 %), non più 70,0.
+    assert ev["path"].endswith(".current_weight") and ev["observed"] == 67.96 and ev["expected"] == 50.0
 
 
 def test_pac_underweight_fails_on_untargeted_symbol_or_negative_amount():
@@ -717,6 +719,97 @@ def test_pac_underweight_fails_on_untargeted_symbol_or_negative_amount():
     tools = {(e["tool"], e["path"]) for e in outcome["evidence"]}
     assert ("get_target_drift", "drift[symbol=NOTARGET]") in tools
     assert ("calculate_pac_contribution", "distribution[0].amount_eur") in tools
+
+
+# ---------------------------------------------------------------------------
+# B-DRIFT-REBALANCE-WEIGHTS (TASK-85)
+# ---------------------------------------------------------------------------
+
+# Portafoglio 9101 del seed (rules.md §1, report del 2026-11-11): 70.000 / 20.000 / 10.000 €
+# con target 50/40/10 e 9.256,50 € di liquidità del modello della performance.
+SEED_9101 = {"AUDEQ.MI": 70000.0, "AUDBD.MI": 20000.0, "AUDTECH.DE": 10000.0}
+SEED_9101_CASH = 9256.5
+
+
+def _legacy_get_target_drift(_args, repo, _perf, portfolio_id, user_id, **_kw):
+    """`_get_target_drift` prima di TASK-85: pesi sul valore delle sole posizioni, base non dichiarata."""
+    alloc_map = {a.asset_id: a.weight_pct for a in repo.get_allocation(portfolio_id, user_id)}
+    target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
+    if not target_alloc:
+        return {"drift": [], "note": "Nessun target configurato per questo portafoglio."}
+    pos_map = {p.symbol: p for p in repo.get_positions(portfolio_id, user_id)}
+    out = []
+    for ta in target_alloc:
+        current = alloc_map.get(ta.asset_id, 0.0)
+        pos = pos_map.get(ta.symbol)
+        out.append({
+            "symbol": ta.symbol, "name": ta.name, "current_weight": round(current, 2),
+            "target_weight": round(ta.weight_pct, 2), "drift": round(current - ta.weight_pct, 2),
+            "market_value": round(pos.market_value, 2) if pos else 0,
+        })
+    return {"drift": out}
+
+
+def test_drift_weights_pass_on_seed_9101():
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    drift = {d["symbol"]: d for d in get(responses, "get_target_drift", POS_ARGS)["drift"]}
+    orders = {o["symbol"]: o for o in get(responses, "calculate_rebalance_orders", R_ARGS)["orders"]}
+    assert drift["AUDTECH.DE"]["current_weight"] == orders["AUDTECH.DE"]["current_weight_pct"] == 9.15
+    outcome = evaluate(rs.check_drift_rebalance_weights, responses)
+    assert_status(outcome, "pass")
+    paths = {(e["tool"], e["path"]) for e in outcome["evidence"]}
+    assert ("get_target_drift", "total_value") in paths
+    assert any(t == "calculate_rebalance_orders" and p.endswith(".current_weight_pct") for t, p in paths)
+    assert any(t == "calculate_pac_contribution" and p.endswith(".current_weight") for t, p in paths)
+
+
+def test_drift_weights_fail_on_legacy_drift(monkeypatch):
+    """Difetto S-2026-11-11-02 reintrodotto: AUDTECH.DE 10,0 (in linea) contro 9,15 del ribilanciamento."""
+    monkeypatch.setitem(copilot_tools._TOOL_HANDLERS, "get_target_drift", _legacy_get_target_drift)
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    drift = {d["symbol"]: d for d in get(responses, "get_target_drift", POS_ARGS)["drift"]}
+    assert drift["AUDTECH.DE"]["current_weight"] == 10.0 and drift["AUDTECH.DE"]["drift"] == 0.0
+    outcome = evaluate(rs.check_drift_rebalance_weights, responses)
+    assert_status(outcome, "fail", "invariant_violated")
+    by_path = {(e["tool"], e["path"]): e for e in outcome["evidence"]}
+    assert by_path[("get_target_drift", "total_value")]["observed"] is None
+    tech = next(e for e in outcome["evidence"] if e["tool"] == "calculate_rebalance_orders"
+                and e["path"].endswith(".current_weight_pct") and e["observed"] == 9.15)
+    assert tech["expected"] == 10.0
+
+
+def test_drift_weights_fail_when_positions_base_is_declared():
+    """Base delle sole posizioni dichiarata (opzione scartata dal proprietario): resta `fail`."""
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    drift = get(responses, "get_target_drift", POS_ARGS)
+    for d in drift["drift"]:
+        d["current_weight"] = round(d["market_value"] / 100000.0 * 100, 2)
+        d["drift"] = round(d["current_weight"] - d["target_weight"], 2)
+    drift["total_value"] = 100000.0
+    put(responses, "get_target_drift", POS_ARGS, drift)
+    outcome = evaluate(rs.check_drift_rebalance_weights, responses)
+    assert_status(outcome, "fail", "invariant_violated")
+    paths = {(e["tool"], e["path"]) for e in outcome["evidence"]}
+    assert ("get_target_drift", "total_value") in paths
+    assert ("calculate_rebalance_orders", "total_value") in paths
+
+
+def test_drift_weights_fail_when_pac_uses_another_base():
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    assert pac["distribution"]
+    pac["distribution"][0]["current_weight"] = 20.0      # AUDBD.MI sulle sole posizioni
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_drift_rebalance_weights, responses)
+    assert_status(outcome, "fail", "invariant_violated")
+    assert outcome["evidence"][0]["path"] == "distribution[0].current_weight"
+
+
+def test_drift_weights_pass_without_orders():
+    """Entro la banda nessun ordine: la base e il PAC restano verificabili, nessuno skip."""
+    responses = real_responses(values={"A": 500000.0, "B": 500000.0}, targets={"A": 50.0, "B": 50.0}, cash=0.0)
+    assert get(responses, "calculate_rebalance_orders", R_ARGS)["orders"] == []
+    assert_status(evaluate(rs.check_drift_rebalance_weights, responses), "pass")
 
 
 # ---------------------------------------------------------------------------

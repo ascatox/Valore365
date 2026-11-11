@@ -182,6 +182,13 @@ class SummaryMixin:
                         tick_prev_close[asset_id] = prev_close_value
 
             previous_market_value = 0.0
+            # TASK-86: positions whose change cannot be measured (no previous
+            # close, no metadata, no FX rate, invalid price) contribute 0 to
+            # day_change and stay in the denominator at their current market
+            # value, like a stale quote: dropping them would shrink
+            # previous_market_value and inflate day_change_pct. The base of
+            # the percentage is always the whole invested portfolio.
+            unmeasured: list[int] = []
             for asset_id, quantity in qty_by_asset.items():
                 series = daily_by_asset.get(asset_id, [])
                 latest_day = series[0][0] if series else None
@@ -200,10 +207,12 @@ class SummaryMixin:
                 if prev_close is None:
                     if len(series) < 2:
                         _log.warning("day_change: asset %s has only %d bars in price_bars_1d and no tick previous_close, skipping", asset_id, len(series))
+                        unmeasured.append(asset_id)
                         continue
                     prev_day, prev_close = series[1]
                     if latest_day == prev_day:
                         _log.warning("day_change: asset %s latest_day==prev_day (%s), skipping", asset_id, latest_day)
+                        unmeasured.append(asset_id)
                         continue
                     if current_quote is None or current_day is None:
                         current_quote = latest_close
@@ -218,19 +227,23 @@ class SummaryMixin:
                 meta = asset_meta.get(asset_id)
                 if meta is None:
                     _log.warning("day_change: asset %s has no meta, skipping", asset_id)
+                    unmeasured.append(asset_id)
                     continue
                 current_fx = fx_rate_on_or_before(meta.quote_currency, current_day)
                 prev_fx = fx_rate_on_or_before(meta.quote_currency, prev_day)
                 if current_quote is None or current_day is None or current_fx is None:
                     _log.warning("day_change: asset %s no current quote/fx for %s on %s, skipping", asset_id, meta.quote_currency, current_day)
+                    unmeasured.append(asset_id)
                     continue
                 if prev_fx is None:
                     _log.warning("day_change: asset %s no FX rate for %s on %s, skipping", asset_id, meta.quote_currency, prev_day)
+                    unmeasured.append(asset_id)
                     continue
                 current_price_base = current_quote * current_fx
                 previous_price_base = prev_close * prev_fx
                 if not math.isfinite(current_price_base) or not math.isfinite(previous_price_base):
                     _log.warning("day_change: asset %s has NaN/Inf price (curr=%.4f prev=%.4f), skipping", asset_id, current_price_base, previous_price_base)
+                    unmeasured.append(asset_id)
                     continue
                 # One line per position on the success path: useful when
                 # checking the arithmetic, noise at INFO on every request.
@@ -255,6 +268,12 @@ class SummaryMixin:
                 else:
                     day_change += quantity * (current_price_base - previous_price_base)
                 previous_market_value += quantity * previous_price_base
+
+            mv_by_asset = {p.asset_id: float(p.market_value or 0.0) for p in positions}
+            for asset_id in unmeasured:
+                value = mv_by_asset.get(asset_id, 0.0)
+                if math.isfinite(value):
+                    previous_market_value += value
 
             if previous_market_value > 0:
                 day_change_pct = (day_change / previous_market_value) * 100.0
