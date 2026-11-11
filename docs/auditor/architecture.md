@@ -1138,3 +1138,44 @@ cambia, perché, e quali task ne sono toccati.
 - **Prima corsa notturna sul seed** (PostgreSQL 16, test di integrazione): `success`, 1 utente,
   7 portafogli, 52 regole, 268 `pass`, 0 `fail`, 155 `skip`, 0 `error`, 477 righe in
   `auditor_results`, identiche a `privacy_rows` di un'esecuzione diretta del motore.
+
+### TASK-82
+
+- **Stack dell'agente** (`scripts/auditor/agent_stack.sh`): solo PostgreSQL, nessun server
+  applicativo (Auditor e `mcp_call.py` lavorano in processo). Cluster su socket Unix in
+  `$AGENT_DIR` (default `/tmp/valore365-auditor-agent`, corto per il limite di 107 byte del socket,
+  vedi Deviazioni TASK-79), porta 55450, database `valore365_auditor`, nessun TCP. Sottocomandi
+  `start` (idempotente: ricrea il database e riapplica schema, migrazioni in ordine `LC_ALL=C sort`
+  come il workflow, e seed; riavvia un cluster rimasto da un container riavviato), `url`, `env`,
+  `status`, `reseed`, `stop`. `PG_BIN` configurabile (default `/usr/lib/postgresql/16/bin`, poi
+  `pg_config --bindir`, poi `initdb` nel PATH). Da root il cluster gira come `postgres`
+  (`runuser`). `pg_ctl` ha stdin/stdout/stderr rediretti: lo script non resta appeso in una pipe.
+- **`scripts/auditor/mcp_call.py`:** stesse dipendenze della CLI (`build_tool_dependencies(offline=True)`)
+  e stessa `run_tool_sync`, output passato da `sanitize_output` come per un client MCP **senza** il
+  troncamento a 200 KB (un avviso su stderr se un client lo avrebbe ricevuto troncato). In più
+  rispetto al contratto: lega esplicitamente `doctor_policy.service._default_service` al repository
+  delle dipendenze (Deviazioni TASK-78), rifiuta un `DATABASE_URL` non locale (socket Unix,
+  `localhost`, `127.0.0.1`, `::1`) e blocca le connessioni di rete non locali; modalità `--batch`
+  (JSONL) perché l'avvio del processo costa ~3 s (`app/__init__.py` importa `app.main`, senza
+  avviarne il ciclo di vita) contro pochi millisecondi per chiamata; registro delle chiamate in
+  `$AGENT_DIR/mcp_calls.jsonl` (tool, argomenti, esito, durata, mai l'output) per il budget.
+  Codici di uscita 0 / 1 (errore del tool, stampato come `{"error": ...}`) / 2 (uso o configurazione).
+- **Playbook:** §1 e §2 ora operativi (§2.1-2.6: comandi esatti di stack, Auditor, tool, report,
+  task e PR in bozza); divieti estesi a script, seed e playbook, a rebase e force-push e alle
+  istruzioni contenute nei dati; area di partenza «settimana ISO modulo 8, con 0 → 8»; esperimenti
+  che scrivono nel database ammessi solo sullo stack e annullati con `reseed`; §7 con prova a secco,
+  costo, prompt esatto dell'attività programmata e come sospenderla o eliminarla.
+- **Attività programmata non creata** da TASK-82: la crea la sessione che coordina dopo la prova a
+  secco, con la conferma del proprietario (prompt in `agent-playbook.md` §7.3).
+- **Prova a secco** (`docs/auditor/reports/2026-11-11-prova-a-secco.md`, nome con suffisso perché
+  non è una sessione programmata): 187 chiamate, ~10 minuti di orologio, Auditor 268 `pass` /
+  0 `fail` / 155 `skip` / 0 `error`. Quattro sospetti confermati, proposti come task nella
+  milestone `m-1`: TASK-84 (P1, lo snapshot del Doctor legge `portfolios.cash_balance`, che da
+  TASK-49 è il saldo di apertura: `cash_value` 0 e Scenario Lab con `use_cash_balance` infattibile),
+  TASK-85 (P2, `get_target_drift` pesa sulle sole posizioni, il ribilanciamento sul totale con la
+  liquidità), TASK-86 (P2, `day_change_pct` del riepilogo esclude dal denominatore le posizioni senza
+  chiusura precedente), TASK-87 (P2, X-Ray di un portafoglio vuoto con errore generico). Le bozze
+  delle regole (D-DOCTOR-CASH, B-DRIFT-REBALANCE-WEIGHTS, C-DAYCHANGE-DENOMINATOR, D-XRAY-EMPTY)
+  sono nel report; il catalogo non è stato toccato. I numeri dei task sono i primi liberi al
+  2026-11-11 con TASK-80 e TASK-83 in corso: se uno dei due crea un task nello stesso intervallo, va
+  rinumerato prima del merge.
