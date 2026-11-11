@@ -282,7 +282,8 @@ def test_declarations_match_catalog():
         assert r["scopes"] == ["portfolio"]
         assert r["title"] and r["id"] not in r["title"]
         assert callable(r["check"]) and r["tools"]
-        assert r.get("known_defect") is None
+        # Difetti noti (rules.md §6, TASK-79): solo B-PAC-SUM, task TASK-83.
+        assert r.get("known_defect") == {"B-PAC-SUM": "TASK-83"}.get(r["id"])
 
 
 def test_rules_module_imports_only_stdlib():

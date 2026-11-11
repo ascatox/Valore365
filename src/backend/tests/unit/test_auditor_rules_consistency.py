@@ -979,6 +979,23 @@ def test_doctor_concentration_fails_when_computed_on_total_with_cash():
     assert_status(out, "fail")
 
 
+def test_doctor_concentration_tolerates_one_decimal_rounding_of_health():
+    # TASK-79: sul seed (9104, 9105) il Doctor dà 36.83 / 66.67 e la salute 36.8 / 66.7, perché
+    # compute_max_position_weight arrotonda a 1 decimale: non è un difetto, la tolleranza è T_PP1.
+    from types import SimpleNamespace
+
+    from app.services.portfolio_doctor._health import compute_max_position_weight
+
+    assert compute_max_position_weight([SimpleNamespace(weight_pct=36.8326)]) == 36.8
+    assert D.T_PP1 == pytest.approx(0.055)
+    assert_status(check(D.check_doctor_concentration, _conc_ctx(36.83, 36.8), SCOPE_P1), "pass")
+    assert_status(check(D.check_doctor_concentration, _conc_ctx(66.67, 66.7), SCOPE_P1), "pass")
+    assert_status(check(D.check_doctor_concentration, _conc_ctx(66.65, 66.7), SCOPE_P1), "pass")
+    # Oltre l'arrotondamento resta un fail (anche 0,1 pp, l'unità della salute).
+    assert_status(check(D.check_doctor_concentration, _conc_ctx(36.83, 36.7), SCOPE_P1), "fail")
+    assert_status(check(D.check_doctor_concentration, _conc_ctx(36.83, 36.9), SCOPE_P1), "fail")
+
+
 def test_doctor_concentration_skips():
     assert_status(check(D.check_doctor_concentration, _conc_ctx(None, 0.0, is_empty=True), SCOPE_P1),
                   "skip", "empty_portfolio")
