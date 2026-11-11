@@ -438,3 +438,46 @@ drop trigger if exists trg_tribunal_session_members_cleanup on tribunal_session_
 create trigger trg_tribunal_session_members_cleanup
   after delete on tribunal_session_members
   for each row execute function tribunal_session_member_removed();
+
+-- Auditor dei calcoli (TASK-80): storico degli esiti della corsa notturna, solo
+-- id regola, esito, severità e data (docs/auditor/architecture.md §7.2).
+-- migrations/20261111_01_auditor.sql attiva anche la RLS.
+create table if not exists auditor_runs (
+  id bigserial primary key,
+  run_uuid text not null unique check (run_uuid ~ '^[0-9a-f]{32}$'),
+  status text not null default 'running'
+    check (status in ('running', 'success', 'completed_with_failures', 'failed', 'interrupted')),
+  trigger text not null check (trigger in ('external', 'manual')),
+  app_version text not null,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz,
+  users_total integer not null default 0,
+  users_failed integer not null default 0,
+  portfolios_total integer not null default 0,
+  rules_total integer not null default 0,
+  pass_count integer not null default 0,
+  fail_count integer not null default 0,
+  skip_count integer not null default 0,
+  error_count integer not null default 0,
+  deadline_exceeded boolean not null default false,
+  error_type text check (error_type is null or error_type ~ '^[A-Za-z_][A-Za-z0-9_]{0,99}$')
+);
+
+create index if not exists idx_auditor_runs_status_started
+  on auditor_runs (status, started_at desc);
+
+create table if not exists auditor_results (
+  run_id bigint not null references auditor_runs(id) on delete cascade,
+  portfolio_id bigint not null references portfolios(id) on delete cascade,
+  rule_id text not null check (rule_id ~ '^[ABCD]-[A-Z0-9]+(-[A-Z0-9]+)*$'),
+  scope_kind text not null check (scope_kind in ('portfolio', 'aggregate', 'instrument', 'user')),
+  status text not null check (status in ('pass', 'fail', 'skip', 'error')),
+  severity text not null check (severity in ('P0', 'P1', 'P2')),
+  created_at timestamptz not null default now(),
+  primary key (run_id, portfolio_id, rule_id, scope_kind)
+);
+
+create index if not exists idx_auditor_results_portfolio_run
+  on auditor_results (portfolio_id, run_id desc);
+create index if not exists idx_auditor_results_run_status
+  on auditor_results (run_id, status);

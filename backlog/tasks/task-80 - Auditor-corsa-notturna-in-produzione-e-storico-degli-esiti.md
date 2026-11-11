@@ -1,7 +1,7 @@
 ---
 id: TASK-80
 title: 'Auditor: corsa notturna in produzione e storico degli esiti'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -24,13 +24,13 @@ I portafogli di prova non hanno i casi strani dei dati reali: l'audit di novembr
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Un endpoint interno avvia la corsa su tutti i portafogli in background e uno di stato ne restituisce l'esito; autenticazione con token dedicato confrontato in tempo costante, endpoint disattivati se il token non è impostato, limiti di frequenza come in `routes_internal.py`
-- [ ] #2 Gli esiti vengono salvati per corsa, portafoglio e regola, solo con id regola, esito, severità e data: nessun importo, nome di strumento o testo di evidenza
-- [ ] #3 Una corsa in corso blocca l'avvio di un'altra; una corsa interrotta viene marcata come tale al riavvio
-- [ ] #4 Un workflow GitHub Actions avvia la corsa ogni notte dopo la sincronizzazione dei prezzi e fallisce se l'endpoint non risponde o la corsa termina in errore; il token passa solo dai secret
-- [ ] #5 Un endpoint amministrativo (con `require_admin`) restituisce l'ultima corsa: regole che falliscono, su quanti portafogli, da quando
-- [ ] #6 La corsa non consuma la quota MCP degli utenti e non rallenta le richieste: limiti di concorrenza e durata massima configurabili
-- [ ] #7 Migrazione in `database/migrations/` e `database/schema.sql`; test unitari e di integrazione coprono autenticazione, salvataggio senza dati personali, lock e corsa interrotta
+- [x] #1 Un endpoint interno avvia la corsa su tutti i portafogli in background e uno di stato ne restituisce l'esito; autenticazione con token dedicato confrontato in tempo costante, endpoint disattivati se il token non è impostato, limiti di frequenza come in `routes_internal.py`
+- [x] #2 Gli esiti vengono salvati per corsa, portafoglio e regola, solo con id regola, esito, severità e data: nessun importo, nome di strumento o testo di evidenza
+- [x] #3 Una corsa in corso blocca l'avvio di un'altra; una corsa interrotta viene marcata come tale al riavvio
+- [x] #4 Un workflow GitHub Actions avvia la corsa ogni notte dopo la sincronizzazione dei prezzi e fallisce se l'endpoint non risponde o la corsa termina in errore; il token passa solo dai secret
+- [x] #5 Un endpoint amministrativo (con `require_admin`) restituisce l'ultima corsa: regole che falliscono, su quanti portafogli, da quando
+- [x] #6 La corsa non consuma la quota MCP degli utenti e non rallenta le richieste: limiti di concorrenza e durata massima configurabili
+- [x] #7 Migrazione in `database/migrations/` e `database/schema.sql`; test unitari e di integrazione coprono autenticazione, salvataggio senza dati personali, lock e corsa interrotta
 <!-- AC:END -->
 
 ## Implementation Notes

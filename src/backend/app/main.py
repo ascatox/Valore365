@@ -65,6 +65,7 @@ from .services.performance_service import PerformanceService
 from .services.pricing_service import PriceIngestionService
 from .justetf_client import JustEtfClient
 from .services.doctor_policy.service import get_doctor_policy_service
+from .services.auditor.store import AuditorNightlyService, launch_interrupted_check
 
 # --- Route registrations ---
 from .api.instant_portfolio_analyzer import register_instant_portfolio_analyzer_routes
@@ -84,6 +85,7 @@ from .api.routes_csv import register_csv_routes
 from .api.routes_pac import register_pac_routes
 from .api.routes_copilot import register_copilot_routes
 from .api.routes_internal import register_internal_routes
+from .api.routes_auditor_internal import register_auditor_internal_routes
 from .mcp_server import register_mcp_routes
 
 # ---------------------------------------------------------------------------
@@ -130,6 +132,9 @@ scheduler = PriceRefreshScheduler(
 )
 # TASK-57: background backfill of the field encryption at startup.
 field_encryption_backfill = FieldEncryptionBackfillRunner(engine)
+# TASK-80: nightly Auditor run (POST /api/internal/auditor/run from GitHub Actions):
+# offline provider, background thread, results only (docs/auditor/architecture.md §6.1, §7.2).
+auditor_nightly = AuditorNightlyService(settings, engine)
 finance_client = make_finance_client(settings)
 justetf_client = JustEtfClient(settings=settings)
 
@@ -205,6 +210,14 @@ def _apply_pending_migrations():
         logging.getLogger(__name__).info("tribunal session tables ensured")
     except Exception as exc:
         logging.getLogger(__name__).warning("Tribunal session migration check failed: %s", exc)
+    # Auditor (TASK-80): nightly run history, own transaction.
+    try:
+        with _engine.begin() as conn:
+            from .sql import load_sql
+            conn.execute(text(load_sql("migrations/create_auditor")))
+        logging.getLogger(__name__).info("auditor tables ensured")
+    except Exception as exc:
+        logging.getLogger(__name__).warning("Auditor migration check failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +243,9 @@ async def lifespan(_: FastAPI):
     # TASK-57: encrypts the remaining plaintext in a daemon thread (advisory
     # lock, never raises); a no-op without keys or with DATA_BACKFILL_ON_STARTUP=false.
     field_encryption_backfill.start(field_crypto, settings)
+    # TASK-80: a nightly Auditor run left 'running' by a dead process becomes
+    # 'interrupted' (daemon thread, only when the run lock is free).
+    launch_interrupted_check(auditor_nightly)
     try:
         yield
     finally:
@@ -419,6 +435,11 @@ register_internal_routes(
     router,
     settings=settings,
     market_data_sync=RuntimeDependencyProxy(lambda: market_data_sync),
+)
+register_auditor_internal_routes(
+    router,
+    settings=settings,
+    service=RuntimeDependencyProxy(lambda: auditor_nightly),
 )
 
 app.include_router(router, prefix="/api")

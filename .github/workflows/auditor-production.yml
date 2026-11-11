@@ -1,0 +1,164 @@
+name: Auditor (production)
+
+# TASK-80: corsa notturna dell'Auditor dei calcoli sui portafogli reali, sul
+# server di produzione (docs/auditor/architecture.md §6, §6.1, §7). I dati non
+# escono dal server: questo job avvia la corsa, ne attende l'esito e legge solo
+# conteggi e id delle regole (nessun utente, portafoglio, importo o evidenza).
+#
+# Secrets richiesti:
+#   VALORE365_API_BASE_URL  es. https://valore365.onrender.com (senza /api), come market-data-sync
+#   AUDITOR_RUN_TOKEN       stesso valore della variabile AUDITOR_RUN_TOKEN su Render
+#
+# Esito: job fallito se l'endpoint non risponde o la corsa finisce 'failed' o
+# 'interrupted' (o non termina in tempo); warning se 'completed_with_failures';
+# ok se 'success'.
+
+on:
+  schedule:
+    # Ogni notte, dopo la sincronizzazione dei prezzi delle 22:40 UTC.
+    - cron: "35 23 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: auditor-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    # AUDITOR_MAX_DURATION_S (default 1800 s) più risveglio e margine.
+    timeout-minutes: 50
+    env:
+      API_BASE_URL: ${{ secrets.VALORE365_API_BASE_URL }}
+      AUDITOR_TOKEN: ${{ secrets.AUDITOR_RUN_TOKEN }}
+
+    steps:
+      - name: Check configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${API_BASE_URL}" || -z "${AUDITOR_TOKEN}" ]]; then
+            echo "::error::Secrets VALORE365_API_BASE_URL e AUDITOR_RUN_TOKEN obbligatori (docs/auditor/architecture.md §8)"
+            exit 1
+          fi
+
+      - name: Wake up the API (Render cold start)
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${API_BASE_URL%/}"
+          delay=5
+          deadline=$((SECONDS + 180))
+          attempt=1
+          while true; do
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "${base}/api/health" || true)"
+            if [[ "${code}" == "200" ]]; then
+              echo "API raggiungibile (tentativo ${attempt})"
+              break
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "::error::API non raggiungibile dopo circa 3 minuti (ultimo HTTP ${code})"
+              exit 1
+            fi
+            echo "health HTTP ${code}: nuovo tentativo tra ${delay}s"
+            sleep "${delay}"
+            delay=$(( delay * 2 > 40 ? 40 : delay * 2 ))
+            attempt=$(( attempt + 1 ))
+          done
+
+      - name: Start the run
+        id: trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${API_BASE_URL%/}"
+          # Il token passa a curl da stdin (-K -): mai sulla riga di comando né nel log.
+          code="$(printf 'header = "Authorization: Bearer %s"\n' "${AUDITOR_TOKEN}" \
+            | curl -sS -K - -X POST --max-time 60 -o response.json -w '%{http_code}' "${base}/api/internal/auditor/run" || true)"
+          echo "POST run: HTTP ${code}"
+          case "${code}" in
+            202)
+              run_id="$(jq -r '.run_id' response.json)"
+              echo "Corsa avviata run_id=${run_id}"
+              echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+              ;;
+            409)
+              run_id="$(jq -r '.run_id // empty' response.json)"
+              echo "::notice::Corsa già in corso (run_id=${run_id:-?}): attendo quella"
+              echo "run_id=${run_id}" >> "$GITHUB_OUTPUT"
+              ;;
+            401) echo "::error::Token rifiutato (401): AUDITOR_RUN_TOKEN diverso da quello su Render"; exit 1 ;;
+            404) echo "::error::Endpoint disattivato (404): AUDITOR_RUN_TOKEN non impostato su Render"; exit 1 ;;
+            429) echo "::error::Rate limit dell'endpoint interno (429)"; exit 1 ;;
+            *)
+              echo "::error::Risposta inattesa dal POST run (HTTP ${code})"
+              jq -c '.error // .' response.json 2>/dev/null || true
+              exit 1
+              ;;
+          esac
+
+      - name: Wait for the run to finish
+        shell: bash
+        env:
+          RUN_ID: ${{ steps.trigger.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          base="${API_BASE_URL%/}"
+          deadline=$((SECONDS + 2400))
+          failures=0
+          while true; do
+            sleep 30
+            code="$(printf 'header = "Authorization: Bearer %s"\n' "${AUDITOR_TOKEN}" \
+              | curl -sS -K - --max-time 60 -o status.json -w '%{http_code}' "${base}/api/internal/auditor/run/status" || true)"
+            if [[ "${code}" != "200" ]]; then
+              failures=$(( failures + 1 ))
+              echo "status HTTP ${code}: riprovo (${failures})"
+              if (( failures >= 10 )); then
+                echo "::error::L'endpoint di stato non risponde (ultimo HTTP ${code})"
+                exit 1
+              fi
+            else
+              failures=0
+              if [[ -n "${RUN_ID}" ]]; then
+                run="$(jq -c --arg id "${RUN_ID}" 'if .last_run.run_id == $id then .last_run elif .running.run_id == $id then .running else (.running // .last_run) end' status.json)"
+              else
+                run="$(jq -c '.running // .last_run' status.json)"
+              fi
+              status="$(jq -r '.status // "unknown"' <<< "${run}")"
+              id="$(jq -r '.run_id // "?"' <<< "${run}")"
+              echo "run_id=${id} status=${status} $(jq -r '"pass=\(.counts.pass // 0) fail=\(.counts.fail // 0) skip=\(.counts.skip // 0) error=\(.counts.error // 0)"' <<< "${run}")"
+              if [[ "${status}" != "running" && ( -z "${RUN_ID}" || "${id}" == "${RUN_ID}" ) ]]; then
+                break
+              fi
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "::error::La corsa dell'Auditor non è terminata entro 40 minuti"
+              exit 1
+            fi
+          done
+
+          {
+            echo "### Auditor (produzione)"
+            echo ""
+            echo "- corsa: ${id} (${status}), versione $(jq -r '.app_version // "-"' <<< "${run}")"
+            echo "- utenti valutati: $(jq -r '"\((.users_total // 0) - (.users_failed // 0)) su \(.users_total // 0)"' <<< "${run}"), portafogli: $(jq -r '.portfolios_total // 0' <<< "${run}"), regole: $(jq -r '.rules_total // 0' <<< "${run}")"
+            echo "- esiti: $(jq -r '"pass \(.counts.pass // 0), fail \(.counts.fail // 0), skip \(.counts.skip // 0), error \(.counts.error // 0)"' <<< "${run}")"
+            echo "- durata massima superata: $(jq -r '.deadline_exceeded // false' <<< "${run}")"
+            echo "- regole che falliscono: $(jq -r '[.failing_rules[]? | "\(.rule_id) (\(.severity), \(.portfolios))"] | join(", ") | if . == "" then "nessuna" else . end' <<< "${run}")"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case "${status}" in
+            success)
+              echo "::notice::Auditor: corsa completata senza fallimenti (run ${id})"
+              ;;
+            completed_with_failures)
+              echo "::warning::Auditor: regole che falliscono o utenti non valutati (run ${id}); dettagli in /api/admin/auditor/latest"
+              ;;
+            *)
+              echo "::error::Auditor: corsa ${status} (run ${id}, errore: $(jq -r '.error_type // "-"' <<< "${run}"))"
+              exit 1
+              ;;
+          esac

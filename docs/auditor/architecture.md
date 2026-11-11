@@ -1081,3 +1081,60 @@ cambia, perché, e quali task ne sono toccati.
   avviare); trigger anche su `scripts/auditor/**` e sul file del workflow, oltre a
   `src/backend/**` e `database/**`. Cron notturno `17 2 * * *` (UTC), dopo la sincronizzazione
   delle 22:40 e lontano dalla notturna di produzione delle 23:35.
+
+### TASK-80
+
+- **Colonne in più in `auditor_runs`:** `users_total`, `users_failed` (utenti valutati e falliti
+  prima della valutazione) e `deadline_exceeded`; vincoli `check` su `run_uuid` (32 esadecimali),
+  `error_type` (solo un identificatore, il nome dell'eccezione) e, in `auditor_results`, su
+  `rule_id` (`RULE_ID_PATTERN`): nessuna colonna può contenere testo libero, importi o simboli.
+  Indici `(status, started_at desc)`, `(portfolio_id, run_id desc)`, `(run_id, status)`. RLS attiva
+  senza policy come le altre tabelle solo backend; copia identica in
+  `app/sql/migrations/create_auditor.sql` applicata da `_apply_pending_migrations` (transazione
+  propria).
+- **`RunSummary` esteso** con `users_total`, `users_failed`, `deadline_exceeded`, `error_type`
+  (solo conteggi e il nome di un'eccezione): il workflow li mostra nel riepilogo del job.
+- **Stato della corsa:** `failed` se il caricamento delle regole, l'elenco degli utenti o le
+  dipendenze falliscono (`error_type` = nome dell'eccezione, `NoRulesLoaded` se nessuna regola) o se
+  **tutti** gli utenti falliscono (`error_type` = l'eccezione più frequente);
+  `completed_with_failures` se c'è almeno un `fail`/`error`, un utente non valutato o la durata
+  massima è stata superata; altrimenti `success` (anche con zero utenti). Un utente che fallisce
+  (eccezioni di `run_audit` prima della valutazione, errore nel salvataggio) conta in
+  `users_failed` e non ferma gli altri; nel log solo il nome dell'eccezione.
+- **Durate:** `AUDITOR_MAX_DURATION_S` è la scadenza dell'intera corsa; in più
+  `AUDITOR_USER_MAX_DURATION_S` (default 300) per utente. `RunOptions.max_duration_s` di ogni
+  utente = `min(durata per utente, tempo residuo della corsa)`; un utente non ancora iniziato alla
+  scadenza non viene valutato (`users_failed`, `deadline_exceeded`). Ogni utente gira con
+  `max_workers=1`; `AUDITOR_MAX_CONCURRENCY` utenti in parallelo (`ThreadPoolExecutor`): al massimo
+  `AUDITOR_MAX_CONCURRENCY` connessioni del pool condiviso più quella del lock, oltre ai thread di
+  regole abbandonati per timeout (§3.6), che possono tenere una connessione finché la query non
+  finisce.
+- **Lock e corsa interrotta:** lock di processo più `pg_try_advisory_xact_lock(80365001)`
+  (`AUDITOR_LOCK_KEY`, riuso di `PgAdvisoryLock` della sincronizzazione), heartbeat dopo ogni
+  utente. Una riga `running` trovata **con il lock in mano** è di un processo morto: diventa
+  `interrupted` sia all'avvio dell'app (`launch_interrupted_check`, thread daemon dopo le
+  migrazioni; non tocca nulla se il lock è tenuto da un altro processo vivo) sia all'avvio di una
+  nuova corsa. Le righe salvate da una corsa interrotta restano, ma non contano per TASK-81.
+- **`since` e corse concluse:** la serie considera solo le corse `success`/`completed_with_failures`
+  (più la corsa mostrata, se è `failed`/`interrupted`); le corse `failed`/`interrupted` non la
+  interrompono. L'endpoint amministrativo mostra l'ultima corsa non `running` (qualsiasi stato) e
+  le regole in `fail`/`error` su quella corsa. `title`/`area` vengono da `load_rules()`; una regola
+  non più nel registro ha `title` = id e `area` = null.
+- **Portafoglio cancellato durante la corsa:** le sue righe sono ignorate (insert condizionato
+  all'esistenza in `portfolios`), non fanno fallire l'utente.
+- **Utenti:** `select distinct owner_user_id from portfolios` (anche portafogli vuoti). Le tool
+  call sono sommate fra utenti solo nel log (`tool_calls`, `tool_errors`), non salvate.
+- **Endpoint utente (TASK-81):** resta a TASK-81 (`routes_auditor_user.py`). Per lui
+  `AuditorStore(engine).latest_results_for_portfolios(ids)` restituisce
+  `{"run": {"run_id", "status", "started_at", "finished_at"} | None, "rows": [{portfolio_id,
+  rule_id, scope_kind, status, severity}]}` dell'ultima corsa **conclusa**
+  (`success`/`completed_with_failures`); la proprietà dei portafogli e la regola delle 48 ore
+  restano al chiamante.
+- **Workflow** `.github/workflows/auditor-production.yml`: cron `35 23 * * *` e
+  `workflow_dispatch`, stessi passi di `market-data-sync.yml` (risveglio, POST, attesa sullo stato
+  fino a 40 minuti, timeout del job 50). 409 → attende la corsa già in corsa. Fallisce su 401/404/429,
+  stato non raggiungibile per 10 tentativi di fila, corsa `failed`/`interrupted` o non terminata;
+  warning su `completed_with_failures`. Validato con `actionlint` 1.7.7.
+- **Prima corsa notturna sul seed** (PostgreSQL 16, test di integrazione): `success`, 1 utente,
+  7 portafogli, 52 regole, 268 `pass`, 0 `fail`, 155 `skip`, 0 `error`, 477 righe in
+  `auditor_results`, identiche a `privacy_rows` di un'esecuzione diretta del motore.
