@@ -1,7 +1,7 @@
 ---
 id: TASK-75
 title: 'Auditor: regole su ribilanciamento, PAC e simulazioni'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-10T18:00:00Z'
 labels:
@@ -26,11 +26,11 @@ Gruppo B: ribilanciamento, PAC e simulazioni. Coprono V365-003 (i proventi delle
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Sono implementate tutte le regole del gruppo B del catalogo
-- [ ] #2 Tra le regole: nel ribilanciamento la liquidità usata non supera la liquidità disponibile più i proventi delle vendite; la liquidità residua non è negativa; dopo gli ordini lo scostamento dai target non aumenta; con sola nuova liquidità non compaiono vendite; nel calcolo del PAC la somma dei contributi è uguale all'importo indicato
-- [ ] #3 Le regole usano argomenti fissi e documentati per i tool di simulazione, così l'esito è riproducibile
-- [ ] #4 Le regole vanno in `skip` quando lo scope non ha target o non ha posizioni
-- [ ] #5 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
+- [x] #1 Sono implementate tutte le regole del gruppo B del catalogo
+- [x] #2 Tra le regole: nel ribilanciamento la liquidità usata non supera la liquidità disponibile più i proventi delle vendite; la liquidità residua non è negativa; dopo gli ordini lo scostamento dai target non aumenta; con sola nuova liquidità non compaiono vendite; nel calcolo del PAC la somma dei contributi è uguale all'importo indicato
+- [x] #3 Le regole usano argomenti fissi e documentati per i tool di simulazione, così l'esito è riproducibile
+- [x] #4 Le regole vanno in `skip` quando lo scope non ha target o non ha posizioni
+- [x] #5 Ogni regola ha il test che reintroduce il difetto originale e la vede fallire
 <!-- AC:END -->
 
 ## Implementation Notes
