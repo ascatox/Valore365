@@ -308,3 +308,45 @@ def current_target_weights(positions: Iterable, target_alloc: Iterable, cash: fl
         untargeted_symbols=list(plan.untargeted_symbols),
         untargeted_value=plan.untargeted_value,
     )
+
+
+@dataclass(frozen=True)
+class TargetDriftRow:
+    """One row of the drift from target (rounded to 2 decimals, like get_target_drift)."""
+
+    asset_id: Hashable
+    symbol: str
+    name: str
+    current_weight_pct: float
+    target_weight_pct: float
+    drift_pct: float
+    market_value: float
+
+
+def target_drift_rows(
+    positions: Iterable, target_alloc: Iterable, cash: float,
+) -> tuple[TargetWeights, list[TargetDriftRow]]:
+    """Drift from target of every targeted instrument, in the order of
+    ``target_alloc``: single source of get_target_drift (Copilot/MCP) and of
+    the REST ``GET /portfolios/{id}/target-drift`` read by the holdings table
+    (TASK-88). Weights from ``current_target_weights``; ``drift_pct`` is
+    rounded from the unrounded weight, so it can differ by 0.01 from
+    ``current_weight_pct - target_weight_pct``."""
+    positions = list(positions)
+    target_alloc = list(target_alloc)
+    weights = current_target_weights(positions, target_alloc, cash)
+    pos_map = {p.asset_id: p for p in positions}
+    rows = []
+    for ta in target_alloc:
+        current = weights.current_weight_pct(ta.asset_id)
+        pos = pos_map.get(ta.asset_id)
+        rows.append(TargetDriftRow(
+            asset_id=ta.asset_id,
+            symbol=ta.symbol,
+            name=getattr(ta, "name", None) or ta.symbol,
+            current_weight_pct=round(current, 2),
+            target_weight_pct=round(float(ta.weight_pct), 2),
+            drift_pct=round(current - float(ta.weight_pct), 2),
+            market_value=round(float(pos.market_value or 0.0), 2) if pos else 0.0,
+        ))
+    return weights, rows

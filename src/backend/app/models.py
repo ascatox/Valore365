@@ -451,6 +451,29 @@ class PortfolioTargetAllocationItem(BaseModel):
     weight_pct: float
 
 
+class PortfolioTargetDriftItem(BaseModel):
+    """One targeted instrument: same values as the Copilot/MCP get_target_drift (TASK-88)."""
+
+    asset_id: int
+    symbol: str
+    name: str
+    target_weight_pct: float
+    current_weight_pct: float
+    drift_pct: float
+    market_value: float
+
+
+class PortfolioTargetDriftResponse(BaseModel):
+    """Drift from target on the rebalancing base: targeted holdings + current cash (TASK-85/88)."""
+
+    portfolio_id: int
+    total_value: float
+    cash_balance: float
+    untargeted_holdings: list[str]
+    weight_basis_note: str
+    items: list[PortfolioTargetDriftItem]
+
+
 class PortfolioTargetPerformancePoint(BaseModel):
     date: str
     weighted_index: float

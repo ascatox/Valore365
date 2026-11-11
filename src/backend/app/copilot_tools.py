@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+from types import SimpleNamespace
 from typing import Any
 
 from .services.performance_service import PerformanceService
@@ -32,6 +33,7 @@ from .services.rebalance import (
     TARGET_WEIGHT_BASIS_NOTE,
     compute_rebalance_plan,
     current_target_weights,
+    target_drift_rows,
     target_holdings,
 )
 from .services.portfolio_doctor._holdings import _load_holdings
@@ -213,7 +215,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Simula l'effetto di un'operazione (acquisto o vendita) sui pesi "
             "e la diversificazione del portafoglio. Utile per rispondere a "
-            "'cosa succede se compro/vendo X?'."
+            "'cosa succede se compro/vendo X?'. I pesi (old/new_weight) sono sulle sole "
+            "posizioni; lo scostamento dal target (old/new_drift) sulla base di "
+            "get_target_drift e calculate_rebalance_orders (strumenti con target piu' liquidita')."
         ),
         "parameters": {
             "type": "object",
@@ -659,24 +663,23 @@ def _get_target_drift(
         return {"drift": [], "note": "Nessun target configurato per questo portafoglio."}
 
     positions = repo.get_positions(portfolio_id, user_id) or []
-    pos_map = {p.asset_id: p for p in positions}
     # TASK-85: same base as calculate_rebalance_orders and the PAC (targeted
     # holdings + current cash of the performance cash model, summary.cash_balance).
+    # TASK-88: rows shared with the REST /target-drift read by the holdings table.
     summary = repo.get_summary(portfolio_id, user_id)
-    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
+    weights, rows = target_drift_rows(positions, target_alloc, float(summary.cash_balance or 0.0))
 
-    drift_list = []
-    for ta in target_alloc:
-        current = weights.current_weight_pct(ta.asset_id)
-        pos = pos_map.get(ta.asset_id)
-        drift_list.append({
-            "symbol": ta.symbol,
-            "name": ta.name if hasattr(ta, "name") else ta.symbol,
-            "current_weight": round(current, 2),
-            "target_weight": round(ta.weight_pct, 2),
-            "drift": round(current - ta.weight_pct, 2),
-            "market_value": round(pos.market_value, 2) if pos else 0,
-        })
+    drift_list = [
+        {
+            "symbol": r.symbol,
+            "name": r.name,
+            "current_weight": r.current_weight_pct,
+            "target_weight": r.target_weight_pct,
+            "drift": r.drift_pct,
+            "market_value": r.market_value,
+        }
+        for r in rows
+    ]
 
     return {
         "drift": drift_list,
@@ -1091,6 +1094,16 @@ def _calculate_rebalance_orders(
     }
 
 
+WHAT_IF_WEIGHT_BASIS_NOTE = (
+    "old_weight, new_weight e max_position_weight_* sono sul valore delle sole posizioni, come "
+    "get_positions (misurano la concentrazione). old_drift e new_drift sono invece sulla base di "
+    "get_target_drift, calculate_rebalance_orders e calculate_pac_contribution (strumenti con target "
+    "piu' liquidita', target_basis.total_value_*): l'acquisto e' pagato con la liquidita' del "
+    "portafoglio (oltre il saldo conta come nuovo versamento), la vendita lascia i proventi in "
+    "liquidita'. Strumento senza target: old_drift, new_drift e target_basis nulli."
+)
+
+
 def _calculate_what_if(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
@@ -1123,20 +1136,48 @@ def _calculate_what_if(
 
     new_weight = (new_value / new_total * 100) if new_total > 0 else 0
 
-    # Check drift from target
+    # Drift from target (TASK-88): same base as get_target_drift, the PAC and
+    # calculate_rebalance_orders (current_target_weights: targeted holdings +
+    # current cash). The operation is applied to the app's cash model: a buy is
+    # paid from the portfolio cash (the part beyond it, cash floored at 0, adds
+    # to the base like a new deposit), a sale's proceeds stay in cash. So
+    # old_drift equals get_target_drift and new_drift is what it would show
+    # after recording the transaction.
     old_drift = None
     new_drift = None
+    target_basis = None
     try:
-        target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
-        allocation = repo.get_allocation(portfolio_id, user_id)
-        alloc_map = {a.asset_id: a.weight_pct for a in allocation}
-        for ta in target_alloc:
-            if ta.symbol.upper() == symbol.upper():
-                old_drift = round(old_weight - ta.weight_pct, 2)
-                new_drift = round(new_weight - ta.weight_pct, 2)
-                break
+        target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id) or []
+        ta = next((t for t in target_alloc if t.symbol.upper() == symbol.upper()), None)
+        if ta is not None:
+            cash = float(summary.cash_balance or 0.0)
+            before = current_target_weights(positions, target_alloc, cash)
+            signed = amount_eur if action == "buy" else -amount_eur
+            simulated = [
+                SimpleNamespace(
+                    asset_id=p.asset_id, symbol=p.symbol,
+                    market_value=float(p.market_value or 0.0) + (signed if p.asset_id == ta.asset_id else 0.0),
+                )
+                for p in positions
+            ]
+            if not any(p.asset_id == ta.asset_id for p in positions):
+                simulated.append(SimpleNamespace(asset_id=ta.asset_id, symbol=ta.symbol, market_value=signed))
+            after = current_target_weights(simulated, target_alloc, cash - signed)
+            w_before = before.current_weight_pct(ta.asset_id)
+            w_after = after.current_weight_pct(ta.asset_id)
+            old_drift = round(w_before - ta.weight_pct, 2)
+            new_drift = round(w_after - ta.weight_pct, 2)
+            target_basis = {
+                "target_weight": round(ta.weight_pct, 2),
+                "current_weight_before": round(w_before, 2),
+                "current_weight_after": round(w_after, 2),
+                "total_value_before": round(before.base_value, 2),
+                "total_value_after": round(after.base_value, 2),
+                "cash_before": round(before.cash, 2),
+                "cash_after": round(after.cash, 2),
+            }
     except Exception:
-        pass
+        logger.debug("calculate_what_if: drift from target not available", exc_info=True)
 
     # Max position weight (concentration check)
     weights_after = []
@@ -1160,6 +1201,8 @@ def _calculate_what_if(
         "new_weight": round(new_weight, 2),
         "old_drift": old_drift,
         "new_drift": new_drift,
+        "target_basis": target_basis,
+        "weight_basis_note": WHAT_IF_WEIGHT_BASIS_NOTE,
         "max_position_weight_before": round(max_weight_before, 2),
         "max_position_weight_after": round(max_weight_after, 2),
         "impact_on_concentration": (

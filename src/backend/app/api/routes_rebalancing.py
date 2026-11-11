@@ -7,6 +7,8 @@ from ..rate_limit import require_auth_rate_limited
 from ..errors import AppError
 from ..models import (
     ErrorResponse,
+    PortfolioTargetDriftItem,
+    PortfolioTargetDriftResponse,
     RebalanceCommitCreatedItem,
     RebalanceCommitRequest,
     RebalanceCommitResponse,
@@ -17,7 +19,12 @@ from ..models import (
     TransactionCreate,
 )
 from ..repository import PortfolioRepository
-from ..services.rebalance import RebalanceHolding, compute_rebalance_plan
+from ..services.rebalance import (
+    TARGET_WEIGHT_BASIS_NOTE,
+    RebalanceHolding,
+    compute_rebalance_plan,
+    target_drift_rows,
+)
 
 
 def register_rebalancing_routes(
@@ -28,6 +35,53 @@ def register_rebalancing_routes(
     historical_service: object,
     ensure_target_allocation_enabled: object,
 ) -> None:
+
+    @router.get(
+        "/portfolios/{portfolio_id}/target-drift",
+        response_model=PortfolioTargetDriftResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    def get_target_drift(
+        portfolio_id: int,
+        _auth: AuthContext = Depends(require_auth_rate_limited),
+    ) -> PortfolioTargetDriftResponse:
+        """Drift from target of every targeted instrument (TASK-88).
+
+        Same function and same values as the Copilot/MCP ``get_target_drift``
+        (``services.rebalance.target_drift_rows``): weights on the targeted
+        holdings + current cash of the performance cash model, the base of
+        ``calculate_rebalance_orders`` and of the PAC (TASK-85). Read by the
+        holdings table. Ownership is checked by the repository (404).
+        """
+        ensure_target_allocation_enabled()
+        try:
+            target_alloc = repo.list_portfolio_target_allocations(portfolio_id, _auth.user_id)
+            if not target_alloc:
+                return PortfolioTargetDriftResponse(
+                    portfolio_id=portfolio_id, total_value=0.0, cash_balance=0.0, untargeted_holdings=[],
+                    weight_basis_note=TARGET_WEIGHT_BASIS_NOTE, items=[],
+                )
+            positions = repo.get_positions(portfolio_id, _auth.user_id) or []
+            summary = repo.get_summary(portfolio_id, _auth.user_id)
+        except ValueError as exc:
+            raise AppError(code="not_found", message=str(exc), status_code=404) from exc
+
+        weights, rows = target_drift_rows(positions, target_alloc, float(summary.cash_balance or 0.0))
+        return PortfolioTargetDriftResponse(
+            portfolio_id=portfolio_id,
+            total_value=round(weights.base_value, 2),
+            cash_balance=round(weights.cash, 2),
+            untargeted_holdings=list(weights.untargeted_symbols),
+            weight_basis_note=TARGET_WEIGHT_BASIS_NOTE,
+            items=[
+                PortfolioTargetDriftItem(
+                    asset_id=int(r.asset_id), symbol=r.symbol, name=r.name,
+                    target_weight_pct=r.target_weight_pct, current_weight_pct=r.current_weight_pct,
+                    drift_pct=r.drift_pct, market_value=r.market_value,
+                )
+                for r in rows
+            ],
+        )
 
     @router.post(
         "/portfolios/{portfolio_id}/rebalance/preview",
@@ -106,7 +160,8 @@ def register_rebalancing_routes(
         base_ccy = summary.base_currency.upper()
 
         # Shared, order-independent algorithm (app.services.rebalance). The
-        # preview keeps its historical semantics: weights on the invested
+        # preview keeps its historical semantics (decision TASK-88, documented
+        # in docs/audit-mcp-2026-11/methodology.md §7): weights on the invested
         # value of all holdings (cash excluded), no tolerance band, buy_only
         # deploys all of cash_to_allocate. Buys are now funded by
         # cash_to_allocate + sell proceeds (scaled down if short).

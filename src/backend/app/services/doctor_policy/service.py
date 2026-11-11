@@ -23,8 +23,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Iterable
-from datetime import datetime
+from collections.abc import Callable, Iterable
+from datetime import UTC, datetime
 from typing import Any
 
 from ...repository._scope import NOT_FOUND_MESSAGE
@@ -90,9 +90,14 @@ class DoctorPolicyService:
         *,
         store: DoctorPolicyStore | None = None,
         cache: TTLCache | None = None,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repo = repo
         self._store = store
+        # Wall clock for the data-age check (``max_data_age_days``) and
+        # ``calculated_at``; tests pass a fixed one so fixtures dated
+        # "2026-11-03" do not turn stale (UNKNOWN) as real days go by.
+        self._clock = clock or (lambda: datetime.now(UTC))
         self.cache = cache or TTLCache(
             ttl_seconds=EVALUATION_CACHE_TTL_SECONDS, max_entries=EVALUATION_CACHE_MAX_ENTRIES,
         )
@@ -149,7 +154,7 @@ class DoctorPolicyService:
             created_at=_iso(record.created_at) or "",
         )
 
-    def _snapshot_and_metrics(self, ids: list[int], user_id: str):
+    def _snapshot_and_metrics(self, ids: list[int], user_id: str, *, now: datetime | None = None):
         try:
             snapshot = build_snapshot(self.repo, ids, user_id)
         except ScopeError as exc:
@@ -158,7 +163,12 @@ class DoctorPolicyService:
             if str(exc) == NOT_FOUND_MESSAGE:
                 raise NotFound(NOT_FOUND_MESSAGE) from exc
             raise InvalidRequest(str(exc)) from exc
-        return snapshot, compute_metrics(snapshot, self.repo)
+        return snapshot, compute_metrics(snapshot, self.repo, now=now or self.now())
+
+    def now(self) -> datetime:
+        """Current time from the injected clock (UTC-aware)."""
+        current = self._clock()
+        return current if current.tzinfo else current.replace(tzinfo=UTC)
 
     # ------------------------------------------------------------------
     # static data
@@ -249,6 +259,7 @@ class DoctorPolicyService:
             policy_id=record.id if record else None,
             policy_version=record.current_version if record else None,
             policy_name=record.name if record else None,
+            now=self.now(),
         )
         self.cache.set(key, response.model_copy(deep=True))
         logger.info(
@@ -295,13 +306,15 @@ class DoctorPolicyService:
         normalized, errors = validate_and_normalize(document)
         valid = not errors and normalized is not None
         record = self.store.get_policy_set(user_id, fingerprint)
-        snapshot, metrics = self._snapshot_and_metrics(ids, user_id)
+        now = self.now()
+        snapshot, metrics = self._snapshot_and_metrics(ids, user_id, now=now)
 
         evaluation_before = None
         if record is not None:
             evaluation_before = build_evaluation_response(
                 record.document, snapshot, metrics, repo=self.repo,
                 policy_id=record.id, policy_version=record.current_version, policy_name=record.name,
+                now=now,
             )
         evaluation_after = None
         diff: list[dict[str, Any]] = []
@@ -314,6 +327,7 @@ class DoctorPolicyService:
                 policy_id=record.id if record else None,
                 policy_version=None,
                 policy_name=record.name if record else None,
+                now=now,
             )
             diff = diff_documents(record.document if record else None, normalized)
             issued = issue_token(
@@ -504,7 +518,8 @@ class DoctorPolicyService:
         cached = self.cache.get(key)
         if cached is None:
             cached = lab.preview_scenario(
-                snapshot, request, policy_document=record.document if record else None, repo=self.repo, **meta,
+                snapshot, request, policy_document=record.document if record else None, repo=self.repo,
+                now=self.now(), **meta,
             )
             self.cache.set(key, cached.model_copy(deep=True))
         logger.info(
@@ -531,7 +546,7 @@ class DoctorPolicyService:
         if cached is None:
             cached = lab.compare_scenarios(
                 snapshot, request.scenarios, policy_document=record.document if record else None,
-                repo=self.repo, expected_snapshot_id=request.snapshot_id, **meta,
+                repo=self.repo, now=self.now(), expected_snapshot_id=request.snapshot_id, **meta,
             )
             self.cache.set(key, cached.model_copy(deep=True))
         logger.info(

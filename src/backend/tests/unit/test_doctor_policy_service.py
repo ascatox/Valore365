@@ -85,7 +85,7 @@ def svc(monkeypatch):
         builds["snapshot"] += 1
         return snapshot_from_holdings([], portfolio_ids=list(ids), base_currency="EUR")
 
-    def fake_metrics(snapshot, _repo=None):
+    def fake_metrics(snapshot, _repo=None, **_kw):
         builds["metrics"] += 1
         return {}
 

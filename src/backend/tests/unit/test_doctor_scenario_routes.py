@@ -78,7 +78,8 @@ def env(monkeypatch):
 
     monkeypatch.setattr(service_module, "build_snapshot", fake_snapshot)
     monkeypatch.setattr(service_module, "issue_token", no_token)
-    service = DoctorPolicyService(_Repo(), store=store)
+    # Fixed clock: prd_snapshot() prices are dated 2026-11-03 (max_data_age_days = 5).
+    service = DoctorPolicyService(_Repo(), store=store, clock=lambda: NOW)
 
     app = FastAPI()
 
