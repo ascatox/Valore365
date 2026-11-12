@@ -6,6 +6,7 @@ import type { Position, PortfolioSummary } from '../../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../formatters';
 import { AssetInfoModal } from './AssetInfoModal';
 import { MobileHoldingsCards } from '../../mobile/MobileHoldingsCards';
+import { TARGET_DRIFT_BASIS, formatDriftPoints, isDriftWarning, type TargetDriftMap } from './targetDrift';
 
 type SortKey = 'symbol' | 'quantity' | 'market_price' | 'market_value' | 'unrealized_pl' | 'unrealized_pl_pct' | 'day_change_pct' | 'weight' | 'first_trade_at';
 
@@ -13,7 +14,8 @@ interface HoldingsTableProps {
   positions: Position[];
   currency: string;
   summary?: PortfolioSummary | null;
-  targetMap?: Map<number, number>;
+  /** Target and drift per asset (backend, same values as the Copilot); absent in the aggregate view. */
+  targetMap?: TargetDriftMap;
   onRefreshPrices?: () => Promise<void>;
   refreshing?: boolean;
   /** Text when there are no positions (the aggregate view names the selected portfolios). */
@@ -172,7 +174,12 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
                   </Table.Th>
                   {col.key === 'weight' && hasTargets && (
                     <Table.Th style={{ textAlign: 'right' }}>
-                      <Text fw={600} size="xs" component="span">Target</Text>
+                      <Tooltip label={TARGET_DRIFT_BASIS} withArrow multiline w={260}>
+                        <Group gap={4} wrap="nowrap" justify="flex-end" style={{ display: 'inline-flex' }}>
+                          <Text fw={600} size="xs" component="span">Target</Text>
+                          <IconInfoCircle size={13} stroke={1.5} style={{ opacity: 0.5 }} aria-label="Base dello scostamento" />
+                        </Group>
+                      </Tooltip>
                     </Table.Th>
                   )}
                 </React.Fragment>
@@ -231,19 +238,24 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
                   {hasTargets && (
                     <Table.Td style={{ textAlign: 'right' }}>
                       {(() => {
-                        const target = targetMap.get(p.asset_id);
-                        if (target == null) return <Text size="xs" c="dimmed">—</Text>;
-                        const delta = p.weight - target;
-                        const warn = Math.abs(delta) > 5;
+                        const item = targetMap.get(p.asset_id);
+                        if (item == null) return <Text size="xs" c="dimmed">—</Text>;
+                        const warn = isDriftWarning(item.drift_pct);
+                        const label = `${formatDriftPoints(item.drift_pct)} dal target (peso ${formatNum(item.current_weight_pct, 2)}%). ${TARGET_DRIFT_BASIS}`;
                         return (
-                          <Group gap={4} wrap="nowrap" justify="flex-end">
-                            <Text size="xs">{formatNum(target, 1)}%</Text>
-                            {warn && (
-                              <Tooltip label={`Scostamento sul peso fra le posizioni (liquidità esclusa): ${delta > 0 ? '+' : ''}${formatNum(delta, 1)}%`} withArrow>
-                                <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} />
-                              </Tooltip>
-                            )}
-                          </Group>
+                          <Tooltip label={label} withArrow multiline w={280}>
+                            <div>
+                              <Group gap={4} wrap="nowrap" justify="flex-end">
+                                <Text size="xs">{formatNum(item.target_weight_pct, 1)}%</Text>
+                                {warn && (
+                                  <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} aria-label="Scostamento oltre 5 punti" />
+                                )}
+                              </Group>
+                              <Text size="xs" fw={warn ? 700 : 500} c={warn ? 'orange' : 'dimmed'} data-testid={`target-drift-${p.asset_id}`}>
+                                {formatDriftPoints(item.drift_pct)}
+                              </Text>
+                            </div>
+                          </Tooltip>
                         );
                       })()}
                     </Table.Td>

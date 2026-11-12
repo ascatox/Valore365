@@ -25,6 +25,7 @@ import {
   getPortfolioPositionsForScope,
   getPortfolioSummaryForScope,
   getPortfolioTargetAllocation,
+  getPortfolioTargetDrift,
   getPortfolioTargetAssetIntradayPerformance,
   getPortfolioTargetAssetPerformance,
   getPortfolioTargetIntradayPerformance,
@@ -241,6 +242,16 @@ export function useTargetAllocation(portfolio: PortfolioScopeInput) {
     // placeholderData, not initialData: initialData counts as fresh for the
     // 60s staleTime, so the request never ran and targets stayed empty.
     placeholderData: [] as Awaited<ReturnType<typeof getPortfolioTargetAllocation>>,
+  });
+}
+
+/** Drift from target as the Copilot and the rebalancing (TASK-88); disabled in the aggregate view. */
+export function useTargetDrift(portfolio: PortfolioScopeInput) {
+  const portfolioId = singlePortfolioId(portfolio);
+  return useQuery({
+    queryKey: ['target-drift', portfolioId],
+    queryFn: () => getPortfolioTargetDrift(portfolioId!),
+    enabled: portfolioId != null,
   });
 }
 

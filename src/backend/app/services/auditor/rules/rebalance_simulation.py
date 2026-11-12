@@ -637,11 +637,57 @@ def check_drift_rebalance_weights(ctx: Any, scope: dict[str, Any]) -> dict[str, 
             ev = _ev(tool, args, f"{path}.{key}", row.get(key), d.get(d_key), T_PP,
                      f"{symbol}: come drift[{j}].{d_key}")
             (violations if a is None or b is None or abs(a - b) > T_PP + EPS else passed).append(ev)
+
+    # 4. What-if (TASK-88): scostamento prima = get_target_drift; dopo = stessa base con
+    #    l'acquisto pagato dalla liquidità (oltre il saldo, nuovo versamento).
+    _check_what_if_drift(ctx, scope, positions, rows, total, cash, values, drift_args, violations, passed)
     if violations:
         return _fail(
-            "Scostamento dal target, PAC e ribilanciamento non partono dagli stessi pesi.", violations,
+            "Scostamento dal target, PAC, ribilanciamento e what-if non partono dagli stessi pesi.",
+            violations,
         )
     return _pass(passed)
+
+
+def what_if_drift_symbol(positions: list[dict[str, Any]], drift_rows: list[dict[str, Any]]) -> Any:
+    """Argomento canonico S_T (architecture.md §5.2): primo simbolo di get_positions con un
+    target, altrimenti il primo di get_target_drift (strumento con target non posseduto)."""
+    targeted = {d.get("symbol") for d in drift_rows}
+    held = next((p.get("symbol") for p in positions if p.get("symbol") in targeted), None)
+    return held if held is not None else drift_rows[0].get("symbol")
+
+
+def _check_what_if_drift(
+    ctx: Any, scope: Mapping[str, Any], positions: list[dict[str, Any]], rows: list[dict[str, Any]],
+    total: float | None, cash: float | None, values: list[float | None], drift_args: Mapping[str, Any],
+    violations: list[dict[str, Any]], passed: list[dict[str, Any]],
+) -> None:
+    symbol = what_if_drift_symbol(positions, rows)
+    j, d = next((i, r) for i, r in enumerate(rows) if r.get("symbol") == symbol)
+    args = _pid_args(scope, {"action": "buy", "symbol": symbol, "amount_eur": WHAT_IF_BUY_AMOUNT})
+    res = ctx.call(WHAT_IF_TOOL, args)
+
+    old, ref = _num(res.get("old_drift")), _num(d.get("drift"))
+    ev = _ev(WHAT_IF_TOOL, args, "old_drift", res.get("old_drift"), d.get("drift"), T_PP,
+             f"{symbol}: come drift[{j}].drift di get_target_drift")
+    (violations if old is None or ref is None or abs(old - ref) > T_PP + EPS else passed).append(ev)
+
+    basis = res.get("target_basis") if isinstance(res.get("target_basis"), dict) else {}
+    before = _num(basis.get("total_value_before"))
+    ev = _ev(WHAT_IF_TOOL, args, "target_basis.total_value_before", basis.get("total_value_before"),
+             None if total is None else _r(total, 2), T_EUR, "stessa base dei pesi di get_target_drift")
+    (violations if before is None or total is None or abs(before - total) > T_EUR + EPS else passed).append(ev)
+
+    target, v0 = _num(d.get("target_weight")), values[j]
+    if cash is None or target is None or any(v is None for v in values):
+        return  # dati di partenza mancanti: già segnalati al punto 1
+    base_after = sum(values) + WHAT_IF_BUY_AMOUNT + max(cash - WHAT_IF_BUY_AMOUNT, 0.0)  # type: ignore[arg-type]
+    expected = (v0 + WHAT_IF_BUY_AMOUNT) / base_after * 100.0 - target  # type: ignore[operator]
+    new = _num(res.get("new_drift"))
+    ev = _ev(WHAT_IF_TOOL, args, "new_drift", res.get("new_drift"), _r(expected, 4), T_PP2,
+             f"({symbol} {v0} + 1000) / (Σ market_value + 1000 + max(cash_balance − 1000, 0)) × 100 − {target}"
+             f" con cash_balance = {cash}")
+    (violations if new is None or abs(new - expected) > T_PP2 + EPS else passed).append(ev)
 
 
 # ---------------------------------------------------------------------------
@@ -862,13 +908,13 @@ RULES: list[dict[str, Any]] = [
     {
         "id": "B-DRIFT-REBALANCE-WEIGHTS",
         "group": "B",
-        "title": "Scostamento dal target, PAC e ribilanciamento partono dagli stessi pesi",
+        "title": "Scostamento dal target, PAC, ribilanciamento e what-if partono dagli stessi pesi",
         "area": "rebalance",
         "severity": "P2",
         "findings": ["S-2026-11-11-02"],
         "scopes": ["portfolio"],
         "tools": ["get_target_drift", "calculate_rebalance_orders", "calculate_pac_contribution",
-                  "get_portfolio_summary", "get_positions"],
+                  "calculate_what_if", "get_portfolio_summary", "get_positions"],
         "check": check_drift_rebalance_weights,
     },
     {

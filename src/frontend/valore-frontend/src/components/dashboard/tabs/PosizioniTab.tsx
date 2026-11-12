@@ -3,9 +3,10 @@ import { ActionIcon, Badge, Card, Group, Loader, SimpleGrid, Stack, Text, Toolti
 import { IconRefresh } from '@tabler/icons-react';
 import { HoldingsTable } from '../holdings/HoldingsTable';
 import { AllocationDoughnut } from '../summary/AllocationDoughnut';
-import { usePortfolioSummary, usePortfolioPositions, usePortfolioXray, useTargetAllocation } from '../hooks/queries';
+import { usePortfolioSummary, usePortfolioPositions, usePortfolioXray, useTargetDrift } from '../hooks/queries';
 import { reclassifyPortfolioAssets, refreshPortfolioPrices } from '../../../services/api';
 import type { AllocationDoughnutItem } from '../types';
+import type { PortfolioTargetDriftItem } from '../../../services/api';
 import {
   isAggregateScope,
   scopePortfolioIds,
@@ -38,16 +39,17 @@ export function PosizioniTab({ scope: scopeInput }: PosizioniTabProps) {
   const { data: positions = [], isLoading, refetch } = usePortfolioPositions(scope);
   const { data: xrayData } = usePortfolioXray(scope);
   // Target weights are per portfolio: disabled (empty) in the aggregate view.
-  const { data: targetAllocation = [] } = useTargetAllocation(scope);
+  // Drift from the backend, same values as the Copilot get_target_drift (TASK-88).
+  const { data: targetDrift } = useTargetDrift(scope);
   const currency = summary?.base_currency ?? 'EUR';
   const [reclassifying, setReclassifying] = useState(false);
   const [refreshingPrices, setRefreshingPrices] = useState(false);
 
   const targetMap = useMemo(() => {
-    const map = new Map<number, number>();
-    for (const item of targetAllocation) map.set(item.asset_id, item.weight_pct);
+    const map = new Map<number, PortfolioTargetDriftItem>();
+    for (const item of targetDrift?.items ?? []) map.set(item.asset_id, item);
     return map;
-  }, [targetAllocation]);
+  }, [targetDrift]);
 
   const allocationByType = useMemo<AllocationDoughnutItem[]>(() => {
     const grouped = new Map<string, number>();

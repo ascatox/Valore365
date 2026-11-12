@@ -61,6 +61,7 @@ describe('DashboardPage in the aggregate view', () => {
     expect(reclassify).toBeDisabled();
     expect(reclassify.closest('[data-aggregate-read-only]')).not.toBeNull();
     expect(api.paths().some((path) => path.includes('target-allocation'))).toBe(false);
+    expect(api.paths().some((path) => path.includes('target-drift'))).toBe(false);
     fireEvent.click(reclassify);
     expect(api.writes()).toEqual([]);
   });

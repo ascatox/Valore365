@@ -149,7 +149,9 @@ def env(monkeypatch):
 
     monkeypatch.setattr(service_module, "build_snapshot", fake_snapshot)
     monkeypatch.setattr(service_module, "issue_token", fake_issue)
-    service = _NoWriteService(repo, store=store)
+    # Fixed clock: the fixture prices are dated 2026-11-03 and must stay fresh
+    # (max_data_age_days = 5) whatever the real date is.
+    service = _NoWriteService(repo, store=store, clock=lambda: NOW)
     monkeypatch.setattr(doctor_tools, "service_factory", lambda _repo: service)
     return {"repo": repo, "store": store, "service": service, "issued": issued}
 
@@ -257,6 +259,27 @@ def test_read_doctor_violations_lists_fail_and_flags_data_quality(env):
     assert rule["actual"] == pytest.approx(60.0) and rule["breach_amount"] == pytest.approx(25.0)
     assert result["data_quality"]["status"] == "ok"
     assert "data_quality_warning" not in result
+
+
+def test_service_clock_drives_the_data_age_check(env):
+    """TASK-89: the evaluation reads the service clock, not the wall clock.
+
+    Prices dated 2026-11-03 are fresh on 2026-11-08 (5 days = default
+    ``max_data_age_days``) and too old the day after: the violated rule becomes
+    UNKNOWN, never PASS. Before the injected clock this fixture went red by
+    itself on 2026-11-09.
+    """
+    env["store"].add([1], EXISTING_DOC)
+    service = env["service"]
+    service._clock = lambda: datetime(2026, 11, 8, 23, 59, tzinfo=timezone.utc)
+    on_time = _run(env, "read_doctor_violations")
+    assert on_time["summary"]["failed"] == 1 and on_time["results"][0]["status"] == "FAIL"
+    service.cache.clear()
+    service._clock = lambda: datetime(2026, 11, 9, tzinfo=timezone.utc)
+    too_old = _run(env, "read_doctor_violations")
+    assert too_old["summary"]["failed"] == 0
+    (rule,) = too_old["results"]
+    assert rule["status"] == "UNKNOWN" and "più vecchie di 5 giorni" in rule["reason"]
 
 
 def test_stale_data_is_never_hidden(env, monkeypatch):

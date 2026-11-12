@@ -385,10 +385,13 @@ n = numero di ordini (o di righe della distribuzione).
 - **Difetto:** versamento su uno strumento sovrappesato.
 
 ### B-DRIFT-REBALANCE-WEIGHTS
-- **Titolo:** Scostamento dal target, PAC e ribilanciamento partono dagli stessi pesi
-- **Sev.** P2 · **Area** rebalance · **Finding** S-2026-11-11-02 (TASK-85) · **Scope** portfolio
+- **Titolo:** Scostamento dal target, PAC, ribilanciamento e what-if partono dagli stessi pesi
+- **Sev.** P2 · **Area** rebalance · **Finding** S-2026-11-11-02 (TASK-85, what-if da TASK-88) · **Scope** portfolio
 - **Tool:** `get_positions`; `get_target_drift`; `get_portfolio_summary`; `calculate_rebalance_orders`
-  con R; `calculate_pac_contribution` `{"monthly_amount": 500.0}`.
+  con R; `calculate_pac_contribution` `{"monthly_amount": 500.0}`; `calculate_what_if`
+  `{"action": "buy", "symbol": S_T, "amount_eur": 1000.0}` con S_T = primo simbolo di
+  `get_positions` che ha un target, altrimenti il primo di `drift` (strumento con target non
+  posseduto).
 - **Condizione:** decisione del proprietario (TASK-85, 2026-11-11): un solo peso per strumento, sulla
   base del ribilanciamento (valore degli strumenti con target + liquidità attuale, decisione 9). Con
   T = `get_target_drift.total_value`, C = `cash_balance` del riepilogo e v_i = `market_value` delle
@@ -396,17 +399,23 @@ n = numero di ordini (o di righe della distribuzione).
   riga `|current_weight − v_i / T × 100| ≤ T_pp2`; (2) `|total_value − T| ≤ T_eur` per R e per il
   PAC; (3) per ogni ordine di R e ogni riga di `distribution` del PAC esiste la riga di `drift` con lo
   stesso `symbol` e `|current_weight_pct − current_weight| ≤ T_pp` (PAC: `current_weight`),
-  `|target_weight_pct − target_weight| ≤ T_pp` (PAC: `target_weight`).
+  `|target_weight_pct − target_weight| ≤ T_pp` (PAC: `target_weight`); (4) what-if (TASK-88), con
+  j la riga di `drift` di S_T: `|old_drift − drift[j].drift| ≤ T_pp`,
+  `|target_basis.total_value_before − T| ≤ T_eur` e `|new_drift − ((v_j + 1000) / (Σ v_i + 1000 +
+  max(C − 1000, 0)) × 100 − target_weight_j)| ≤ T_pp2` (acquisto pagato dalla liquidità, la parte
+  oltre il saldo come nuovo versamento: il peso che `get_target_drift` mostrerebbe dopo l'operazione).
 - **Tolleranze:** `T_sum_eur(n + 1)` (n + 1 importi arrotondati a 2 decimali); `T_pp2` (peso
   ricalcolato da importi arrotondati); `T_pp` e `T_eur` fra i tool (lo stesso numero arrotondato
   allo stesso modo da `current_target_weights` di `services/rebalance.py`).
 - **Skip:** `empty_portfolio`; `drift` vuoto → `no_targets`. Nessun ordine in R o PAC senza righe
   **non** è `skip` (la bozza del report lo prevedeva): le verifiche (1) e (2) restano.
 - **Prova:** 9101 (AUDEQ.MI 64,07, AUDBD.MI 18,31, AUDTECH.DE 9,15 in tutti e tre i tool; T =
-  109.256,50).
+  109.256,50; what-if su AUDEQ.MI: `old_drift` +14,07, `new_drift` +14,98).
 - **Difetto:** `get_target_drift` con i pesi delle sole posizioni e senza `total_value` (codice prima
   di TASK-85: AUDTECH.DE 10,0 «in linea» contro 9,15 del ribilanciamento, che lo compra); PAC con una
-  base diversa; base delle sole posizioni dichiarata (`total_value` 100.000 contro 109.256,50).
+  base diversa; base delle sole posizioni dichiarata (`total_value` 100.000 contro 109.256,50);
+  what-if con lo scostamento sul peso fra le posizioni (codice prima di TASK-88: AUDEQ.MI `old_drift`
+  +20,0 contro +14,07).
 
 ### B-WHATIF-BUY-WEIGHT
 - **Titolo:** La simulazione di un acquisto ricalcola correttamente il peso
