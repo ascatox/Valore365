@@ -1,7 +1,7 @@
 ---
 id: TASK-88
 title: 'Tabella posizioni: scostamento dal target sulla stessa base del ribilanciamento'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T19:00:00Z'
 labels:
@@ -27,8 +27,8 @@ L'anteprima REST del ribilanciamento (`routes_rebalancing.py`) tiene di proposit
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 La tabella posizioni mostra lo scostamento dal target con lo stesso valore di `get_target_drift` (preferibilmente leggendolo dal backend invece di ricalcolarlo)
-- [ ] #2 `calculate_what_if` usa la stessa base per lo scostamento, oppure dichiara nell'output la propria
-- [ ] #3 Decisione documentata sull'anteprima REST del ribilanciamento
-- [ ] #4 La regola dell'Auditor `B-DRIFT-REBALANCE-WEIGHTS` copre anche il what-if, o una regola nuova lo fa
+- [x] #1 La tabella posizioni mostra lo scostamento dal target con lo stesso valore di `get_target_drift` (preferibilmente leggendolo dal backend invece di ricalcolarlo)
+- [x] #2 `calculate_what_if` usa la stessa base per lo scostamento, oppure dichiara nell'output la propria
+- [x] #3 Decisione documentata sull'anteprima REST del ribilanciamento
+- [x] #4 La regola dell'Auditor `B-DRIFT-REBALANCE-WEIGHTS` copre anche il what-if, o una regola nuova lo fa
 <!-- AC:END -->
