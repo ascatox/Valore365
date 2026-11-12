@@ -4,12 +4,14 @@ import { IconAlertTriangle, IconRefresh } from '@tabler/icons-react';
 import type { Position, PortfolioSummary } from '../../services/api';
 import { formatMoney, formatNum, formatPct, getVariationColor } from '../dashboard/formatters';
 import { BottomSheet } from './BottomSheet';
+import { TARGET_DRIFT_BASIS, formatDriftPoints, isDriftWarning, type TargetDriftMap } from '../dashboard/holdings/targetDrift';
 
 interface MobileHoldingsCardsProps {
   positions: Position[];
   currency: string;
   summary?: PortfolioSummary | null;
-  targetMap?: Map<number, number>;
+  /** Target and drift per asset (backend, same values as the Copilot). */
+  targetMap?: TargetDriftMap;
   onRefreshPrices?: () => Promise<void>;
   refreshing?: boolean;
 }
@@ -22,9 +24,6 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
   { value: 'pl', label: 'P/L' },
   { value: 'drift', label: 'Scostamento' },
 ];
-
-// Same threshold the target badges used: beyond 5 points the weight needs attention.
-const TARGET_DRIFT_WARNING = 5;
 
 type AssetClass = 'equity' | 'bond' | 'gold' | 'cash' | 'crypto';
 
@@ -60,10 +59,9 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
   const selected = selectedId != null ? positions.find((p) => p.asset_id === selectedId) ?? null : null;
   const hasTargets = !!targetMap && targetMap.size > 0;
 
-  const drift = (position: Position) => {
-    const target = targetMap?.get(position.asset_id);
-    return target != null ? position.weight - target : null;
-  };
+  // Drift from the backend (TASK-88): on targeted holdings + cash, as the Copilot
+  // and the rebalancing, so the bar of a targeted row uses that weight too.
+  const drift = (position: Position) => targetMap?.get(position.asset_id)?.drift_pct ?? null;
 
   const sorted = useMemo(() => {
     const value = (p: Position) => {
@@ -71,8 +69,8 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
         case 'day': return p.day_change_pct;
         case 'pl': return p.unrealized_pl;
         case 'drift': {
-          const target = targetMap?.get(p.asset_id);
-          return target != null ? Math.abs(p.weight - target) : -1;
+          const item = targetMap?.get(p.asset_id);
+          return item != null ? Math.abs(item.drift_pct) : -1;
         }
         default: return p.market_value;
       }
@@ -112,9 +110,12 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
 
       <Box>
         {sorted.map((position, index) => {
-          const target = targetMap?.get(position.asset_id);
+          const item = targetMap?.get(position.asset_id);
+          const target = item?.target_weight_pct;
           const delta = drift(position);
-          const warn = delta != null && Math.abs(delta) > TARGET_DRIFT_WARNING;
+          const warn = isDriftWarning(delta);
+          // Targeted row: weight on the drift base, so bar, marker and points agree.
+          const barWeight = item ? item.current_weight_pct : position.weight;
           const assetClass = assetClassOf(position);
           return (
             <UnstyledButton
@@ -169,7 +170,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                     style={{
                       position: 'absolute',
                       inset: '0 auto 0 0',
-                      width: `${Math.min(100, Math.max(0, position.weight))}%`,
+                      width: `${Math.min(100, Math.max(0, barWeight))}%`,
                       borderRadius: 2,
                       background: warn ? 'var(--mantine-color-orange-filled)' : 'var(--mantine-primary-color-filled)',
                     }}
@@ -191,11 +192,11 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                 </Box>
                 <Group justify="space-between" mt={4} wrap="nowrap">
                   <Text size="xs" c="dimmed">
-                    {target != null ? `${formatNum(position.weight, 1)}% · target ${formatNum(target, 0)}%` : `${formatNum(position.weight, 1)}% del portafoglio`}
+                    {item ? `${formatNum(item.current_weight_pct, 1)}% · target ${formatNum(item.target_weight_pct, 0)}%` : `${formatNum(position.weight, 1)}% del portafoglio`}
                   </Text>
                   {delta != null && (
                     <Text size="xs" fw={warn ? 700 : 500} c={warn ? 'orange' : 'dimmed'}>
-                      {`${delta > 0 ? '+' : ''}${formatNum(delta, 1)} pt`}
+                      {formatDriftPoints(delta)}
                     </Text>
                   )}
                 </Group>
@@ -204,6 +205,10 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
           );
         })}
       </Box>
+
+      {hasTargets && (
+        <Text size="xs" c="dimmed">Peso e scostamento delle righe con target: sul valore degli strumenti con target più la liquidità, come nel ribilanciamento e nel Copilot.</Text>
+      )}
 
       <BottomSheet
         opened={!!selected}
@@ -226,18 +231,22 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
                 color={getVariationColor(selected.unrealized_pl)}
               />
               <Detail label="Oggi" value={formatPct(selected.day_change_pct)} color={getVariationColor(selected.day_change_pct)} />
-              <Detail
-                label="Peso"
-                value={selectedTarget != null
-                  ? `${formatNum(selected.weight, 1)}% (target ${formatNum(selectedTarget, 0)}%)`
-                  : `${formatNum(selected.weight, 1)}%`}
-                color={selectedDrift != null && Math.abs(selectedDrift) > TARGET_DRIFT_WARNING ? 'orange' : undefined}
-              />
+              <Detail label="Peso" value={`${formatNum(selected.weight, 1)}% delle posizioni`} />
+              {selectedTarget != null && selectedDrift != null && (
+                <Detail
+                  label="Vs target"
+                  value={`${formatDriftPoints(selectedDrift)} (target ${formatNum(selectedTarget.target_weight_pct, 0)}%)`}
+                  color={isDriftWarning(selectedDrift) ? 'orange' : undefined}
+                />
+              )}
               <Detail label="Quantità" value={formatNum(selected.quantity, 4)} />
               <Detail label="Prezzo" value={formatMoney(selected.market_price, currency)} />
               <Detail label="Prezzo medio" value={formatMoney(selected.avg_cost, currency)} />
               <Detail label="Prima operazione" value={formatDate(selected.first_trade_at)} />
             </SimpleGrid>
+            {selectedTarget != null && (
+              <Text size="xs" c="dimmed">{TARGET_DRIFT_BASIS}</Text>
+            )}
             {onRefreshPrices && (
               <Button
                 variant="light"

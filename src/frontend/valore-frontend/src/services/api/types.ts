@@ -559,6 +559,27 @@ export interface PortfolioTargetAllocationItem {
   weight_pct: number;
 }
 
+/** Drift from target of one targeted instrument: same values as the Copilot `get_target_drift` (TASK-88). */
+export interface PortfolioTargetDriftItem {
+  asset_id: number;
+  symbol: string;
+  name: string;
+  target_weight_pct: number;
+  /** Weight on the rebalancing base: targeted holdings + current cash (not the weight among positions). */
+  current_weight_pct: number;
+  drift_pct: number;
+  market_value: number;
+}
+
+export interface PortfolioTargetDriftResponse {
+  portfolio_id: number;
+  total_value: number;
+  cash_balance: number;
+  untargeted_holdings: string[];
+  weight_basis_note: string;
+  items: PortfolioTargetDriftItem[];
+}
+
 export interface TimeSeriesPoint {
   date: string;
   market_value: number;

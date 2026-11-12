@@ -566,7 +566,7 @@ argomenti oltre `portfolio_id` / `portfolio_ids` aggiunti da `scoped`):
 | `build_doctor_scenario` | `{"mode": "new_cash_only", "new_cash": 100.0}` (D-DOCTOR-CASH, TASK-84) | D |
 | `calculate_rebalance_orders` | `{"mode": "rebalance"}`; `{"mode": "buy_only", "available_cash": 1000.0}`; `{"mode": "sell_only"}` | B |
 | `calculate_pac_contribution` | `{"monthly_amount": 500.0}` | B |
-| `calculate_what_if` | `{"action": "buy", "symbol": S, "amount_eur": 1000.0}`; `{"action": "sell", "symbol": S, "amount_eur": round(V/2, 2)}`; `{"action": "sell", "symbol": S, "amount_eur": round(V + 1000.0, 2)}` con S = simbolo della prima riga di `get_positions` (peso maggiore) e V = il suo `market_value` | B |
+| `calculate_what_if` | `{"action": "buy", "symbol": S, "amount_eur": 1000.0}`; `{"action": "sell", "symbol": S, "amount_eur": round(V/2, 2)}`; `{"action": "sell", "symbol": S, "amount_eur": round(V + 1000.0, 2)}` con S = simbolo della prima riga di `get_positions` (peso maggiore) e V = il suo `market_value`; `{"action": "buy", "symbol": S_T, "amount_eur": 1000.0}` con S_T = primo simbolo di `get_positions` che ha un target, altrimenti il primo di `get_target_drift.drift` (B-DRIFT-REBALANCE-WEIGHTS, TASK-88; di solito S_T = S e la chiamata è la stessa in memo) | B |
 
 Gli importi fissi (1000 €, 500 €) rendono l'esito riproducibile e restano sotto i limiti degli schemi
 MCP (`_MAX_AMOUNT`). Nessun'altra combinazione di argomenti è ammessa senza aggiornare questa tabella.
@@ -1270,3 +1270,19 @@ cambia, perché, e quali task ne sono toccati.
   (AUDEQ.MI 64,07, AUDBD.MI 18,31, AUDTECH.DE 9,15 nei tre tool, `total_value` 109.256,50); `fail`
   con il `_get_target_drift` di prima (70,0 / 20,0 / 10,0, `total_value` assente). Sul resto del
   seed: `skip` `no_targets` su 9102…9105 e 9107, `empty_portfolio` su 9106.
+
+### TASK-88
+
+- **Correzione:** la tabella posizioni legge lo scostamento dal nuovo `GET
+  /portfolios/{id}/target-drift` (`routes_rebalancing.py`), che usa la stessa funzione di
+  `get_target_drift` (`target_drift_rows` di `services/rebalance.py`); `calculate_what_if` misura
+  `old_drift`/`new_drift` con `current_target_weights` prima e dopo l'operazione (acquisto pagato
+  dalla liquidità, oltre il saldo come nuovo versamento; vendita con i proventi in liquidità) e
+  dichiara `target_basis` e `weight_basis_note`. `old_weight`/`new_weight` restano sulle sole
+  posizioni (concentrazione), quindi B-WHATIF-BUY-WEIGHT e B-WHATIF-SELL-BOUND non cambiano.
+- **B-DRIFT-REBALANCE-WEIGHTS** estesa invece di una regola nuova (stesso invariante: un solo peso
+  per strumento rispetto ai target): verifica (4) sul what-if, titolo aggiornato, `calculate_what_if`
+  fra i tool. Nuovo argomento canonico S_T (§5.2): sul seed coincide con S (AUDEQ.MI su 9101), quindi
+  nessuna chiamata in più.
+- **Anteprima REST del ribilanciamento** lasciata sui pesi del solo investito: decisione e
+  motivazione in `docs/audit-mcp-2026-11/methodology.md` §7.

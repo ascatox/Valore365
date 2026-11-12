@@ -186,7 +186,16 @@ def real_responses(values=BALANCED, targets=BALANCED_TARGETS, cash=BALANCED_CASH
         s, v = positions[0]["symbol"], positions[0]["market_value"]
         for action, amount in (("buy", 1000.0), ("sell", round(v / 2, 2)), ("sell", round(v + 1000.0, 2))):
             add("calculate_what_if", {"portfolio_id": PID, "action": action, "symbol": s, "amount_eur": amount})
+        drift_rows = out[canonical_key("get_target_drift", POS_ARGS)][2].get("drift") or []
+        if drift_rows:
+            add("calculate_what_if", drift_what_if_args(positions, drift_rows))
     return out
+
+
+def drift_what_if_args(positions, drift_rows) -> dict[str, Any]:
+    """What-if di B-DRIFT-REBALANCE-WEIGHTS (TASK-88): acquisto di 1000 € su S_T."""
+    s = rs.what_if_drift_symbol(positions, drift_rows)
+    return {"portfolio_id": PID, "action": "buy", "symbol": s, "amount_eur": 1000.0}
 
 
 def make_ctx(responses: dict[str, Any]) -> FakeAuditContext:
@@ -233,6 +242,9 @@ def evaluate(check, responses) -> dict[str, Any]:
         for action, amount in (("buy", 1000.0), ("sell", round(v / 2, 2)), ("sell", round(v + 1000.0, 2))):
             allowed.add(canonical_key("calculate_what_if",
                                       {"portfolio_id": PID, "action": action, "symbol": s, "amount_eur": amount}))
+        drift_rows = get(responses, "get_target_drift", POS_ARGS).get("drift") or []
+        if drift_rows:
+            allowed.add(canonical_key("calculate_what_if", drift_what_if_args(positions, drift_rows)))
     for tool, args in ctx.calls:
         assert canonical_key(tool, args) in allowed, (tool, args)
     return outcome
@@ -803,6 +815,56 @@ def test_drift_weights_fail_when_pac_uses_another_base():
     outcome = evaluate(rs.check_drift_rebalance_weights, responses)
     assert_status(outcome, "fail", "invariant_violated")
     assert outcome["evidence"][0]["path"] == "distribution[0].current_weight"
+
+
+def _legacy_what_if(args, repo, perf, portfolio_id, user_id, **kw):
+    """`calculate_what_if` prima di TASK-88: scostamento sul peso fra le sole posizioni."""
+    res = copilot_tools._calculate_what_if(args, repo, perf, portfolio_id, user_id, **kw)
+    if res.get("old_drift") is not None:
+        target = res["target_basis"]["target_weight"]
+        res["old_drift"] = round(res["old_weight"] - target, 2)
+        res["new_drift"] = round(res["new_weight"] - target, 2)
+        res.pop("target_basis")
+    return res
+
+
+def test_drift_weights_cover_what_if_on_seed_9101():
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    positions = get(responses, "get_positions", POS_ARGS)["positions"]
+    drift_rows = get(responses, "get_target_drift", POS_ARGS)["drift"]
+    args = drift_what_if_args(positions, drift_rows)
+    assert args["symbol"] == "AUDEQ.MI"  # stessa chiave di memo di B-WHATIF-BUY-WEIGHT
+    res = get(responses, "calculate_what_if", args)
+    assert res["old_drift"] == 14.07 and res["new_drift"] == round(71000 / 109256.5 * 100 - 50, 2)
+    outcome = evaluate(rs.check_drift_rebalance_weights, responses)
+    assert_status(outcome, "pass")
+    paths = {(e["tool"], e["path"]) for e in outcome["evidence"]}
+    assert {("calculate_what_if", "old_drift"), ("calculate_what_if", "new_drift"),
+            ("calculate_what_if", "target_basis.total_value_before")} <= paths
+
+
+def test_drift_weights_fail_on_legacy_what_if(monkeypatch):
+    """Difetto reintrodotto: what-if con lo scostamento sulle sole posizioni (+20,0 contro +14,07)."""
+    monkeypatch.setitem(copilot_tools._TOOL_HANDLERS, "calculate_what_if", _legacy_what_if)
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    outcome = evaluate(rs.check_drift_rebalance_weights, responses)
+    assert_status(outcome, "fail", "invariant_violated")
+    by_path = {(e["tool"], e["path"]): e for e in outcome["evidence"]}
+    old = by_path[("calculate_what_if", "old_drift")]
+    assert (old["observed"], old["expected"]) == (20.0, 14.07)
+    assert ("calculate_what_if", "new_drift") in by_path
+    assert by_path[("calculate_what_if", "target_basis.total_value_before")]["observed"] is None
+    # Le altre regole del what-if (pesi sulle sole posizioni) non se ne accorgono.
+    assert_status(evaluate(rs.check_whatif_buy_weight, responses), "pass")
+
+
+def test_drift_weights_what_if_on_targeted_asset_not_held():
+    """Nessuna posizione con target: S_T è il primo strumento di get_target_drift (valore 0)."""
+    responses = real_responses(values={"OTHER": 5000.0}, targets={"AUDEQ.MI": 60.0, "AUDBD.MI": 40.0}, cash=1500.0)
+    positions = get(responses, "get_positions", POS_ARGS)["positions"]
+    drift_rows = get(responses, "get_target_drift", POS_ARGS)["drift"]
+    assert drift_what_if_args(positions, drift_rows)["symbol"] == "AUDEQ.MI"
+    assert_status(evaluate(rs.check_drift_rebalance_weights, responses), "pass")
 
 
 def test_drift_weights_pass_without_orders():

@@ -17,6 +17,7 @@ const DASHBOARD_QUERY_PREFIXES = new Set([
   'portfolio-health',
   'portfolio-xray',
   'target-allocation',
+  'target-drift',
   'target-performance',
   'target-asset-performance',
   'intraday-target-performance',

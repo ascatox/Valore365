@@ -22,6 +22,7 @@ export const PORTFOLIO_QUERY_PREFIXES = new Set([
   'stress-test',
   'decumulation-plan',
   'target-allocation',
+  'target-drift',
   'target-performance',
   'target-asset-performance',
   'intraday-target-performance',

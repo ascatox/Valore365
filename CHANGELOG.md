@@ -83,6 +83,13 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Fixed
 
+- Tabella posizioni e what-if: lo scostamento dal target è quello del Copilot e del ribilanciamento
+  (strumenti con target più liquidità), letto dal nuovo `GET /portfolios/{id}/target-drift` invece
+  di essere ricalcolato sul peso fra le posizioni (9101: AUDTECH.DE −0,85 pt, prima «in linea»);
+  `calculate_what_if` calcola `old_drift`/`new_drift` sulla stessa base e la dichiara
+  (`target_basis`), i pesi della concentrazione restano sulle posizioni. L'anteprima del
+  ribilanciamento resta sul solo investito (decisione in `methodology.md` §7). Regola dell'Auditor
+  B-DRIFT-REBALANCE-WEIGHTS estesa al what-if (TASK-88).
 - Scostamento dal target e PAC (Copilot e MCP `get_target_drift`, `calculate_pac_contribution`,
   scostamento nello snapshot del Copilot e nell'export Markdown) usano gli stessi pesi del
   ribilanciamento: valore degli strumenti con target più la liquidità attuale, invece del valore

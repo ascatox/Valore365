@@ -137,11 +137,24 @@ non toglie punti.
   (`current_target_weights` in `services/rebalance.py`, senza `available_cash`): peso attuale =
   valore dello strumento / (valore degli strumenti con target + liquidità attuale del modello della
   performance) × 100, dichiarato come `total_value`. Nel PAC il peso dopo il versamento è
-  (valore + versamento) / (`total_value` + importo mensile). Il peso di `get_positions` (e di
-  `calculate_what_if`, che misura la concentrazione) resta sul valore delle sole posizioni.
+  (valore + versamento) / (`total_value` + importo mensile). Il peso di `get_positions` (e
+  `old_weight`/`new_weight` di `calculate_what_if`, che misurano la concentrazione) resta sul valore
+  delle sole posizioni.
   Esempio, portafoglio 9101 del seed (70.000 / 20.000 / 10.000 €, liquidità 9.256,50, target
   50/40/10): 64,07 / 18,31 / 9,15 % in tutti e tre i tool, contro 70,0 / 20,0 / 10,0 % di prima in
   `get_target_drift` e nel PAC.
+- **Tabella posizioni e what-if sulla stessa base (TASK-88):** la colonna Target della tabella
+  posizioni legge `GET /portfolios/{id}/target-drift`, che usa la funzione di `get_target_drift`
+  (`target_drift_rows`): stessi numeri del Copilot (9101: AUDTECH.DE −0,85 pt, prima «in linea» sul
+  10,0 % fra le posizioni). Nella vista aggregata i target non esistono e la colonna non c'è.
+  `calculate_what_if` calcola `old_drift`/`new_drift` con `current_target_weights` prima e dopo
+  l'operazione, applicata al modello della liquidità: l'acquisto è pagato dalla liquidità del
+  portafoglio (la parte oltre il saldo, che non scende sotto 0, entra nella base come nuovo
+  versamento), la vendita lascia i proventi in liquidità. Così `old_drift` coincide con
+  `get_target_drift` e `new_drift` è lo scostamento che `get_target_drift` mostrerebbe dopo aver
+  registrato l'operazione; `target_basis` dichiara pesi, base e liquidità prima e dopo. Esempio
+  9101, acquisto di 1.000 € di AUDEQ.MI: `old_drift` +14,07 (prima +20,0), `new_drift` +14,98
+  (base invariata 109.256,50), `new_weight` 70,30 % fra le posizioni come prima.
 - Banda di tolleranza 0,5 pp **come soglia di attivazione**: se almeno uno strumento supera la
   banda, tutti tornano al target.
 - Ordine: prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,
@@ -149,6 +162,18 @@ non toglie punti.
 - **Invariante:** `cash_after = cash_before + extra_cash + sells_eur − buys_eur ≥ 0`; risultato
   indipendente dall'ordine dei target. Nessun ordine minimo; commissioni e imposte non modellate.
 - Limite: il route dell'app mantiene la semantica precedente (pesi sul solo investito, nessuna banda).
+- **Anteprima REST del ribilanciamento non allineata (decisione TASK-88).** `POST
+  /portfolios/{id}/rebalance/preview` resta sui pesi del valore investito (anche le posizioni senza
+  target, liquidità esclusa), senza banda, con la sola liquidità che l'utente scrive in
+  `cash_to_allocate`. Allinearla cambierebbe gli ordini in modo sorprendente: spenderebbe la
+  liquidità del portafoglio senza che l'utente l'abbia indicata (e in `buy_only` la conterebbe due
+  volte se l'utente la riscrive nel campo), ridimensionerebbe le vendite e aggiungerebbe acquisti.
+  Esempio 9101 in modalità `rebalance` senza liquidità indicata: oggi vendita AUDEQ.MI 20.000 € e
+  acquisto AUDBD.MI 20.000 €; sulla base comune vendita 15.371,75 €, acquisti AUDBD.MI 23.702,60 € e
+  AUDTECH.DE 925,65 € (i 9.256,50 € di liquidità spesi). Conseguenza dichiarata: «Attuale %» e
+  «Drift %» del modale dell'anteprima sono sul solo investito e possono differire dalla tabella
+  posizioni e dal Copilot (9101: AUDTECH.DE 10,0 % / 0,0 contro 9,15 % / −0,85). Allinearla richiede
+  una scelta di prodotto sul campo della liquidità (precompilato con il saldo?), fuori da TASK-88.
 
 ## 8. Performance (`get_performance`, `services/performance_service.py`)
 

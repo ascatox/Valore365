@@ -12,6 +12,7 @@ import type {
   TimeSeriesPoint,
   IntradayTimeseriesPoint,
   PortfolioTargetPerformanceResponse,
+  PortfolioTargetDriftResponse,
   PortfolioTargetIntradayResponse,
   PortfolioTargetAssetPerformanceResponse,
   PortfolioTargetAssetIntradayPerformanceResponse,
@@ -139,6 +140,11 @@ export const reclassifyPortfolioAssets = async (
 
 export const getPortfolioTargetAllocation = async (portfolioId: number): Promise<PortfolioTargetAllocationItem[]> => {
   return apiFetch<PortfolioTargetAllocationItem[]>(`/portfolios/${portfolioId}/target-allocation`);
+};
+
+/** Drift from target on the rebalancing base (targeted holdings + cash), as the Copilot `get_target_drift`. */
+export const getPortfolioTargetDrift = async (portfolioId: number): Promise<PortfolioTargetDriftResponse> => {
+  return apiFetch<PortfolioTargetDriftResponse>(`/portfolios/${portfolioId}/target-drift`);
 };
 
 export const upsertPortfolioTargetAllocation = async (
