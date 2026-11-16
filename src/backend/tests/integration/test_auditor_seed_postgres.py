@@ -95,7 +95,7 @@ DOCUMENTED = {
         "AUDBD.MI": (100, 50.0, 5000.00, 33.33),
     }),
     9106: (0.0, 0.0, {}),
-    9107: (16000.00, 4068.20, {  # TASK-93: dividendo e vendita con imposte
+    9107: (16000.00, 4068.00, {  # TASK-93: dividendo e vendita con imposte
         "AUDSTL.MI": (100, 60.0, 6000.00, 37.5),
         "AUDEQ.MI": (50, 100.0, 5000.00, 31.25),
         "AUDNPC.MI": (200, 25.0, 5000.00, 31.25),
@@ -699,7 +699,7 @@ def test_doctor_cash_is_current_cash_task84(tools):
         assert before["total_value"] == round(summary["market_value"] + summary["cash_balance"], 2)
     before = tools.call("build_doctor_scenario", {"portfolio_id": 9101, "portfolio_ids": PORTFOLIO_IDS,
                                                   "mode": "new_cash_only", "new_cash": 100.0})["before"]
-    assert before["cash_value"] == 33211.67
+    assert before["cash_value"] == 33211.47
     assert before["cash_value"] == tools.call("get_aggregate_summary", {"portfolio_ids": PORTFOLIO_IDS})["cash_balance"]
 
 
@@ -807,7 +807,7 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return (0 < len(rows) < 20 and all(r["currency"] == cash["base_currency"] for r in rows)
                 and cash["implicit_contributions_total"] == 0)
     if rule_id == "D-TRADE-PRICE-SCALE":
-        held ={r["symbol"] for r in _positions(tools, pid) if r["price_fallback"] is None and r["market_price"] > 0}
+        held = {r["symbol"] for r in _positions(tools, pid) if r["price_fallback"] is None and r["market_price"] > 0}
         return _has_transactions(tools, pid) and bool(held)
     if rule_id == "D-DOCTOR-TER":
         metrics = {m["code"]: m for m in tools.call("read_doctor_metrics", {"portfolio_id": pid})["metrics"]}
@@ -929,7 +929,7 @@ def test_taxed_sell_and_dividend_rebuild_cash_task93(seed_db, tools):
     shown = tools.call("get_recent_transactions", {"portfolio_id": 9107})["transactions"]
     assert sorted(r["taxes"] for r in shown if r["taxes"]) == [2.6, 5.2]
     cash = tools.call("get_cash_balance", {"portfolio_id": 9107})
-    assert (cash["cash_breakdown"]["dividends"], cash["cash_breakdown"]["sells"], cash["total_cash"]) == (14.8, 996.4, 4068.2)
+    assert (cash["cash_breakdown"]["dividends"], cash["cash_breakdown"]["sells"], cash["total_cash"]) == (14.8, 996.4, 4068.0)
     sign = {"deposit": 1, "withdrawal": -1, "fee": -1, "interest": 1}
     rebuilt = 0.0
     for r in shown:

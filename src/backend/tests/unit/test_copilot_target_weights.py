@@ -91,11 +91,54 @@ def test_seed_9101_pac_keeps_task83_conservation():
     cents = sum(int(round(d["amount_eur"] * 100)) for d in pac["distribution"])
     assert cents == int(round(pac["total_allocated"] * 100)) == 50000
     assert pac["unallocated_amount"] == 0.0
-    # Ripartizione proporzionale allo scostamento sulla nuova base: −21,69 e −0,85 pp.
+    # TASK-90: in proporzione al fabbisogno sulla base dopo il versamento (109.756,50 €):
+    # AUDBD.MI 43.902,60 − 20.000 = 23.902,60, AUDTECH.DE 10.975,65 − 10.000 = 975,65, AUDEQ.MI 0
+    # (prima: in proporzione allo scostamento attuale, 500 × 21,69 / 22,54 = 481,14).
     by = {d["symbol"]: d for d in pac["distribution"]}
-    assert by["AUDBD.MI"]["amount_eur"] == pytest.approx(500 * 21.69 / 22.54, abs=0.01)
+    assert by["AUDBD.MI"]["amount_eur"] == pytest.approx(500 * 23902.6 / 24878.25, abs=0.01)
+    assert by["AUDTECH.DE"]["amount_eur"] == 19.61
     # Peso dopo il versamento sulla stessa base più il versamento.
     assert by["AUDBD.MI"]["new_weight_after"] == round((20000 + by["AUDBD.MI"]["amount_eur"]) / (TOTAL + 500) * 100, 2)
+
+
+def test_seed_9101_pac_of_100000_stays_below_targets_like_buy_only():
+    """TASK-90, S-2026-11-11-13: con 100.000 € nessuno strumento oltre il target (prima AUDBD.MI
+    55,54 % contro 40) e AUDEQ.MI, che il versamento rende sottopesato, riceve la sua quota.
+
+    Gli importi sono quelli di `calculate_rebalance_orders` buy_only con 100.000 € (fabbisogni
+    34.628,25 / 63.702,60 / 10.925,65 sulla base di 209.256,50 €) moltiplicati per
+    100.000 / 109.256,50: il ribilanciamento investe anche i 9.256,50 € di liquidità, il PAC solo
+    il versamento (B-PAC-SUM)."""
+    repo = make_repo()
+    pac = run("calculate_pac_contribution", {"monthly_amount": 100000.0}, repo)
+    bo = run("calculate_rebalance_orders", {"mode": "buy_only", "available_cash": 100000.0}, repo)
+    rows = {d["symbol"]: d for d in pac["distribution"]}
+    orders = {o["symbol"]: o for o in bo["orders"]}
+    assert set(rows) == set(orders) == set(VALUES)
+    assert all(d["new_weight_after"] <= d["target_weight"] for d in rows.values())
+    assert {s: o["amount_eur"] for s, o in orders.items()} == {
+        "AUDEQ.MI": 34628.25, "AUDBD.MI": 63702.6, "AUDTECH.DE": 10925.65}
+    scale = 100000.0 / (100000.0 + CASH)
+    for s, o in orders.items():
+        assert rows[s]["amount_eur"] == pytest.approx(o["amount_eur"] * scale, abs=0.01)
+    assert {s: d["amount_eur"] for s, d in rows.items()} == {
+        "AUDBD.MI": 58305.55, "AUDEQ.MI": 31694.45, "AUDTECH.DE": 10000.0}
+    assert {s: d["new_weight_after"] for s, d in rows.items()} == {
+        "AUDBD.MI": 37.42, "AUDEQ.MI": 48.6, "AUDTECH.DE": 9.56}
+    assert pac["total_allocated"] == 100000.0 and pac["unallocated_amount"] == 0.0
+    assert pac["total_need_eur"] == 109256.5
+
+
+@pytest.mark.parametrize("amount", [500.0, 45000.0, 100000.0])
+def test_pac_equals_buy_only_without_cash(amount):
+    """Senza liquidità nel portafoglio il PAC coincide con buy_only con available_cash = importo."""
+    repo = make_repo(cash=0.0)
+    pac = {d["symbol"]: d["amount_eur"] for d in run(
+        "calculate_pac_contribution", {"monthly_amount": amount}, repo)["distribution"]}
+    bo = {o["symbol"]: o["amount_eur"] for o in run(
+        "calculate_rebalance_orders", {"mode": "buy_only", "available_cash": amount}, repo)["orders"]}
+    assert pac.keys() == bo.keys()
+    assert all(abs(pac[s] - bo[s]) <= 0.01 for s in pac)
 
 
 def test_untargeted_holding_stays_out_of_the_base_everywhere():

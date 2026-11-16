@@ -9,7 +9,7 @@ Ogni condizione usa **i nomi reali dei campi** dell'output dei tool (`src/backen
 `sanitize_output`. Gli id, i titoli, le severità, gli scope e le tolleranze di questo catalogo sono
 vincolanti: le dichiarazioni `RULES` li copiano esattamente.
 
-Totale: **59 regole** — A 11, B 11, C 13, D 24.
+Totale: **60 regole** — A 11, B 12, C 13, D 24.
 
 ## 0. Convenzioni
 
@@ -278,7 +278,8 @@ nei test unitari (TASK-77).
 
 Argomenti fissi (architettura §5.2): ribilanciamento in tre modalità — R = `{"mode": "rebalance"}`,
 BO = `{"mode": "buy_only", "available_cash": 1000.0}`, SO = `{"mode": "sell_only"}`; PAC
-`{"monthly_amount": 500.0}`; what-if su S = simbolo della prima riga di `get_positions`.
+`{"monthly_amount": 500.0}` (e, per B-PAC-NO-OVERSHOOT, `{"monthly_amount": A}` con A =
+`round(total_value, 2)` della prima risposta); what-if su S = simbolo della prima riga di `get_positions`.
 `calculate_rebalance_orders` senza target restituisce `{"mode", "orders": [], "note"}` senza
 `totals`: **assenza di `totals` → `skip`/`no_targets`**. `calculate_pac_contribution` senza target
 restituisce `{"distribution": [], "note"}` senza `total_allocated` → `skip`/`no_targets`.
@@ -370,19 +371,66 @@ n = numero di ordini (o di righe della distribuzione).
 - **Difetto:** distribuzione vuota con `total_allocated` 500, cioè un importo dichiarato allocato
   senza alcuno strumento di destinazione; somma dei versamenti diversa da `total_allocated`.
   Con nessuno strumento sottopesato (tutti a target o sopra, per esempio target che sommano meno di
-  100) il tool, da TASK-83, risponde con distribuzione vuota, `total_allocated` 0,
-  `unallocated_amount` 500 e una nota: la regola dà `pass`. Era il difetto noto TASK-83 (§6).
+  100) il tool, da TASK-83, rispondeva con distribuzione vuota, `total_allocated` 0,
+  `unallocated_amount` 500 e una nota; da TASK-90 distribuisce l'intero importo (sulla base dopo il
+  versamento manca qualcosa a ogni strumento a target; con target sotto 100 l'eccedenza va in
+  proporzione ai target, con una nota) e `unallocated_amount` > 0, con la nota, resta solo con tutti
+  i target a 0. In ogni caso la regola dà `pass`. Era il difetto noto TASK-83 (§6).
 
 ### B-PAC-UNDERWEIGHT-ONLY
 - **Titolo:** Il PAC versa solo sugli strumenti sotto il peso obiettivo
-- **Sev.** P2 · **Area** rebalance · **Finding** — · **Scope** portfolio
+- **Sev.** P2 · **Area** rebalance · **Finding** — (adattata da TASK-90) · **Scope** portfolio
 - **Tool:** `calculate_pac_contribution` `{"monthly_amount": 500.0}`; `get_target_drift`.
-- **Condizione:** ogni riga di `distribution` ha `amount_eur ≥ 0`, `current_weight ≤ target_weight +
-  T_pp2` e `symbol` presente fra i `symbol` di `get_target_drift.drift`.
-- **Tolleranze:** `T_pp2`.
+- **Condizione:** decisione del proprietario (TASK-90, `methodology.md` §7): «sotto il peso
+  obiettivo» si misura sulla base dopo il versamento. Con B = `get_target_drift.total_value`,
+  A = 500 e, per ogni riga di `drift`, v = `market_value`, t = `target_weight`, f = max(0, t × (B + A)
+  / 100 − v): ogni riga di `distribution` ha `amount_eur ≥ 0` e `symbol` presente fra i `symbol` di
+  `drift`; se A ≤ Σ f + n × δ (importo entro il fabbisogno totale, sempre con target che sommano a
+  100) la riga di `drift` dello stesso strumento ha `market_value ≤ target_weight × (B + A) / 100 +
+  T_pp2 × (B + A) / 100`, cioè lo strumento è sotto il target dopo il versamento prima della sua
+  quota. Solo quando l'importo supera il fabbisogno totale (target che sommano meno di 100)
+  l'eccedenza va a ogni strumento in proporzione ai target e la condizione sul valore non si applica.
+- **Tolleranze:** `T_pp2` sul peso; δ = (B + A) × 0,00005 + 0,01 € per fabbisogno (target a 2
+  decimali, valori e base arrotondati).
 - **Skip:** `empty_portfolio`; `no_targets`; distribuzione vuota → `not_applicable`.
 - **Prova:** 9101.
-- **Difetto:** versamento su uno strumento sovrappesato.
+- **Difetto:** versamento su uno strumento sovrappesato anche dopo il versamento. Prima di TASK-90 la
+  condizione era sul peso attuale (`current_weight ≤ target_weight + T_pp2`): con la nuova regola uno
+  strumento oggi poco sopra il target che il versamento rende sottopesato riceve legittimamente una
+  quota (50,10 % con target 50 e base da 10.000 a 10.500 €: 47,71 %), e con target sotto 100
+  l'eccedenza va anche agli strumenti sopra il target.
+
+### B-PAC-NO-OVERSHOOT
+- **Titolo:** Il PAC non porta uno strumento oltre il suo peso obiettivo
+- **Sev.** P1 · **Area** rebalance · **Finding** S-2026-11-11-13 (TASK-90) · **Scope** portfolio
+- **Tool:** `calculate_pac_contribution` con `{"monthly_amount": 500.0}` e con
+  `{"monthly_amount": A}`, A = `round(total_value, 2)` della prima risposta (un versamento pari alla
+  base attuale); `get_target_drift`.
+- **Condizione:** decisione del proprietario (TASK-90, `methodology.md` §7). Per ciascuna delle due
+  chiamate, con importo A, B = `get_target_drift.total_value` e, per ogni riga i di `drift`,
+  v_i = `market_value`, t_i = `target_weight`, f_i = max(0, t_i × (B + A) / 100 − v_i), F = Σ f_i:
+  (1) ogni `symbol` di `distribution` è fra quelli di `drift`; (2) se A ≤ F + n × δ (importo entro
+  il fabbisogno totale), per ogni riga `new_weight_after ≤ target_weight + T_pp2`; (3) per ogni
+  strumento di `drift` (assente da `distribution` = 0) `|amount_eur − e_i| ≤ tol_i` con
+  e_i = A × f_i / F entro il fabbisogno (nessuno riceve più del suo fabbisogno, ognuno con
+  fabbisogno ne riceve una quota) e e_i = f_i + (A − F) × t_i / Σ t oltre il fabbisogno (eccedenza in
+  proporzione ai target).
+- **Tolleranze:** `T_pp2` sul peso (ricalcolato da importi arrotondati); δ = (B + A) × 0,00005 +
+  0,01 € per fabbisogno (target a 2 decimali in `drift` mentre il database ne ha 4, valori e base a 2
+  decimali); tol_i = `T_eur` + min(1, A / F) × (n + 1) × δ entro il fabbisogno, più (A − F) × (n + 1)
+  × `T_pp` / Σ t oltre (propagazione dell'errore nella quota).
+- **Skip:** `empty_portfolio`; `no_targets`; distribuzione vuota in entrambe le chiamate (tutti i
+  target a 0) → `not_applicable`.
+- **Prova:** 9101 (A = 109.256,50: AUDEQ.MI 36.190,36, AUDBD.MI 62.140,49, AUDTECH.DE 10.925,65 €,
+  pesi dopo 48,60 / 37,59 / 9,58 % contro 50 / 40 / 10; con 500 € AUDBD.MI 480,39, AUDTECH.DE 19,61).
+- **Difetto:** ripartizione in proporzione allo scostamento attuale in punti, sulla base prima del
+  versamento e senza tetto al fabbisogno (codice prima di TASK-90): con A = 109.256,50 AUDBD.MI
+  supera il 40 % e AUDEQ.MI, che il versamento rende sottopesato, riceve 0 invece di 36.190,36 €;
+  con 500 € AUDBD.MI 481,14 e AUDTECH.DE 18,86 invece di 480,39 e 19,61. B-PAC-SUM e
+  B-PAC-UNDERWEIGHT-ONLY non se ne accorgono. Rispetto alla bozza del report del 2026-11-11 la
+  condizione (3) verifica la quota esatta e non solo `amount_eur ≤ f_i` e la presenza degli
+  strumenti con f_i > `T_eur` (che ne seguono); (2) vale solo entro il fabbisogno, perché oltre
+  (target sotto 100) la decisione porta gli strumenti oltre il target.
 
 ### B-DRIFT-REBALANCE-WEIGHTS
 - **Titolo:** Scostamento dal target, PAC, ribilanciamento e what-if partono dagli stessi pesi
@@ -854,7 +902,7 @@ n = numero di ordini (o di righe della distribuzione).
 - **Prova:** tutti i portafogli, compreso 9106, aggregato.
 - **Difetto:** snapshot del Doctor che legge `portfolios.cash_balance` (saldo di apertura da TASK-49)
   come liquidità: prima di TASK-84 `cash_value` 0 su tutto il seed (9101: 0 contro 9.256,50;
-  aggregato: 0 contro 33.190,47, 33.211,67 col seed di TASK-93) e Scenario Lab con `use_cash_balance` infattibile.
+  aggregato: 0 contro 33.190,47, 33.211,47 col seed di TASK-93) e Scenario Lab con `use_cash_balance` infattibile.
 
 ### D-HEALTH-SCORE-BREAKDOWN
 - **Titolo:** Il punteggio di salute è la somma dei punteggi di categoria e delle penalità dichiarate

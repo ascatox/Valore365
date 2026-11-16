@@ -242,10 +242,12 @@ from (values
   -- 9106 Vuoto: nessuna transazione.
   -- 9107 Quotazioni ferme. Imposte (TASK-93, D-TX-CASH-RECONCILE): dividendo EUR su AUDEQ.MI
   -- con ritenuta 26% (20,00 lordi, 5,20 di imposte) e vendita di 10 AUDEQ.MI a 100,00 con
-  -- imposta sulla plusvalenza 26% di (100 − 99) × 10 = 2,60. Finale: 50 AUDEQ.MI (60 − 10).
+  -- commissione 1,00 e imposte 2,60. Finale: 50 AUDEQ.MI (60 − 10). Commissione d'acquisto 1,20
+  -- su 60 quote: prezzo medio esatto 99,02 e costo residuo 4.951,00 come prima (un prezzo medio
+  -- con più di 4 decimali farebbe divergere il costo aggregato dalla somma, D-AGG-SUMS).
   (9107, null,         'deposit',   60, 1,             20000.00,           0,          0,          'EUR', null),
   (9107, 9112,         'buy',       55, 100,           61.00,              1.00,       0,          'EUR', null),
-  (9107, 9101,         'buy',       50, 60,            99.00,              1.00,       0,          'EUR', null),
+  (9107, 9101,         'buy',       50, 60,            99.00,              1.20,       0,          'EUR', null),
   (9107, 9101,         'dividend',  30, 1,             20.00,              0,          5.20,       'EUR', null),
   (9107, 9101,         'sell',      20, 10,            100.00,             1.00,       2.60,       'EUR', null),
   (9107, 9113,         'buy',        5, 200,           24.50,              1.00,       0,          'EUR', null)

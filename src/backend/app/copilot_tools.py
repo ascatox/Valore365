@@ -31,6 +31,7 @@ from .services.rebalance import (
     DEFAULT_TOLERANCE_PP,
     REBALANCE_MODES,
     TARGET_WEIGHT_BASIS_NOTE,
+    compute_pac_split,
     compute_rebalance_plan,
     current_target_weights,
     target_drift_rows,
@@ -248,9 +249,14 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Calcola come distribuire un versamento periodico (PAC) mensile "
             "tra gli asset del portafoglio per avvicinarsi al target. "
-            "Versa solo sulle posizioni sotto-pesate, in proporzione allo scostamento "
-            "dal target. Se nessuna posizione e' sotto il target restituisce "
-            "distribuzione vuota, total_allocated 0, unallocated_amount e una nota. "
+            "Ripartisce l'importo in proporzione a quanto manca a ogni strumento per "
+            "arrivare al proprio peso obiettivo sulla base dopo il versamento (strumenti "
+            "con target + liquidita' + importo), senza mai portarne uno oltre il target; "
+            "con importi grandi gli importi sono proporzionali agli acquisti di "
+            "calculate_rebalance_orders buy_only. Solo se i target sommano meno di 100 "
+            "l'importo puo' superare il fabbisogno totale (total_need_eur): l'eccedenza "
+            "va in proporzione ai target, con una nota. total_allocated + unallocated_amount "
+            "= importo (unallocated_amount > 0 solo con tutti i target a 0). "
             "Pesi attuali come get_target_drift e calculate_rebalance_orders "
             "(strumenti con target piu' liquidita', total_value)."
         ),
@@ -1223,7 +1229,15 @@ def _calculate_pac_contribution(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T12: Distribute a monthly PAC amount across assets to approach target."""
+    """T12: split a PAC contribution across the targeted instruments.
+
+    Owner's decision (TASK-90, methodology.md §7): proportionally to what each
+    instrument needs to reach its target weight on the base *after* the
+    contribution (targeted holdings + current cash + amount), never above the
+    target of any instrument; the part above the total need (only possible
+    when the targets add up to less than 100) proportionally to the targets.
+    See ``compute_pac_split`` in app.services.rebalance.
+    """
     monthly_amount = args.get("monthly_amount", 0)
     if monthly_amount <= 0:
         return {"error": "Importo mensile deve essere > 0"}
@@ -1239,106 +1253,64 @@ def _calculate_pac_contribution(
     if not target_alloc:
         return {"distribution": [], "note": "Nessun target configurato."}
 
-    pos_map = {p.asset_id: p for p in positions}
-    # TASK-85: same weights as get_target_drift and calculate_rebalance_orders
-    # (targeted holdings + current cash); the new money enlarges that base.
-    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
-    total_value = weights.base_value
-    basis = {"total_value": round(total_value, 2), "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE}
-
-    # Calculate drift for each target asset (negative drift = under-weight),
-    # on the weight rounded to 2 decimals as shown by get_target_drift.
-    assets_with_drift = []
-    for ta in target_alloc:
-        current_w = round(weights.current_weight_pct(ta.asset_id), 2)
-        drift = current_w - ta.weight_pct  # negative means under-weight
-        pos = pos_map.get(ta.asset_id)
-        assets_with_drift.append({
-            "asset_id": ta.asset_id,
-            "symbol": ta.symbol,
-            "target_weight": ta.weight_pct,
-            "current_weight": current_w,
-            "drift": drift,
-            "price": pos.market_price if pos and pos.market_price else None,
-        })
-
-    # Sort: most under-weight first
-    assets_with_drift.sort(key=lambda a: a["drift"])
-
     # TASK-83: the amount is split in whole cents, so the rows always add up
     # exactly to ``total_allocated`` and nothing is declared allocated without
     # a destination.
     total_cents = int(round(float(monthly_amount) * 100))
     if total_cents <= 0:
         return {"error": "Importo mensile deve essere almeno 0,01 EUR"}
-    underweight = [a for a in assets_with_drift if a["drift"] < 0]
-    if not underweight:
-        # No instrument is below its target (all at target or above, e.g. when
-        # the targets add up to less than 100): there is no declared rule to
-        # pick a destination, so nothing is allocated and the note says why.
-        target_sum = sum(ta.weight_pct for ta in target_alloc)
-        note = (
-            "Nessuno strumento è sotto il proprio peso obiettivo: l'importo non è "
-            "stato distribuito (totale allocato 0)."
-        )
-        if target_sum < 100 - 0.01:
-            note += (
-                f" I pesi obiettivo sommano a {round(target_sum, 2)}% invece di 100%: "
-                "completa i target per ricevere una ripartizione del PAC."
-            )
-        else:
-            note += (
-                " Per mantenere il portafoglio sui target puoi ripartire il versamento "
-                "in proporzione ai pesi obiettivo."
-            )
-        return {
-            "monthly_amount": monthly_amount,
-            "distribution": [],
-            "total_allocated": 0.0,
-            "unallocated_amount": round(total_cents / 100, 2),
-            "note": note,
-            **basis,
-        }
 
-    # Distribute proportionally to the negative drift (largest remainder on cents).
-    total_negative_drift = sum(-a["drift"] for a in underweight)
-    raw_cents = [(-a["drift"]) / total_negative_drift * total_cents for a in underweight]
-    cents = [int(c) for c in raw_cents]
-    leftover = total_cents - sum(cents)
-    by_remainder = sorted(range(len(underweight)), key=lambda i: (cents[i] - raw_cents[i], i))
-    for i in by_remainder[:leftover]:
-        cents[i] += 1
+    pos_map = {p.asset_id: p for p in positions}
+    cash = float(summary.cash_balance or 0.0)
+    # TASK-85: same weights as get_target_drift and calculate_rebalance_orders
+    # (targeted holdings + current cash); the new money enlarges that base.
+    weights = current_target_weights(positions, target_alloc, cash)
+    split = compute_pac_split(target_holdings(positions, target_alloc), portfolio_cash=cash, amount_cents=total_cents)
+    basis = {"total_value": round(weights.base_value, 2), "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE}
 
-    new_total = total_value + total_cents / 100
     distribution = []
-    for asset, c in zip(underweight, cents):
-        if c <= 0:
+    for a in split.allocations:
+        if a.cents <= 0:
             continue
-        amount = c / 100
-        pos = pos_map.get(asset["asset_id"])
-        old_value = pos.market_value if pos else 0
-        new_value = old_value + amount
-        new_weight = (new_value / new_total * 100) if new_total > 0 else 0
-
+        pos = pos_map.get(a.key)
+        price = pos.market_price if pos and pos.market_price else None
+        new_weight = (a.current_value + a.amount) / split.base_after * 100 if split.base_after > 0 else 0.0
         distribution.append({
-            "symbol": asset["symbol"],
-            "amount_eur": round(amount, 2),
-            "shares_approx": (
-                round(amount / asset["price"], 4)
-                if asset["price"] and asset["price"] > 0 else None
-            ),
-            "current_weight": round(asset["current_weight"], 2),
-            "target_weight": round(asset["target_weight"], 2),
+            "symbol": a.symbol,
+            "amount_eur": round(a.amount, 2),
+            "shares_approx": round(a.amount / price, 4) if price and price > 0 else None,
+            "current_weight": round(weights.current_weight_pct(a.key), 2),
+            "target_weight": round(a.target_weight_pct, 2),
             "new_weight_after": round(new_weight, 2),
         })
+    distribution.sort(key=lambda d: (-d["amount_eur"], str(d["symbol"])))
 
-    return {
+    allocated = split.allocated_cents
+    result = {
         "monthly_amount": monthly_amount,
         "distribution": distribution,
-        "total_allocated": round(sum(cents) / 100, 2),
-        "unallocated_amount": 0.0,
+        "total_allocated": round(allocated / 100, 2),
+        "unallocated_amount": round((total_cents - allocated) / 100, 2),
+        "total_need_eur": round(split.need_total, 2),
         **basis,
     }
+    target_sum = round(split.target_sum_pct, 2)
+    if allocated == 0:
+        # Only with every target at 0%: no instrument needs money and there is
+        # no proportion to split the amount by.
+        result["note"] = (
+            f"I pesi obiettivo sommano a {target_sum}%: l'importo non è stato distribuito "
+            "(totale allocato 0). Imposta pesi obiettivo maggiori di 0 per ricevere una ripartizione del PAC."
+        )
+    elif split.excess > 0.005:
+        result["note"] = (
+            f"I pesi obiettivo sommano a {target_sum}% invece di 100%: il versamento supera di "
+            f"{round(split.excess, 2)} EUR quanto serve per portare ogni strumento al proprio peso "
+            "obiettivo (total_need_eur). L'eccedenza è ripartita in proporzione ai pesi obiettivo, "
+            "quindi dopo il versamento questi strumenti superano il proprio peso obiettivo: completa "
+            "i target oppure lascia l'eccedenza in liquidità."
+        )
+    return result
 
 
 def _held_asset_id(repo: PortfolioRepository, portfolio_id: int, user_id: str, symbol: str) -> int | None:

@@ -1,7 +1,7 @@
 ---
 id: TASK-93
 title: 'Auditor: get_recent_transactions non espone le imposte, la liquidità non si ricostruisce dalle righe'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T18:30:00Z'
 labels:
@@ -54,8 +54,8 @@ Deduplica: D-CASH-CONSISTENCY confronta `cash_breakdown` con il riepilogo, non c
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Le righe di `get_recent_transactions` e `get_aggregate_recent_transactions` espongono `taxes` (o un importo netto per riga dichiarato), così che la liquidità di `get_cash_balance` si ricostruisca dalle transazioni mostrate quando l'elenco è completo
-- [ ] #2 Test unitario con una vendita e un dividendo con imposte
-- [ ] #3 Il seed dell'Auditor contiene almeno una vendita e un dividendo con `taxes` diverso da 0 (proposta §6 del report)
-- [ ] #4 Attivata la regola proposta `D-TX-CASH-RECONCILE` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md`
+- [x] #1 Le righe di `get_recent_transactions` e `get_aggregate_recent_transactions` espongono `taxes` (o un importo netto per riga dichiarato), così che la liquidità di `get_cash_balance` si ricostruisca dalle transazioni mostrate quando l'elenco è completo
+- [x] #2 Test unitario con una vendita e un dividendo con imposte
+- [x] #3 Il seed dell'Auditor contiene almeno una vendita e un dividendo con `taxes` diverso da 0 (proposta §6 del report)
+- [x] #4 Attivata la regola proposta `D-TX-CASH-RECONCILE` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md`
 <!-- AC:END -->

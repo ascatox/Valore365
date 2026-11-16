@@ -1236,7 +1236,7 @@ cambia, perché, e quali task ne sono toccati.
 - **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101…9107 e
   sull'aggregato col codice corretto; col `_load_scope` di prima 7 `fail` (`cash_value` 0 contro
   9.256,50 / 8.144,00 / 2.492,00 / 3.705,97 / 5.545,00 / 4.047,00 e 33.190,47 sull'aggregato; col
-  seed di TASK-93 9107 e l'aggregato valgono 4.068,20 e 33.211,67) e
+  seed di TASK-93 9107 e l'aggregato valgono 4.068,00 e 33.211,47) e
   `pass` su 9106 (0 = 0).
 
 ### TASK-86
@@ -1314,10 +1314,15 @@ cambia, perché, e quali task ne sono toccati.
   di apertura si legge da `cash_breakdown.opening_balance`; (3) tipi diversi da quelli del modello
   contano 0, come in `cash_delta`. Nuovo argomento canonico in §5.2 (`get_recent_transactions`
   senza argomenti extra, solo scope `portfolio`: la regola non legge la variante aggregata).
-- **Seed:** 9107 compra 60 `AUDEQ.MI` invece di 50 e ne vende 10 a 100,00 (−20, commissione 1,00,
-  imposte 2,60) e riceve un dividendo EUR di 20,00 con 5,20 di imposte (−30). Posizioni, pesi,
-  prezzo medio e TER invariati; liquidità di 9107 da 4.047,00 a 4.068,20, dell'aggregato da
-  33.190,47 a 33.211,67 (README, `rules.md`, `test_auditor_seed_postgres.py`).
+- **Seed:** 9107 compra 60 `AUDEQ.MI` invece di 50 (commissione 1,20 invece di 1,00, così il prezzo
+  medio resta esattamente 99,02), ne vende 10 a 100,00 (−20, commissione 1,00, imposte 2,60) e
+  riceve un dividendo EUR di 20,00 con 5,20 di imposte (−30). Posizioni, pesi, prezzo medio, costo
+  di carico (15.953,00) e TER invariati; liquidità di 9107 da 4.047,00 a 4.068,00, dell'aggregato da
+  33.190,47 a 33.211,47 (README, `rules.md`, `test_auditor_seed_postgres.py`). Con la commissione
+  1,00 il prezzo medio (99,01666…) ha più di 4 decimali: `Position.avg_cost` è arrotondato a 4
+  decimali e il costo di carico del riepilogo è Σ quantità × `avg_cost` arrotondato, quindi il costo
+  dell'aggregato (1.030 `AUDEQ.MI`) si scostava di 0,05 € dalla somma dei portafogli e
+  D-AGG-SUMS falliva: difetto latente segnalato, non corretto qui.
 - **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101, 9102, 9103, 9105 e
   9107; `not_applicable` su 9104 (GBP e USD), `no_transactions` su 9106. Con le righe senza `taxes`
-  `fail` su 9107 (4.076,00 ricostruiti contro 4.068,20), `pass` altrove (nessuna imposta).
+  `fail` su 9107 (4.075,80 ricostruiti contro 4.068,00), `pass` altrove (nessuna imposta).

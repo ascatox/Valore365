@@ -165,6 +165,34 @@ non toglie punti.
   registrato l'operazione; `target_basis` dichiara pesi, base e liquidità prima e dopo. Esempio
   9101, acquisto di 1.000 € di AUDEQ.MI: `old_drift` +14,07 (prima +20,0), `new_drift` +14,98
   (base invariata 109.256,50), `new_weight` 70,30 % fra le posizioni come prima.
+- **Ripartizione del PAC (TASK-90, decisione del proprietario, criterio #1).** `calculate_pac_contribution`
+  (`compute_pac_split` in `services/rebalance.py`) ripartisce il versamento A in proporzione a quanto
+  manca a ogni strumento per arrivare al proprio target **sulla base dopo il versamento**
+  B' = valore degli strumenti con target + liquidità attuale + A: fabbisogno f_i = max(0, target_i ×
+  B' / 100 − valore_i), quota_i = A × f_i / Σ f. Nessuno strumento riceve più del suo fabbisogno,
+  quindi nessuno supera il proprio target; uno strumento oggi sopra il target che il versamento rende
+  sottopesato riceve la sua quota. L'eventuale importo oltre il fabbisogno totale va in proporzione ai
+  target: quota_i = f_i + (A − Σ f) × target_i / Σ target. Con target che sommano a 100 questo non
+  succede mai (Σ f ≥ Σ (target_i × B' / 100 − valore_i) = liquidità + A ≥ A): l'eccedenza esiste solo
+  con target che sommano meno di 100, e allora gli strumenti superano il target (lo dice una `note`).
+  Importi in centesimi interi con i resti più grandi, somma esatta (TASK-83); `total_need_eur` = Σ f.
+  `unallocated_amount` è 0 con almeno un target maggiore di 0 (anche quando nessuno strumento è oggi
+  sotto il target: prima di TASK-90 l'importo restava non allocato con una nota); resta uguale
+  all'importo, con una nota, solo con tutti i target a 0 (nessuna proporzione possibile). Senza
+  target il tool risponde come prima (`distribution` vuota, nota, nessun `total_allocated`).
+  **Rapporto con `buy_only`:** il fabbisogno è il `delta` di `calculate_rebalance_orders` in
+  `buy_only` con `available_cash` = A (stessa base B'), ma il ribilanciamento investe anche la
+  liquidità del portafoglio e il PAC solo il versamento: gli importi del PAC sono quelli di `buy_only`
+  moltiplicati per A / (A + liquidità) e coincidono quando la liquidità è 0 (e la banda di 0,5 pp del
+  ribilanciamento scatta). Esempio 9101 con 100.000 € (B' = 209.256,50): fabbisogni 34.628,25 /
+  63.702,60 / 10.925,65 € (= `buy_only`), PAC 31.694,45 / 58.305,55 / 10.000,00 € (AUDEQ.MI /
+  AUDBD.MI / AUDTECH.DE), pesi dopo 48,60 / 37,42 / 9,56 % contro 50 / 40 / 10; prima di TASK-90
+  AUDBD.MI 96.228,93 € → 55,54 % e AUDEQ.MI nulla. Con 500 €: AUDBD.MI 480,39, AUDTECH.DE 19,61
+  (prima 481,14 e 18,86), AUDEQ.MI 0 (resta sopra il target anche sulla nuova base). Limite
+  dichiarato: con importi piccoli uno strumento poco sottopesato può ancora perdere qualche
+  centesimo di punto (9101, 500 €: AUDTECH.DE 9,15 → 9,13 %), perché la quota segue il fabbisogno e
+  non il peso attuale; la regola non lo porta mai oltre il target. Verificato dall'Auditor con
+  B-PAC-NO-OVERSHOOT (`docs/auditor/rules.md`).
 - Banda di tolleranza 0,5 pp **come soglia di attivazione**: se almeno uno strumento supera la
   banda, tutti tornano al target.
 - Ordine: prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,

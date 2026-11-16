@@ -181,6 +181,9 @@ def real_responses(values=BALANCED, targets=BALANCED_TARGETS, cash=BALANCED_CASH
     for args in (R_ARGS, BO_ARGS, SO_ARGS):
         add("calculate_rebalance_orders", args)
     add("calculate_pac_contribution", PAC_ARGS)
+    big = pac_big_args(out[canonical_key("calculate_pac_contribution", PAC_ARGS)][2])
+    if big is not None:
+        add("calculate_pac_contribution", big)
     positions = out[canonical_key("get_positions", POS_ARGS)][2]["positions"]
     if positions:
         s, v = positions[0]["symbol"], positions[0]["market_value"]
@@ -196,6 +199,14 @@ def drift_what_if_args(positions, drift_rows) -> dict[str, Any]:
     """What-if di B-DRIFT-REBALANCE-WEIGHTS (TASK-88): acquisto di 1000 € su S_T."""
     s = rs.what_if_drift_symbol(positions, drift_rows)
     return {"portfolio_id": PID, "action": "buy", "symbol": s, "amount_eur": 1000.0}
+
+
+def pac_big_args(pac: Any) -> dict[str, Any] | None:
+    """Secondo PAC di B-PAC-NO-OVERSHOOT (TASK-90): versamento pari alla base attuale."""
+    if isinstance(pac, Exception):
+        return None
+    amount = rs.pac_base_amount(pac)
+    return None if amount is None else {"portfolio_id": PID, "monthly_amount": amount}
 
 
 def make_ctx(responses: dict[str, Any]) -> FakeAuditContext:
@@ -245,6 +256,9 @@ def evaluate(check, responses) -> dict[str, Any]:
         drift_rows = get(responses, "get_target_drift", POS_ARGS).get("drift") or []
         if drift_rows:
             allowed.add(canonical_key("calculate_what_if", drift_what_if_args(positions, drift_rows)))
+    big = pac_big_args(get(responses, "calculate_pac_contribution", PAC_ARGS))
+    if big is not None:
+        allowed.add(canonical_key("calculate_pac_contribution", big))
     for tool, args in ctx.calls:
         assert canonical_key(tool, args) in allowed, (tool, args)
     return outcome
@@ -261,7 +275,8 @@ REBALANCE_CHECKS = [
     rs.check_reb_cash_conservation, rs.check_reb_cash_nonneg, rs.check_reb_sells_reach_target,
     rs.check_reb_drift_nonincreasing, rs.check_reb_mode_sides, rs.check_reb_sell_cap,
 ]
-PAC_CHECKS = [rs.check_pac_sum, rs.check_pac_underweight_only, rs.check_drift_rebalance_weights]
+PAC_CHECKS = [rs.check_pac_sum, rs.check_pac_underweight_only, rs.check_pac_no_overshoot,
+              rs.check_drift_rebalance_weights]
 
 
 # ---------------------------------------------------------------------------
@@ -277,6 +292,7 @@ CATALOG = {
     "B-REB-SELL-CAP": ("P1", "rebalance", ["V365-003"]),
     "B-PAC-SUM": ("P1", "rebalance", []),
     "B-PAC-UNDERWEIGHT-ONLY": ("P2", "rebalance", []),
+    "B-PAC-NO-OVERSHOOT": ("P1", "rebalance", ["S-2026-11-11-13"]),
     "B-DRIFT-REBALANCE-WEIGHTS": ("P2", "rebalance", ["S-2026-11-11-02"]),
     "B-WHATIF-BUY-WEIGHT": ("P2", "simulation", []),
     "B-WHATIF-SELL-BOUND": ("P2", "simulation", []),
@@ -640,11 +656,15 @@ def test_pac_sum_fails_when_total_differs_from_amount():
     assert outcome["evidence"][0]["path"] == "total_allocated + unallocated_amount"
 
 
+# Target tutti a 0 %: l'unico caso (TASK-90) in cui il PAC lascia l'importo non allocato.
+ZERO_TARGETS = {"AUDEQ.MI": 0.0, "AUDBD.MI": 0.0}
+
+
 def test_pac_sum_fails_when_unallocated_amount_has_no_note():
-    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0},
-                               targets={"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, cash=0.0)
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets=ZERO_TARGETS, cash=0.0)
     pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
     assert pac["unallocated_amount"] == 500.0
+    assert_status(evaluate(rs.check_pac_sum, responses), "pass")
     pac.pop("note")
     put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
     outcome = evaluate(rs.check_pac_sum, responses)
@@ -653,8 +673,7 @@ def test_pac_sum_fails_when_unallocated_amount_has_no_note():
 
 
 def test_pac_sum_fails_when_unallocated_amount_does_not_close_the_total():
-    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0},
-                               targets={"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, cash=0.0)
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets=ZERO_TARGETS, cash=0.0)
     pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
     pac["unallocated_amount"] = 300.0
     put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
@@ -663,30 +682,39 @@ def test_pac_sum_fails_when_unallocated_amount_does_not_close_the_total():
     assert outcome["evidence"][0]["path"] == "total_allocated + unallocated_amount"
 
 
-@pytest.mark.parametrize("targets", [
-    {"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0},          # target che sommano a 90: tutti sopra il target
-    {"AUDEQ.MI": 50.0, "AUDBD.MI": 50.0},          # tutti esattamente a target
+@pytest.mark.parametrize("targets, expected, note", [
+    # Target che sommano a 90, tutti sopra il target: l'importo eccede il fabbisogno (0) e va in
+    # proporzione ai target (TASK-90; con TASK-83 restava non allocato).
+    ({"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, {"AUDBD.MI": 250.0, "AUDEQ.MI": 250.0}, True),
+    # Tutti esattamente a target: sulla base dopo il versamento manca 250 € a ciascuno.
+    ({"AUDEQ.MI": 50.0, "AUDBD.MI": 50.0}, {"AUDBD.MI": 250.0, "AUDEQ.MI": 250.0}, False),
 ], ids=["targets-sum-90", "all-at-target"])
-def test_pac_sum_on_real_service_with_no_underweight_holding(targets):
-    """TASK-83 (difetto trovato da TASK-75/TASK-79, ora risolto).
-
-    Con nessuno strumento sottopesato `_calculate_pac_contribution` non distribuisce nulla e lo
-    dichiara: distribuzione vuota, `total_allocated` 0, `unallocated_amount` = importo e una nota.
-    B-PAC-SUM dà `pass`.
-    """
+def test_pac_rules_on_real_service_with_no_underweight_holding(targets, expected, note):
+    """TASK-83 → TASK-90: con nessuno strumento sottopesato oggi il PAC ora distribuisce tutto
+    l'importo (decisione del proprietario, methodology.md §7) e le tre regole del PAC danno `pass`."""
     repo = make_repo({"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets, 0.0)
     raw = copilot_tools._calculate_pac_contribution({"monthly_amount": 500.0}, repo, MagicMock(), PID, "u")
-    assert raw["distribution"] == []
-    assert raw["total_allocated"] == 0.0 and raw["unallocated_amount"] == 500.0
-    assert raw["note"]
+    assert {d["symbol"]: d["amount_eur"] for d in raw["distribution"]} == expected
+    assert raw["total_allocated"] == 500.0 and raw["unallocated_amount"] == 0.0
+    assert ("note" in raw) is note
     responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets=targets, cash=0.0)
     assert get(responses, "calculate_pac_contribution", PAC_ARGS) == sanitize_output(raw)
     outcome = evaluate(rs.check_pac_sum, responses)
     assert_status(outcome, "pass")
     ev = next(e for e in outcome["evidence"] if e["path"] == "distribution[*].amount_eur")
-    assert (ev["observed"], ev["expected"]) == (0, 0.0)
-    # La regola gemella non giudica una distribuzione vuota.
+    assert (ev["observed"], ev["expected"]) == (500.0, 500.0)
+    assert_status(evaluate(rs.check_pac_underweight_only, responses), "pass")
+    assert_status(evaluate(rs.check_pac_no_overshoot, responses), "pass")
+
+
+def test_pac_rules_with_all_targets_at_zero():
+    """Unico caso con importo non allocato: distribuzione vuota, nota; le regole sulle righe non giudicano."""
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0}, targets=ZERO_TARGETS, cash=0.0)
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    assert pac["distribution"] == [] and pac["total_allocated"] == 0.0 and pac["note"]
+    assert_status(evaluate(rs.check_pac_sum, responses), "pass")
     assert_status(evaluate(rs.check_pac_underweight_only, responses), "skip", "not_applicable")
+    assert_status(evaluate(rs.check_pac_no_overshoot, responses), "skip", "not_applicable")
 
 
 def test_pac_sum_passes_on_real_service_with_many_rows():
@@ -716,8 +744,34 @@ def test_pac_underweight_fails_on_payment_to_overweight_holding():
     outcome = evaluate(rs.check_pac_underweight_only, responses)
     assert_status(outcome, "fail", "invariant_violated")
     ev = outcome["evidence"][0]
-    # TASK-85: peso sul totale con la liquidità (7000 / 10300 = 67,96 %), non più 70,0.
-    assert ev["path"].endswith(".current_weight") and ev["observed"] == 67.96 and ev["expected"] == 50.0
+    # TASK-90: sotto il target sulla base dopo il versamento, cioè valore ≤ 50 % di (10.300 + 500).
+    assert ev["path"] == "drift[symbol=AUDEQ.MI].market_value"
+    assert ev["observed"] == 7000.0 and ev["expected"] == 5400.0
+
+
+def test_pac_underweight_passes_when_the_contribution_makes_a_holding_underweight():
+    """Oggi 50,10 % con target 50 (la vecchia condizione sul peso attuale falliva): con 500 € la
+    base passa a 10.500 € e lo strumento vale il 47,71 %, quindi riceve una quota (TASK-90)."""
+    responses = real_responses(values={"AUDEQ.MI": 5010.0, "AUDBD.MI": 4990.0},
+                               targets={"AUDEQ.MI": 50.0, "AUDBD.MI": 50.0}, cash=0.0)
+    pac = {d["symbol"]: d for d in get(responses, "calculate_pac_contribution", PAC_ARGS)["distribution"]}
+    assert pac["AUDEQ.MI"]["current_weight"] == 50.1 and pac["AUDEQ.MI"]["amount_eur"] == 240.0
+    assert_status(evaluate(rs.check_pac_underweight_only, responses), "pass")
+    assert_status(evaluate(rs.check_pac_no_overshoot, responses), "pass")
+
+
+def test_pac_underweight_keeps_the_weight_check_below_the_total_need():
+    """Target 45/45 (somma 90) ma con un importo sotto il fabbisogno: la condizione sul peso vale."""
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 1000.0},
+                               targets={"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, cash=0.0)
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    assert [d["symbol"] for d in pac["distribution"]] == ["AUDBD.MI"] and "note" not in pac
+    pac["distribution"].append({"symbol": "AUDEQ.MI", "amount_eur": 0.01, "shares_approx": None,
+                                "current_weight": 83.33, "target_weight": 45.0, "new_weight_after": 77.0})
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_pac_underweight_only, responses)
+    assert_status(outcome, "fail")
+    assert outcome["evidence"][0]["path"] == "drift[symbol=AUDEQ.MI].market_value"
 
 
 def test_pac_underweight_fails_on_untargeted_symbol_or_negative_amount():
@@ -731,6 +785,127 @@ def test_pac_underweight_fails_on_untargeted_symbol_or_negative_amount():
     tools = {(e["tool"], e["path"]) for e in outcome["evidence"]}
     assert ("get_target_drift", "drift[symbol=NOTARGET]") in tools
     assert ("calculate_pac_contribution", "distribution[0].amount_eur") in tools
+
+
+# ---------------------------------------------------------------------------
+# B-PAC-NO-OVERSHOOT (TASK-90)
+# ---------------------------------------------------------------------------
+
+
+def _legacy_pac(args, repo, _perf, portfolio_id, user_id, **_kw):
+    """`_calculate_pac_contribution` prima di TASK-90 (dopo TASK-83/85): quote in proporzione allo
+    scostamento attuale in punti, sulla base prima del versamento, solo fra gli strumenti oggi
+    sottopesati e senza tetto al fabbisogno."""
+    from app.services.rebalance import TARGET_WEIGHT_BASIS_NOTE, current_target_weights
+
+    amount_in = args.get("monthly_amount", 0)
+    positions = repo.get_positions(portfolio_id, user_id) or []
+    summary = repo.get_summary(portfolio_id, user_id)
+    target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id)
+    if not target_alloc:
+        return {"distribution": [], "note": "Nessun target configurato."}
+    pos_map = {p.asset_id: p for p in positions}
+    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
+    total_value = weights.base_value
+    basis = {"total_value": round(total_value, 2), "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE}
+    rows = []
+    for ta in target_alloc:
+        cw = round(weights.current_weight_pct(ta.asset_id), 2)
+        rows.append((ta, cw, cw - ta.weight_pct))
+    rows.sort(key=lambda r: r[2])
+    total_cents = int(round(float(amount_in) * 100))
+    under = [r for r in rows if r[2] < 0]
+    if not under:
+        return {"monthly_amount": amount_in, "distribution": [], "total_allocated": 0.0,
+                "unallocated_amount": round(total_cents / 100, 2), "note": "Nessuno strumento sotto target.", **basis}
+    neg = sum(-r[2] for r in under)
+    raw = [(-r[2]) / neg * total_cents for r in under]
+    cents = [int(c) for c in raw]
+    for i in sorted(range(len(under)), key=lambda i: (cents[i] - raw[i], i))[: total_cents - sum(cents)]:
+        cents[i] += 1
+    new_total = total_value + total_cents / 100
+    dist = []
+    for (ta, cw, _), c in zip(under, cents):
+        if c <= 0:
+            continue
+        pos = pos_map.get(ta.asset_id)
+        value = (pos.market_value if pos else 0) + c / 100
+        dist.append({"symbol": ta.symbol, "amount_eur": round(c / 100, 2), "shares_approx": None,
+                     "current_weight": cw, "target_weight": round(ta.weight_pct, 2),
+                     "new_weight_after": round(value / new_total * 100, 2)})
+    return {"monthly_amount": amount_in, "distribution": dist, "total_allocated": round(sum(cents) / 100, 2),
+            "unallocated_amount": 0.0, **basis}
+
+
+def test_pac_no_overshoot_passes_on_seed_9101():
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    big_args = {"portfolio_id": PID, "monthly_amount": 109256.5}
+    big = {d["symbol"]: d for d in get(responses, "calculate_pac_contribution", big_args)["distribution"]}
+    assert set(big) == {"AUDEQ.MI", "AUDBD.MI", "AUDTECH.DE"}
+    assert all(d["new_weight_after"] <= d["target_weight"] for d in big.values())
+    outcome = evaluate(rs.check_pac_no_overshoot, responses)
+    assert_status(outcome, "pass")
+    paths = {(e["args"]["monthly_amount"], e["path"]) for e in outcome["evidence"]}
+    assert (109256.5, "distribution[0].new_weight_after") in paths
+    assert (500.0, "distribution[symbol=AUDEQ.MI].amount_eur") in paths  # AUDEQ.MI: fabbisogno 0
+
+
+def test_pac_no_overshoot_fails_on_legacy_split(monkeypatch):
+    """Difetto S-2026-11-11-13 reintrodotto: con un versamento pari alla base AUDBD.MI supera il 40 %
+    e AUDEQ.MI, che il versamento rende sottopesato, non riceve nulla. B-PAC-SUM e
+    B-PAC-UNDERWEIGHT-ONLY non se ne accorgono."""
+    monkeypatch.setitem(copilot_tools._TOOL_HANDLERS, "calculate_pac_contribution", _legacy_pac)
+    responses = real_responses(values=SEED_9101, cash=SEED_9101_CASH)
+    outcome = evaluate(rs.check_pac_no_overshoot, responses)
+    assert_status(outcome, "fail", "invariant_violated")
+    by = {(e["args"]["monthly_amount"], e["path"]): e for e in outcome["evidence"]}
+    bd = next(e for (a, p), e in by.items() if a == 109256.5 and p.endswith("new_weight_after"))
+    assert bd["observed"] > 40.0 + 15 and bd["expected"] == 40.0
+    eq = by[(109256.5, "distribution[symbol=AUDEQ.MI].amount_eur")]
+    assert eq["observed"] == 0.0 and eq["expected"] > 30000
+    # Anche con 500 € le quote non sono quelle del fabbisogno (481,14 / 18,86 contro 480,39 / 19,61).
+    small = {p: e for (a, p), e in by.items() if a == 500.0 and p.endswith("amount_eur")}
+    assert {e["observed"] for e in small.values()} == {481.14, 18.86}
+    assert_status(evaluate(rs.check_pac_sum, responses), "pass")
+    assert_status(evaluate(rs.check_pac_underweight_only, responses), "pass")
+
+
+def test_pac_no_overshoot_fails_when_one_holding_gets_more_than_its_need():
+    responses = real_responses()
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    rows = pac["distribution"]
+    assert len(rows) == 2
+    shift = rows[1]["amount_eur"]
+    rows[0]["amount_eur"] = round(rows[0]["amount_eur"] + shift, 2)
+    rows.pop()
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_pac_no_overshoot, responses)
+    assert_status(outcome, "fail")
+    assert {e["path"] for e in outcome["evidence"]} >= {"distribution[0].amount_eur"}
+
+
+def test_pac_no_overshoot_excess_follows_the_targets():
+    """Target 45/45 e 5000/5000 €: fabbisogno 0, l'eccedenza va in proporzione ai target (250/250);
+    tutta l'eccedenza su uno strumento è `fail`."""
+    responses = real_responses(values={"AUDEQ.MI": 5000.0, "AUDBD.MI": 5000.0},
+                               targets={"AUDEQ.MI": 45.0, "AUDBD.MI": 45.0}, cash=0.0)
+    assert_status(evaluate(rs.check_pac_no_overshoot, responses), "pass")
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    pac["distribution"] = [dict(pac["distribution"][0], amount_eur=500.0)]
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_pac_no_overshoot, responses)
+    assert_status(outcome, "fail")
+    assert all(e["args"]["monthly_amount"] == 500.0 for e in outcome["evidence"])
+
+
+def test_pac_no_overshoot_fails_without_base():
+    responses = real_responses()
+    pac = get(responses, "calculate_pac_contribution", PAC_ARGS)
+    pac.pop("total_value")
+    put(responses, "calculate_pac_contribution", PAC_ARGS, pac)
+    outcome = evaluate(rs.check_pac_no_overshoot, responses)
+    assert_status(outcome, "fail")
+    assert outcome["evidence"][-1]["path"] == "total_value"
 
 
 # ---------------------------------------------------------------------------

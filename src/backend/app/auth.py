@@ -81,7 +81,11 @@ def _should_sync_app_user(user_id: str) -> bool:
     """True at most once per TTL per user, so a burst of requests writes once."""
     now = time.monotonic()
     with _app_user_sync_lock:
-        if now - _app_user_synced_at.get(user_id, 0.0) < _APP_USER_SYNC_TTL:
+        # A user never synced must write now. A 0.0 default would compare against
+        # the monotonic clock, which starts near 0 at boot: on a host up for less
+        # than the TTL nobody would ever be synced.
+        last = _app_user_synced_at.get(user_id)
+        if last is not None and now - last < _APP_USER_SYNC_TTL:
             return False
         _app_user_synced_at[user_id] = now
         return True

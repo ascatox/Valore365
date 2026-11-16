@@ -87,7 +87,7 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
   ogni riga espone anche le imposte (`taxes`) accanto all'importo lordo e alle commissioni, così la
   liquidità di `get_cash_balance` si ricostruisce dalle righe mostrate (prima mancavano, per
   esempio, 13,40 € di imposte su una vendita e un dividendo). Il seed dell'Auditor ha una vendita e
-  un dividendo con imposte in 9107 (liquidità 4.068,20 €); nuova regola dell'Auditor
+  un dividendo con imposte in 9107 (liquidità 4.068,00 €); nuova regola dell'Auditor
   D-TX-CASH-RECONCILE (TASK-93).
 - Riepilogo dei dividendi (Copilot e MCP `get_dividend_summary`): il reddito annuo previsto è la
   somma dei redditi delle posizioni (valore × rendimento), lo stesso numero del reddito lordo di

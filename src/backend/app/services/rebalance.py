@@ -27,6 +27,7 @@ Holdings without a target are never traded.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Hashable, Iterable, Literal
 
@@ -350,3 +351,104 @@ def target_drift_rows(
             market_value=round(float(pos.market_value or 0.0), 2) if pos else 0.0,
         ))
     return weights, rows
+
+
+# ---------------------------------------------------------------------------
+# PAC: split of a new contribution (TASK-90)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PacAllocation:
+    key: Hashable
+    symbol: str
+    cents: int
+    need: float
+    current_value: float
+    target_weight_pct: float
+
+    @property
+    def amount(self) -> float:
+        return self.cents / 100
+
+
+@dataclass(frozen=True)
+class PacSplit:
+    """Split of a PAC contribution in whole cents (``allocations`` in symbol order,
+    one per targeted instrument, zero amounts included)."""
+
+    allocations: list[PacAllocation]
+    base_value: float
+    base_after: float
+    amount_cents: int
+    need_total: float
+    excess: float
+    target_sum_pct: float
+
+    @property
+    def allocated_cents(self) -> int:
+        return sum(a.cents for a in self.allocations)
+
+
+def _largest_remainder(raw_cents: list[float], total_cents: int) -> list[int]:
+    """Whole cents adding up exactly to ``total_cents`` (largest remainder, ties by index)."""
+    cents = [int(math.floor(c + 1e-9)) for c in raw_cents]
+    leftover = total_cents - sum(cents)
+    order = sorted(range(len(raw_cents)), key=lambda i: (cents[i] - raw_cents[i], i))
+    if leftover > 0:
+        for i in order[:leftover]:
+            cents[i] += 1
+    elif leftover < 0:  # only from float noise: take back from the smallest remainders
+        for i in reversed(order[: -leftover]):
+            cents[i] -= 1
+    return cents
+
+
+def compute_pac_split(
+    holdings: Iterable[RebalanceHolding], *, portfolio_cash: float, amount_cents: int,
+) -> PacSplit:
+    """Decisione del proprietario (TASK-90, ``methodology.md`` §7). Pure function.
+
+    ``base_after`` = value of the targeted holdings + current cash (negative
+    counts as 0) + the contribution, the base of ``current_target_weights``
+    enlarged by the new money. ``need_i = max(0, target_i × base_after − value_i)``.
+    The contribution is split proportionally to the needs, so no instrument
+    receives more than its need (it never ends above its target weight); the
+    part above the total need, which exists only when the targets add up to
+    less than 100 (with 100 the total need is at least cash + contribution),
+    is split proportionally to the target weights. With targets all at 0 the
+    contribution is not allocated (``allocated_cents`` 0).
+    """
+    cash = max(float(portfolio_cash or 0.0), 0.0)
+    amount_cents = max(int(amount_cents), 0)
+    amount = amount_cents / 100
+    targeted = [h for h in sorted(holdings, key=_sort_key) if h.target_weight_pct is not None]
+    values = [max(float(h.current_value), 0.0) for h in targeted]
+    targets = [float(h.target_weight_pct) for h in targeted]  # type: ignore[arg-type]
+    base = sum(values) + cash
+    base_after = base + amount
+    needs = [max(t / 100.0 * base_after - v, 0.0) for t, v in zip(targets, values)]
+    need_total = sum(needs)
+    target_sum = sum(targets)
+
+    excess = 0.0
+    if need_total >= amount - _EPS and need_total > _EPS:
+        raw = [amount_cents * n / need_total for n in needs]
+    elif target_sum > _EPS:
+        excess = amount - need_total
+        raw = [(n + excess * t / target_sum) * 100 for n, t in zip(needs, targets)]
+        # The needs are paid in full: fix the float sum to the exact cents.
+        scale = amount_cents / sum(raw) if sum(raw) > _EPS else 0.0
+        raw = [r * scale for r in raw]
+    else:
+        raw = [0.0 for _ in targeted]
+    cents = _largest_remainder(raw, amount_cents) if any(r > 0 for r in raw) else [0 for _ in targeted]
+
+    return PacSplit(
+        allocations=[
+            PacAllocation(h.key, h.symbol, c, n, v, t)
+            for h, c, n, v, t in zip(targeted, cents, needs, values, targets)
+        ],
+        base_value=base, base_after=base_after, amount_cents=amount_cents,
+        need_total=need_total, excess=excess, target_sum_pct=target_sum,
+    )
