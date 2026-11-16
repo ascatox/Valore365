@@ -392,7 +392,7 @@ class PacSplit:
 
 def _largest_remainder(raw_cents: list[float], total_cents: int) -> list[int]:
     """Whole cents adding up exactly to ``total_cents`` (largest remainder, ties by index)."""
-    cents = [int(math.floor(c + 1e-9)) for c in raw_cents]
+    cents = [math.floor(c + 1e-9) for c in raw_cents]
     leftover = total_cents - sum(cents)
     order = sorted(range(len(raw_cents)), key=lambda i: (cents[i] - raw_cents[i], i))
     if leftover > 0:

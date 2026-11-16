@@ -83,6 +83,18 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Fixed
 
+- PAC (Copilot e MCP `calculate_pac_contribution`): il versamento è ripartito in proporzione a
+  quanto manca a ogni strumento per arrivare al proprio target sulla base dopo il versamento
+  (strumenti con target + liquidità + importo), senza mai portarne uno oltre il target; la parte
+  oltre il fabbisogno totale (`total_need_eur`, solo con target che sommano meno di 100) va in
+  proporzione ai target, con una nota. Prima la quota seguiva lo scostamento attuale fra i soli
+  strumenti sottopesati: con un importo grande uno strumento superava il target e quello reso
+  sottopesato dal versamento non riceveva nulla (seed dell'Auditor, 9101 con 100.000 €: AUDBD.MI
+  55,54 % contro un target del 40 % e AUDEQ.MI a 0; ora 37,42 / 48,60 / 9,56 % contro 40 / 50 / 10,
+  importi proporzionali a quelli del ribilanciamento `buy_only`). Con nessuno strumento oggi sotto
+  il target l'importo non resta più non allocato (solo con tutti i target a 0). Decisione in
+  `methodology.md` §7; nuova regola dell'Auditor B-PAC-NO-OVERSHOOT, B-PAC-UNDERWEIGHT-ONLY misura
+  il peso sulla base dopo il versamento (TASK-90).
 - Transazioni recenti (Copilot e MCP `get_recent_transactions`, `get_aggregate_recent_transactions`):
   ogni riga espone anche le imposte (`taxes`) accanto all'importo lordo e alle commissioni, così la
   liquidità di `get_cash_balance` si ricostruisce dalle righe mostrate (prima mancavano, per

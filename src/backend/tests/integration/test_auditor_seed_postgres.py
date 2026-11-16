@@ -476,9 +476,29 @@ def test_rebalance_needs_sells_to_fund_buys(tools):
     assert tools.call("calculate_rebalance_orders", {"portfolio_id": 9102, "mode": "rebalance"}).get("totals") is None
 
 
+def test_pac_large_amount_stays_below_targets_on_9101(tools):
+    """TASK-90 (S-2026-11-11-13): con 100.000 € nessun `new_weight_after` oltre il `target_weight`;
+    importi = `buy_only` con 100.000 € × 100.000 / (100.000 + 9.256,50), perché il ribilanciamento
+    investe anche la liquidità del portafoglio e il PAC solo il versamento (methodology.md §7)."""
+    pac = tools.call("calculate_pac_contribution", {"portfolio_id": 9101, "monthly_amount": 100000.0})
+    bo = tools.call("calculate_rebalance_orders", {"portfolio_id": 9101, "mode": "buy_only", "available_cash": 100000.0})
+    rows = {d["symbol"]: d for d in pac["distribution"]}
+    orders = {o["symbol"]: o["amount_eur"] for o in bo["orders"]}
+    assert set(rows) == set(orders) == {"AUDEQ.MI", "AUDBD.MI", "AUDTECH.DE"}
+    assert all(d["new_weight_after"] <= d["target_weight"] + 0.01 for d in rows.values())
+    assert orders == {"AUDEQ.MI": 34628.25, "AUDBD.MI": 63702.6, "AUDTECH.DE": 10925.65}
+    cash = bo["totals"]["cash_before"]
+    assert cash == 9256.5 and pac["total_value"] == 109256.5
+    for s, amount in orders.items():
+        assert abs(rows[s]["amount_eur"] - amount * 100000.0 / (100000.0 + cash)) <= 0.01
+    assert pac["total_allocated"] == 100000.0 and pac["unallocated_amount"] == 0.0
+
+
 def test_pac_and_what_if(tools):
     pac = tools.call("calculate_pac_contribution", {"portfolio_id": 9101, "monthly_amount": 500.0})
     assert pac["total_allocated"] == 500.0 and pac["distribution"]
+    # TASK-90: AUDBD.MI 480,39 e AUDTECH.DE 19,61 (fabbisogni sulla base dopo il versamento).
+    assert {d["symbol"]: d["amount_eur"] for d in pac["distribution"]} == {"AUDBD.MI": 480.39, "AUDTECH.DE": 19.61}
     assert abs(sum(d["amount_eur"] for d in pac["distribution"]) - 500.0) <= 0.01
     first = _positions(tools, 9101)[0]
     assert first["symbol"] == "AUDEQ.MI"
@@ -852,6 +872,7 @@ PROOF = {
     "B-REB-SELL-CAP": [9101],
     "B-PAC-SUM": [9101],
     "B-PAC-UNDERWEIGHT-ONLY": [9101],
+    "B-PAC-NO-OVERSHOOT": [9101],  # TASK-90: precondizione come le altre B-PAC (distribuzione non vuota)
     "B-DRIFT-REBALANCE-WEIGHTS": [9101],  # TASK-85: skip solo senza target (drift vuoto)
     "B-WHATIF-BUY-WEIGHT": [9101],
     "B-WHATIF-SELL-BOUND": [9101],

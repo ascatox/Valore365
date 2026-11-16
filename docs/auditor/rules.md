@@ -1094,6 +1094,7 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
 | V-BOND-QUOTETYPE | A-CLASS-BOND-TYPE (solo stato salvato) |
 | C2-CASH-FX | D-CASH-CONSISTENCY |
 | S-2026-11-11-16 imposte non mostrate nelle transazioni (TASK-93) | D-TX-CASH-RECONCILE |
+| S-2026-11-11-13 PAC oltre il target con un importo grande (TASK-90) | B-PAC-NO-OVERSHOOT |
 | C3 `day_change` del riepilogo contro le posizioni | nessuna regola sull'importo: differenza attesa e documentata (prezzi non arrotondati, FX corrente e precedente); il denominatore di `day_change_pct` (tutte le posizioni, S-2026-11-11-03) è verificato da C-DAYCHANGE-DENOMINATOR |
 | C4-FX-FALLBACK | D-FX-FLAGS-DECLARED |
 | C4-CCY `currency` di `search_asset_info` | D-LSE-QUOTE-CURRENCY |
@@ -1131,8 +1132,9 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
   lotto d'import: duplicati e prezzi d'import richiedono `ctx.transactions` e il criterio «righe
   identiche». Da TASK-93 ogni riga espone anche `taxes` (con `total` lordo e `fees`), così
   D-TX-CASH-RECONCILE ricostruisce la liquidità quando l'elenco è completo.
-- **`calculate_pac_contribution`**: con nessuno strumento sottopesato non distribuisce nulla e lo
-  dichiara (`total_allocated` 0, `unallocated_amount`, `note`; TASK-83, prima `total_allocated`
-  valeva l'importo).
+- **`calculate_pac_contribution`**: da TASK-90 ripartisce in proporzione al fabbisogno sulla base
+  dopo il versamento e distribuisce sempre l'intero importo quando almeno un target è maggiore di 0;
+  `unallocated_amount` > 0 (con `note`) solo con tutti i target a 0 (TASK-83: prima di TASK-90 anche
+  con nessuno strumento sottopesato; prima di TASK-83 `total_allocated` valeva l'importo).
 - **TASK-78** parla di «tentativo di import duplicato»: un seed SQL non passa dal flusso d'import;
   il caso è rappresentato come in §1.

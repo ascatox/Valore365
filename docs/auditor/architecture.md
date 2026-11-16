@@ -566,7 +566,7 @@ argomenti oltre `portfolio_id` / `portfolio_ids` aggiunti da `scoped`):
 | `read_doctor_metrics` | — (nessun `metric_codes`) | D |
 | `build_doctor_scenario` | `{"mode": "new_cash_only", "new_cash": 100.0}` (D-DOCTOR-CASH, TASK-84) | D |
 | `calculate_rebalance_orders` | `{"mode": "rebalance"}`; `{"mode": "buy_only", "available_cash": 1000.0}`; `{"mode": "sell_only"}` | B |
-| `calculate_pac_contribution` | `{"monthly_amount": 500.0}` | B |
+| `calculate_pac_contribution` | `{"monthly_amount": 500.0}`; `{"monthly_amount": A}` con A = `round(total_value, 2)` della risposta con 500 € (versamento pari alla base attuale; B-PAC-NO-OVERSHOOT, TASK-90) | B |
 | `calculate_what_if` | `{"action": "buy", "symbol": S, "amount_eur": 1000.0}`; `{"action": "sell", "symbol": S, "amount_eur": round(V/2, 2)}`; `{"action": "sell", "symbol": S, "amount_eur": round(V + 1000.0, 2)}` con S = simbolo della prima riga di `get_positions` (peso maggiore) e V = il suo `market_value`; `{"action": "buy", "symbol": S_T, "amount_eur": 1000.0}` con S_T = primo simbolo di `get_positions` che ha un target, altrimenti il primo di `get_target_drift.drift` (B-DRIFT-REBALANCE-WEIGHTS, TASK-88; di solito S_T = S e la chiamata è la stessa in memo) | B |
 
 Gli importi fissi (1000 €, 500 €) rendono l'esito riproducibile e restano sotto i limiti degli schemi
@@ -1288,6 +1288,35 @@ cambia, perché, e quali task ne sono toccati.
   nessuna chiamata in più.
 - **Anteprima REST del ribilanciamento** lasciata sui pesi del solo investito: decisione e
   motivazione in `docs/audit-mcp-2026-11/methodology.md` §7.
+
+### TASK-90
+
+- **Correzione:** `calculate_pac_contribution` usa `compute_pac_split` di `services/rebalance.py`
+  (decisione del proprietario, `methodology.md` §7): quote in proporzione al fabbisogno di ogni
+  strumento sulla base dopo il versamento, mai oltre; l'eccedenza oltre il fabbisogno totale (solo
+  con target sotto 100) in proporzione ai target, con una nota. Nuovo campo `total_need_eur`;
+  `unallocated_amount` > 0 solo con tutti i target a 0. Righe ordinate per importo decrescente.
+- **B-PAC-NO-OVERSHOOT** (gruppo B, P1, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) la condizione sul peso dopo il versamento vale solo entro il fabbisogno totale
+  (oltre, con target sotto 100, la decisione porta gli strumenti oltre il target); (2) verifica la
+  quota attesa di ogni strumento (assente = 0) invece dei soli `amount_eur ≤ f_i` e «presente se
+  f_i > `T_eur`»; (3) tolleranza della quota `T_eur` + min(1, A / F) × (n + 1) × δ con δ = (B + A) ×
+  0,00005 + 0,01 € (la bozza diceva (B + A) × 1e-4 fisso: con 500 € avrebbe lasciato passare il
+  difetto, 481,14 contro 480,39); (4) `get_positions` fra i tool, solo per `empty_portfolio`. Nuovo
+  argomento canonico in §5.2 (A = `round(total_value, 2)` della risposta con 500 €).
+- **B-PAC-UNDERWEIGHT-ONLY adattata:** «sotto il peso obiettivo» si misura sulla base dopo il
+  versamento (valore ≤ target × (B + A) / 100), non più sul peso attuale; solo quando l'importo
+  supera il fabbisogno totale la condizione non si applica. Gli altri controlli (importo ≥ 0,
+  strumento fra i target) restano.
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): B-PAC-NO-OVERSHOOT `pass` su 9101
+  col codice corretto (A = 109.256,50: AUDBD.MI 62.140,49 → 37,59 %, AUDEQ.MI 36.190,36 → 48,60 %,
+  AUDTECH.DE 10.925,65 → 9,58 %); con la ripartizione di prima `fail` (con 500 € 481,14 / 18,86
+  contro 480,39 / 19,61; con A AUDBD.MI 105.136,36 → 57,27 % e AUDEQ.MI 0 contro 36.190,36), mentre
+  B-PAC-SUM e B-PAC-UNDERWEIGHT-ONLY danno `pass`. `skip` `no_targets` su 9102…9105 e 9107,
+  `empty_portfolio` su 9106. Auditor completo sul seed: 294 `pass`, 0 `fail`, 187 `skip`, 0 `error`.
+- **Test di integrazione:** `test_pac_sum_without_underweight_holding_passes_on_seed` (target 45/20
+  su 9105) ora vede l'intero importo distribuito (346,15 / 153,85) e valuta anche le altre due regole
+  del PAC; `test_pac_no_overshoot_on_seed_9101` reintroduce la ripartizione di prima.
 
 ### TASK-91
 
