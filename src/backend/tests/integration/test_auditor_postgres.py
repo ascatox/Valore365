@@ -107,6 +107,7 @@ PROOF: dict[str, list[str]] = {
     "C-MC-PERCENTILES": [_p(9101), _p(9103), AGG],
     "C-MC-MEDIAN-DRIFT": [_p(9101), AGG],
     "C-DIV-CURRENCY": [_p(9104), _p(9105), _p(9101)],
+    "C-DIV-PROJECTION-MATCH": [_p(9102), _p(9104), _p(9101)],
     "C-DAYMOVERS-NONZERO-INCLUDED": [_p(9101), _p(9107)],
     "C-DAYMOVERS-CONSISTENCY": [_p(9107), _p(9101)],
     "C-DAYCHANGE-DENOMINATOR": [_p(9107), _p(9101)],
@@ -120,6 +121,7 @@ PROOF: dict[str, list[str]] = {
     "D-AGG-PERFORMANCE-VALUE": [AGG],
     "D-PERF-RECOMPUTE": [_p(9101), _p(9104), AGG],
     "D-PERF-TOOL-MATCH": [_p(9101), AGG],
+    "D-PERF-EMPTY-NULL": [_p(9106)],
     "D-DOCTOR-TER": [_p(9101), _p(9103)],
     "D-DOCTOR-CLASS-WEIGHTS": [_p(9101), _p(9102), _p(9103)],
     "D-DOCTOR-CONCENTRATION": [_p(9101), _p(9103)],
@@ -132,6 +134,7 @@ PROOF: dict[str, list[str]] = {
     "D-LSE-QUOTE-CURRENCY": [_i(9104, "AUDUS.L"), _i(9104, "AUDUK.L")],
     "D-FX-FLAGS-DECLARED": [_p(9107), _p(9101), _p(9102), _p(9103), _p(9104), _p(9105)],
     "D-HELD-SYMBOL-MATCH": [_i(pid, s) for pid in NON_EMPTY for s in HOLDINGS[pid]],
+    "D-TX-CASH-RECONCILE": [_p(9107), _p(9101), _p(9102), _p(9103), _p(9105)],
 }
 
 

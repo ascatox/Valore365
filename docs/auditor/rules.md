@@ -9,7 +9,7 @@ Ogni condizione usa **i nomi reali dei campi** dell'output dei tool (`src/backen
 `sanitize_output`. Gli id, i titoli, le severità, gli scope e le tolleranze di questo catalogo sono
 vincolanti: le dichiarazioni `RULES` li copiano esattamente.
 
-Totale: **56 regole** — A 11, B 11, C 12, D 22.
+Totale: **59 regole** — A 11, B 11, C 13, D 24.
 
 ## 0. Convenzioni
 
@@ -110,7 +110,7 @@ Portafogli:
 | 9104 | AUD Londra e valute | `AUDUS.L` (acquisti in USD), `AUDUK.L` (acquisti in GBP), `AUDEQ.MI` (EUR); cambi EUR/USD ed EUR/GBP giornalieri per tutto il periodo delle transazioni e dei prezzi; dividendi in GBP su `AUDUK.L` e in EUR su `AUDEQ.MI` | valuta di quotazione dei listing di Londra, scala dei prezzi con cambio, dividendi in più valute |
 | 9105 | AUD Import | transazioni di un lotto d'import confermato (`csv_import_batches`) su `AUDEQ.MI` e `AUDBD.MI`; **una coppia legittima** di acquisti identici nello stesso giorno (esecuzione frazionata); dividendi EUR mensili su date diverse; nessun duplicato reale | duplicati (nessun falso positivo), dividendi in una valuta |
 | 9106 | AUD Vuoto | nessuna transazione, `cash_balance` 0 | `skip`/`empty_portfolio` |
-| 9107 | AUD Quotazioni ferme | `AUDSTL.MI` con ultima barra di 30 giorni fa (prezzo fermo); `AUDNPC.MI` con una sola barra (oggi) e nessun tick (nessuna chiusura precedente); `AUDEQ.MI` con barre di oggi e di ieri diverse | variazioni giornaliere, flag di qualità dei dati |
+| 9107 | AUD Quotazioni ferme | `AUDSTL.MI` con ultima barra di 30 giorni fa (prezzo fermo); `AUDNPC.MI` con una sola barra (oggi) e nessun tick (nessuna chiusura precedente); `AUDEQ.MI` con barre di oggi e di ieri diverse; un dividendo EUR e una vendita di `AUDEQ.MI` con imposte (`taxes` 5,20 e 2,60, TASK-93) | variazioni giornaliere, flag di qualità dei dati, liquidità ricostruita dalle transazioni con imposte |
 
 Scope che ne derivano: 7 scope `portfolio`; 1 scope `aggregate` [9101…9107]; uno scope
 `instrument` per ogni posizione; 1 scope `user`. Nessuna policy del Doctor precaricata (le regole
@@ -570,6 +570,26 @@ n = numero di ordini (o di righe della distribuzione).
 - **Prova:** 9104 (GBP + EUR), 9105 (EUR), 9101 (EUR).
 - **Difetto:** totale unico che somma GBP ed EUR.
 
+### C-DIV-PROJECTION-MATCH
+- **Titolo:** Il reddito annuo previsto è lo stesso nel riepilogo dei dividendi e nella proiezione del reddito
+- **Sev.** P2 · **Area** income · **Finding** S-2026-11-11-14 (TASK-91) · **Scope** portfolio
+- **Tool:** `get_dividend_summary`; `get_income_projection`; `get_positions` (solo per riconoscere il
+  portafoglio vuoto).
+- **Condizione:** `|projected_annual_income_eur − current_annual_dividends_gross_eur| ≤ 0,005 €`
+  (stessa grandezza, Σ `market_value × dividend_yield / 100`, `methodology.md` §6); se
+  `top_yielding_positions` ha meno di 10 righe (elenco completo):
+  `|Σ annual_income_eur − projected_annual_income_eur| ≤ T_sum_eur(righe)`;
+  `|projected_monthly_income_eur − projected_annual_income_eur / 12| ≤ T_eur`. Importi non numerici
+  → `fail`.
+- **Tolleranze:** 0,005 € fra i due tool (lo stesso importo arrotondato una volta a 2 decimali deve
+  coincidere al centesimo; il margine assorbe solo la rappresentazione float), `T_sum_eur(n)` per le
+  righe, `T_eur` per il mensile (arrotondato dal valore esatto, non dall'annuo arrotondato).
+- **Skip:** `empty_portfolio`; nessuna riga con rendimento e reddito 0 in entrambi i tool →
+  `no_reference_data` (9103).
+- **Prova:** 9102 (tre righe), 9104 (una riga), 9101.
+- **Difetto:** reddito totale ricavato dai pesi arrotondati a 2 decimali (codice prima di TASK-91:
+  1.324,12 contro 1.324,10 su 9102, 280,79 contro 280,80 su 9104).
+
 ### C-DAYMOVERS-NONZERO-INCLUDED
 - **Titolo:** Le variazioni giornaliere disponibili compaiono fra migliori e peggiori
 - **Sev.** P1 · **Area** daily · **Finding** V365-005, V-DAYMOVERS-ROOT · **Scope** portfolio
@@ -757,6 +777,20 @@ n = numero di ordini (o di righe della distribuzione).
 - **Prova:** 9101, aggregato.
 - **Difetto:** tool che arrotonda o annualizza diversamente (periodo invece che annuo).
 
+### D-PERF-EMPTY-NULL
+- **Titolo:** Senza capitale né movimenti il rendimento è assente, non zero
+- **Sev.** P2 · **Area** performance · **Finding** S-2026-11-11-15 (TASK-92) · **Scope** portfolio, aggregate
+- **Tool:** `scoped("get_performance")`; `ctx.transactions` (§0.3).
+- **Condizione:** per ogni finestra `<f>` in `1m`, `3m`, `ytd`, `1y`: (1) se nessun portafoglio
+  dello scope ha transazioni, `twr_<f>` e `mwr_<f>` sono entrambi null; (2) altrimenti, `twr_<f>`
+  null ⇒ `mwr_<f>` null (stessa finestra, stesso caso); (3) in ogni caso `mwr_<f>` null ⇒
+  `mwr_null_reason[<f>]` non null.
+- **Tolleranze:** nessuna.
+- **Skip:** scope con transazioni e nessun `twr_<f>` o `mwr_<f>` null → `not_applicable`.
+- **Prova:** 9106.
+- **Difetto:** `calculate_mwr` che restituisce 0,0 «convergente» senza valore iniziale, valore
+  finale né flussi (TWR null, MWR 0,00 % con `mwr_null_reason` null).
+
 ### D-DOCTOR-TER
 - **Titolo:** Il TER medio è lo stesso nel Doctor, nella salute e nell'analisi dei costi
 - **Sev.** P1 · **Area** doctor · **Finding** V365-007 (decisione 6) · **Scope** portfolio
@@ -820,7 +854,7 @@ n = numero di ordini (o di righe della distribuzione).
 - **Prova:** tutti i portafogli, compreso 9106, aggregato.
 - **Difetto:** snapshot del Doctor che legge `portfolios.cash_balance` (saldo di apertura da TASK-49)
   come liquidità: prima di TASK-84 `cash_value` 0 su tutto il seed (9101: 0 contro 9.256,50;
-  aggregato: 0 contro 33.190,47) e Scenario Lab con `use_cash_balance` infattibile.
+  aggregato: 0 contro 33.190,47, 33.211,67 col seed di TASK-93) e Scenario Lab con `use_cash_balance` infattibile.
 
 ### D-HEALTH-SCORE-BREAKDOWN
 - **Titolo:** Il punteggio di salute è la somma dei punteggi di categoria e delle penalità dichiarate
@@ -929,6 +963,27 @@ n = numero di ordini (o di righe della distribuzione).
 - **Prova:** tutti gli strumenti del seed.
 - **Difetto:** risoluzione per ticker base (`XAD1.DE` che risolve su un altro listing).
 
+### D-TX-CASH-RECONCILE
+- **Titolo:** La liquidità si ricostruisce dalle transazioni mostrate
+- **Sev.** P2 · **Area** performance · **Finding** S-2026-11-11-16 · **Scope** portfolio
+- **Tool:** `scoped("get_recent_transactions")`; `scoped("get_cash_balance")`.
+- **Condizione:** solo se le righe sono meno di 20 (elenco completo), tutte nella valuta base
+  (`currency == base_currency` del saldo) e `implicit_contributions_total == 0`. Con, per riga,
+  lordo = `total`, f = `fees`, t = `taxes` (campo assente → 0, quindi la regola fallisce se ci sono
+  imposte registrate e la riga non le mostra), come `cash_delta` del modello della liquidità
+  (TASK-49, methodology §8; le commissioni contano solo su acquisti e vendite):
+  `|total_cash − (cash_breakdown.opening_balance + Σ deposit + Σ interest + Σ (dividend − t)
+  + Σ (sell − f − t) − Σ withdrawal − Σ fee − Σ (buy + f + t))| ≤ T_sum_eur(n + 1)`, n = righe; altri
+  tipi contano 0. Al `fail` le evidenze elencano anche le righe senza `taxes`.
+- **Tolleranze:** `T_sum_eur(n + 1)`: n importi `total` e il saldo arrotondati a 2 decimali.
+- **Skip:** nessuna riga → `no_transactions`; 20 righe → `truncated_output`; una riga in valuta
+  diversa dalla base o apporti impliciti → `not_applicable`.
+- **Prova:** 9107 (vendita con 2,60 e dividendo con 5,20 di imposte, TASK-93), 9101, 9102, 9103, 9105
+  (senza imposte). 9104 → `not_applicable` (USD e GBP); 9106 → `no_transactions`.
+- **Difetto:** righe di `get_recent_transactions` senza `taxes` con imposte registrate (prima di
+  TASK-93): nell'esperimento del report del 2026-11-11 5.473,50 ricostruiti contro `total_cash`
+  5.460,10 (13,40 di imposte non mostrate).
+
 ## 6. Difetti noti (TASK-79)
 
 Regole che falliscono sul codice o sui dati attuali perché trovano un difetto reale. La regola resta
@@ -990,6 +1045,7 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
 | V-LOOSE-SYMBOL | D-HELD-SYMBOL-MATCH |
 | V-BOND-QUOTETYPE | A-CLASS-BOND-TYPE (solo stato salvato) |
 | C2-CASH-FX | D-CASH-CONSISTENCY |
+| S-2026-11-11-16 imposte non mostrate nelle transazioni (TASK-93) | D-TX-CASH-RECONCILE |
 | C3 `day_change` del riepilogo contro le posizioni | nessuna regola sull'importo: differenza attesa e documentata (prezzi non arrotondati, FX corrente e precedente); il denominatore di `day_change_pct` (tutte le posizioni, S-2026-11-11-03) è verificato da C-DAYCHANGE-DENOMINATOR |
 | C4-FX-FALLBACK | D-FX-FLAGS-DECLARED |
 | C4-CCY `currency` di `search_asset_info` | D-LSE-QUOTE-CURRENCY |
@@ -1025,7 +1081,8 @@ CI (`--strict-known` lo rende di nuovo bloccante) ma resta nel report («Difetti
   chiama la stessa funzione (`ctx.performance_audit`, architettura §5.4).
 - **`get_recent_transactions`** restituisce solo 20 righe e la tabella `transactions` non ha l'id del
   lotto d'import: duplicati e prezzi d'import richiedono `ctx.transactions` e il criterio «righe
-  identiche».
+  identiche». Da TASK-93 ogni riga espone anche `taxes` (con `total` lordo e `fees`), così
+  D-TX-CASH-RECONCILE ricostruisce la liquidità quando l'elenco è completo.
 - **`calculate_pac_contribution`**: con nessuno strumento sottopesato non distribuisce nulla e lo
   dichiara (`total_allocated` 0, `unallocated_amount`, `note`; TASK-83, prima `total_allocated`
   valeva l'importo).

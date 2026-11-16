@@ -393,6 +393,7 @@ CATALOG = {
     "C-MC-PERCENTILES": ("P1", "montecarlo", ["V365-006"], ["portfolio", "aggregate"]),
     "C-MC-MEDIAN-DRIFT": ("P2", "montecarlo", ["V365-006"], ["portfolio", "aggregate"]),
     "C-DIV-CURRENCY": ("P2", "income", ["V-DIV-MIXED-CCY", "V365-009"], ["portfolio"]),
+    "C-DIV-PROJECTION-MATCH": ("P2", "income", ["S-2026-11-11-14"], ["portfolio"]),
     "C-DAYMOVERS-NONZERO-INCLUDED": ("P1", "daily", ["V365-005", "V-DAYMOVERS-ROOT"], ["portfolio"]),
     "C-DAYMOVERS-CONSISTENCY": ("P1", "daily", ["V-DAYMOVERS-ROOT", "V365-005"], ["portfolio"]),
     "C-DAYCHANGE-DENOMINATOR": ("P2", "daily", ["S-2026-11-11-03"], ["portfolio"]),
@@ -748,6 +749,126 @@ def test_dividend_currency_fails_on_count(repo):
 def test_dividend_currency_skips_without_dividends(repo):
     assert_status(run_rule("C-DIV-CURRENCY", portfolio_ctx(repo, 9102), scope_of(9102)), "skip", "no_reference_data")
     assert_status(run_rule("C-DIV-CURRENCY", portfolio_ctx(repo, 9106), scope_of(9106)), "skip", "no_reference_data")
+
+
+# ---------------------------------------------------------------------------
+# C-DIV-PROJECTION-MATCH (S-2026-11-11-14, TASK-91)
+# ---------------------------------------------------------------------------
+
+# Valori del seed dell'Auditor (scripts/auditor/README.md): i pesi non si arrotondano esattamente
+# (42,5017 / 33,6482 / 23,8489 su 9102; 36,8268 / 34,0611 / 29,1121 su 9104).
+SEED_INCOME_PORTFOLIOS: dict[int, list[dict[str, Any]]] = {
+    9102: [holding("AUDGOV.MI", 18000.0), holding("AUDHY.DE", 14250.0), holding("AUDBTP", 10100.0)],
+    9104: [holding("AUDUS.L", 10120.0), holding("AUDUK.L", 9360.0), holding("AUDEQ.MI", 8000.0)],
+    9106: [],
+}
+
+
+class RoundedWeightRepo(StubRepo):
+    """Come ``_positions.py``: ``Position.weight`` arrotondato a 2 decimali."""
+
+    def __init__(self) -> None:
+        super().__init__(SEED_INCOME_PORTFOLIOS, {pid: [] for pid in SEED_INCOME_PORTFOLIOS})
+
+    def _position(self, h: dict, total: float) -> SimpleNamespace:
+        position = super()._position(h, total)
+        position.weight = round(position.weight, 2)
+        return position
+
+
+def _dividend_summary_before_task91(stub: StubRepo, pid: int) -> dict:
+    """Output di get_dividend_summary prima di TASK-91: rendimento medio dai pesi arrotondati,
+    reddito = valore × rendimento medio."""
+    out = tool("get_dividend_summary", stub, pid)
+    weighted = 0.0
+    for p in stub.get_positions(pid, USER):
+        dy = ASSETS[p.asset_id].get("dividend_yield")
+        if dy:
+            weighted += dy * (p.weight / 100.0)
+    annual = stub.get_summary(pid, USER).market_value * weighted / 100.0
+    out.update(portfolio_weighted_yield_pct=round(weighted, 2), projected_annual_income_eur=round(annual, 2),
+               projected_monthly_income_eur=round(annual / 12, 2))
+    return out
+
+
+def div_projection_ctx(stub: StubRepo, pid: int, ds: dict | None = None) -> FakeAuditContext:
+    args = {"portfolio_id": pid}
+    return FakeAuditContext([
+        ("get_positions", args, tool("get_positions", stub, pid)),
+        ("get_dividend_summary", args, ds if ds is not None else tool("get_dividend_summary", stub, pid)),
+        ("get_income_projection", args, tool("get_income_projection", stub, pid)),
+    ])
+
+
+@pytest.mark.parametrize(("pid", "annual", "monthly"), [(9102, 1324.10, 110.34), (9104, 280.80, 23.40)])
+def test_dividend_summary_income_is_the_sum_of_positions_with_unrounded_weights(pid, annual, monthly):
+    stub = RoundedWeightRepo()
+    assert any(p.weight != p.market_value / stub.get_summary(pid, USER).market_value * 100
+               for p in stub.get_positions(pid, USER))
+    ds = tool("get_dividend_summary", stub, pid)
+    inc = tool("get_income_projection", stub, pid)
+    assert ds["projected_annual_income_eur"] == annual == inc["current_annual_dividends_gross_eur"]
+    assert ds["projected_annual_income_eur"] == round(sum(r["annual_income_eur"] for r in ds["top_yielding_positions"]), 2)
+    assert ds["projected_monthly_income_eur"] == monthly
+    total_mv = stub.get_summary(pid, USER).market_value
+    assert ds["portfolio_weighted_yield_pct"] == round(annual / total_mv * 100, 2)
+
+
+@pytest.mark.parametrize("pid", [9101, 9102, 9104])
+def test_div_projection_match_passes(repo, pid):
+    assert_status(run_rule("C-DIV-PROJECTION-MATCH", portfolio_ctx(repo, pid), scope_of(pid)), "pass")
+
+
+@pytest.mark.parametrize("pid", [9102, 9104])
+def test_div_projection_match_passes_on_seed_values(pid):
+    stub = RoundedWeightRepo()
+    assert_status(run_rule("C-DIV-PROJECTION-MATCH", div_projection_ctx(stub, pid), scope_of(pid)), "pass")
+
+
+@pytest.mark.parametrize(("pid", "observed", "expected"), [(9102, 1324.12, 1324.1), (9104, 280.79, 280.8)])
+def test_div_projection_match_fails_on_income_from_rounded_weights(pid, observed, expected):
+    # S-2026-11-11-14: reddito totale ricavato dai pesi arrotondati.
+    stub = RoundedWeightRepo()
+    ds = _dividend_summary_before_task91(stub, pid)
+    assert ds["projected_annual_income_eur"] == observed
+    outcome = run_rule("C-DIV-PROJECTION-MATCH", div_projection_ctx(stub, pid, ds), scope_of(pid))
+    assert_status(outcome, "fail", "invariant_violated")
+    ev = next(e for e in outcome["evidence"] if e["path"] == "projected_annual_income_eur")
+    assert (ev["observed"], ev["expected"]) == (observed, expected)
+
+
+def test_div_projection_match_fails_on_rows_and_monthly(repo):
+    ds = tool("get_dividend_summary", repo, 9102)
+    ds["top_yielding_positions"] = ds["top_yielding_positions"][:2]  # una riga persa, elenco non troncato
+    ds["projected_monthly_income_eur"] = round(ds["projected_annual_income_eur"] / 12 + 0.05, 2)
+    outcome = run_rule("C-DIV-PROJECTION-MATCH", portfolio_ctx(repo, 9102, {"get_dividend_summary": ds}),
+                       scope_of(9102))
+    assert_status(outcome, "fail")
+    paths = {e["path"] for e in outcome["evidence"]}
+    assert {"top_yielding_positions[*].annual_income_eur", "projected_monthly_income_eur"} <= paths
+
+
+def test_div_projection_match_skips_row_sum_when_truncated(repo):
+    ds = tool("get_dividend_summary", repo, 9102)
+    ds["top_yielding_positions"] = [dict(symbol=f"S{i}", dividend_yield_pct=1.0, annual_income_eur=1.0)
+                                    for i in range(10)]
+    assert_status(run_rule("C-DIV-PROJECTION-MATCH", portfolio_ctx(repo, 9102, {"get_dividend_summary": ds}),
+                           scope_of(9102)), "pass")
+
+
+def test_div_projection_match_fails_without_rows_but_with_income(repo):
+    ds = tool("get_dividend_summary", repo, 9102)
+    ds["top_yielding_positions"], ds["projected_annual_income_eur"], ds["projected_monthly_income_eur"] = [], 0.0, 0.0
+    assert_status(run_rule("C-DIV-PROJECTION-MATCH", portfolio_ctx(repo, 9102, {"get_dividend_summary": ds}),
+                           scope_of(9102)), "fail")
+
+
+def test_div_projection_match_skips(repo):
+    assert_status(run_rule("C-DIV-PROJECTION-MATCH", portfolio_ctx(repo, 9106), scope_of(9106)),
+                  "skip", "empty_portfolio")
+    # 9103: nessuna posizione con dividend_yield.
+    assert_status(run_rule("C-DIV-PROJECTION-MATCH", portfolio_ctx(repo, 9103), scope_of(9103)),
+                  "skip", "no_reference_data")
 
 
 # ---------------------------------------------------------------------------

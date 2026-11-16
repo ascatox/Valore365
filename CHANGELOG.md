@@ -83,6 +83,23 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Fixed
 
+- Transazioni recenti (Copilot e MCP `get_recent_transactions`, `get_aggregate_recent_transactions`):
+  ogni riga espone anche le imposte (`taxes`) accanto all'importo lordo e alle commissioni, così la
+  liquidità di `get_cash_balance` si ricostruisce dalle righe mostrate (prima mancavano, per
+  esempio, 13,40 € di imposte su una vendita e un dividendo). Il seed dell'Auditor ha una vendita e
+  un dividendo con imposte in 9107 (liquidità 4.068,20 €); nuova regola dell'Auditor
+  D-TX-CASH-RECONCILE (TASK-93).
+- Riepilogo dei dividendi (Copilot e MCP `get_dividend_summary`): il reddito annuo previsto è la
+  somma dei redditi delle posizioni (valore × rendimento), lo stesso numero del reddito lordo di
+  `get_income_projection`, invece di essere ricavato dai pesi arrotondati a 2 decimali (seed
+  dell'Auditor: 9102 1.324,10 € invece di 1.324,12 €, 9104 280,80 € invece di 280,79 €); il mensile
+  ne è un dodicesimo e il rendimento medio ne deriva. Definizione in `methodology.md` §6; nuova
+  regola dell'Auditor C-DIV-PROJECTION-MATCH (TASK-91).
+- Performance di un portafoglio (o di una vista aggregata) senza capitale né movimenti: l'MWR è
+  `null` come il TWR invece di uno 0,00 % «convergente»; `get_performance` lo spiega con
+  `mwr_null_reason` `non_calcolabile` e la dashboard mostra «N/D» invece di 0,00 %. Stesso
+  comportamento negli endpoint REST della performance e nell'export di audit. Nuova regola
+  dell'Auditor D-PERF-EMPTY-NULL, provata sul portafoglio vuoto 9106 (TASK-92).
 - Tabella posizioni e what-if: lo scostamento dal target è quello del Copilot e del ribilanciamento
   (strumenti con target più liquidità), letto dal nuovo `GET /portfolios/{id}/target-drift` invece
   di essere ricalcolato sul peso fra le posizioni (9101: AUDTECH.DE −0,85 pt, prima «in linea»);

@@ -25,7 +25,10 @@ R_TER_MIN = 0.01
 R_TER_MAX = 3.00
 WEIGHTED_TER_MAX = 3.00
 INCOME_BUCKETS_TOL = 0.02
+# Stesso importo arrotondato una volta a 2 decimali in due tool: coincide al centesimo (C-DIV-PROJECTION-MATCH).
+T_SAME_EUR = 0.005
 POSITIONS_ROW_LIMIT = 30
+DIVIDEND_TOP_LIMIT = 10  # top_yielding_positions: al più 10 righe
 MAX_EVIDENCE = 50
 
 MC_YEARS = list(range(1, 11))
@@ -605,6 +608,66 @@ def check_dividend_currency(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def check_div_projection_match(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    """C-DIV-PROJECTION-MATCH: reddito annuo previsto uguale nei due tool, alle righe e al mensile."""
+    rows, ptool, pargs = _positions(ctx, scope)
+    if not rows:
+        return _empty_skip(ptool, pargs)
+    tool, args = _tool_args("get_dividend_summary", scope)
+    ds = ctx.scoped("get_dividend_summary", scope)
+    itool, iargs = _tool_args("get_income_projection", scope)
+    inc = ctx.scoped("get_income_projection", scope)
+
+    annual_raw = ds.get("projected_annual_income_eur")
+    annual = _num(annual_raw)
+    gross_raw = inc.get("current_annual_dividends_gross_eur")
+    gross = _num(gross_raw)
+    lines_raw = ds.get("top_yielding_positions")
+    lines = lines_raw if isinstance(lines_raw, list) else []
+    if not lines and annual == 0 and gross == 0:
+        return _skip(
+            "no_reference_data", "Nessuna posizione ha un rendimento da dividendi noto.",
+            [_ev(tool, args, "top_yielding_positions", [], None, None, "nessuna riga con rendimento")],
+        )
+
+    violations: list[dict] = []
+    if annual is None or gross is None:
+        violations.append(_ev(tool, args, "projected_annual_income_eur", annual_raw, gross_raw, None,
+                              "importo non numerico (atteso: current_annual_dividends_gross_eur)"))
+    elif abs(annual - gross) > T_SAME_EUR + EPS:
+        violations.append(_ev(
+            tool, args, "projected_annual_income_eur", annual_raw, gross_raw, T_SAME_EUR,
+            "stesso reddito lordo annuo di get_income_projection (current_annual_dividends_gross_eur)",
+        ))
+        violations.append(_ev(itool, iargs, "current_annual_dividends_gross_eur", gross_raw, None, None,
+                              "valore di riferimento"))
+    if annual is not None and len(lines) < DIVIDEND_TOP_LIMIT:
+        amounts = [_num(r.get("annual_income_eur")) if isinstance(r, dict) else None for r in lines]
+        if any(a is None for a in amounts):
+            violations.append(_ev(tool, args, "top_yielding_positions[*].annual_income_eur",
+                                  [r.get("annual_income_eur") if isinstance(r, dict) else r for r in lines],
+                                  None, None, "importo di riga non numerico"))
+        else:
+            row_sum = math.fsum(amounts)  # type: ignore[arg-type]
+            tol = t_sum_eur(len(amounts))
+            if abs(row_sum - annual) > tol + EPS:
+                violations.append(_ev(
+                    tool, args, "top_yielding_positions[*].annual_income_eur", round(row_sum, 6), annual_raw, tol,
+                    f"somma delle {len(amounts)} righe (elenco completo) contro il totale",
+                ))
+    monthly_raw = ds.get("projected_monthly_income_eur")
+    monthly = _num(monthly_raw)
+    if annual is not None:
+        if monthly is None or abs(monthly - annual / 12.0) > T_EUR + EPS:
+            violations.append(_ev(tool, args, "projected_monthly_income_eur", monthly_raw,
+                                  round(annual / 12.0, 6), T_EUR, "un dodicesimo del reddito annuo"))
+    return _verdict(
+        violations, "Il reddito annuo previsto non è lo stesso nel riepilogo dei dividendi e nella proiezione",
+        [_ev(tool, args, "projected_annual_income_eur", annual_raw, gross_raw, T_SAME_EUR,
+             f"righe: {len(lines)}")],
+    )
+
+
 # ---------------------------------------------------------------------------
 # Variazioni giornaliere
 # ---------------------------------------------------------------------------
@@ -914,6 +977,18 @@ RULES: list[dict[str, Any]] = [
         "scopes": ["portfolio"],
         "tools": ["get_dividend_summary", "ctx.transactions"],
         "check": check_dividend_currency,
+    },
+    {
+        "id": "C-DIV-PROJECTION-MATCH",
+        "group": "C",
+        "title": "Il reddito annuo previsto è lo stesso nel riepilogo dei dividendi e nella proiezione del reddito",
+        "area": "income",
+        "severity": "P2",
+        "findings": ["S-2026-11-11-14"],
+        "scopes": ["portfolio"],
+        # get_positions: solo per riconoscere il portafoglio vuoto (rules.md §0.3).
+        "tools": ["get_dividend_summary", "get_income_projection", "get_positions"],
+        "check": check_div_projection_match,
     },
     {
         "id": "C-DAYMOVERS-NONZERO-INCLUDED",

@@ -286,3 +286,17 @@ def test_mcp_aggregate_audit_tool_is_registered_and_scoped():
     with pytest.raises(mcp_tools.McpToolError):
         mcp_tools.run_tool_sync(deps, "get_aggregate_performance_audit",
                                 {"portfolio_ids": [1, 2], "period": "1y"}, USER)
+
+
+def test_empty_portfolio_export_and_offline_auditor_agree_on_null_returns():
+    # TASK-92: no capital and no flows. The service's MWR is null like its TWR,
+    # and the independent recomputation agrees (it found no cashflow to solve):
+    # before the fix the service said 0.0 and the offline audit flagged it.
+    repo = _FakeRepo(values={3: {}}, cashflows={}, inception=START)
+    _, export = _export(repo, ids=3)
+
+    assert export["service_results"]["twr"]["twr_pct"] is None
+    assert export["service_results"]["mwr"]["mwr_pct"] is None
+    result = auditor.audit(json.loads(json.dumps(export)))
+    assert [(r["service"], r["auditor"]) for r in result["rows"]] == [(None, None), (None, None)]
+    assert result["ok"] is True

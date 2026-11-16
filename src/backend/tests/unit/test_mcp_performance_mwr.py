@@ -223,3 +223,23 @@ def test_aggregate_handler_mwr_matches_the_service(monkeypatch):
         assert out["calculation_windows"][p]["mwr_start_date"] == ps.mwr.start_date
     assert out["mwr_1y"] != out["twr_1y"]  # the flows make the two measures differ
     assert out["mwr_annualized_pct"]["1y"] == pytest.approx(out["mwr_1y"], abs=0.5)
+
+
+def test_empty_portfolios_report_null_mwr_with_a_reason_single_and_aggregate(monkeypatch):
+    # TASK-92: no capital and no flows in any window. The TWR is null, and the
+    # MWR must be null too with mwr_null_reason 'non_calcolabile', not 0.0
+    # "converged", both for one portfolio and for an aggregate of empty ones.
+    monkeypatch.setattr(performance_module, "date", _FixedDate)
+    repo = _FakeRepo(values={1: {}, 2: {}}, cashflows={})
+    service = PerformanceService(repo)
+    deps = SimpleNamespace(repo=repo, performance_service=service, finance_client=None)
+
+    single = copilot_tools._get_performance({}, repo, service, 1, "u")
+    aggregate = AGGREGATE_TOOLS["get_aggregate_performance"].handler(deps, [1, 2], "u")
+
+    for out in (single, aggregate):
+        for p in PERIODS:
+            assert out[f"twr_{p}"] is None
+            assert out[f"mwr_{p}"] is None
+            assert out["mwr_annualized_pct"][p] is None
+        assert out["mwr_null_reason"] == dict.fromkeys(PERIODS, "non_calcolabile")

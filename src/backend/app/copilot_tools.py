@@ -126,7 +126,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Ottieni le ultime transazioni del portafoglio (massimo 20). "
             "Mostra id della transazione, data, tipo (buy/sell/deposit/withdrawal), simbolo, "
-            "quantita', prezzo e importo totale. Righe identiche con id diversi "
+            "quantita', prezzo, importo lordo (total = quantita' x prezzo), commissioni (fees) "
+            "e imposte (taxes), nella valuta della transazione. Effetto sulla liquidita': "
+            "acquisto -(total + fees + taxes), vendita +(total - fees - taxes), dividendo "
+            "+(total - taxes). Righe identiche con id diversi "
             "sono transazioni distinte (es. possibili duplicati da import)."
         ),
         "parameters": {
@@ -820,6 +823,9 @@ def _get_recent_transactions(
                 "total": round(float(t.quantity) * float(t.price), 2),
                 "currency": t.trade_currency,
                 "fees": float(t.fees) if t.fees else 0,
+                # Same input as the cash model (TASK-49/TASK-93): without it the
+                # cash balance does not rebuild from the rows shown.
+                "taxes": float(t.taxes) if getattr(t, "taxes", None) else 0,
             }
             for t in txns
         ],
@@ -1474,6 +1480,16 @@ def _asset_info_classification(repo: PortfolioRepository, asset_id: int, info: d
 # T14-T18: Advanced analytical tool handlers
 # ---------------------------------------------------------------------------
 
+def _annual_dividend_income(market_value: Any, dividend_yield: Any) -> float:
+    """Gross annual income of one position: market value × yield (%) / 100.
+
+    Single definition shared by ``get_dividend_summary`` and
+    ``get_income_projection`` (TASK-91); totals are ``math.fsum`` of these
+    unrounded values, so both tools agree to the cent.
+    """
+    return float(market_value) * float(dividend_yield) / 100.0
+
+
 def _get_dividend_summary(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
@@ -1516,15 +1532,20 @@ def _get_dividend_summary(
     summary = repo.get_summary(portfolio_id, user_id)
     total_mv = summary.market_value
 
-    weighted_yield = 0.0
+    # Projected annual income = Σ market_value × dividend_yield / 100 over the
+    # positions with a yield: the same quantity (and the same helper) as
+    # current_annual_dividends_gross_eur of get_income_projection (TASK-91).
+    # The weighted yield is derived from it, not from Position.weight, which is
+    # rounded to 2 decimals (the old total drifted by cents: 1,324.12 vs 1,324.10).
+    position_incomes: list[float] = []
     position_yields: list[dict] = []
     for p in positions:
         try:
             meta = repo.get_asset_metadata(p.asset_id)
             if meta and meta.dividend_yield:
                 dy = float(meta.dividend_yield)
-                weighted_yield += dy * (p.weight / 100.0)
-                annual_income = p.market_value * dy / 100.0
+                annual_income = _annual_dividend_income(p.market_value, dy)
+                position_incomes.append(annual_income)
                 position_yields.append({
                     "symbol": p.symbol,
                     "dividend_yield_pct": round(dy, 2),
@@ -1536,7 +1557,8 @@ def _get_dividend_summary(
     # Sort by income descending, top 10
     position_yields.sort(key=lambda x: x["annual_income_eur"], reverse=True)
 
-    projected_annual_income = total_mv * weighted_yield / 100.0
+    projected_annual_income = math.fsum(position_incomes)
+    weighted_yield = projected_annual_income / total_mv * 100.0 if total_mv else 0.0
 
     result = {
         "total_dividends_received": round(total_dividends, 2) if total_dividends is not None else None,
@@ -1873,6 +1895,7 @@ def _get_income_projection(
         inputs_by_asset = {}
 
     bucket_dividends = {"equity": 0.0, "fixed_income": 0.0, "other_or_unknown": 0.0}
+    position_incomes: list[float] = []
     unknown_symbols: list[str] = []
     missing_yield_symbols: list[str] = []
     for p in positions:
@@ -1897,14 +1920,17 @@ def _get_income_projection(
             if asset_class != "cash":
                 missing_yield_symbols.append(p.symbol)
             continue
-        annual_div = float(p.market_value) * float(dividend_yield) / 100.0
+        annual_div = _annual_dividend_income(p.market_value, dividend_yield)
+        position_incomes.append(annual_div)
         bucket_dividends[bucket_of_class.get(asset_class, "other_or_unknown")] += annual_div
 
     equity_annual_dividends = bucket_dividends["equity"]
     fixed_income_annual_dividends = bucket_dividends["fixed_income"]
     other_annual_dividends = bucket_dividends["other_or_unknown"]
-    # Invariant: the buckets add up to the projected gross income.
-    total_annual_dividends = equity_annual_dividends + fixed_income_annual_dividends + other_annual_dividends
+    # Invariant: the buckets add up to the projected gross income. The total is
+    # the fsum of the per-position incomes, exactly as projected_annual_income_eur
+    # of get_dividend_summary (TASK-91).
+    total_annual_dividends = math.fsum(position_incomes)
 
     projections = []
     for years in (1, 3, 5):

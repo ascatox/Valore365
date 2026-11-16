@@ -254,6 +254,7 @@ CATALOG = {
     "D-AGG-PERFORMANCE-VALUE": ("P2", "aggregate", ["V365-011"], ["aggregate"]),
     "D-PERF-RECOMPUTE": ("P1", "performance", ["C1-TWR-MIXED"], ["portfolio", "aggregate"]),
     "D-PERF-TOOL-MATCH": ("P2", "performance", ["C1-TWR-MIXED"], ["portfolio", "aggregate"]),
+    "D-PERF-EMPTY-NULL": ("P2", "performance", ["S-2026-11-11-15"], ["portfolio", "aggregate"]),
     "D-DOCTOR-TER": ("P1", "doctor", ["V365-007"], ["portfolio"]),
     "D-DOCTOR-CLASS-WEIGHTS": ("P1", "doctor", ["V365-002"], ["portfolio"]),
     "D-DOCTOR-CONCENTRATION": ("P2", "doctor", ["V365-010"], ["portfolio"]),
@@ -266,6 +267,7 @@ CATALOG = {
     "D-LSE-QUOTE-CURRENCY": ("P1", "data", ["V-QUOTE-CCY-L", "V365-008"], ["instrument"]),
     "D-FX-FLAGS-DECLARED": ("P2", "values", ["C4-FX-FALLBACK"], ["portfolio", "aggregate"]),
     "D-HELD-SYMBOL-MATCH": ("P2", "data", ["V-LOOSE-SYMBOL"], ["instrument"]),
+    "D-TX-CASH-RECONCILE": ("P2", "performance", ["S-2026-11-11-16"], ["portfolio"]),
 }
 
 
@@ -778,6 +780,114 @@ def test_perf_tool_match_fails_when_only_one_side_is_null():
 def test_perf_tool_match_skips_without_transactions():
     ctx = FakeAuditContext(transactions={P6: []})
     assert_status(check(D.check_perf_tool_match, ctx, SCOPE_P6), "skip", "no_transactions")
+
+
+# --------------------------------------------------------------------------
+# D-PERF-EMPTY-NULL (TASK-92)
+# --------------------------------------------------------------------------
+
+
+class _EmptyPerfRepo:
+    """Portafogli senza transazioni: valore 0 e nessun flusso (forma letta da PerformanceService)."""
+
+    def resolve_portfolio_scope(self, portfolio_ids, user_id):
+        from app.repository import PortfolioScope
+
+        return PortfolioScope(portfolio_ids=tuple(dict.fromkeys(portfolio_ids)), base_currency="EUR")
+
+    def get_portfolio_inception_date(self, portfolio_id, user_id):
+        from datetime import date
+
+        return date.today()
+
+    def get_portfolio_inception_date_multi(self, portfolio_ids, user_id):
+        return self.get_portfolio_inception_date(None, user_id)
+
+    def get_external_cashflows(self, portfolio_id, user_id, start_date=None, end_date=None, include_trades=False):
+        return []
+
+    def get_external_cashflows_by_portfolio(self, portfolio_ids, user_id, start_date=None, end_date=None,
+                                            include_trades=False):
+        return {pid: [] for pid in portfolio_ids}
+
+    def get_portfolio_values_in_range(self, portfolio_id, user_id, target_dates):
+        return {d: 0.0 for d in target_dates}
+
+    def get_portfolio_values_in_range_multi(self, portfolio_ids, user_id, target_dates):
+        return {d: 0.0 for d in target_dates}
+
+
+def empty_performance_out(ids: Sequence[int]) -> dict:
+    """Output vero di get_performance / get_aggregate_performance su portafogli vuoti."""
+    from app.copilot_tools import _get_performance
+    from app.mcp_server.aggregate_tools import AGGREGATE_TOOLS
+    from app.services.performance_service import PerformanceService
+
+    repo = _EmptyPerfRepo()
+    service = PerformanceService(repo)
+    if len(ids) == 1:
+        return _get_performance({}, repo, service, ids[0], "u")
+    deps = SimpleNamespace(repo=repo, performance_service=service, finance_client=None)
+    return {"portfolio_ids": list(ids), "base_currency": "EUR", "aggregate_note": AGGREGATE_NOTE,
+            **AGGREGATE_TOOLS["get_aggregate_performance"].handler(deps, list(ids), "u")}
+
+
+def _empty_null_ctx(perf: dict, scope_ids=(P6,), transactions=None) -> FakeAuditContext:
+    ids = list(scope_ids)
+    tool = ("get_performance", {"portfolio_id": ids[0]}) if len(ids) == 1 else \
+        ("get_aggregate_performance", {"portfolio_ids": ids})
+    return FakeAuditContext([(tool[0], tool[1], perf)],
+                            transactions=transactions if transactions is not None else {i: [] for i in ids})
+
+
+def test_perf_empty_null_pass_on_empty_portfolio_and_aggregate():
+    out = check(D.check_perf_empty_null, _empty_null_ctx(empty_performance_out([P6])), SCOPE_P6)
+    assert_status(out, "pass")
+    assert {"twr_1m", "mwr_1y", "mwr_null_reason.ytd"} <= {e["path"] for e in out["evidence"]}
+    scope = {"kind": "aggregate", "portfolio_ids": [P1, P6]}
+    agg = empty_performance_out([P1, P6])
+    assert_status(check(D.check_perf_empty_null, _empty_null_ctx(agg, (P1, P6)), scope), "pass")
+
+
+def test_perf_empty_null_fails_on_zero_converged_mwr_reintroduced(monkeypatch):
+    """Difetto di S-2026-11-11-15 reintrodotto: calculate_mwr restituisce 0,0 «convergente» senza
+    valore né flussi, mentre il TWR è null."""
+    from app.models import MWRResult
+    from app.services.performance_service import PerformanceService
+
+    real = PerformanceService.calculate_mwr
+
+    def _old_behaviour(self, *args, **kwargs):
+        result = real(self, *args, **kwargs)
+        return MWRResult(**{**result.model_dump(), "mwr_pct": 0.0, "converged": True})
+
+    monkeypatch.setattr(PerformanceService, "calculate_mwr", _old_behaviour)
+    perf = empty_performance_out([P6])
+    assert perf["mwr_1y"] == 0.0 and perf["twr_1y"] is None and perf["mwr_null_reason"]["1y"] is None
+    out = check(D.check_perf_empty_null, _empty_null_ctx(perf), SCOPE_P6)
+    assert_status(out, "fail", "invariant_violated")
+    assert {e["path"] for e in out["evidence"]} == {"mwr_1m", "mwr_3m", "mwr_ytd", "mwr_1y"}
+    agg = empty_performance_out([P1, P6])
+    scope = {"kind": "aggregate", "portfolio_ids": [P1, P6]}
+    assert_status(check(D.check_perf_empty_null, _empty_null_ctx(agg, (P1, P6)), scope), "fail")
+
+
+def test_perf_empty_null_with_transactions_checks_null_returns_only():
+    tx = {P1: TX_P1}
+    # TWR null accanto a un MWR calcolato nella stessa finestra.
+    mixed = performance_out(None, 3.2)
+    assert_status(check(D.check_perf_empty_null, _empty_null_ctx(mixed, (P1,), tx), SCOPE_P1), "fail")
+    # MWR null senza motivo.
+    silent = performance_out(None, None)
+    assert_status(check(D.check_perf_empty_null, _empty_null_ctx(silent, (P1,), tx), SCOPE_P1), "fail")
+    declared = performance_out(None, None)
+    declared["mwr_null_reason"]["1y"] = "non_convergente"
+    assert_status(check(D.check_perf_empty_null, _empty_null_ctx(declared, (P1,), tx), SCOPE_P1), "pass")
+
+
+def test_perf_empty_null_skips_with_transactions_and_no_null_return():
+    ctx = _empty_null_ctx(performance_out(4.1, 3.2), (P1,), {P1: TX_P1})
+    assert_status(check(D.check_perf_empty_null, ctx, SCOPE_P1), "skip", "not_applicable")
 
 
 # --------------------------------------------------------------------------
@@ -1617,3 +1727,86 @@ def test_offline_returns_matches_script_module():
     assert json.dumps(script.audit(GOLDEN_EXPORT), default=str) == json.dumps(offline_returns.audit(GOLDEN_EXPORT),
                                                                               default=str)
     assert script.DEFAULT_TOLERANCE_PP == offline_returns.DEFAULT_TOLERANCE_PP == D.T_RET
+
+
+# --------------------------------------------------------------------------
+# D-TX-CASH-RECONCILE (TASK-93, esperimento del report 2026-11-11 su 9106)
+# --------------------------------------------------------------------------
+
+# (side, quantity, price, fees, taxes) dalla più recente, come list_transactions.
+TX_93 = [
+    ("sell", 10, 95.0, 1.5, 3.0), ("withdrawal", 1, 1000.0, 0, 0), ("dividend", 1, 40.0, 0, 10.4),
+    ("interest", 1, 12.0, 0, 0), ("fee", 1, 25.0, 0, 0), ("buy", 50, 90.0, 2.0, 0), ("deposit", 1, 10000.0, 0, 0),
+]
+CASH_93 = {"opening_balance": 0.0, "deposits": 10000.0, "withdrawals": 1000.0, "dividends": 29.6, "interest": 12.0,
+           "fees": 25.0, "buys": 4502.0, "sells": 945.5, "implicit_contributions": 0.0}
+
+
+def _tx_items(spec=TX_93, currency: str = "EUR") -> list:
+    from datetime import datetime, timezone
+
+    from app.models import TransactionListItem
+
+    return [
+        TransactionListItem(
+            id=100 + i, portfolio_id=P6, asset_id=None if side in D.CASH_SIDES - {"dividend"} else 9101, side=side,
+            trade_at=datetime(2026, 10, 30 - i, 12, tzinfo=timezone.utc), quantity=q, price=p, fees=f, taxes=t,
+            trade_currency=currency, notes=None, symbol=None if side in D.CASH_SIDES - {"dividend"} else "AUDEQ.MI",
+            asset_name=None,
+        )
+        for i, (side, q, p, f, t) in enumerate(spec)
+    ]
+
+
+def recent_out(items: list) -> dict:
+    from app.copilot_tools import _get_recent_transactions
+
+    return _get_recent_transactions({}, SimpleNamespace(list_transactions=lambda pid, uid: items), None, P6, "u")
+
+
+def _reconcile_ctx(recent: dict, cash: dict) -> FakeAuditContext:
+    return FakeAuditContext([
+        ("get_recent_transactions", {"portfolio_id": P6}, recent),
+        ("get_cash_balance", {"portfolio_id": P6}, cash),
+    ])
+
+
+def test_tx_cash_reconcile_pass_with_taxes_on_sell_and_dividend():
+    recent = recent_out(_tx_items())
+    rows = {r["type"]: r for r in recent["transactions"]}
+    assert (rows["sell"]["taxes"], rows["dividend"]["taxes"], rows["buy"]["taxes"]) == (3.0, 10.4, 0)
+    out = check(D.check_tx_cash_reconcile, _reconcile_ctx(recent, cash_out(5460.10, CASH_93)), SCOPE_P6)
+    assert_status(out, "pass")
+    assert out["evidence"][0]["expected"] == pytest.approx(5460.10)
+
+
+def test_tx_cash_reconcile_fails_when_rows_omit_taxes_task93():
+    # Difetto reintrodotto: le righe senza il campo taxes (prima di TASK-93) danno 5.473,50 contro 5.460,10.
+    recent = recent_out(_tx_items())
+    for row in recent["transactions"]:
+        del row["taxes"]
+    out = check(D.check_tx_cash_reconcile, _reconcile_ctx(recent, cash_out(5460.10, CASH_93)), SCOPE_P6)
+    assert_status(out, "fail", "invariant_violated")
+    total = next(e for e in out["evidence"] if e["path"] == "total_cash")
+    assert (total["observed"], total["expected"]) == (5460.10, pytest.approx(5473.50))
+    assert sum(e["path"].endswith(".taxes") for e in out["evidence"]) == len(TX_93)
+
+
+def test_tx_cash_reconcile_fails_when_cash_ignores_taxes():
+    # Il difetto opposto: il saldo non scala le imposte che le righe mostrano.
+    wrong = {**CASH_93, "dividends": 40.0, "sells": 948.5}
+    out = check(D.check_tx_cash_reconcile, _reconcile_ctx(recent_out(_tx_items()), cash_out(5473.50, wrong)), SCOPE_P6)
+    assert_status(out, "fail")
+
+
+def test_tx_cash_reconcile_skips():
+    cash = cash_out(5460.10, CASH_93)
+    empty = check(D.check_tx_cash_reconcile, _reconcile_ctx({"transactions": []}, cash), SCOPE_P6)
+    assert_status(empty, "skip", "no_transactions")
+    full = recent_out(_tx_items([("deposit", 1, 10.0, 0, 0)] * 20))
+    assert_status(check(D.check_tx_cash_reconcile, _reconcile_ctx(full, cash), SCOPE_P6), "skip", "truncated_output")
+    usd = recent_out(_tx_items(currency="USD"))
+    assert_status(check(D.check_tx_cash_reconcile, _reconcile_ctx(usd, cash), SCOPE_P6), "skip", "not_applicable")
+    implicit = cash_out(5460.10, {**CASH_93, "implicit_contributions": 5.0}, implicit=5.0)
+    out = check(D.check_tx_cash_reconcile, _reconcile_ctx(recent_out(_tx_items()), implicit), SCOPE_P6)
+    assert_status(out, "skip", "not_applicable")

@@ -467,8 +467,12 @@ class PerformanceService:
         end_value = values[end]
 
         if start_value == 0 and not cashflows and end_value == 0:
+            # Niente capitale ne' movimenti nella finestra: non c'e' nulla da
+            # misurare, come per il TWR il rendimento e' null (non 0) e il tool
+            # lo spiega con mwr_null_reason 'non_calcolabile' (TASK-92).
+            # converged resta True: nessun solutore e' fallito.
             return MWRResult(
-                mwr_pct=0.0,
+                mwr_pct=None,
                 period_days=period_days,
                 start_date=start.isoformat(),
                 end_date=end.isoformat(),
@@ -507,7 +511,7 @@ class PerformanceService:
 
         if not flows:
             return MWRResult(
-                mwr_pct=0.0,
+                mwr_pct=None,
                 period_days=period_days,
                 start_date=start.isoformat(),
                 end_date=end.isoformat(),

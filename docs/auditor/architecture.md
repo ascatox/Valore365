@@ -551,6 +551,7 @@ argomenti oltre `portfolio_id` / `portfolio_ids` aggiunti da `scoped`):
 | `get_portfolio_summary` / `get_aggregate_summary` | — | B, D |
 | `get_positions` / `get_aggregate_positions` | — | A, B, C, D, motore |
 | `get_cash_balance` | — | D |
+| `get_recent_transactions` | — (D-TX-CASH-RECONCILE, TASK-93; solo scope `portfolio`) | D |
 | `get_target_drift` | — | B |
 | `get_performance` / `get_aggregate_performance` | — | D |
 | `get_portfolio_health` / `get_aggregate_health` | — | D |
@@ -614,7 +615,7 @@ finance client in altro modo, l'esito sarebbe `error`/`tool_error`, non un dato 
 | A — stress test e classificazione | 74 | `get_stress_test`, `get_aggregate_stress_test`, `get_positions`, `search_asset_info`, `get_cost_breakdown` | portfolio, aggregate, instrument, user |
 | B — ribilanciamento, PAC, simulazioni | 75 | `calculate_rebalance_orders`, `calculate_pac_contribution`, `calculate_what_if`, `get_positions`, `get_portfolio_summary`, `get_target_drift` | portfolio |
 | C — costi, reddito, dividendi, Monte Carlo, variazioni | 76 | `get_cost_breakdown`, `get_income_projection`, `get_dividend_summary`, `get_monte_carlo`, `get_aggregate_monte_carlo`, `get_day_movers`, `get_positions`, `search_asset_info`, `ctx.transactions` | portfolio, aggregate |
-| D — coerenza fra tool, aggregata, dati | 77 | `get_portfolio_summary`, `get_positions`, `get_cash_balance`, `get_performance`, `get_portfolio_health`, `get_stress_test`, `get_xray_summary`, `get_cost_breakdown`, `read_doctor_metrics`, `build_doctor_scenario` (TASK-84), `search_asset_info`, tutti i `get_aggregate_*` tranne `recent_transactions`, `ctx.transactions`, `ctx.performance_audit` | portfolio, aggregate, instrument |
+| D — coerenza fra tool, aggregata, dati | 77 | `get_portfolio_summary`, `get_positions`, `get_cash_balance`, `get_performance`, `get_portfolio_health`, `get_stress_test`, `get_xray_summary`, `get_cost_breakdown`, `read_doctor_metrics`, `build_doctor_scenario` (TASK-84), `search_asset_info`, `get_recent_transactions` (TASK-93), tutti i `get_aggregate_*` tranne `recent_transactions`, `ctx.transactions`, `ctx.performance_audit` | portfolio, aggregate, instrument |
 
 Il dettaglio per regola (tool, argomenti, percorsi dei campi) è in `rules.md`.
 
@@ -1234,7 +1235,8 @@ cambia, perché, e quali task ne sono toccati.
   `load_rules()`, invece di un numero fisso (più task aggiungevano regole in parallelo).
 - **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101…9107 e
   sull'aggregato col codice corretto; col `_load_scope` di prima 7 `fail` (`cash_value` 0 contro
-  9.256,50 / 8.144,00 / 2.492,00 / 3.705,97 / 5.545,00 / 4.047,00 e 33.190,47 sull'aggregato) e
+  9.256,50 / 8.144,00 / 2.492,00 / 3.705,97 / 5.545,00 / 4.047,00 e 33.190,47 sull'aggregato; col
+  seed di TASK-93 9107 e l'aggregato valgono 4.068,20 e 33.211,67) e
   `pass` su 9106 (0 = 0).
 
 ### TASK-86
@@ -1286,3 +1288,36 @@ cambia, perché, e quali task ne sono toccati.
   nessuna chiamata in più.
 - **Anteprima REST del ribilanciamento** lasciata sui pesi del solo investito: decisione e
   motivazione in `docs/audit-mcp-2026-11/methodology.md` §7.
+
+### TASK-91
+
+- **C-DIV-PROJECTION-MATCH** (gruppo C, P2, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) il confronto fra i due tool usa 0,005 € e non `T_eur`: è lo stesso importo
+  arrotondato una volta sola e deve coincidere al centesimo (con `T_eur` il difetto su 9104,
+  280,79 contro 280,80, passava); (2) `get_positions` fra i tool, solo per `empty_portfolio`
+  (§0.3 di `rules.md`); (3) senza righe ma con reddito in uno dei due tool la regola valuta (e
+  fallisce) invece di andare in `no_reference_data`. Nessun nuovo argomento canonico (§5.2).
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101, 9102, 9104 col
+  codice corretto; col codice di prima `fail` su 9102 (1.324,12 contro 1.324,10) e 9104 (280,79
+  contro 280,80), `pass` su 9101 (60,00, pesi esatti); `skip` `no_reference_data` su 9103, 9105,
+  9107 ed `empty_portfolio` su 9106.
+
+### TASK-93
+
+- **Righe delle transazioni:** `get_recent_transactions` e `get_aggregate_recent_transactions`
+  espongono `taxes` accanto a `total` (lordo) e `fees`, nella valuta della transazione; la
+  descrizione del tool dichiara l'effetto di ogni riga sulla liquidità (come `cash_delta` di
+  `app/repository/_cash_model.py`). L'export Markdown non elenca le transazioni; l'interfaccia mostra
+  già le imposte (dettaglio della riga e netto di `getTransactionNetTotal`): nessuna modifica.
+- **D-TX-CASH-RECONCILE** (gruppo D, P2, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) la tolleranza è `T_sum_eur(n + 1)` (anche il saldo è arrotondato); (2) il saldo
+  di apertura si legge da `cash_breakdown.opening_balance`; (3) tipi diversi da quelli del modello
+  contano 0, come in `cash_delta`. Nuovo argomento canonico in §5.2 (`get_recent_transactions`
+  senza argomenti extra, solo scope `portfolio`: la regola non legge la variante aggregata).
+- **Seed:** 9107 compra 60 `AUDEQ.MI` invece di 50 e ne vende 10 a 100,00 (−20, commissione 1,00,
+  imposte 2,60) e riceve un dividendo EUR di 20,00 con 5,20 di imposte (−30). Posizioni, pesi,
+  prezzo medio e TER invariati; liquidità di 9107 da 4.047,00 a 4.068,20, dell'aggregato da
+  33.190,47 a 33.211,67 (README, `rules.md`, `test_auditor_seed_postgres.py`).
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101, 9102, 9103, 9105 e
+  9107; `not_applicable` su 9104 (GBP e USD), `no_transactions` su 9106. Con le righe senza `taxes`
+  `fail` su 9107 (4.076,00 ricostruiti contro 4.068,20), `pass` altrove (nessuna imposta).

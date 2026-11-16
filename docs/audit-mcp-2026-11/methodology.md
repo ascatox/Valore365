@@ -125,6 +125,16 @@ non toglie punti.
 - `get_dividend_summary` (TASK-44): dividendi incassati = Σ quantity × price delle transazioni
   `dividend` **per valuta** (`dividends_by_currency`); con più valute `mixed_currencies: true` e
   totali `null` (nessun helper FX nel tool); yield per posizione letto per asset_id.
+- **Reddito annuo previsto: una sola definizione (TASK-91).** `projected_annual_income_eur` di
+  `get_dividend_summary` è lo stesso reddito lordo annuo di `current_annual_dividends_gross_eur`:
+  Σ valore_i × dividend_yield_i / 100 sui valori non arrotondati (stessa funzione
+  `_annual_dividend_income`, somma con `math.fsum`), arrotondato una sola volta a 2 decimali; le righe
+  `top_yielding_positions[].annual_income_eur` sono i singoli addendi (la loro somma differisce al
+  più di 0,005 € per riga). `projected_monthly_income_eur` = annuo / 12 dal valore esatto;
+  `portfolio_weighted_yield_pct` = reddito annuo / valore delle posizioni × 100, derivato dal
+  reddito e non dai pesi `Position.weight` arrotondati a 2 decimali (prima di TASK-91 il totale si
+  ricavava da quei pesi: 1.324,12 € invece di 1.324,10 € sul portafoglio 9102 del seed).
+  Verificato dalla regola dell'Auditor `C-DIV-PROJECTION-MATCH`.
 
 ## 7. Ribilanciamento (`calculate_rebalance_orders`, `services/rebalance.py`)
 
@@ -183,6 +193,12 @@ non toglie punti.
   positivo; senza valore iniziale `twr_pct` è `null` (non 0).
 - **MWR:** IRR (ACT/365) con valore iniziale come uscita, flussi invertiti (prospettiva investitore),
   valore finale come entrata; `mwr_pct` è il rendimento del periodo, l'annualizzato solo ≥ 1 anno.
+  Senza valore iniziale, valore finale e flussi nella finestra (portafoglio senza capitale né
+  movimenti, singolo o aggregato) `mwr_pct` è `null` (non 0), come il TWR (TASK-92): in
+  `get_performance` / `get_aggregate_performance` `mwr_<f>` è null con `mwr_null_reason[<f>]` =
+  `non_calcolabile` e `mwr_converged[<f>]` vero (nessun solutore è fallito); gli endpoint REST
+  (`/performance/summary`, `/performance/mwr`, singoli e aggregati) e l'export di audit riportano
+  `mwr_pct: null`. Verificato dalla regola dell'Auditor D-PERF-EMPTY-NULL.
 - **Modello di liquidità (TASK-46, opzione A approvata):** la stessa regola vale per la serie
   dei valori V(t) (`repository/_transactions.py`, fold) e per i flussi esterni di TWR e MWR
   (`performance_service._get_cashflows_with_fallback`), perimetro singolo e aggregato; il codice è

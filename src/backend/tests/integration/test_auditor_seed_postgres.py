@@ -95,7 +95,7 @@ DOCUMENTED = {
         "AUDBD.MI": (100, 50.0, 5000.00, 33.33),
     }),
     9106: (0.0, 0.0, {}),
-    9107: (16000.00, 4047.00, {
+    9107: (16000.00, 4068.20, {  # TASK-93: dividendo e vendita con imposte
         "AUDSTL.MI": (100, 60.0, 6000.00, 37.5),
         "AUDEQ.MI": (50, 100.0, 5000.00, 31.25),
         "AUDNPC.MI": (200, 25.0, 5000.00, 31.25),
@@ -534,6 +534,22 @@ def test_dividend_summary_by_currency(tools):
     assert (d9101["dividends_currency"], d9101["total_dividends_received"], d9101["dividend_transactions_count"]) == ("EUR", 62.5, 2)
 
 
+@pytest.mark.parametrize(("pid", "annual", "monthly", "rows"), [
+    (9101, 60.0, 5.0, {"AUDTECH.DE": 60.0}),
+    (9102, 1324.1, 110.34, {"AUDHY.DE": 712.5, "AUDGOV.MI": 450.0, "AUDBTP": 161.6}),
+    (9104, 280.8, 23.4, {"AUDUK.L": 280.8}),
+])
+def test_dividend_summary_projection_matches_income_projection(tools, pid, annual, monthly, rows):
+    # TASK-91: il reddito annuo previsto è Σ valore × rendimento, come il lordo di get_income_projection
+    # (prima 1.324,12 su 9102 e 280,79 su 9104, ricavati dai pesi arrotondati).
+    ds = tools.call("get_dividend_summary", {"portfolio_id": pid})
+    inc = tools.call("get_income_projection", {"portfolio_id": pid})
+    assert ds["projected_annual_income_eur"] == inc["current_annual_dividends_gross_eur"] == annual
+    assert ds["projected_monthly_income_eur"] == monthly
+    assert {r["symbol"]: r["annual_income_eur"] for r in ds["top_yielding_positions"]} == rows
+    assert round(sum(rows.values()), 2) == annual
+
+
 def test_monte_carlo_has_history(tools):
     results = [tools.call("get_monte_carlo", {"portfolio_id": p}) for p in (9101, 9103)]
     results.append(tools.call("get_aggregate_monte_carlo", {"portfolio_ids": PORTFOLIO_IDS}))
@@ -656,6 +672,15 @@ def test_empty_portfolio_9106(tools):
     assert xray["coverage_note"] == "Portafoglio senza posizioni: niente da scomporre."
 
 
+def test_empty_portfolio_9106_has_null_returns_task92(tools):
+    """TASK-92 (S-2026-11-11-15): senza capitale né movimenti TWR e MWR sono null, con il motivo."""
+    perf = tools.call("get_performance", {"portfolio_id": 9106})
+    for period in ("1m", "3m", "ytd", "1y"):
+        assert perf[f"twr_{period}"] is None and perf[f"mwr_{period}"] is None
+        assert perf["mwr_null_reason"][period] == "non_calcolabile"
+        assert perf["mwr_annualized_pct"][period] is None
+
+
 def test_doctor_cash_is_current_cash_task84(tools):
     """TASK-84 (S-2026-11-11-01): il Doctor e lo Scenario Lab vedono la liquidità del riepilogo."""
     scenario = tools.call("build_doctor_scenario", {
@@ -674,7 +699,7 @@ def test_doctor_cash_is_current_cash_task84(tools):
         assert before["total_value"] == round(summary["market_value"] + summary["cash_balance"], 2)
     before = tools.call("build_doctor_scenario", {"portfolio_id": 9101, "portfolio_ids": PORTFOLIO_IDS,
                                                   "mode": "new_cash_only", "new_cash": 100.0})["before"]
-    assert before["cash_value"] == 33190.47
+    assert before["cash_value"] == 33211.67
     assert before["cash_value"] == tools.call("get_aggregate_summary", {"portfolio_ids": PORTFOLIO_IDS})["cash_balance"]
 
 
@@ -736,6 +761,8 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return len(_positions(tools, pid)) < 30
     if rule_id == "D-XRAY-EMPTY":  # TASK-87: valutata solo sul portafoglio vuoto
         return not _has_positions(tools, pid)
+    if rule_id == "D-PERF-EMPTY-NULL":  # TASK-92: valutata senza transazioni (o con un rendimento null)
+        return not _has_transactions(tools, pid)
     if not _has_positions(tools, pid):
         return False
     if rule_id.startswith("A-STRESS") or rule_id == "A-CLASS-STRESS-CONSISTENT":
@@ -763,6 +790,8 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return bool(tools.call("get_monte_carlo", {"portfolio_id": pid})["projections"])
     if rule_id == "C-DIV-CURRENCY":
         return _has_dividend_tx(tools, pid)
+    if rule_id == "C-DIV-PROJECTION-MATCH":  # TASK-91: almeno una posizione con rendimento
+        return bool(tools.call("get_dividend_summary", {"portfolio_id": pid})["top_yielding_positions"])
     if rule_id == "C-DAYMOVERS-NONZERO-INCLUDED":
         return any(not r["price_stale"] and r["price_date"] and r["day_change_pct"] != 0 for r in _positions(tools, pid))
     if rule_id == "C-DAYCHANGE-DENOMINATOR":  # TASK-86: tutte le posizioni nella valuta base, una variazione
@@ -772,8 +801,13 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
                 and any(r["day_change_pct"] != 0 for r in rows))
     if rule_id in ("D-SUMMARY-PERFORMANCE-VALUE", "D-PERF-RECOMPUTE", "D-PERF-TOOL-MATCH", "D-DUP-TRANSACTIONS"):
         return _has_transactions(tools, pid)
+    if rule_id == "D-TX-CASH-RECONCILE":  # TASK-93: elenco completo, tutto in EUR, nessun apporto implicito
+        rows = tools.call("get_recent_transactions", {"portfolio_id": pid})["transactions"]
+        cash = tools.call("get_cash_balance", {"portfolio_id": pid})
+        return (0 < len(rows) < 20 and all(r["currency"] == cash["base_currency"] for r in rows)
+                and cash["implicit_contributions_total"] == 0)
     if rule_id == "D-TRADE-PRICE-SCALE":
-        held = {r["symbol"] for r in _positions(tools, pid) if r["price_fallback"] is None and r["market_price"] > 0}
+        held ={r["symbol"] for r in _positions(tools, pid) if r["price_fallback"] is None and r["market_price"] > 0}
         return _has_transactions(tools, pid) and bool(held)
     if rule_id == "D-DOCTOR-TER":
         metrics = {m["code"]: m for m in tools.call("read_doctor_metrics", {"portfolio_id": pid})["metrics"]}
@@ -830,6 +864,7 @@ PROOF = {
     "C-MC-PERCENTILES": [9101, 9103, AGG],
     "C-MC-MEDIAN-DRIFT": [9101, AGG],
     "C-DIV-CURRENCY": [9104, 9105, 9101],
+    "C-DIV-PROJECTION-MATCH": [9102, 9104, 9101],
     "C-DAYMOVERS-NONZERO-INCLUDED": [9101, 9107],
     "C-DAYMOVERS-CONSISTENCY": [9107, 9101],
     "C-DAYCHANGE-DENOMINATOR": [9107, 9101],
@@ -843,6 +878,7 @@ PROOF = {
     "D-AGG-PERFORMANCE-VALUE": [AGG],
     "D-PERF-RECOMPUTE": [9101, 9104, AGG],
     "D-PERF-TOOL-MATCH": [9101, AGG],
+    "D-PERF-EMPTY-NULL": [9106],
     "D-DOCTOR-TER": [9101, 9103],
     "D-DOCTOR-CLASS-WEIGHTS": [9101, 9102, 9103],
     "D-DOCTOR-CONCENTRATION": [9101, 9103],
@@ -855,6 +891,7 @@ PROOF = {
     "D-LSE-QUOTE-CURRENCY": [(9104, "AUDUS.L"), (9104, "AUDUK.L")],
     "D-FX-FLAGS-DECLARED": [9107, 9101, 9102, 9103, 9104, 9105],
     "D-HELD-SYMBOL-MATCH": _instrument_scopes(),
+    "D-TX-CASH-RECONCILE": [9107, 9101, 9102, 9103, 9105],
 }
 
 
@@ -880,3 +917,28 @@ def test_scopes_derived_from_the_seed(tools):
     assert len(portfolios) == 7 and len({p["base_currency"] for p in portfolios}) == 1
     assert sum(len(_positions(tools, p)) for p in PORTFOLIO_IDS) == 18
     assert math.isclose(sum(len(DOCUMENTED[p][2]) for p in PORTFOLIO_IDS), 18)
+
+
+def test_taxed_sell_and_dividend_rebuild_cash_task93(seed_db, tools):
+    """TASK-93: 9107 ha una vendita e un dividendo con imposte; le righe le mostrano e il saldo torna."""
+    rows = _rows(seed_db["engine"], """
+        select portfolio_id, side, taxes::float8 as taxes from transactions
+        where owner_user_id = :u and taxes <> 0 order by side""", u=USER)
+    assert rows == [{"portfolio_id": 9107, "side": "dividend", "taxes": 5.2},
+                    {"portfolio_id": 9107, "side": "sell", "taxes": 2.6}]
+    shown = tools.call("get_recent_transactions", {"portfolio_id": 9107})["transactions"]
+    assert sorted(r["taxes"] for r in shown if r["taxes"]) == [2.6, 5.2]
+    cash = tools.call("get_cash_balance", {"portfolio_id": 9107})
+    assert (cash["cash_breakdown"]["dividends"], cash["cash_breakdown"]["sells"], cash["total_cash"]) == (14.8, 996.4, 4068.2)
+    sign = {"deposit": 1, "withdrawal": -1, "fee": -1, "interest": 1}
+    rebuilt = 0.0
+    for r in shown:
+        if r["type"] == "buy":
+            rebuilt -= r["total"] + r["fees"] + r["taxes"]
+        elif r["type"] == "sell":
+            rebuilt += r["total"] - r["fees"] - r["taxes"]
+        elif r["type"] == "dividend":
+            rebuilt += r["total"] - r["taxes"]
+        else:
+            rebuilt += sign[r["type"]] * r["total"]
+    assert abs(rebuilt - cash["total_cash"]) <= 0.005 * (len(shown) + 1) + 0.01
