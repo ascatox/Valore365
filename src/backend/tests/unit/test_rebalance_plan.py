@@ -51,16 +51,35 @@ def test_audit_case_cash_zero_sells_fund_buys():
         assert w.weight_after_pct == pytest.approx(w.target_weight_pct)
 
 
-def test_extra_cash_is_added_to_portfolio_cash_and_included_in_base():
+def test_portfolio_cash_is_never_in_the_base_nor_spent():
+    """TASK-95: the portfolio cash is reported only; extra cash outside buy_only is ignored."""
     plan = compute_rebalance_plan(AUDIT, portfolio_cash=500, extra_cash=500)
-    assert plan.base_value == pytest.approx(11000.0)
+    assert plan.base_value == pytest.approx(10000.0)
+    assert plan.extra_cash == 0 and plan.extra_cash_ignored == pytest.approx(500)
     _assert_conserved(plan)
-    # Total invested at the end equals total base: all cash deployed.
-    assert plan.cash_after == pytest.approx(0.0, abs=1e-6)
+    assert plan.buys_total == pytest.approx(plan.sells_total)
+    assert plan.cash_after == pytest.approx(500.0)
+    assert _orders(plan) == _orders(compute_rebalance_plan(AUDIT, portfolio_cash=0))
     for w in plan.weights:
         assert w.weight_after_pct == pytest.approx(w.target_weight_pct)
-    # VTI 6122/11000 = 55.65% < 60%: it is now a buy.
-    assert _orders(plan)["VTI"][0] == "buy"
+
+
+def test_buy_only_new_cash_enters_the_base_portfolio_cash_does_not():
+    plan = compute_rebalance_plan(AUDIT, portfolio_cash=5000, extra_cash=1000, mode="buy_only")
+    assert plan.base_value == pytest.approx(11000.0)
+    assert plan.buys_total == pytest.approx(1000.0)
+    assert plan.cash_after == pytest.approx(5000.0)
+    _assert_conserved(plan)
+
+
+def test_seed_9101_rebalance_sells_and_buys_the_same_amount_cash_unchanged():
+    holdings = [_h("AUDEQ.MI", 70000, 50), _h("AUDBD.MI", 20000, 40), _h("AUDTECH.DE", 10000, 10)]
+    plan = compute_rebalance_plan(holdings, portfolio_cash=9256.5)
+    assert _orders(plan) == {"AUDEQ.MI": ("sell", pytest.approx(20000)), "AUDBD.MI": ("buy", pytest.approx(20000))}
+    assert plan.base_value == pytest.approx(100000)
+    assert plan.cash_after == pytest.approx(9256.5)
+    assert {w.symbol: round(w.current_weight_pct, 2) for w in plan.weights} == {
+        "AUDEQ.MI": 70.0, "AUDBD.MI": 20.0, "AUDTECH.DE": 10.0}
 
 
 def test_all_weather_five_assets():
@@ -94,14 +113,17 @@ def test_incomplete_targets_leave_untargeted_untouched():
 
 
 def test_single_instrument():
+    # TASK-95: 100 % of the targeted value, the portfolio cash is not invested.
     plan = compute_rebalance_plan([_h("VWCE", 9000, 100)], portfolio_cash=1000)
-    assert _orders(plan) == {"VWCE": ("buy", pytest.approx(1000))}
+    assert plan.orders == []
+    assert plan.cash_after == pytest.approx(1000)
     _assert_conserved(plan)
 
 
 def test_zero_positions_with_cash_buys_targets():
     holdings = [_h("A", 0, 70), _h("B", 0, 30)]
-    plan = compute_rebalance_plan(holdings, portfolio_cash=0, extra_cash=1000)
+    assert compute_rebalance_plan(holdings, portfolio_cash=1000).orders == []
+    plan = compute_rebalance_plan(holdings, portfolio_cash=0, extra_cash=1000, mode="buy_only")
     assert _orders(plan) == {"A": ("buy", pytest.approx(700)), "B": ("buy", pytest.approx(300))}
     _assert_conserved(plan)
 
@@ -166,8 +188,10 @@ def test_untradable_overweight_is_not_sold_and_buys_are_scaled():
     ]
     plan = compute_rebalance_plan(holdings, portfolio_cash=500)
     assert "A" not in _orders(plan)
+    # No sells to fund the buys and the portfolio cash is never spent (TASK-95).
     assert plan.buys_scaled is True
-    assert plan.buys_total == pytest.approx(500)
+    assert plan.buys_total == pytest.approx(0)
+    assert plan.cash_after == pytest.approx(500)
     _assert_conserved(plan)
 
 
@@ -260,18 +284,25 @@ def test_tool_audit_case_defaults_to_self_financing_rebalance():
     assert any("commissioni" in n.lower() for n in out["notes"])
 
 
-def test_tool_includes_portfolio_cash_and_extra_cash():
+def test_tool_never_spends_portfolio_cash_and_uses_new_cash_only_in_buy_only():
     repo = _tool_repo({"VTI": 6122, "VEUR": 2463, "VFEM": 1415}, {"VTI": 60, "VEUR": 25, "VFEM": 15}, cash=500)
     out = _tool(repo, available_cash=500)
     totals = out["totals"]
-    assert out["total_value"] == pytest.approx(11000.0)
+    assert out["total_value"] == pytest.approx(10000.0)
     assert totals["cash_before"] == 500
-    assert totals["extra_cash"] == 500
-    assert totals["cash_after"] == pytest.approx(
-        totals["cash_before"] + totals["extra_cash"] + totals["sells_eur"] - totals["buys_eur"], abs=0.01
-    )
-    assert totals["cash_after"] >= 0
+    assert totals["extra_cash"] == 0
+    assert totals["buys_eur"] == pytest.approx(totals["sells_eur"])
+    assert totals["cash_after"] == pytest.approx(500)
     assert totals["invariant_ok"] is True
+    assert any("available_cash ignorato" in n for n in out["notes"])
+    buy = _tool(repo, mode="buy_only", available_cash=500)
+    assert buy["total_value"] == pytest.approx(10500.0)
+    assert buy["totals"]["extra_cash"] == 500
+    assert buy["totals"]["buys_eur"] == pytest.approx(500)
+    assert buy["totals"]["cash_after"] == pytest.approx(500)
+    assert buy["totals"]["invariant_ok"] is True
+    none = _tool(repo, mode="buy_only")
+    assert none["orders"] == [] and any("senza available_cash" in n for n in none["notes"])
 
 
 def test_tool_incomplete_targets_reports_untargeted_holdings():
@@ -295,7 +326,8 @@ def test_tool_modes_and_invalid_mode():
 
 def test_tool_target_not_held_and_no_targets():
     repo = _tool_repo({}, {"A": 100}, cash=1000)
-    out = _tool(repo)
+    assert _tool(repo)["orders"] == []  # the portfolio cash is not invested (TASK-95)
+    out = _tool(repo, mode="buy_only", available_cash=1000)
     assert out["orders"][0]["symbol"] == "A"
     assert out["orders"][0]["amount_eur"] == pytest.approx(1000)
     empty = _tool_repo({"A": 100}, {}, cash=0)
@@ -360,8 +392,26 @@ def test_route_buy_only_deploys_all_cash_and_sell_only_sells():
 
 
 def test_route_untargeted_holding_buys_are_funded_by_sells():
-    # Legacy weights include X (no target): targets sum to 100 on 80% of the value.
+    # TASK-95: same base as get_target_drift (targeted holdings only, X and cash excluded).
     client = _route_client({"A": 6000, "B": 2000, "X": 2000}, {"A": 50, "B": 50})
     out = _preview(client, mode="rebalance")
-    assert out["summary"]["estimated_cash_residual"] >= 0
-    assert "X" not in {i["symbol"] for i in out["items"]}
+    items = {i["symbol"]: i for i in out["items"]}
+    assert "X" not in items
+    assert items["A"]["side"] == "sell" and items["A"]["gross_total"] == pytest.approx(2000)
+    assert items["B"]["side"] == "buy" and items["B"]["gross_total"] == pytest.approx(2000)
+    assert items["A"]["current_weight_pct"] == pytest.approx(75.0)
+    assert out["summary"]["estimated_cash_residual"] == pytest.approx(0)
+
+
+def test_route_seed_9101_same_weights_as_target_drift_and_cash_never_spent():
+    client = _route_client({"AUDEQ.MI": 70000, "AUDBD.MI": 20000, "AUDTECH.DE": 10000},
+                           {"AUDEQ.MI": 50, "AUDBD.MI": 40, "AUDTECH.DE": 10})
+    out = _preview(client, mode="rebalance", cash_to_allocate=5000)  # ignored outside buy_only
+    items = {i["symbol"]: i for i in out["items"]}
+    assert set(items) == {"AUDEQ.MI", "AUDBD.MI"}
+    assert (items["AUDEQ.MI"]["side"], items["AUDEQ.MI"]["gross_total"]) == ("sell", pytest.approx(20000))
+    assert (items["AUDBD.MI"]["side"], items["AUDBD.MI"]["gross_total"]) == ("buy", pytest.approx(20000))
+    assert (items["AUDEQ.MI"]["current_weight_pct"], items["AUDEQ.MI"]["drift_pct"]) == (70.0, 20.0)
+    assert (items["AUDBD.MI"]["current_weight_pct"], items["AUDBD.MI"]["drift_pct"]) == (20.0, -20.0)
+    assert out["summary"]["cash_input"] == 0
+    assert out["summary"]["estimated_cash_residual"] == pytest.approx(0)

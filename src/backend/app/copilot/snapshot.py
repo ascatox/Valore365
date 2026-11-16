@@ -11,7 +11,7 @@ from ..services.rebalance import current_target_weights
 
 def _target_drift_rows(positions, target_alloc, summary) -> list[dict]:
     """Drift rows on the same base as get_target_drift, the PAC and
-    calculate_rebalance_orders: targeted holdings + current cash (TASK-85)."""
+    calculate_rebalance_orders: targeted holdings only, cash excluded (TASK-85/95)."""
     weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
     rows = []
     for ta in target_alloc:

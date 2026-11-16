@@ -3,8 +3,9 @@
 - `GET /portfolios/{id}/target-drift` (letto dalla tabella posizioni) restituisce gli stessi
   valori del tool Copilot/MCP `get_target_drift`, dalla stessa funzione
   (`services.rebalance.target_drift_rows`), con verifica di proprietà (404).
-- `calculate_what_if` misura `old_drift`/`new_drift` sulla stessa base (strumenti con target +
-  liquidità), mentre `old_weight`/`new_weight` restano sulle sole posizioni (concentrazione).
+- `calculate_what_if` misura `old_drift`/`new_drift` sulla stessa base (soli strumenti con target,
+  liquidità esclusa da TASK-95), mentre `old_weight`/`new_weight` restano sulle sole posizioni
+  (concentrazione).
 
 Caso del portafoglio 9101 del seed dell'Auditor: 70.000 / 20.000 / 10.000 €, liquidità
 9.256,50 €, target 50/40/10.
@@ -72,8 +73,8 @@ def test_route_returns_the_values_of_get_target_drift():
     ]
     by = {i["symbol"]: i for i in body["items"]}
     assert {s: i["current_weight_pct"] for s, i in by.items()} == EXPECTED
-    # AUDTECH.DE: 10,0 % delle posizioni («in linea» nella tabella di prima), 0,85 pt sotto target qui.
-    assert by["AUDTECH.DE"]["drift_pct"] == -0.85
+    # TASK-95: +20 / −20 / 0 (con la base di TASK-85 AUDTECH.DE era 0,85 pt sotto target).
+    assert {s: i["drift_pct"] for s, i in by.items()} == {"AUDEQ.MI": 20.0, "AUDBD.MI": -20.0, "AUDTECH.DE": 0.0}
     assert all(isinstance(i["asset_id"], int) for i in body["items"])
     repo.list_portfolio_target_allocations.assert_called_with(PID, USER)
 
@@ -119,19 +120,18 @@ def test_what_if_old_drift_equals_get_target_drift():
         assert res["old_drift"] == drift[symbol]["drift"]
         assert res["target_basis"]["current_weight_before"] == drift[symbol]["current_weight"]
         assert res["target_basis"]["total_value_before"] == TOTAL
-    # Prima: AUDTECH.DE in linea (10,0 − 10).
     tech = _tool("calculate_what_if", {"action": "buy", "symbol": "AUDTECH.DE", "amount_eur": 1000.0}, repo)
-    assert tech["old_drift"] == -0.85
+    assert tech["old_drift"] == 0.0  # TASK-95 (con la base di TASK-85: −0,85)
     assert tech["old_weight"] == 10.0  # concentrazione: peso sulle sole posizioni, invariato
 
 
-def test_what_if_buy_is_paid_from_cash():
+def test_what_if_buy_adds_to_the_base():
     repo = make_repo()
     res = _tool("calculate_what_if", {"action": "buy", "symbol": "AUDTECH.DE", "amount_eur": 1000.0}, repo)
-    # Base invariata (liquidità − 1000, strumento + 1000): 11.000 / 109.256,50.
-    assert res["target_basis"]["total_value_after"] == TOTAL
-    assert res["target_basis"]["cash_after"] == round(CASH - 1000.0, 2)
-    assert res["new_drift"] == round(11000.0 / TOTAL * 100 - 10.0, 2)
+    # TASK-95: la liquidità non entra; la base cresce dell'acquisto: 11.000 / 101.000.
+    assert res["target_basis"]["total_value_after"] == TOTAL + 1000.0
+    assert "cash_after" not in res["target_basis"]
+    assert res["new_drift"] == round(11000.0 / 101000.0 * 100 - 10.0, 2)
     # Pesi della concentrazione sulle sole posizioni, come prima.
     assert res["new_weight"] == round(11000.0 / 101000.0 * 100, 2)
 
@@ -140,17 +140,16 @@ def test_what_if_buy_beyond_cash_adds_to_the_base():
     repo = make_repo()
     amount = 20000.0
     res = _tool("calculate_what_if", {"action": "buy", "symbol": "AUDBD.MI", "amount_eur": amount}, repo)
-    base_after = 100000.0 + amount  # liquidità esaurita: la parte oltre il saldo è un nuovo versamento
+    base_after = 100000.0 + amount
     assert res["target_basis"]["total_value_after"] == base_after
-    assert res["target_basis"]["cash_after"] == 0.0
     assert res["new_drift"] == round((20000.0 + amount) / base_after * 100 - 40.0, 2)
 
 
-def test_what_if_sell_keeps_proceeds_in_cash():
+def test_what_if_sell_reduces_the_base():
     repo = make_repo()
     res = _tool("calculate_what_if", {"action": "sell", "symbol": "AUDEQ.MI", "amount_eur": 10000.0}, repo)
-    assert res["target_basis"]["total_value_after"] == TOTAL
-    assert res["new_drift"] == round(60000.0 / TOTAL * 100 - 50.0, 2)
+    assert res["target_basis"]["total_value_after"] == TOTAL - 10000.0
+    assert res["new_drift"] == round(60000.0 / 90000.0 * 100 - 50.0, 2)
     assert res["old_drift"] == round(70000.0 / TOTAL * 100 - 50.0, 2)
 
 
@@ -164,6 +163,6 @@ def test_what_if_untargeted_symbol_has_no_drift():
 def test_what_if_new_targeted_asset_not_held():
     repo = make_repo(values={"AUDEQ.MI": 70000.0, "AUDBD.MI": 20000.0})
     res = _tool("calculate_what_if", {"action": "buy", "symbol": "AUDTECH.DE", "amount_eur": 1000.0}, repo)
-    base = 90000.0 + CASH
+    base = 90000.0 + 1000.0
     assert res["old_drift"] == -10.0
     assert res["new_drift"] == pytest.approx(round(1000.0 / base * 100 - 10.0, 2))

@@ -1,8 +1,8 @@
-"""TASK-85: `get_target_drift`, PAC e ribilanciamento danno lo stesso peso a ogni strumento.
+"""TASK-85/95: `get_target_drift`, PAC, ribilanciamento e what-if danno lo stesso peso a ogni strumento.
 
-Decisione del proprietario (2026-11-11): la base è quella di `calculate_rebalance_orders`,
-cioè il valore degli strumenti con target più la liquidità attuale (modello della performance,
-`summary.cash_balance`). Caso del portafoglio 9101 del seed dell'Auditor: posizioni
+Decisione del proprietario TASK-95 (2026-11-16, sostituisce la base di TASK-85): la liquidità
+non si usa mai per ribilanciare; la base dei pesi è il solo valore degli strumenti con target,
+liquidità esclusa. Caso del portafoglio 9101 del seed dell'Auditor: posizioni
 70.000 / 20.000 / 10.000 €, liquidità 9.256,50 €, target 50/40/10.
 """
 
@@ -22,9 +22,9 @@ PID = 9101
 VALUES = {"AUDEQ.MI": 70000.0, "AUDBD.MI": 20000.0, "AUDTECH.DE": 10000.0}
 TARGETS = {"AUDEQ.MI": 50.0, "AUDBD.MI": 40.0, "AUDTECH.DE": 10.0}
 CASH = 9256.5
-TOTAL = 109256.5
-# 70.000 / 109.256,50 = 64,07 %; 20.000 / … = 18,31 %; 10.000 / … = 9,15 %.
-EXPECTED = {"AUDEQ.MI": 64.07, "AUDBD.MI": 18.31, "AUDTECH.DE": 9.15}
+TOTAL = 100000.0
+# 70.000 / 100.000 = 70 %; 20 %; 10 % (con la base di TASK-85 erano 64,07 / 18,31 / 9,15).
+EXPECTED = {"AUDEQ.MI": 70.0, "AUDBD.MI": 20.0, "AUDTECH.DE": 10.0}
 
 
 def make_repo(values=VALUES, targets=TARGETS, cash=CASH, extra_positions=None) -> MagicMock:
@@ -58,32 +58,43 @@ def run(tool: str, args: dict, repo: MagicMock) -> dict:
     return copilot_tools.execute_tool(tool, args, repo, MagicMock(), PID, "u")
 
 
-def test_seed_9101_same_weight_in_drift_pac_and_rebalance():
+def test_seed_9101_same_weight_in_drift_pac_rebalance_and_what_if():
     repo = make_repo()
     drift = run("get_target_drift", {}, repo)
     pac = run("calculate_pac_contribution", {"monthly_amount": 500.0}, repo)
     reb = run("calculate_rebalance_orders", {"mode": "rebalance"}, repo)
 
     drift_w = {d["symbol"]: d["current_weight"] for d in drift["drift"]}
-    reb_w = {o["symbol"]: o["current_weight_pct"] for o in reb["orders"]}
-    pac_w = {d["symbol"]: d["current_weight"] for d in pac["distribution"]}
-
     assert drift_w == EXPECTED
-    # Ogni strumento esce dal tolerance band: il ribilanciamento ha un ordine per ciascuno.
-    assert reb_w == EXPECTED
-    # Il PAC versa sugli strumenti sotto target, con lo stesso peso attuale.
+    assert {d["symbol"]: d["drift"] for d in drift["drift"]} == {
+        "AUDEQ.MI": 20.0, "AUDBD.MI": -20.0, "AUDTECH.DE": 0.0}
+    reb_w = {o["symbol"]: o["current_weight_pct"] for o in reb["orders"]}
+    assert reb_w == {"AUDEQ.MI": 70.0, "AUDBD.MI": 20.0}  # AUDTECH.DE in linea: nessun ordine
+    pac_w = {d["symbol"]: d["current_weight"] for d in pac["distribution"]}
     assert set(pac_w) == {"AUDBD.MI", "AUDTECH.DE"}
     assert all(pac_w[s] == EXPECTED[s] for s in pac_w)
+    for symbol, expected_drift in (("AUDEQ.MI", 20.0), ("AUDBD.MI", -20.0), ("AUDTECH.DE", 0.0)):
+        wi = run("calculate_what_if", {"action": "buy", "symbol": symbol, "amount_eur": 1000.0}, repo)
+        assert wi["old_drift"] == expected_drift
+        assert wi["target_basis"]["total_value_before"] == TOTAL
+        assert wi["target_basis"]["total_value_after"] == TOTAL + 1000
 
-    # Stessa base dichiarata dai tre tool.
+    # Stessa base dichiarata da tutti i tool; la liquidità è riportata ma non entra.
     assert drift["total_value"] == pac["total_value"] == reb["total_value"] == TOTAL
     assert drift["cash_balance"] == reb["totals"]["cash_before"] == CASH
     assert drift["weight_basis_note"] == pac["weight_basis_note"]
 
-    # AUDTECH.DE: 0,85 pp sotto target per tutti (prima: «in linea» per get_target_drift).
-    tech = next(d for d in drift["drift"] if d["symbol"] == "AUDTECH.DE")
-    assert tech["drift"] == -0.85
-    assert next(o for o in reb["orders"] if o["symbol"] == "AUDTECH.DE")["side"] == "buy"
+
+def test_seed_9101_rebalance_never_spends_the_cash():
+    """TASK-95: vendita AUDEQ.MI e acquisto AUDBD.MI per lo stesso importo, liquidità invariata
+    (con la base di TASK-85: vendita 15.371,75, acquisti 23.702,60 + 925,65, liquidità spesa)."""
+    reb = run("calculate_rebalance_orders", {"mode": "rebalance"}, make_repo())
+    assert [(o["side"], o["symbol"], o["amount_eur"], o["weight_after_pct"]) for o in reb["orders"]] == [
+        ("sell", "AUDEQ.MI", 20000.0, 50.0), ("buy", "AUDBD.MI", 20000.0, 40.0)]
+    t = reb["totals"]
+    assert t["sells_eur"] == t["buys_eur"] == 20000.0
+    assert t["cash_before"] == t["cash_after"] == CASH and t["extra_cash"] == 0.0
+    assert t["invariant_ok"] is True
 
 
 def test_seed_9101_pac_keeps_task83_conservation():
@@ -91,54 +102,45 @@ def test_seed_9101_pac_keeps_task83_conservation():
     cents = sum(int(round(d["amount_eur"] * 100)) for d in pac["distribution"])
     assert cents == int(round(pac["total_allocated"] * 100)) == 50000
     assert pac["unallocated_amount"] == 0.0
-    # TASK-90: in proporzione al fabbisogno sulla base dopo il versamento (109.756,50 €):
-    # AUDBD.MI 43.902,60 − 20.000 = 23.902,60, AUDTECH.DE 10.975,65 − 10.000 = 975,65, AUDEQ.MI 0
-    # (prima: in proporzione allo scostamento attuale, 500 × 21,69 / 22,54 = 481,14).
+    # TASK-90/95: in proporzione al fabbisogno sulla base dopo il versamento (100.500 €, liquidità
+    # esclusa): AUDBD.MI 40.200 − 20.000 = 20.200, AUDTECH.DE 10.050 − 10.000 = 50, AUDEQ.MI 0.
     by = {d["symbol"]: d for d in pac["distribution"]}
-    assert by["AUDBD.MI"]["amount_eur"] == pytest.approx(500 * 23902.6 / 24878.25, abs=0.01)
-    assert by["AUDTECH.DE"]["amount_eur"] == 19.61
-    # Peso dopo il versamento sulla stessa base più il versamento.
-    assert by["AUDBD.MI"]["new_weight_after"] == round((20000 + by["AUDBD.MI"]["amount_eur"]) / (TOTAL + 500) * 100, 2)
+    assert by["AUDBD.MI"]["amount_eur"] == 498.77
+    assert by["AUDTECH.DE"]["amount_eur"] == 1.23
+    assert by["AUDBD.MI"]["new_weight_after"] == round((20000 + 498.77) / (TOTAL + 500) * 100, 2)
 
 
-def test_seed_9101_pac_of_100000_stays_below_targets_like_buy_only():
-    """TASK-90, S-2026-11-11-13: con 100.000 € nessuno strumento oltre il target (prima AUDBD.MI
-    55,54 % contro 40) e AUDEQ.MI, che il versamento rende sottopesato, riceve la sua quota.
-
-    Gli importi sono quelli di `calculate_rebalance_orders` buy_only con 100.000 € (fabbisogni
-    34.628,25 / 63.702,60 / 10.925,65 sulla base di 209.256,50 €) moltiplicati per
-    100.000 / 109.256,50: il ribilanciamento investe anche i 9.256,50 € di liquidità, il PAC solo
-    il versamento (B-PAC-SUM)."""
+def test_seed_9101_pac_of_100000_equals_buy_only():
+    """TASK-90/95: con 100.000 € i fabbisogni sulla base dopo il versamento (200.000 €) sono
+    30.000 / 60.000 / 10.000 = l'importo: PAC e buy_only portano tutti esattamente al target."""
     repo = make_repo()
     pac = run("calculate_pac_contribution", {"monthly_amount": 100000.0}, repo)
     bo = run("calculate_rebalance_orders", {"mode": "buy_only", "available_cash": 100000.0}, repo)
     rows = {d["symbol"]: d for d in pac["distribution"]}
     orders = {o["symbol"]: o for o in bo["orders"]}
-    assert set(rows) == set(orders) == set(VALUES)
-    assert all(d["new_weight_after"] <= d["target_weight"] for d in rows.values())
-    assert {s: o["amount_eur"] for s, o in orders.items()} == {
-        "AUDEQ.MI": 34628.25, "AUDBD.MI": 63702.6, "AUDTECH.DE": 10925.65}
-    scale = 100000.0 / (100000.0 + CASH)
-    for s, o in orders.items():
-        assert rows[s]["amount_eur"] == pytest.approx(o["amount_eur"] * scale, abs=0.01)
-    assert {s: d["amount_eur"] for s, d in rows.items()} == {
-        "AUDBD.MI": 58305.55, "AUDEQ.MI": 31694.45, "AUDTECH.DE": 10000.0}
-    assert {s: d["new_weight_after"] for s, d in rows.items()} == {
-        "AUDBD.MI": 37.42, "AUDEQ.MI": 48.6, "AUDTECH.DE": 9.56}
+    expected = {"AUDEQ.MI": 30000.0, "AUDBD.MI": 60000.0, "AUDTECH.DE": 10000.0}
+    assert {s: d["amount_eur"] for s, d in rows.items()} == expected
+    assert {s: o["amount_eur"] for s, o in orders.items()} == expected
+    assert {s: d["new_weight_after"] for s, d in rows.items()} == TARGETS
     assert pac["total_allocated"] == 100000.0 and pac["unallocated_amount"] == 0.0
-    assert pac["total_need_eur"] == 109256.5
+    assert pac["total_need_eur"] == 100000.0
+    assert bo["totals"]["cash_after"] == CASH  # la liquidità del portafoglio resta
 
 
-@pytest.mark.parametrize("amount", [500.0, 45000.0, 100000.0])
-def test_pac_equals_buy_only_without_cash(amount):
-    """Senza liquidità nel portafoglio il PAC coincide con buy_only con available_cash = importo."""
-    repo = make_repo(cash=0.0)
-    pac = {d["symbol"]: d["amount_eur"] for d in run(
-        "calculate_pac_contribution", {"monthly_amount": amount}, repo)["distribution"]}
-    bo = {o["symbol"]: o["amount_eur"] for o in run(
-        "calculate_rebalance_orders", {"mode": "buy_only", "available_cash": amount}, repo)["orders"]}
-    assert pac.keys() == bo.keys()
-    assert all(abs(pac[s] - bo[s]) <= 0.01 for s in pac)
+@pytest.mark.parametrize("cash", [0.0, CASH, 50000.0])
+@pytest.mark.parametrize("amount", [0.07, 500.0, 333.33, 45000.0, 100000.0, 250000.0])
+def test_pac_always_equals_buy_only(amount, cash):
+    """TASK-95: la liquidità non entra mai, quindi il PAC coincide sempre con buy_only con
+    available_cash = importo (al centesimo, salvo l'arrotondamento dei singoli ordini)."""
+    repo = make_repo(cash=cash)
+    pac = run("calculate_pac_contribution", {"monthly_amount": amount}, repo)
+    bo = run("calculate_rebalance_orders", {"mode": "buy_only", "available_cash": amount}, repo)
+    pac_rows = {d["symbol"]: d["amount_eur"] for d in pac["distribution"]}
+    bo_rows = {o["symbol"]: o["amount_eur"] for o in bo["orders"]}
+    assert pac_rows.keys() == bo_rows.keys()
+    assert all(abs(pac_rows[s] - bo_rows[s]) <= 0.01 for s in pac_rows)
+    assert pac["total_value"] == bo["total_value"] - amount == TOTAL
+    assert bo["totals"]["cash_after"] == pytest.approx(cash, abs=0.01)
 
 
 def test_untargeted_holding_stays_out_of_the_base_everywhere():
@@ -164,4 +166,5 @@ def test_current_target_weights_matches_rebalance_plan_base():
     repo = make_repo()
     w = current_target_weights(repo.get_positions(), repo.list_portfolio_target_allocations(), CASH)
     assert w.base_value == pytest.approx(TOTAL)
+    assert w.cash == CASH  # riportata, non nella base (TASK-95)
     assert {round(x.current_weight_pct, 2) for x in w.by_key.values()} == set(EXPECTED.values())

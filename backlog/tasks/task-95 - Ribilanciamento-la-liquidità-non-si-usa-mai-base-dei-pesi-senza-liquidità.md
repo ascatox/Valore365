@@ -1,7 +1,7 @@
 ---
 id: TASK-95
 title: 'Ribilanciamento: la liquidità non si usa mai; base dei pesi senza liquidità'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-16T20:00:00Z'
 labels:
@@ -31,11 +31,11 @@ Conseguenze:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Base dei pesi senza liquidità in tutti i punti elencati, con un'unica funzione in `services/rebalance.py`; sul seed 9101 (70.000 / 20.000 / 10.000 €, target 50/40/10) i pesi sono 70 / 20 / 10 e gli scostamenti +20 / −20 / 0 ovunque
-- [ ] #2 `calculate_rebalance_orders` e l'anteprima REST non spendono mai la liquidità esistente: in modalità ribilanciamento acquisti = vendite (meno i costi), liquidità invariata; nessun default che usa il saldo
-- [ ] #3 PAC sulla base senza liquidità, comportamento di TASK-83 e TASK-90 invariato per il resto
-- [ ] #4 Scenario Lab in modalità ribilanciamento senza uso della liquidità
-- [ ] #5 Testi e tooltip nel frontend, descrizioni dei tool, `methodology.md` §7 e `docs/auditor/rules.md` aggiornati alla nuova base
-- [ ] #6 Regole dell'Auditor adattate (B-REB-*, B-DRIFT-REBALANCE-WEIGHTS, B-PAC-*, D-DOCTOR-CASH se tocca), con una regola che fallisce se il ribilanciamento spende la liquidità; Auditor completo sul seed senza fallimenti
-- [ ] #7 Suite unit, integration e frontend verdi
+- [x] #1 Base dei pesi senza liquidità in tutti i punti elencati, con un'unica funzione in `services/rebalance.py`; sul seed 9101 (70.000 / 20.000 / 10.000 €, target 50/40/10) i pesi sono 70 / 20 / 10 e gli scostamenti +20 / −20 / 0 ovunque
+- [x] #2 `calculate_rebalance_orders` e l'anteprima REST non spendono mai la liquidità esistente: in modalità ribilanciamento acquisti = vendite (meno i costi), liquidità invariata; nessun default che usa il saldo
+- [x] #3 PAC sulla base senza liquidità, comportamento di TASK-83 e TASK-90 invariato per il resto
+- [x] #4 Scenario Lab in modalità ribilanciamento senza uso della liquidità
+- [x] #5 Testi e tooltip nel frontend, descrizioni dei tool, `methodology.md` §7 e `docs/auditor/rules.md` aggiornati alla nuova base
+- [x] #6 Regole dell'Auditor adattate (B-REB-*, B-DRIFT-REBALANCE-WEIGHTS, B-PAC-*, D-DOCTOR-CASH se tocca), con una regola che fallisce se il ribilanciamento spende la liquidità; Auditor completo sul seed senza fallimenti
+- [x] #7 Suite unit, integration e frontend verdi
 <!-- AC:END -->

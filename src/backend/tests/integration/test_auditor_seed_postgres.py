@@ -467,38 +467,53 @@ def test_rebalance_needs_sells_to_fund_buys(tools):
         assert totals["invariant_ok"] is True
         assert abs(totals["cash_after"] - (totals["cash_before"] + totals["extra_cash"] + totals["sells_eur"] - totals["buys_eur"])) <= 0.01
         assert totals["cash_after"] >= -0.01
-    sides = {o["symbol"]: o["side"] for o in rebalance["orders"]}
-    assert sides["AUDEQ.MI"] == "sell" and sides["AUDBD.MI"] == "buy"
-    assert rebalance["totals"]["buys_eur"] > rebalance["totals"]["cash_before"]  # la liquidità da sola non basta
+    # TASK-95: la liquidità non si usa mai; vendita e acquisto dello stesso importo, liquidità invariata.
+    assert [(o["side"], o["symbol"], o["amount_eur"]) for o in rebalance["orders"]] == [
+        ("sell", "AUDEQ.MI", 20000.0), ("buy", "AUDBD.MI", 20000.0)]
+    assert rebalance["total_value"] == 100000.0
+    assert rebalance["totals"]["cash_before"] == rebalance["totals"]["cash_after"] == 9256.5
+    for r in results:
+        assert r["totals"]["buys_eur"] <= r["totals"]["sells_eur"] + r["totals"]["extra_cash"] + 0.01
     assert buy_only["totals"]["extra_cash"] == 1000.0 and buy_only["totals"]["sells_eur"] == 0
+    assert buy_only["totals"]["buys_eur"] == 1000.0
     assert all(o["side"] == "buy" for o in buy_only["orders"])
     assert all(o["side"] == "sell" for o in sell_only["orders"]) and sell_only["totals"]["buys_eur"] == 0
     assert tools.call("calculate_rebalance_orders", {"portfolio_id": 9102, "mode": "rebalance"}).get("totals") is None
 
 
+def test_target_weights_without_cash_on_9101(tools):
+    """TASK-95: pesi 70 / 20 / 10 e scostamenti +20 / −20 / 0 in get_target_drift e nel what-if."""
+    drift = tools.call("get_target_drift", {"portfolio_id": 9101})
+    assert drift["total_value"] == 100000.0 and drift["cash_balance"] == 9256.5
+    assert {d["symbol"]: (d["current_weight"], d["drift"]) for d in drift["drift"]} == {
+        "AUDEQ.MI": (70.0, 20.0), "AUDBD.MI": (20.0, -20.0), "AUDTECH.DE": (10.0, 0.0)}
+    wi = tools.call("calculate_what_if", {"portfolio_id": 9101, "action": "buy", "symbol": "AUDEQ.MI", "amount_eur": 1000.0})
+    assert wi["old_drift"] == 20.0 and wi["new_drift"] == 20.3
+
+
 def test_pac_large_amount_stays_below_targets_on_9101(tools):
     """TASK-90 (S-2026-11-11-13): con 100.000 € nessun `new_weight_after` oltre il `target_weight`;
-    importi = `buy_only` con 100.000 € × 100.000 / (100.000 + 9.256,50), perché il ribilanciamento
-    investe anche la liquidità del portafoglio e il PAC solo il versamento (methodology.md §7)."""
+    TASK-95: la liquidità non entra né nel PAC né nel ribilanciamento, quindi gli importi coincidono
+    con `buy_only` con 100.000 € (methodology.md §7)."""
     pac = tools.call("calculate_pac_contribution", {"portfolio_id": 9101, "monthly_amount": 100000.0})
     bo = tools.call("calculate_rebalance_orders", {"portfolio_id": 9101, "mode": "buy_only", "available_cash": 100000.0})
     rows = {d["symbol"]: d for d in pac["distribution"]}
     orders = {o["symbol"]: o["amount_eur"] for o in bo["orders"]}
     assert set(rows) == set(orders) == {"AUDEQ.MI", "AUDBD.MI", "AUDTECH.DE"}
     assert all(d["new_weight_after"] <= d["target_weight"] + 0.01 for d in rows.values())
-    assert orders == {"AUDEQ.MI": 34628.25, "AUDBD.MI": 63702.6, "AUDTECH.DE": 10925.65}
-    cash = bo["totals"]["cash_before"]
-    assert cash == 9256.5 and pac["total_value"] == 109256.5
-    for s, amount in orders.items():
-        assert abs(rows[s]["amount_eur"] - amount * 100000.0 / (100000.0 + cash)) <= 0.01
+    assert orders == {"AUDEQ.MI": 30000.0, "AUDBD.MI": 60000.0, "AUDTECH.DE": 10000.0}
+    assert {s: d["amount_eur"] for s, d in rows.items()} == orders
+    assert bo["totals"]["cash_before"] == bo["totals"]["cash_after"] == 9256.5
+    assert pac["total_value"] == 100000.0
     assert pac["total_allocated"] == 100000.0 and pac["unallocated_amount"] == 0.0
 
 
 def test_pac_and_what_if(tools):
     pac = tools.call("calculate_pac_contribution", {"portfolio_id": 9101, "monthly_amount": 500.0})
     assert pac["total_allocated"] == 500.0 and pac["distribution"]
-    # TASK-90: AUDBD.MI 480,39 e AUDTECH.DE 19,61 (fabbisogni sulla base dopo il versamento).
-    assert {d["symbol"]: d["amount_eur"] for d in pac["distribution"]} == {"AUDBD.MI": 480.39, "AUDTECH.DE": 19.61}
+    # TASK-90/95: AUDBD.MI 498,77 e AUDTECH.DE 1,23 (fabbisogni sulla base dopo il versamento,
+    # liquidità esclusa: 20.200 e 50 su 100.500 €).
+    assert {d["symbol"]: d["amount_eur"] for d in pac["distribution"]} == {"AUDBD.MI": 498.77, "AUDTECH.DE": 1.23}
     assert abs(sum(d["amount_eur"] for d in pac["distribution"]) - 500.0) <= 0.01
     first = _positions(tools, 9101)[0]
     assert first["symbol"] == "AUDEQ.MI"
@@ -870,6 +885,7 @@ PROOF = {
     "B-REB-DRIFT-NONINCREASING": [9101],
     "B-REB-MODE-SIDES": [9101],
     "B-REB-SELL-CAP": [9101],
+    "B-REB-CASH-UNTOUCHED": [9101],  # TASK-95
     "B-PAC-SUM": [9101],
     "B-PAC-UNDERWEIGHT-ONLY": [9101],
     "B-PAC-NO-OVERSHOOT": [9101],  # TASK-90: precondizione come le altre B-PAC (distribuzione non vuota)

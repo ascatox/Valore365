@@ -155,11 +155,12 @@ def test_three_equal_underweights_split_cents_without_loss():
 SEED_9101 = {"AUDEQ.MI": 70000.0, "AUDBD.MI": 20000.0, "AUDTECH.DE": 10000.0}
 SEED_9101_TARGETS = {"AUDEQ.MI": 50.0, "AUDBD.MI": 40.0, "AUDTECH.DE": 10.0}
 SEED_9101_CASH = 9256.5
-SEED_9101_BASE = 109256.5
+SEED_9101_BASE = 100000.0  # TASK-95: strumenti con target, liquidità esclusa
 
 
 def needs_after(values, targets, cash, amount):
-    base_after = sum(values.get(s, 0.0) for s in targets) + cash + amount
+    """Fabbisogni sulla base dopo il versamento; ``cash`` non entra (TASK-95)."""
+    base_after = sum(values.get(s, 0.0) for s in targets) + amount
     return {s: max(t / 100 * base_after - values.get(s, 0.0), 0.0) for s, t in targets.items()}, base_after
 
 
@@ -169,7 +170,7 @@ def test_seed_9101_split_proportional_to_need_never_above_target(amount):
     result = pac(SEED_9101, SEED_9101_TARGETS, amount, SEED_9101_CASH)
     needs, base_after = needs_after(SEED_9101, SEED_9101_TARGETS, SEED_9101_CASH, amount)
     total_need = sum(needs.values())
-    assert total_need >= amount  # con target a 100 il fabbisogno è almeno liquidità + importo
+    assert total_need >= amount  # con target a 100 il fabbisogno è almeno l'importo
     assert result["total_value"] == SEED_9101_BASE and result["total_need_eur"] == round(total_need, 2)
     rows = {d["symbol"]: d for d in result["distribution"]}
     for s, need in needs.items():
@@ -183,7 +184,10 @@ def test_seed_9101_split_proportional_to_need_never_above_target(amount):
         assert set(rows) == {"AUDBD.MI", "AUDTECH.DE"}  # AUDEQ.MI resta sopra il target
     else:
         assert set(rows) == set(SEED_9101)  # AUDEQ.MI scende sotto il target: riceve la sua quota
-        assert rows["AUDBD.MI"]["new_weight_after"] < 40.0  # prima del TASK-90: oltre il 40 %
+        # Fabbisogno totale = importo: tutti esattamente al target (prima del TASK-90: oltre il 40 %).
+        assert {s: d["amount_eur"] for s, d in rows.items()} == {
+            "AUDEQ.MI": 30000.0, "AUDBD.MI": 60000.0, "AUDTECH.DE": 10000.0}
+        assert all(d["new_weight_after"] == d["target_weight"] for d in rows.values())
     assert "note" not in result
     assert_conserved(result, amount)
 
@@ -191,15 +195,16 @@ def test_seed_9101_split_proportional_to_need_never_above_target(amount):
 def test_seed_9101_amount_above_total_need_with_targets_below_100():
     """TASK-90, criterio #3: importo oltre il fabbisogno totale (target 9101 ridotti a 45/36/9 = 90).
 
-    Base dopo 50.000 €: 159.256,50; fabbisogni AUDEQ.MI 1.665,43, AUDBD.MI 37.332,34, AUDTECH.DE
-    4.333,08 (43.330,85 in tutto). I 6.669,15 € di eccedenza vanno in proporzione ai target 45/36/9."""
+    Base dopo 50.000 € (TASK-95, liquidità esclusa): 150.000; fabbisogni AUDEQ.MI 0, AUDBD.MI
+    34.000, AUDTECH.DE 3.500 (37.500 in tutto). I 12.500 € di eccedenza vanno in proporzione ai
+    target 45/36/9."""
     targets = {"AUDEQ.MI": 45.0, "AUDBD.MI": 36.0, "AUDTECH.DE": 9.0}
     amount = 50000.0
     result = pac(SEED_9101, targets, amount, SEED_9101_CASH)
     needs, _ = needs_after(SEED_9101, targets, SEED_9101_CASH, amount)
     total_need = sum(needs.values())
     excess = amount - total_need
-    assert excess > 0
+    assert total_need == pytest.approx(37500) and excess > 0
     rows = {d["symbol"]: d["amount_eur"] for d in result["distribution"]}
     for s, t in targets.items():
         assert rows[s] == pytest.approx(needs[s] + excess * t / 90.0, abs=0.01)

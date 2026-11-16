@@ -284,5 +284,17 @@ describe('Lab PRD deviations closed (follow-up)', () => {
     fireEvent.click(useCash);
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ constraints: expect.objectContaining({ use_cash_balance: true }) }));
   });
+
+  it('disables «use cash balance» in rebalance mode (TASK-95)', () => {
+    const scenario = emptyScenario('Scenario A', {
+      mode: 'rebalance',
+      constraints: { no_sell: false, max_turnover_pct: null, keep_equity_total: false, use_cash_balance: true },
+    });
+    wrap(<ScenarioBuilder value={scenario} onChange={vi.fn()} positions={[]} isAggregate={false} index={0} />);
+    const useCash = screen.getByLabelText('Usa anche la liquidità già presente nel portafoglio');
+    expect(useCash).toBeDisabled();
+    expect(useCash).not.toBeChecked();
+    expect(screen.getByText(/non si usa mai per ribilanciare/)).toBeInTheDocument();
+  });
 });
 

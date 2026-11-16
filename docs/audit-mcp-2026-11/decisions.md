@@ -8,7 +8,7 @@ portafogli; le opzioni sono state proposte dall'assistente e approvate dal propr
 
 | # | Decisione | Approvata da / quando | Task |
 |---|---|---|---|
-| 1 | Ribilanciamento: modalità predefinita vendite+acquisti autofinanziati; `available_cash` è liquidità aggiuntiva a quella del portafoglio | Proprietario, 2026-11-02 | TASK-39 |
+| 1 | Ribilanciamento: modalità predefinita vendite+acquisti autofinanziati; `available_cash` è liquidità aggiuntiva a quella del portafoglio (**superata in parte dalla 16**: `available_cash` è nuova liquidità, usata solo in `buy_only`) | Proprietario, 2026-11-02 | TASK-39 |
 | 2 | Stress storici senza dati: proxy di drawdown per asset class, con `coverage_pct` e metodo esplicito | Proprietario, 2026-11-02 | TASK-38 |
 | 3 | Asset non classificabili: classe `unknown` dichiarata, mai equity per default | Proprietario, 2026-11-02 | TASK-35 |
 | 4 | ETC: resta `asset_type=etf`, asset class (gold/commodity) ricavata separatamente, nessuna migrazione | Proprietario, 2026-11-02 | TASK-35 |
@@ -16,13 +16,14 @@ portafogli; le opzioni sono state proposte dall'assistente e approvate dal propr
 | 6 | TER mancanti: TER ponderato sul peso coperto, con `ter_coverage_pct` e `missing_ter_symbols`; i TER dedotti contano come coperti, marcati `ter_source=inferred` | Proprietario, 2026-11-02 (il trattamento dei dedotti è provvisorio) | TASK-34 |
 | 7 | Shock gold/commodity/crypto: valori di `stress_scenarios.py` (rimossa la marcatura PROVVISORIO) | Proprietario, 2026-11-02 (giorno 3) | TASK-35/38 |
 | 8 | Reddito: crescita 0% per i bond indicizzati all'inflazione; `fire_capital_gains_tax_rate` dell'utente sovrascrive il 26%, dichiarato in `tax_note` | Proprietario, 2026-11-02 (giorno 3) | TASK-36 |
-| 9 | Ribilanciamento: banda 0,5 pp, nessun ordine minimo, liquidità del portafoglio nel totale e nei pesi | Proprietario, 2026-11-02 (giorno 3) | TASK-39 |
+| 9 | Ribilanciamento: banda 0,5 pp, nessun ordine minimo, liquidità del portafoglio nel totale e nei pesi (**liquidità superata dalla 16**) | Proprietario, 2026-11-02 (giorno 3) | TASK-39 |
 | 10 | Banda di 0,5 pp usata come soglia di attivazione (se uno strumento la supera, tutti tornano al target), documentata in `notes`, `docs/mcp.md`, `docs/mcp-guida-utente.md` | Proprietario, 2026-11-02 (conferme giorno 3) | TASK-39 |
 | 11 | Stress storici: copertura minima 60% del peso con storico reale; sotto soglia proxy dichiarati | Proprietario, 2026-11-02 (giorno 3) | TASK-38 |
 | 12 | Tabella dei proxy storici approvata, a condizione che l'utente veda che sono indici in USD senza effetto cambio EUR/USD | Proprietario, 2026-11-02 (conferme giorno 3) | TASK-38 |
 | 13 | Volatilità: nessuna metrica canonica, entrambe esposte con nome, metodo, periodo, `is_floored` | Proprietario, 2026-11-02 (giorno 3) | TASK-40 |
 | 14 | Import: nessuna migrazione dello schema; commit atomico, batch non confermabile due volte; righe già presenti segnalate ed escluse per default | Proposta dall'assistente, approvata dal proprietario ("procedi"), 2026-11-03 | TASK-42 |
 | 15 | Aggregato MCP: tool dedicati `get_aggregate_*` con `portfolio_ids` (2-20, stessa valuta); una chiamata = una unità di rate limit, le pesanti sulla quota pesante | Proposta dall'assistente, avviata dal proprietario ("start"), 2026-11-03 | TASK-43 |
+| 16 | La liquidità del portafoglio non si usa mai per ribilanciare: base dei pesi rispetto ai target = soli strumenti con target (liquidità esclusa) ovunque; acquisti finanziati solo dalle vendite, nuova liquidità solo se indicata (`buy_only`); sostituisce la base di TASK-85 (strumenti con target + liquidità) | Proprietario, 2026-11-16 | TASK-95 |
 
 ## Prese in TASK-44 senza nuova approvazione (solo trasparenza, nessuna regola finanziaria nuova)
 

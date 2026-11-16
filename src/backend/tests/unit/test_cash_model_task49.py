@@ -260,5 +260,7 @@ def test_rebalance_available_cash_is_the_model_cash():
     # Before TASK-49 the plan started from 1014.80 of cash (buys ignored),
     # i.e. it could spend the 800 already invested a second time.
     assert out["totals"]["cash_before"] == pytest.approx(544.80)
-    assert out["total_value"] == pytest.approx(1094.80)
+    # TASK-95: the cash is reported but not in the base, and never spent.
+    assert out["total_value"] == pytest.approx(550.0)
+    assert out["totals"]["cash_after"] == pytest.approx(544.80)
     assert out["totals"]["invariant_ok"] is True

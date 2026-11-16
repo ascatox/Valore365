@@ -1,7 +1,7 @@
 """TASK-79: l'Auditor dei calcoli sul seed dei portafogli di prova, su un PostgreSQL 16 reale.
 
 Applica ``database/schema.sql``, tutte le migrazioni e ``scripts/auditor/audit_seed.sql`` in un
-database dedicato del cluster della fixture ``pg_engine``, esegue l'Auditor (le 52 regole, tutti gli
+database dedicato del cluster della fixture ``pg_engine``, esegue l'Auditor (tutte le regole, tutti gli
 scope dell'utente ``auditor-seed-user``) e verifica, sul codice attuale:
 
 - nessun ``fail`` né ``error`` fuori dai difetti noti (regole con ``known_defect``), a ogni severità;
@@ -12,7 +12,9 @@ scope dell'utente ``auditor-seed-user``) e verifica, sul codice attuale:
   dà ``pass`` e l'uscita è 0 anche con ``--strict-known``; con gli stessi target (somma 65, importo
   oltre il fabbisogno) anche B-PAC-UNDERWEIGHT-ONLY e B-PAC-NO-OVERSHOOT danno ``pass`` (TASK-90);
 - B-PAC-NO-OVERSHOOT su 9101 (TASK-90): ``pass`` sul codice attuale, ``fail`` con la ripartizione
-  di prima reintrodotta.
+  di prima reintrodotta;
+- B-REB-CASH-UNTOUCHED su 9101 (TASK-95): ``pass`` sul codice attuale, ``fail`` con il ribilanciamento
+  di TASK-85 (liquidità nella base e spesa) reintrodotto.
 
 I tool del Doctor usano il servizio di processo legato al ``DATABASE_URL`` dell'app: qui viene
 sostituito con uno legato al database del seed (architecture.md, Deviazioni TASK-78). La rete è
@@ -96,6 +98,7 @@ PROOF: dict[str, list[str]] = {
     "B-REB-DRIFT-NONINCREASING": [_p(9101)],
     "B-REB-MODE-SIDES": [_p(9101)],
     "B-REB-SELL-CAP": [_p(9101)],
+    "B-REB-CASH-UNTOUCHED": [_p(9101)],
     "B-PAC-SUM": [_p(9101)],
     "B-PAC-UNDERWEIGHT-ONLY": [_p(9101)],
     "B-PAC-NO-OVERSHOOT": [_p(9101)],
@@ -397,7 +400,7 @@ def _legacy_pac(args, repo, _perf, portfolio_id, user_id, **_kw):
 
 def test_pac_no_overshoot_on_seed_9101(audit_env, monkeypatch):
     """S-2026-11-11-13: `pass` col codice attuale; con la ripartizione di prima reintrodotta
-    `fail` (con A = 109.256,50 AUDBD.MI oltre il 40 %, AUDEQ.MI a 0), mentre B-PAC-SUM e
+    `fail` (con A = 100.000 AUDBD.MI oltre il 40 %, AUDEQ.MI a 0), mentre B-PAC-SUM e
     B-PAC-UNDERWEIGHT-ONLY restano `pass`."""
     import app.copilot_tools as copilot_tools
 
@@ -408,7 +411,7 @@ def test_pac_no_overshoot_on_seed_9101(audit_env, monkeypatch):
     by_rule = {r["rule_id"]: r for r in run["results"]}
     assert all(r["status"] == "pass" for r in by_rule.values()), _describe(run["results"])
     ok = by_rule["B-PAC-NO-OVERSHOOT"]
-    big = {e["path"]: e for e in ok["evidence"] if e["args"].get("monthly_amount") == 109256.5}
+    big = {e["path"]: e for e in ok["evidence"] if e["args"].get("monthly_amount") == 100000.0}
     assert big and all(e["observed"] <= e["expected"] + 0.02
                        for p, e in big.items() if p.endswith("new_weight_after"))
 
@@ -416,7 +419,73 @@ def test_pac_no_overshoot_on_seed_9101(audit_env, monkeypatch):
     legacy = {r["rule_id"]: r for r in audit_env(RunOptions(**options))["results"]}
     assert legacy["B-PAC-NO-OVERSHOOT"]["status"] == "fail", _describe(legacy.values())
     evidence = legacy["B-PAC-NO-OVERSHOOT"]["evidence"]
-    assert any(e["args"].get("monthly_amount") == 109256.5 and e["path"].endswith("new_weight_after")
+    assert any(e["args"].get("monthly_amount") == 100000.0 and e["path"].endswith("new_weight_after")
                and e["observed"] > 40.02 for e in evidence)
     assert any(e["path"] == "distribution[symbol=AUDEQ.MI].amount_eur" and e["observed"] == 0.0 for e in evidence)
     assert legacy["B-PAC-SUM"]["status"] == "pass" and legacy["B-PAC-UNDERWEIGHT-ONLY"]["status"] == "pass"
+
+
+# ---------------------------------------------------------------------------
+# B-REB-CASH-UNTOUCHED su 9101 (TASK-95)
+# ---------------------------------------------------------------------------
+
+
+def _task85_rebalance(args, repo, _perf, portfolio_id, user_id, **_kw):
+    """`calculate_rebalance_orders` di TASK-85 (difetto reintrodotto): base = strumenti con target +
+    liquidità del portafoglio, acquisti finanziati da liquidità + vendite. Solo modalità rebalance;
+    le altre dal codice attuale."""
+    import app.copilot_tools as copilot_tools
+
+    if (args.get("mode") or "rebalance") != "rebalance":
+        return copilot_tools._calculate_rebalance_orders(args, repo, _perf, portfolio_id, user_id)
+    cash = max(float(repo.get_summary(portfolio_id, user_id).cash_balance or 0.0), 0.0)
+    targets = repo.list_portfolio_target_allocations(portfolio_id, user_id)
+    pos = {p.asset_id: p for p in repo.get_positions(portfolio_id, user_id)}
+    values = {t.asset_id: float(pos[t.asset_id].market_value) if t.asset_id in pos else 0.0 for t in targets}
+    base = sum(values.values()) + cash
+    deltas = {t.asset_id: t.weight_pct / 100 * base - values[t.asset_id] for t in targets}
+    sells = sum(-d for d in deltas.values() if d < 0)
+    need = sum(d for d in deltas.values() if d > 0)
+    scale = min(1.0, (cash + sells) / need) if need > 0 else 0.0
+    orders = []
+    for t in targets:
+        d = deltas[t.asset_id]
+        amount = round(-d if d < 0 else d * scale, 2)
+        if amount > 0:
+            orders.append({"side": "sell" if d < 0 else "buy", "symbol": t.symbol, "amount_eur": amount,
+                           "shares_approx": None, "current_weight_pct": round(values[t.asset_id] / base * 100, 2),
+                           "target_weight_pct": round(t.weight_pct, 2), "weight_after_pct": round(t.weight_pct, 2)})
+    s = round(sum(o["amount_eur"] for o in orders if o["side"] == "sell"), 2)
+    b = round(sum(o["amount_eur"] for o in orders if o["side"] == "buy"), 2)
+    return {"mode": "rebalance", "orders": orders,
+            "totals": {"sells_eur": s, "buys_eur": b, "cash_before": round(cash, 2), "extra_cash": 0.0,
+                       "cash_after": round(cash + s - b, 2), "invariant": "…", "invariant_ok": True},
+            "total_value": round(base, 2), "tolerance_pp": 0.5, "untargeted_holdings": [],
+            "untargeted_value": 0.0, "target_sum_pct": 100.0, "unallocated_target_pct": 0.0, "notes": []}
+
+
+def test_rebalance_never_spends_cash_on_seed_9101(audit_env, monkeypatch):
+    """TASK-95: `pass` col codice attuale (vendita AUDEQ.MI 20.000, acquisto AUDBD.MI 20.000,
+    liquidità 9.256,50 invariata); con il ribilanciamento di TASK-85 reintrodotto (acquisti
+    24.628,25 contro vendite 15.371,75, liquidità a 0) `fail`, mentre conservazione e non
+    negatività della liquidità restano `pass`."""
+    import app.copilot_tools as copilot_tools
+
+    options = dict(mode="ci", portfolio_ids=[9101],
+                   rule_ids=["B-REB-CASH-UNTOUCHED", "B-REB-CASH-CONSERVATION", "B-REB-CASH-NONNEG"],
+                   include_aggregate=False, include_instruments=False)
+    run = audit_env(RunOptions(**options))
+    by_rule = {r["rule_id"]: r for r in run["results"]}
+    assert all(r["status"] == "pass" for r in by_rule.values()), _describe(run["results"])
+    ok = {(e["args"].get("mode"), e["path"]): e for e in by_rule["B-REB-CASH-UNTOUCHED"]["evidence"]}
+    assert ok[("rebalance", "totals.cash_after")]["observed"] == 9256.5
+    assert ok[("rebalance", "totals.buys_eur")]["observed"] == 20000.0
+
+    monkeypatch.setitem(copilot_tools._TOOL_HANDLERS, "calculate_rebalance_orders", _task85_rebalance)
+    legacy = {r["rule_id"]: r for r in audit_env(RunOptions(**options))["results"]}
+    assert legacy["B-REB-CASH-UNTOUCHED"]["status"] == "fail", _describe(legacy.values())
+    bad = {e["path"]: e for e in legacy["B-REB-CASH-UNTOUCHED"]["evidence"]}
+    assert bad["totals.buys_eur"]["observed"] == 24628.25 and bad["totals.buys_eur"]["expected"] == 15371.75
+    assert bad["totals.cash_after"]["observed"] == 0.0
+    assert legacy["B-REB-CASH-CONSERVATION"]["status"] == "pass"
+    assert legacy["B-REB-CASH-NONNEG"]["status"] == "pass"

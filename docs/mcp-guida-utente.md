@@ -145,7 +145,7 @@ succede dietro le quinte.
 | «Com'è andata la performance da inizio anno e a 1 anno?» | `get_performance` |
 | «Quanta liquidità ho e quali sono le ultime transazioni?» | `get_cash_balance`, `get_recent_transactions` |
 | «Chi si è mosso di più oggi?» | `get_day_movers` |
-| «Il portafoglio è in linea con il target? Quali ordini servirebbero per ribilanciare con 2.000 € di liquidità?» | `get_target_drift`, `calculate_rebalance_orders` |
+| «Il portafoglio è in linea con il target? Quali ordini servirebbero per ribilanciare con 2.000 € di nuova liquidità?» | `get_target_drift`, `calculate_rebalance_orders` |
 | «Cosa succederebbe ai pesi se comprassi 1.000 € di VWCE.DE?» | `calculate_what_if` |
 | «Come divideresti un PAC da 500 € al mese tra i miei strumenti?» | `calculate_pac_contribution` |
 | «Che cos'è lo strumento SWDA.MI che ho in portafoglio?» | `search_asset_info` |
@@ -173,8 +173,10 @@ succede dietro le quinte.
 > **Come vengono calcolati gli ordini di ribilanciamento.** Si ribilancia solo se almeno uno strumento si
 > scosta dal suo peso target di **più di 0,5 punti percentuali**. In quel caso tutti gli strumenti vengono
 > riportati al target, anche quelli che si discostano di meno, così le vendite finanziano gli acquisti. La
-> liquidità indicata nella domanda si aggiunge a quella già presente nel portafoglio. Commissioni e imposte
-> non sono incluse: gli importi sono lordi.
+> liquidità già presente nel portafoglio non viene mai usata per ribilanciare: pesi e scostamenti sono sul
+> valore dei soli strumenti con target, e la liquidità resta invariata. Una nuova liquidità che indichi
+> nella domanda viene investita solo con acquisti (senza vendite). Commissioni e imposte non sono incluse:
+> gli importi sono lordi.
 
 > **Policy del Doctor.** Dall'AI collegata puoi leggere e verificare le regole, mai salvarle: per
 > creare o cambiare una policy usa la pagina Doctor dell'app (o il Copilot dell'app, che mostra una

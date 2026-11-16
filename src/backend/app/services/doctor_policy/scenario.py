@@ -34,7 +34,9 @@ Modes (MVP, gross of taxes, D07):
   equity weight is unchanged, or the scenario is infeasible.
 - ``rebalance``: listed assets go to exactly their target weight of the
   final invested value, unlisted assets share the rest pro rata to their
-  current values; new cash is fully invested. ``no_sell`` makes it
+  current values; new cash is fully invested. The cash balance is never
+  used (owner's decision TASK-95: the cash is never used to rebalance;
+  ``constraints.use_cash_balance`` is ignored here, with a warning). ``no_sell`` makes it
   infeasible when a sale would be needed (required cash given when cash can
   solve it); ``max_turnover_pct`` caps the turnover.
 
@@ -643,7 +645,8 @@ def _plan_rebalance(book: _Book, req: ScenarioInput) -> _Plan:
                 "message": "I pesi coprono tutte le posizioni: la somma deve essere 100",
             }],
         )
-    funds = float(req.new_cash) + (book.cash if req.constraints.use_cash_balance else 0.0)
+    # TASK-95: the cash balance never funds a rebalance (use_cash_balance ignored).
+    funds = float(req.new_cash)
     pct = float(req.fee_model.pct) / 100.0
     fixed = float(req.fee_model.fixed)
 
@@ -691,7 +694,7 @@ def _plan_rebalance(book: _Book, req: ScenarioInput) -> _Plan:
         # minimum: count the fixed cost on all of them so the amount is sufficient.
         n_buys = sum(1 for v in target_values(needed).values() if v > MONEY_TOL)
         costs = pct * sum(buys.values()) + fixed * n_buys
-        required = max(0.0, needed - V + costs - (book.cash if req.constraints.use_cash_balance else 0.0))
+        required = max(0.0, needed - V + costs)
         target_pct = targets.get(first_sale)
         goal = f"al {format_threshold_it(target_pct * 100)}%" if target_pct is not None else "ai pesi obiettivo"
         raise _Infeasible(
@@ -854,6 +857,11 @@ def _run_one(
     V = book.invested
     total_before = V + book.cash
     warnings = _base_warnings(snapshot, policy_document)
+    if req.mode == "rebalance" and req.constraints.use_cash_balance:
+        warnings.append(
+            "Nel ribilanciamento la liquidità già presente non si usa: gli acquisti sono finanziati "
+            "dalle vendite e dalla nuova liquidità indicata («Usa anche la liquidità» ignorato)."
+        )
     common = {
         "label": req.label,
         "mode": req.mode,

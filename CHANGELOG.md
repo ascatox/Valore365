@@ -71,6 +71,15 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Changed
 
+- Ribilanciamento: la liquidità del portafoglio non si usa mai (decisione del proprietario,
+  TASK-95). Pesi e scostamenti rispetto ai target sono sul valore dei soli strumenti con target,
+  liquidità esclusa, con un solo numero in Copilot/MCP, tabella posizioni, card mobile, anteprima del
+  ribilanciamento, what-if, PAC, snapshot ed export (9101: 70 / 20 / 10 %, scostamenti +20 / −20 / 0,
+  prima 64,07 / 18,31 / 9,15); `calculate_rebalance_orders` e l'anteprima finanziano gli acquisti
+  solo con le vendite (9101: vendita AUDEQ.MI e acquisto AUDBD.MI da 20.000 €, liquidità invariata),
+  la nuova liquidità vale solo in «Solo acquisti»; PAC uguale a `buy_only` dello stesso importo;
+  Scenario Lab ignora «Usa anche la liquidità» nel ribilanciamento. Nuova regola dell'Auditor
+  B-REB-CASH-UNTOUCHED.
 - Pagina Doctor organizzata in tre sezioni — **Diagnosi**, **I miei parametri**,
   **Laboratorio** — con deep link `?section=parametri` / `?section=laboratorio`
   (`docs/doctor2/ui-spec.md`). La card «I miei parametri» in Diagnosi resta separata dal

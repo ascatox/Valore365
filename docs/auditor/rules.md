@@ -9,7 +9,7 @@ Ogni condizione usa **i nomi reali dei campi** dell'output dei tool (`src/backen
 `sanitize_output`. Gli id, i titoli, le severità, gli scope e le tolleranze di questo catalogo sono
 vincolanti: le dichiarazioni `RULES` li copiano esattamente.
 
-Totale: **60 regole** — A 11, B 12, C 13, D 24.
+Totale: **61 regole** — A 11, B 13, C 13, D 24.
 
 ## 0. Convenzioni
 
@@ -285,6 +285,11 @@ BO = `{"mode": "buy_only", "available_cash": 1000.0}`, SO = `{"mode": "sell_only
 restituisce `{"distribution": [], "note"}` senza `total_allocated` → `skip`/`no_targets`.
 n = numero di ordini (o di righe della distribuzione).
 
+Decisione del proprietario TASK-95 (2026-11-16): la liquidità del portafoglio non si usa mai per
+ribilanciare. `totals.cash_before` è la liquidità del portafoglio (solo riportata), `extra_cash` la
+nuova liquidità indicata (`available_cash`, usata solo in BO); la base dei pesi (`total_value`) è il
+valore dei soli strumenti con target, liquidità esclusa, in ogni tool del gruppo.
+
 ### B-REB-CASH-CONSERVATION
 - **Titolo:** Il ribilanciamento conserva la liquidità: vendite e acquisti tornano al centesimo
 - **Sev.** P0 · **Area** rebalance · **Finding** V365-003 · **Scope** portfolio
@@ -316,9 +321,11 @@ n = numero di ordini (o di righe della distribuzione).
 - **Tool:** `calculate_rebalance_orders` con R e SO.
 - **Condizione:** ogni ordine `sell`: `|weight_after_pct − target_weight_pct| ≤ T_pp2`. Con R, ogni
   ordine `buy`: `weight_after_pct ≤ target_weight_pct + T_pp2`; se almeno un `buy` ha
-  `weight_after_pct < target_weight_pct − T_pp2` (acquisti ridotti), allora `totals.cash_after ≤
-  T_sum_eur(n)`: in `compute_rebalance_plan` gli acquisti si riducono solo quando liquidità e
-  proventi non bastano, e allora `cash_after` è 0 prima degli arrotondamenti.
+  `weight_after_pct < target_weight_pct − T_pp2` (acquisti ridotti), allora `totals.cash_after −
+  totals.cash_before ≤ T_sum_eur(n)`: in `compute_rebalance_plan` gli acquisti si riducono solo
+  quando proventi delle vendite e nuova liquidità non bastano, e allora sono spesi tutti (la
+  liquidità del portafoglio, che non finanzia acquisti da TASK-95, resta `cash_before`; prima di
+  TASK-95 la condizione era `cash_after ≤ T_sum_eur(n)`).
 - **Tolleranze:** `T_pp2`, `T_sum_eur(n)`.
 - **Skip:** `empty_portfolio`; `no_targets`; nessun ordine in R e SO → `not_applicable`.
 - **Prova:** 9101.
@@ -357,6 +364,26 @@ n = numero di ordini (o di righe della distribuzione).
   vendita assente dalle righe e righe troncate → `truncated_output`.
 - **Prova:** 9101.
 - **Difetto:** vendita calcolata sul totale del portafoglio invece che sulla posizione.
+
+### B-REB-CASH-UNTOUCHED
+- **Titolo:** Il ribilanciamento non spende mai la liquidità del portafoglio
+- **Sev.** P1 · **Area** rebalance · **Finding** — (decisione del proprietario TASK-95) · **Scope** portfolio
+- **Tool:** `calculate_rebalance_orders` con R, BO, SO; `get_portfolio_summary`; `get_positions`.
+- **Condizione:** decisione del proprietario (TASK-95, 2026-11-16, `methodology.md` §7): gli acquisti
+  sono finanziati solo dalle vendite e dalla nuova liquidità indicata. Con C = `cash_balance` del
+  riepilogo, per ogni modalità: `|totals.cash_before − max(C, 0)| ≤ T_eur` (la liquidità del
+  portafoglio è dichiarata, non nascosta); `totals.buys_eur ≤ totals.sells_eur + totals.extra_cash
+  + T_sum_eur(n)`; `totals.cash_after ≥ totals.cash_before − T_sum_eur(n)`; R e SO:
+  `totals.extra_cash == 0` (nessuna nuova liquidità valorizzata d'ufficio, per esempio col saldo).
+- **Tolleranze:** `T_eur`, `T_sum_eur(n)`.
+- **Skip:** `empty_portfolio`; `no_targets`.
+- **Prova:** 9101 (R: vendita AUDEQ.MI 20.000, acquisto AUDBD.MI 20.000, `cash_before` =
+  `cash_after` = 9.256,50; BO: acquisti 1.000 = `extra_cash`).
+- **Difetto:** ribilanciamento di TASK-85 (liquidità nella base e spesa): su 9101 vendita AUDEQ.MI
+  15.371,75, acquisti AUDBD.MI 23.702,60 e AUDTECH.DE 925,65 (24.628,25 contro 15.371,75 di
+  vendite), `cash_after` 0; conservazione (B-REB-CASH-CONSERVATION) e non negatività
+  (B-REB-CASH-NONNEG) non se ne accorgono. Anche: `cash_before` 0 con la liquidità passata come
+  `extra_cash` in R.
 
 ### B-PAC-SUM
 - **Titolo:** Nel PAC la somma dei versamenti per strumento è uguale all'importo indicato
@@ -421,12 +448,14 @@ n = numero di ordini (o di righe della distribuzione).
   × `T_pp` / Σ t oltre (propagazione dell'errore nella quota).
 - **Skip:** `empty_portfolio`; `no_targets`; distribuzione vuota in entrambe le chiamate (tutti i
   target a 0) → `not_applicable`.
-- **Prova:** 9101 (A = 109.256,50: AUDEQ.MI 36.190,36, AUDBD.MI 62.140,49, AUDTECH.DE 10.925,65 €,
-  pesi dopo 48,60 / 37,59 / 9,58 % contro 50 / 40 / 10; con 500 € AUDBD.MI 480,39, AUDTECH.DE 19,61).
+- **Prova:** 9101, base senza liquidità da TASK-95 (A = 100.000: fabbisogni = importi 30.000 /
+  60.000 / 10.000 € per AUDEQ.MI / AUDBD.MI / AUDTECH.DE, pesi dopo esattamente 50 / 40 / 10; con
+  500 € AUDBD.MI 498,77, AUDTECH.DE 1,23, AUDEQ.MI 0). Con la base di TASK-85 (A = 109.256,50) erano
+  36.190,36 / 62.140,49 / 10.925,65 € e, con 500 €, 480,39 / 19,61.
 - **Difetto:** ripartizione in proporzione allo scostamento attuale in punti, sulla base prima del
-  versamento e senza tetto al fabbisogno (codice prima di TASK-90): con A = 109.256,50 AUDBD.MI
-  supera il 40 % e AUDEQ.MI, che il versamento rende sottopesato, riceve 0 invece di 36.190,36 €;
-  con 500 € AUDBD.MI 481,14 e AUDTECH.DE 18,86 invece di 480,39 e 19,61. B-PAC-SUM e
+  versamento e senza tetto al fabbisogno (codice prima di TASK-90): con A = 100.000 AUDBD.MI
+  arriva al 60 % e AUDEQ.MI, che il versamento rende sottopesato, riceve 0 invece di 30.000 €;
+  con 500 € AUDBD.MI 500 e AUDTECH.DE 0 invece di 498,77 e 1,23. B-PAC-SUM e
   B-PAC-UNDERWEIGHT-ONLY non se ne accorgono. Rispetto alla bozza del report del 2026-11-11 la
   condizione (3) verifica la quota esatta e non solo `amount_eur ≤ f_i` e la presenza degli
   strumenti con f_i > `T_eur` (che ne seguono); (2) vale solo entro il fabbisogno, perché oltre
@@ -435,35 +464,35 @@ n = numero di ordini (o di righe della distribuzione).
 ### B-DRIFT-REBALANCE-WEIGHTS
 - **Titolo:** Scostamento dal target, PAC, ribilanciamento e what-if partono dagli stessi pesi
 - **Sev.** P2 · **Area** rebalance · **Finding** S-2026-11-11-02 (TASK-85, what-if da TASK-88) · **Scope** portfolio
-- **Tool:** `get_positions`; `get_target_drift`; `get_portfolio_summary`; `calculate_rebalance_orders`
-  con R; `calculate_pac_contribution` `{"monthly_amount": 500.0}`; `calculate_what_if`
+- **Tool:** `get_positions`; `get_target_drift`; `calculate_rebalance_orders` con R; `calculate_pac_contribution` `{"monthly_amount": 500.0}`; `calculate_what_if`
   `{"action": "buy", "symbol": S_T, "amount_eur": 1000.0}` con S_T = primo simbolo di
   `get_positions` che ha un target, altrimenti il primo di `drift` (strumento con target non
   posseduto).
 - **Condizione:** decisione del proprietario (TASK-85, 2026-11-11): un solo peso per strumento, sulla
-  base del ribilanciamento (valore degli strumenti con target + liquidità attuale, decisione 9). Con
-  T = `get_target_drift.total_value`, C = `cash_balance` del riepilogo e v_i = `market_value` delle
-  righe di `drift`: (1) T presente e > 0, `|T − (Σ v_i + max(C, 0))| ≤ T_sum_eur(n + 1)` e per ogni
-  riga `|current_weight − v_i / T × 100| ≤ T_pp2`; (2) `|total_value − T| ≤ T_eur` per R e per il
+  base del ribilanciamento; base cambiata da TASK-95 (2026-11-16): valore dei soli strumenti con
+  target, liquidità esclusa. Con T = `get_target_drift.total_value` e v_i = `market_value` delle
+  righe di `drift`: (1) T presente e ≥ 0, `|T − Σ v_i| ≤ T_sum_eur(n)` e per ogni riga
+  `|current_weight − v_i / T × 100| ≤ T_pp2` (0 con T = 0); (2) `|total_value − T| ≤ T_eur` per R e per il
   PAC; (3) per ogni ordine di R e ogni riga di `distribution` del PAC esiste la riga di `drift` con lo
   stesso `symbol` e `|current_weight_pct − current_weight| ≤ T_pp` (PAC: `current_weight`),
   `|target_weight_pct − target_weight| ≤ T_pp` (PAC: `target_weight`); (4) what-if (TASK-88), con
   j la riga di `drift` di S_T: `|old_drift − drift[j].drift| ≤ T_pp`,
-  `|target_basis.total_value_before − T| ≤ T_eur` e `|new_drift − ((v_j + 1000) / (Σ v_i + 1000 +
-  max(C − 1000, 0)) × 100 − target_weight_j)| ≤ T_pp2` (acquisto pagato dalla liquidità, la parte
-  oltre il saldo come nuovo versamento: il peso che `get_target_drift` mostrerebbe dopo l'operazione).
-- **Tolleranze:** `T_sum_eur(n + 1)` (n + 1 importi arrotondati a 2 decimali); `T_pp2` (peso
+  `|target_basis.total_value_before − T| ≤ T_eur` e `|new_drift − ((v_j + 1000) / (Σ v_i + 1000)
+  × 100 − target_weight_j)| ≤ T_pp2` (l'acquisto aumenta la base del suo importo: il peso che
+  `get_target_drift` mostrerebbe dopo l'operazione; prima di TASK-95 la base dopo era Σ v_i + 1000
+  + max(C − 1000, 0)).
+- **Tolleranze:** `T_sum_eur(n)` (n importi arrotondati a 2 decimali); `T_pp2` (peso
   ricalcolato da importi arrotondati); `T_pp` e `T_eur` fra i tool (lo stesso numero arrotondato
   allo stesso modo da `current_target_weights` di `services/rebalance.py`).
 - **Skip:** `empty_portfolio`; `drift` vuoto → `no_targets`. Nessun ordine in R o PAC senza righe
   **non** è `skip` (la bozza del report lo prevedeva): le verifiche (1) e (2) restano.
-- **Prova:** 9101 (AUDEQ.MI 64,07, AUDBD.MI 18,31, AUDTECH.DE 9,15 in tutti e tre i tool; T =
-  109.256,50; what-if su AUDEQ.MI: `old_drift` +14,07, `new_drift` +14,98).
-- **Difetto:** `get_target_drift` con i pesi delle sole posizioni e senza `total_value` (codice prima
-  di TASK-85: AUDTECH.DE 10,0 «in linea» contro 9,15 del ribilanciamento, che lo compra); PAC con una
-  base diversa; base delle sole posizioni dichiarata (`total_value` 100.000 contro 109.256,50);
-  what-if con lo scostamento sul peso fra le posizioni (codice prima di TASK-88: AUDEQ.MI `old_drift`
-  +20,0 contro +14,07).
+- **Prova:** 9101 (AUDEQ.MI 70,0, AUDBD.MI 20,0, AUDTECH.DE 10,0, scostamenti +20 / −20 / 0, in tutti
+  i tool; T = 100.000; what-if su AUDEQ.MI: `old_drift` +20,0, `new_drift` +20,30). Con la base di
+  TASK-85 erano 64,07 / 18,31 / 9,15 su T = 109.256,50 e `old_drift` +14,07.
+- **Difetto:** `get_target_drift` con la base di TASK-85 (liquidità inclusa: `total_value`
+  109.256,50 contro 100.000, AUDTECH.DE −0,85 contro 10,0 «in linea» del ribilanciamento); PAC con
+  una base diversa (AUDBD.MI 18,31 contro 20,0); base di tutte le posizioni dichiarata (anche quelle
+  senza target); what-if con la base di TASK-88 (AUDEQ.MI `old_drift` +14,07 contro +20,0).
 
 ### B-WHATIF-BUY-WEIGHT
 - **Titolo:** La simulazione di un acquisto ricalcola correttamente il peso

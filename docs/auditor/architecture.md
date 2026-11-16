@@ -1253,6 +1253,8 @@ cambia, perché, e quali task ne sono toccati.
 
 ### TASK-85
 
+Base dei pesi sostituita da TASK-95 (liquidità esclusa): vedi la sottosezione TASK-95.
+
 - **Correzione:** `get_target_drift`, `calculate_pac_contribution` e lo scostamento dello snapshot
   del Copilot (`copilot/snapshot.py`) prendono il peso attuale da `current_target_weights` di
   `services/rebalance.py`, la stessa base di `calculate_rebalance_orders` (decisione del
@@ -1275,6 +1277,8 @@ cambia, perché, e quali task ne sono toccati.
 
 ### TASK-88
 
+Base del what-if e anteprima REST cambiate da TASK-95: vedi la sottosezione TASK-95.
+
 - **Correzione:** la tabella posizioni legge lo scostamento dal nuovo `GET
   /portfolios/{id}/target-drift` (`routes_rebalancing.py`), che usa la stessa funzione di
   `get_target_drift` (`target_drift_rows` di `services/rebalance.py`); `calculate_what_if` misura
@@ -1290,6 +1294,9 @@ cambia, perché, e quali task ne sono toccati.
   motivazione in `docs/audit-mcp-2026-11/methodology.md` §7.
 
 ### TASK-90
+
+Base del PAC senza liquidità da TASK-95 (i numeri su 9101 qui sotto sono quelli di allora): vedi la
+sottosezione TASK-95.
 
 - **Correzione:** `calculate_pac_contribution` usa `compute_pac_split` di `services/rebalance.py`
   (decisione del proprietario, `methodology.md` §7): quote in proporzione al fabbisogno di ogni
@@ -1355,3 +1362,39 @@ cambia, perché, e quali task ne sono toccati.
 - **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101, 9102, 9103, 9105 e
   9107; `not_applicable` su 9104 (GBP e USD), `no_transactions` su 9106. Con le righe senza `taxes`
   `fail` su 9107 (4.075,80 ricostruiti contro 4.068,00), `pass` altrove (nessuna imposta).
+
+### TASK-95
+
+- **Decisione del proprietario (2026-11-16):** la liquidità del portafoglio non si usa mai per
+  ribilanciare. Sostituisce la base di TASK-85 (strumenti con target + liquidità), applicata da
+  TASK-88 e TASK-90. `current_target_weights` / `target_drift_rows` / `compute_pac_split` di
+  `services/rebalance.py` usano il solo valore degli strumenti con target, e lo stesso numero arriva a
+  `get_target_drift`, `GET /portfolios/{id}/target-drift` (tabella e card mobile), snapshot del
+  Copilot, export Markdown, PAC, what-if e anteprima REST del ribilanciamento (allineata: stessa base,
+  posizioni senza target escluse, `cash_to_allocate` solo in `buy_only`).
+  `compute_rebalance_plan` non mette più la liquidità del portafoglio nella base né fra i fondi
+  (`include_cash_in_base` tolto); `extra_cash` vale solo in `buy_only`. `target_basis` del what-if
+  non riporta più `cash_before`/`cash_after`. Gli ordini sotto il centesimo non sono più elencati.
+- **B-REB-CASH-UNTOUCHED** (gruppo B, P1, scope portfolio, nuova): per R, BO, SO `cash_before` =
+  liquidità del riepilogo, `buys_eur ≤ sells_eur + extra_cash`, `cash_after ≥ cash_before`, nessuna
+  `extra_cash` in R e SO. Una regola nuova invece di estendere B-REB-CASH-NONNEG: il ribilanciamento
+  di TASK-85 rispettava conservazione e non negatività (la liquidità tornava ed era ≥ 0) ma la
+  spendeva tutta, quindi serve un invariante diverso con un proprio esito. Legge anche
+  `get_portfolio_summary` (già nella tabella §5.6); nessun nuovo argomento canonico.
+- **Regole adattate:** B-DRIFT-REBALANCE-WEIGHTS (base = Σ `market_value` delle righe di `drift`,
+  T ≥ 0 ammesso con nessuno strumento con target posseduto, what-if sulla base aumentata
+  dell'acquisto; non legge più `get_portfolio_summary`); B-REB-SELLS-REACH-TARGET (acquisti ridotti
+  ammessi solo con `cash_after − cash_before ≤ T_sum_eur(n)`). B-PAC-* e B-WHATIF-* invariate nel
+  codice: leggono la base da `get_target_drift.total_value`, che ora esclude la liquidità.
+  D-DOCTOR-CASH non cambia (Scenario Lab `new_cash_only`, la liquidità resta un dato).
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`, `AGENT_DIR=/tmp/valore365-auditor-task95`):
+  9101 pesi 70 / 20 / 10, scostamenti +20 / −20 / 0 in `get_target_drift`, ribilanciamento e
+  what-if (+20,0 → +20,30 con 1.000 € di AUDEQ.MI); `rebalance`: vendita AUDEQ.MI 20.000, acquisto
+  AUDBD.MI 20.000, liquidità 9.256,50 prima e dopo (`available_cash` 5.000 in `rebalance` ignorato
+  con una nota); PAC 500 € → AUDBD.MI 498,77, AUDTECH.DE 1,23; PAC 100.000 € = `buy_only` 100.000 €
+  → 30.000 / 60.000 / 10.000, pesi dopo 50 / 40 / 10. Auditor completo (`--fail-on P2`, 61 regole):
+  295 `pass`, 0 `fail`, 193 `skip`, 0 `error`, uscita 0. Con il ribilanciamento di TASK-85
+  reintrodotto B-REB-CASH-UNTOUCHED dà `fail` (acquisti 24.628,25 contro vendite 15.371,75,
+  `cash_after` 0) mentre B-REB-CASH-CONSERVATION e B-REB-CASH-NONNEG danno `pass`
+  (`tests/integration/test_auditor_postgres.py::test_rebalance_never_spends_cash_on_seed_9101`).
+

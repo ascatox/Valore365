@@ -322,13 +322,19 @@ def check_reb_sells_reach_target(ctx: Any, scope: dict[str, Any]) -> dict[str, A
                 if wa < tw - T_PP2 - EPS:
                     reduced.append(o)
         if reduced:
+            # TASK-95: la liquidità del portafoglio non finanzia gli acquisti, quindi
+            # acquisti ridotti sono ammessi solo se vendite e nuova liquidità sono spese tutte
+            # (cash_after = cash_before).
             totals = res.get("totals") or {}
             cash_after = _num(totals.get("cash_after"))
+            cash_before = _num(totals.get("cash_before"))
             tol = t_sum_eur(n)
-            ev = _ev(REBALANCE_TOOL, args, "totals.cash_after", totals.get("cash_after"), 0.0, tol,
+            ev = _ev(REBALANCE_TOOL, args, "totals.cash_after", totals.get("cash_after"),
+                     totals.get("cash_before"), tol,
                      f"modalità {mode}: acquisti ridotti ({', '.join(str(o.get('symbol')) for o in reduced)}) "
-                     "con liquidità residua")
-            (violations if cash_after is None or cash_after > tol + EPS else passed).append(ev)
+                     "con proventi delle vendite o nuova liquidità non spesi")
+            (violations if cash_after is None or cash_before is None
+             or cash_after - cash_before > tol + EPS else passed).append(ev)
     if violations:
         return _fail(
             "Le vendite (o gli acquisti) del ribilanciamento non portano gli strumenti al peso obiettivo.",
@@ -452,6 +458,67 @@ def check_reb_sell_cap(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
             "truncated_output",
             "Le posizioni sono limitate a 30 righe: non tutte le vendite sono verificabili.",
             unverifiable,
+        )
+    return _pass(passed)
+
+
+# ---------------------------------------------------------------------------
+# B-REB-CASH-UNTOUCHED (TASK-95)
+# ---------------------------------------------------------------------------
+
+
+def check_reb_cash_untouched(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    """Il ribilanciamento non spende mai la liquidità del portafoglio (TASK-95).
+
+    Decisione del proprietario (2026-11-16): gli acquisti sono finanziati solo dalle
+    vendite e dalla nuova liquidità indicata esplicitamente (``available_cash``, solo in
+    ``buy_only``). In ogni modalità: ``cash_before`` = liquidità del riepilogo (mai
+    negativa), ``buys_eur ≤ sells_eur + extra_cash`` e ``cash_after ≥ cash_before``; in
+    ``rebalance`` e ``sell_only`` nessuna nuova liquidità (``extra_cash`` = 0).
+    """
+    runs, early = _load_rebalance(ctx, scope, ("rebalance", "buy_only", "sell_only"))
+    if early is not None:
+        return early
+    sum_args = _pid_args(scope)
+    summary = ctx.call(SUMMARY_TOOL, sum_args)
+    cash = _num(summary.get("cash_balance"))
+    violations: list[dict[str, Any]] = []
+    passed: list[dict[str, Any]] = []
+    if cash is None:
+        violations.append(_ev(SUMMARY_TOOL, sum_args, "cash_balance", summary.get("cash_balance"),
+                              "numero", None, "liquidità del portafoglio mancante"))
+    for mode, args, res in runs:
+        totals = res["totals"]
+        n = len(_orders(res))
+        tol = t_sum_eur(n)
+        cash_before = _num(totals.get("cash_before"))
+        extra = _num(totals.get("extra_cash"))
+        sells = _num(totals.get("sells_eur"))
+        buys = _num(totals.get("buys_eur"))
+        cash_after = _num(totals.get("cash_after"))
+        if None in (cash_before, extra, sells, buys, cash_after):
+            violations.append(_ev(REBALANCE_TOOL, args, "totals", totals, expected="importi numerici",
+                                  note=f"modalità {mode}: totali mancanti"))
+            continue
+        if cash is not None:
+            ev = _ev(REBALANCE_TOOL, args, "totals.cash_before", cash_before, _r(max(cash, 0.0), 2), T_EUR,
+                     f"modalità {mode}: liquidità del portafoglio = cash_balance del riepilogo (≥ 0)")
+            (violations if abs(cash_before - max(cash, 0.0)) > T_EUR + EPS else passed).append(ev)
+        ev = _ev(REBALANCE_TOOL, args, "totals.buys_eur", buys, _r(sells + extra, 2), tol,
+                 f"modalità {mode}: acquisti ≤ sells_eur + extra_cash (la liquidità del portafoglio "
+                 "non finanzia acquisti)")
+        (violations if buys > sells + extra + tol + EPS else passed).append(ev)
+        ev = _ev(REBALANCE_TOOL, args, "totals.cash_after", cash_after, cash_before, tol,
+                 f"modalità {mode}: liquidità finale ≥ liquidità iniziale")
+        (violations if cash_after < cash_before - tol - EPS else passed).append(ev)
+        if mode != "buy_only":
+            ev = _ev(REBALANCE_TOOL, args, "totals.extra_cash", extra, 0.0, None,
+                     f"modalità {mode}: nessuna nuova liquidità (non indicata dall'utente)")
+            (violations if extra != 0.0 else passed).append(ev)
+    if violations:
+        return _fail(
+            "Il ribilanciamento spende la liquidità già presente nel portafoglio: gli acquisti devono "
+            "essere finanziati solo dalle vendite e dalla nuova liquidità indicata.", violations,
         )
     return _pass(passed)
 
@@ -718,8 +785,9 @@ def check_pac_no_overshoot(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
 def check_drift_rebalance_weights(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
     """Scostamento, PAC e ribilanciamento: un solo peso per strumento.
 
-    Decisione del proprietario (TASK-85, 2026-11-11): la base è quella del
-    ribilanciamento, valore degli strumenti con target + liquidità attuale.
+    Decisione del proprietario (TASK-85, 2026-11-11), base cambiata da TASK-95
+    (2026-11-16): la base è quella del ribilanciamento, valore dei soli strumenti con
+    target, liquidità esclusa.
     """
     pos_args, positions = _positions(ctx, scope)
     if not positions:
@@ -732,8 +800,6 @@ def check_drift_rebalance_weights(ctx: Any, scope: dict[str, Any]) -> dict[str, 
             "no_targets", "Il portafoglio non ha pesi obiettivo configurati.",
             [_ev(TARGET_DRIFT_TOOL, drift_args, "drift", [], note="nessun target")],
         )
-    sum_args = _pid_args(scope)
-    summary = ctx.call(SUMMARY_TOOL, sum_args)
     r_args = _pid_args(scope, REBALANCE_ARGS["rebalance"])
     reb = ctx.call(REBALANCE_TOOL, r_args)
     pac_args = _pid_args(scope, PAC_ARGS)
@@ -742,25 +808,25 @@ def check_drift_rebalance_weights(ctx: Any, scope: dict[str, Any]) -> dict[str, 
     violations: list[dict[str, Any]] = []
     passed: list[dict[str, Any]] = []
 
-    # 1. Base dichiarata da get_target_drift = strumenti con target + liquidità del riepilogo.
+    # 1. Base dichiarata da get_target_drift = Σ valore degli strumenti con target (TASK-95:
+    #    liquidità esclusa).
     total = _num(drift.get("total_value"))
-    cash = _num(summary.get("cash_balance"))
     values = [_num(d.get("market_value")) for d in rows]
-    if total is None or total <= EPS:
+    if total is None or total < -EPS:
         violations.append(_ev(TARGET_DRIFT_TOOL, drift_args, "total_value", drift.get("total_value"),
-                              "numero > 0", None, "base dei pesi non dichiarata"))
-    elif cash is None or any(v is None for v in values):
-        violations.append(_ev(SUMMARY_TOOL, sum_args, "cash_balance", summary.get("cash_balance"),
-                              "numero", None, "liquidità o valori degli strumenti mancanti"))
+                              "numero ≥ 0", None, "base dei pesi non dichiarata"))
+    elif any(v is None for v in values):
+        violations.append(_ev(TARGET_DRIFT_TOOL, drift_args, "drift[*].market_value", None,
+                              "numero", None, "valori degli strumenti mancanti"))
     else:
-        expected_total = sum(values) + max(cash, 0.0)
-        tol = t_sum_eur(len(values) + 1)
+        expected_total = sum(values)
+        tol = t_sum_eur(len(values))
         ev = _ev(TARGET_DRIFT_TOOL, drift_args, "total_value", total, _r(expected_total, 2), tol,
-                 f"Σ market_value di drift ({len(values)} strumenti con target) + cash_balance del riepilogo")
+                 f"Σ market_value di drift ({len(values)} strumenti con target), liquidità esclusa")
         (violations if abs(total - expected_total) > tol + EPS else passed).append(ev)
         for i, d in enumerate(rows):
             cw = _num(d.get("current_weight"))
-            expected_w = values[i] / total * 100.0
+            expected_w = values[i] / total * 100.0 if total > EPS else 0.0  # type: ignore[operator]
             ev = _ev(TARGET_DRIFT_TOOL, drift_args, f"drift[{i}].current_weight", d.get("current_weight"),
                      _r(expected_w, 4), T_PP2, f"{d.get('symbol')}: market_value / total_value × 100")
             (violations if cw is None or abs(cw - expected_w) > T_PP2 + EPS else passed).append(ev)
@@ -793,9 +859,9 @@ def check_drift_rebalance_weights(ctx: Any, scope: dict[str, Any]) -> dict[str, 
                      f"{symbol}: come drift[{j}].{d_key}")
             (violations if a is None or b is None or abs(a - b) > T_PP + EPS else passed).append(ev)
 
-    # 4. What-if (TASK-88): scostamento prima = get_target_drift; dopo = stessa base con
-    #    l'acquisto pagato dalla liquidità (oltre il saldo, nuovo versamento).
-    _check_what_if_drift(ctx, scope, positions, rows, total, cash, values, drift_args, violations, passed)
+    # 4. What-if (TASK-88): scostamento prima = get_target_drift; dopo = stessa base
+    #    aumentata dell'acquisto (TASK-95: la liquidità non entra nei pesi).
+    _check_what_if_drift(ctx, scope, positions, rows, total, values, drift_args, violations, passed)
     if violations:
         return _fail(
             "Scostamento dal target, PAC, ribilanciamento e what-if non partono dagli stessi pesi.",
@@ -814,7 +880,7 @@ def what_if_drift_symbol(positions: list[dict[str, Any]], drift_rows: list[dict[
 
 def _check_what_if_drift(
     ctx: Any, scope: Mapping[str, Any], positions: list[dict[str, Any]], rows: list[dict[str, Any]],
-    total: float | None, cash: float | None, values: list[float | None], drift_args: Mapping[str, Any],
+    total: float | None, values: list[float | None], drift_args: Mapping[str, Any],
     violations: list[dict[str, Any]], passed: list[dict[str, Any]],
 ) -> None:
     symbol = what_if_drift_symbol(positions, rows)
@@ -834,14 +900,13 @@ def _check_what_if_drift(
     (violations if before is None or total is None or abs(before - total) > T_EUR + EPS else passed).append(ev)
 
     target, v0 = _num(d.get("target_weight")), values[j]
-    if cash is None or target is None or any(v is None for v in values):
+    if target is None or any(v is None for v in values):
         return  # dati di partenza mancanti: già segnalati al punto 1
-    base_after = sum(values) + WHAT_IF_BUY_AMOUNT + max(cash - WHAT_IF_BUY_AMOUNT, 0.0)  # type: ignore[arg-type]
+    base_after = sum(values) + WHAT_IF_BUY_AMOUNT  # type: ignore[arg-type]
     expected = (v0 + WHAT_IF_BUY_AMOUNT) / base_after * 100.0 - target  # type: ignore[operator]
     new = _num(res.get("new_drift"))
     ev = _ev(WHAT_IF_TOOL, args, "new_drift", res.get("new_drift"), _r(expected, 4), T_PP2,
-             f"({symbol} {v0} + 1000) / (Σ market_value + 1000 + max(cash_balance − 1000, 0)) × 100 − {target}"
-             f" con cash_balance = {cash}")
+             f"({symbol} {v0} + 1000) / (Σ market_value + 1000) × 100 − {target}, liquidità esclusa")
     (violations if new is None or abs(new - expected) > T_PP2 + EPS else passed).append(ev)
 
 
@@ -1039,6 +1104,17 @@ RULES: list[dict[str, Any]] = [
         "check": check_reb_sell_cap,
     },
     {
+        "id": "B-REB-CASH-UNTOUCHED",
+        "group": "B",
+        "title": "Il ribilanciamento non spende mai la liquidità del portafoglio",
+        "area": "rebalance",
+        "severity": "P1",
+        "findings": [],
+        "scopes": ["portfolio"],
+        "tools": ["calculate_rebalance_orders", "get_portfolio_summary", "get_positions"],
+        "check": check_reb_cash_untouched,
+    },
+    {
         "id": "B-PAC-SUM",
         "group": "B",
         "title": "Nel PAC la somma dei versamenti per strumento è uguale all'importo indicato",
@@ -1080,7 +1156,7 @@ RULES: list[dict[str, Any]] = [
         "findings": ["S-2026-11-11-02"],
         "scopes": ["portfolio"],
         "tools": ["get_target_drift", "calculate_rebalance_orders", "calculate_pac_contribution",
-                  "calculate_what_if", "get_portfolio_summary", "get_positions"],
+                  "calculate_what_if", "get_positions"],
         "check": check_drift_rebalance_weights,
     },
     {

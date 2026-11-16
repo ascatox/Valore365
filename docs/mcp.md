@@ -119,7 +119,7 @@ Esempio di Protected Resource Metadata:
 | `list_portfolios` | nessuno: restituisce id, nome e valuta base dei portafogli dell'utente |
 | `get_data_freshness` | `portfolio_id`: per ogni posizione ultimo prezzo, ultima chiusura giornaliera, prezzo fermo e motivo, più lo stato della sincronizzazione dei dati di mercato (vedi [market-data-sync.md](market-data-sync.md)) |
 | `get_portfolio_summary`, `get_positions`, `get_target_drift`, `get_performance`, `get_cash_balance`, `get_recent_transactions`, `get_portfolio_health`, `get_day_movers`, `get_monte_carlo`, `get_dividend_summary`, `get_cost_breakdown`, `get_xray_summary`, `get_stress_test`, `get_income_projection` | `portfolio_id` |
-| `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale, liquidità aggiuntiva), `mode` (opzionale: `rebalance` predefinito, `buy_only`, `sell_only`) |
+| `calculate_rebalance_orders` | `portfolio_id`, `available_cash` (opzionale, nuova liquidità indicata dall'utente, usata solo in `buy_only`; mai il saldo del portafoglio), `mode` (opzionale: `rebalance` predefinito, `buy_only`, `sell_only`) |
 | `calculate_what_if` | `portfolio_id`, `action` (`buy`/`sell`), `symbol`, `amount_eur` |
 | `calculate_pac_contribution` | `portfolio_id`, `monthly_amount` |
 | `search_asset_info` | `portfolio_id`, `symbol` |
@@ -154,15 +154,21 @@ eseguita e verificata: [market-data-sync.md](market-data-sync.md).
 
 `calculate_rebalance_orders` segue queste regole:
 
-- **Totale e pesi:** valore delle posizioni con target + liquidità del portafoglio + `available_cash`
-  (liquidità aggiuntiva, non sostitutiva). Le posizioni senza target non vengono toccate e restano fuori dal totale.
+- **La liquidità del portafoglio non si usa mai per ribilanciare (TASK-95):** non entra nel totale né nei
+  pesi e non finanzia acquisti; è riportata in `totals.cash_before` e resta invariata.
+- **Totale e pesi:** valore dei soli strumenti con target (liquidità esclusa), la stessa base di
+  `get_target_drift`, `calculate_pac_contribution` e `calculate_what_if`; in `buy_only` più
+  `available_cash` (nuova liquidità indicata dall'utente). Le posizioni senza target non vengono toccate e
+  restano fuori dal totale.
 - **Banda di tolleranza di 0,5 punti percentuali sul peso, usata come soglia di attivazione:** se nessuno
   strumento si scosta dal target di più di 0,5 pp non viene proposto alcun ordine; se almeno uno la supera,
   **tutti** gli strumenti vengono riportati al target, anche quelli entro la banda. In questo modo i proventi
   delle vendite finanziano gli acquisti invece di restare in liquidità.
-- **Modalità `rebalance`:** prima le vendite, poi gli acquisti finanziati da liquidità + proventi; se non bastano,
-  gli acquisti sono ridotti in proporzione. La liquidità finale non è mai negativa e vale
-  `cash_after = cash_before + extra_cash + sells_eur - buys_eur` (riportato in `totals`).
+- **Modalità `rebalance`:** prima le vendite, poi gli acquisti finanziati solo dai proventi; se non bastano,
+  gli acquisti sono ridotti in proporzione. Vale `cash_after = cash_before + extra_cash + sells_eur - buys_eur`
+  con `buys_eur ≤ sells_eur + extra_cash` (riportato in `totals`): con target che sommano a 100 acquisti =
+  vendite e liquidità invariata. `buy_only` investe solo `available_cash`; `available_cash` nelle altre
+  modalità è ignorato con una nota.
 - **Nessun importo minimo per ordine; commissioni e imposte non modellate** (importi lordi).
 
 **Performance TWR e MWR (TASK-PERF-01).** `get_performance` e `get_aggregate_performance` restituiscono,
