@@ -67,6 +67,21 @@ def test_a_failed_write_is_retried_rather_than_suppressed(monkeypatch):
     assert len(attempts) == 2
 
 
+def test_first_request_syncs_even_right_after_boot(monkeypatch):
+    # time.monotonic() starts near 0 when the host boots: a never-synced user
+    # must not be treated as synced at 0.0 (these tests used to fail when the
+    # suite ran in the first minute after a container restart).
+    _reset()
+    writes: list[str] = []
+    monkeypatch.setattr(auth, "engine", _RecordingEngine(writes))
+    monkeypatch.setattr(auth.time, "monotonic", lambda: 5.0)
+
+    auth._sync_app_user("user_a", None, None)
+    auth._sync_app_user("user_a", None, None)
+
+    assert writes == ["user_a"]
+
+
 class _RecordingConn:
     def __init__(self, writes: list[str]) -> None:
         self.writes = writes

@@ -148,6 +148,8 @@ def _recent_transactions(deps: Any, ids: list[int], user_id: str) -> dict[str, A
                 "total": round(float(t.quantity) * float(t.price), 2),
                 "currency": t.trade_currency,
                 "fees": float(t.fees) if t.fees else 0,
+                # Same keys as get_recent_transactions (TASK-93).
+                "taxes": float(t.taxes) if getattr(t, "taxes", None) else 0,
             }
             for t in txns
         ],
@@ -234,7 +236,8 @@ AGGREGATE_TOOLS: dict[str, AggregateTool] = {
             title="Transazioni recenti aggregate",
             description=(
                 "Ultime 20 transazioni di più portafogli, dalla più recente, con portfolio_id e nome "
-                "del portafoglio di ogni riga."
+                "del portafoglio di ogni riga; stesse chiavi di get_recent_transactions (total lordo, "
+                "fees e taxes nella valuta della transazione)."
             ),
             handler=_recent_transactions,
         ),

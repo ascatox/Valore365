@@ -1,7 +1,7 @@
 ---
 id: TASK-91
 title: 'Auditor: il reddito annuo previsto del riepilogo dividendi non coincide con la somma delle posizioni'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T18:30:00Z'
 labels:
@@ -43,7 +43,7 @@ Deduplica: C-INCOME-BUCKETS-SUM e C-INCOME-CLASS-RECOMPUTE leggono solo `get_inc
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 `projected_annual_income_eur` di `get_dividend_summary` coincide al centesimo con `current_annual_dividends_gross_eur` di `get_income_projection` e con la somma delle righe quando l'elenco è completo (9102: 1.324,10; 9104: 280,80); `projected_monthly_income_eur` ne è un dodicesimo
-- [ ] #2 Test unitario con pesi che non si arrotondano esattamente; verifica sui portafogli 9102 e 9104 del seed
-- [ ] #3 Attivata la regola proposta `C-DIV-PROJECTION-MATCH` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9102 e 9104
+- [x] #1 `projected_annual_income_eur` di `get_dividend_summary` coincide al centesimo con `current_annual_dividends_gross_eur` di `get_income_projection` e con la somma delle righe quando l'elenco è completo (9102: 1.324,10; 9104: 280,80); `projected_monthly_income_eur` ne è un dodicesimo
+- [x] #2 Test unitario con pesi che non si arrotondano esattamente; verifica sui portafogli 9102 e 9104 del seed
+- [x] #3 Attivata la regola proposta `C-DIV-PROJECTION-MATCH` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9102 e 9104
 <!-- AC:END -->

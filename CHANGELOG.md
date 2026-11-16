@@ -71,6 +71,15 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Changed
 
+- Ribilanciamento: la liquidità del portafoglio non si usa mai (decisione del proprietario,
+  TASK-95). Pesi e scostamenti rispetto ai target sono sul valore dei soli strumenti con target,
+  liquidità esclusa, con un solo numero in Copilot/MCP, tabella posizioni, card mobile, anteprima del
+  ribilanciamento, what-if, PAC, snapshot ed export (9101: 70 / 20 / 10 %, scostamenti +20 / −20 / 0,
+  prima 64,07 / 18,31 / 9,15); `calculate_rebalance_orders` e l'anteprima finanziano gli acquisti
+  solo con le vendite (9101: vendita AUDEQ.MI e acquisto AUDBD.MI da 20.000 €, liquidità invariata),
+  la nuova liquidità vale solo in «Solo acquisti»; PAC uguale a `buy_only` dello stesso importo;
+  Scenario Lab ignora «Usa anche la liquidità» nel ribilanciamento. Nuova regola dell'Auditor
+  B-REB-CASH-UNTOUCHED.
 - Pagina Doctor organizzata in tre sezioni — **Diagnosi**, **I miei parametri**,
   **Laboratorio** — con deep link `?section=parametri` / `?section=laboratorio`
   (`docs/doctor2/ui-spec.md`). La card «I miei parametri» in Diagnosi resta separata dal
@@ -83,6 +92,35 @@ adotta il [Semantic Versioning](https://semver.org/lang/it/).
 
 ### Fixed
 
+- PAC (Copilot e MCP `calculate_pac_contribution`): il versamento è ripartito in proporzione a
+  quanto manca a ogni strumento per arrivare al proprio target sulla base dopo il versamento
+  (strumenti con target + liquidità + importo), senza mai portarne uno oltre il target; la parte
+  oltre il fabbisogno totale (`total_need_eur`, solo con target che sommano meno di 100) va in
+  proporzione ai target, con una nota. Prima la quota seguiva lo scostamento attuale fra i soli
+  strumenti sottopesati: con un importo grande uno strumento superava il target e quello reso
+  sottopesato dal versamento non riceveva nulla (seed dell'Auditor, 9101 con 100.000 €: AUDBD.MI
+  55,54 % contro un target del 40 % e AUDEQ.MI a 0; ora 37,42 / 48,60 / 9,56 % contro 40 / 50 / 10,
+  importi proporzionali a quelli del ribilanciamento `buy_only`). Con nessuno strumento oggi sotto
+  il target l'importo non resta più non allocato (solo con tutti i target a 0). Decisione in
+  `methodology.md` §7; nuova regola dell'Auditor B-PAC-NO-OVERSHOOT, B-PAC-UNDERWEIGHT-ONLY misura
+  il peso sulla base dopo il versamento (TASK-90).
+- Transazioni recenti (Copilot e MCP `get_recent_transactions`, `get_aggregate_recent_transactions`):
+  ogni riga espone anche le imposte (`taxes`) accanto all'importo lordo e alle commissioni, così la
+  liquidità di `get_cash_balance` si ricostruisce dalle righe mostrate (prima mancavano, per
+  esempio, 13,40 € di imposte su una vendita e un dividendo). Il seed dell'Auditor ha una vendita e
+  un dividendo con imposte in 9107 (liquidità 4.068,00 €); nuova regola dell'Auditor
+  D-TX-CASH-RECONCILE (TASK-93).
+- Riepilogo dei dividendi (Copilot e MCP `get_dividend_summary`): il reddito annuo previsto è la
+  somma dei redditi delle posizioni (valore × rendimento), lo stesso numero del reddito lordo di
+  `get_income_projection`, invece di essere ricavato dai pesi arrotondati a 2 decimali (seed
+  dell'Auditor: 9102 1.324,10 € invece di 1.324,12 €, 9104 280,80 € invece di 280,79 €); il mensile
+  ne è un dodicesimo e il rendimento medio ne deriva. Definizione in `methodology.md` §6; nuova
+  regola dell'Auditor C-DIV-PROJECTION-MATCH (TASK-91).
+- Performance di un portafoglio (o di una vista aggregata) senza capitale né movimenti: l'MWR è
+  `null` come il TWR invece di uno 0,00 % «convergente»; `get_performance` lo spiega con
+  `mwr_null_reason` `non_calcolabile` e la dashboard mostra «N/D» invece di 0,00 %. Stesso
+  comportamento negli endpoint REST della performance e nell'export di audit. Nuova regola
+  dell'Auditor D-PERF-EMPTY-NULL, provata sul portafoglio vuoto 9106 (TASK-92).
 - Tabella posizioni e what-if: lo scostamento dal target è quello del Copilot e del ribilanciamento
   (strumenti con target più liquidità), letto dal nuovo `GET /portfolios/{id}/target-drift` invece
   di essere ricalcolato sul peso fra le posizioni (9101: AUDTECH.DE −0,85 pt, prima «in linea»);

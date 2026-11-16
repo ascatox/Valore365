@@ -425,6 +425,8 @@ Architettura: `docs/doctor2/architecture.md`.
   negoziabili.
 - **Campo extra** `constraints.use_cash_balance` (default `false`): senza, gli acquisti sono finanziati solo da
   `new_cash` + vendite nette e il saldo di cassa resta invariato (o cresce della liquidità non investita).
+  In modalità `rebalance` il campo è ignorato (TASK-95: la liquidità non si usa mai per ribilanciare), con un
+  avviso in `warnings`.
 - **`new_cash_only`**: `target_weights` = **peso massimo** per posizione (strumento canonico ISIN); se assenti, il
   `max_value` della regola attiva `max_single_position_pct` applicato a ogni strumento (warning esplicito).
   Il versamento è ripartito pro rata ai valori attuali con water-filling entro i massimi (un acquisto < 1 centesimo

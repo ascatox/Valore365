@@ -551,6 +551,7 @@ argomenti oltre `portfolio_id` / `portfolio_ids` aggiunti da `scoped`):
 | `get_portfolio_summary` / `get_aggregate_summary` | — | B, D |
 | `get_positions` / `get_aggregate_positions` | — | A, B, C, D, motore |
 | `get_cash_balance` | — | D |
+| `get_recent_transactions` | — (D-TX-CASH-RECONCILE, TASK-93; solo scope `portfolio`) | D |
 | `get_target_drift` | — | B |
 | `get_performance` / `get_aggregate_performance` | — | D |
 | `get_portfolio_health` / `get_aggregate_health` | — | D |
@@ -565,7 +566,7 @@ argomenti oltre `portfolio_id` / `portfolio_ids` aggiunti da `scoped`):
 | `read_doctor_metrics` | — (nessun `metric_codes`) | D |
 | `build_doctor_scenario` | `{"mode": "new_cash_only", "new_cash": 100.0}` (D-DOCTOR-CASH, TASK-84) | D |
 | `calculate_rebalance_orders` | `{"mode": "rebalance"}`; `{"mode": "buy_only", "available_cash": 1000.0}`; `{"mode": "sell_only"}` | B |
-| `calculate_pac_contribution` | `{"monthly_amount": 500.0}` | B |
+| `calculate_pac_contribution` | `{"monthly_amount": 500.0}`; `{"monthly_amount": A}` con A = `round(total_value, 2)` della risposta con 500 € (versamento pari alla base attuale; B-PAC-NO-OVERSHOOT, TASK-90) | B |
 | `calculate_what_if` | `{"action": "buy", "symbol": S, "amount_eur": 1000.0}`; `{"action": "sell", "symbol": S, "amount_eur": round(V/2, 2)}`; `{"action": "sell", "symbol": S, "amount_eur": round(V + 1000.0, 2)}` con S = simbolo della prima riga di `get_positions` (peso maggiore) e V = il suo `market_value`; `{"action": "buy", "symbol": S_T, "amount_eur": 1000.0}` con S_T = primo simbolo di `get_positions` che ha un target, altrimenti il primo di `get_target_drift.drift` (B-DRIFT-REBALANCE-WEIGHTS, TASK-88; di solito S_T = S e la chiamata è la stessa in memo) | B |
 
 Gli importi fissi (1000 €, 500 €) rendono l'esito riproducibile e restano sotto i limiti degli schemi
@@ -614,7 +615,7 @@ finance client in altro modo, l'esito sarebbe `error`/`tool_error`, non un dato 
 | A — stress test e classificazione | 74 | `get_stress_test`, `get_aggregate_stress_test`, `get_positions`, `search_asset_info`, `get_cost_breakdown` | portfolio, aggregate, instrument, user |
 | B — ribilanciamento, PAC, simulazioni | 75 | `calculate_rebalance_orders`, `calculate_pac_contribution`, `calculate_what_if`, `get_positions`, `get_portfolio_summary`, `get_target_drift` | portfolio |
 | C — costi, reddito, dividendi, Monte Carlo, variazioni | 76 | `get_cost_breakdown`, `get_income_projection`, `get_dividend_summary`, `get_monte_carlo`, `get_aggregate_monte_carlo`, `get_day_movers`, `get_positions`, `search_asset_info`, `ctx.transactions` | portfolio, aggregate |
-| D — coerenza fra tool, aggregata, dati | 77 | `get_portfolio_summary`, `get_positions`, `get_cash_balance`, `get_performance`, `get_portfolio_health`, `get_stress_test`, `get_xray_summary`, `get_cost_breakdown`, `read_doctor_metrics`, `build_doctor_scenario` (TASK-84), `search_asset_info`, tutti i `get_aggregate_*` tranne `recent_transactions`, `ctx.transactions`, `ctx.performance_audit` | portfolio, aggregate, instrument |
+| D — coerenza fra tool, aggregata, dati | 77 | `get_portfolio_summary`, `get_positions`, `get_cash_balance`, `get_performance`, `get_portfolio_health`, `get_stress_test`, `get_xray_summary`, `get_cost_breakdown`, `read_doctor_metrics`, `build_doctor_scenario` (TASK-84), `search_asset_info`, `get_recent_transactions` (TASK-93), tutti i `get_aggregate_*` tranne `recent_transactions`, `ctx.transactions`, `ctx.performance_audit` | portfolio, aggregate, instrument |
 
 Il dettaglio per regola (tool, argomenti, percorsi dei campi) è in `rules.md`.
 
@@ -1234,7 +1235,8 @@ cambia, perché, e quali task ne sono toccati.
   `load_rules()`, invece di un numero fisso (più task aggiungevano regole in parallelo).
 - **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101…9107 e
   sull'aggregato col codice corretto; col `_load_scope` di prima 7 `fail` (`cash_value` 0 contro
-  9.256,50 / 8.144,00 / 2.492,00 / 3.705,97 / 5.545,00 / 4.047,00 e 33.190,47 sull'aggregato) e
+  9.256,50 / 8.144,00 / 2.492,00 / 3.705,97 / 5.545,00 / 4.047,00 e 33.190,47 sull'aggregato; col
+  seed di TASK-93 9107 e l'aggregato valgono 4.068,00 e 33.211,47) e
   `pass` su 9106 (0 = 0).
 
 ### TASK-86
@@ -1250,6 +1252,8 @@ cambia, perché, e quali task ne sono toccati.
   `empty_portfolio` su 9106.
 
 ### TASK-85
+
+Base dei pesi sostituita da TASK-95 (liquidità esclusa): vedi la sottosezione TASK-95.
 
 - **Correzione:** `get_target_drift`, `calculate_pac_contribution` e lo scostamento dello snapshot
   del Copilot (`copilot/snapshot.py`) prendono il peso attuale da `current_target_weights` di
@@ -1273,6 +1277,8 @@ cambia, perché, e quali task ne sono toccati.
 
 ### TASK-88
 
+Base del what-if e anteprima REST cambiate da TASK-95: vedi la sottosezione TASK-95.
+
 - **Correzione:** la tabella posizioni legge lo scostamento dal nuovo `GET
   /portfolios/{id}/target-drift` (`routes_rebalancing.py`), che usa la stessa funzione di
   `get_target_drift` (`target_drift_rows` di `services/rebalance.py`); `calculate_what_if` misura
@@ -1286,3 +1292,109 @@ cambia, perché, e quali task ne sono toccati.
   nessuna chiamata in più.
 - **Anteprima REST del ribilanciamento** lasciata sui pesi del solo investito: decisione e
   motivazione in `docs/audit-mcp-2026-11/methodology.md` §7.
+
+### TASK-90
+
+Base del PAC senza liquidità da TASK-95 (i numeri su 9101 qui sotto sono quelli di allora): vedi la
+sottosezione TASK-95.
+
+- **Correzione:** `calculate_pac_contribution` usa `compute_pac_split` di `services/rebalance.py`
+  (decisione del proprietario, `methodology.md` §7): quote in proporzione al fabbisogno di ogni
+  strumento sulla base dopo il versamento, mai oltre; l'eccedenza oltre il fabbisogno totale (solo
+  con target sotto 100) in proporzione ai target, con una nota. Nuovo campo `total_need_eur`;
+  `unallocated_amount` > 0 solo con tutti i target a 0. Righe ordinate per importo decrescente.
+- **B-PAC-NO-OVERSHOOT** (gruppo B, P1, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) la condizione sul peso dopo il versamento vale solo entro il fabbisogno totale
+  (oltre, con target sotto 100, la decisione porta gli strumenti oltre il target); (2) verifica la
+  quota attesa di ogni strumento (assente = 0) invece dei soli `amount_eur ≤ f_i` e «presente se
+  f_i > `T_eur`»; (3) tolleranza della quota `T_eur` + min(1, A / F) × (n + 1) × δ con δ = (B + A) ×
+  0,00005 + 0,01 € (la bozza diceva (B + A) × 1e-4 fisso: con 500 € avrebbe lasciato passare il
+  difetto, 481,14 contro 480,39); (4) `get_positions` fra i tool, solo per `empty_portfolio`. Nuovo
+  argomento canonico in §5.2 (A = `round(total_value, 2)` della risposta con 500 €).
+- **B-PAC-UNDERWEIGHT-ONLY adattata:** «sotto il peso obiettivo» si misura sulla base dopo il
+  versamento (valore ≤ target × (B + A) / 100), non più sul peso attuale; solo quando l'importo
+  supera il fabbisogno totale la condizione non si applica. Gli altri controlli (importo ≥ 0,
+  strumento fra i target) restano.
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): B-PAC-NO-OVERSHOOT `pass` su 9101
+  col codice corretto (A = 109.256,50: AUDBD.MI 62.140,49 → 37,59 %, AUDEQ.MI 36.190,36 → 48,60 %,
+  AUDTECH.DE 10.925,65 → 9,58 %); con la ripartizione di prima `fail` (con 500 € 481,14 / 18,86
+  contro 480,39 / 19,61; con A AUDBD.MI 105.136,36 → 57,27 % e AUDEQ.MI 0 contro 36.190,36), mentre
+  B-PAC-SUM e B-PAC-UNDERWEIGHT-ONLY danno `pass`. `skip` `no_targets` su 9102…9105 e 9107,
+  `empty_portfolio` su 9106. Auditor completo sul seed: 294 `pass`, 0 `fail`, 187 `skip`, 0 `error`.
+- **Test di integrazione:** `test_pac_sum_without_underweight_holding_passes_on_seed` (target 45/20
+  su 9105) ora vede l'intero importo distribuito (346,15 / 153,85) e valuta anche le altre due regole
+  del PAC; `test_pac_no_overshoot_on_seed_9101` reintroduce la ripartizione di prima.
+
+### TASK-91
+
+- **C-DIV-PROJECTION-MATCH** (gruppo C, P2, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) il confronto fra i due tool usa 0,005 € e non `T_eur`: è lo stesso importo
+  arrotondato una volta sola e deve coincidere al centesimo (con `T_eur` il difetto su 9104,
+  280,79 contro 280,80, passava); (2) `get_positions` fra i tool, solo per `empty_portfolio`
+  (§0.3 di `rules.md`); (3) senza righe ma con reddito in uno dei due tool la regola valuta (e
+  fallisce) invece di andare in `no_reference_data`. Nessun nuovo argomento canonico (§5.2).
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101, 9102, 9104 col
+  codice corretto; col codice di prima `fail` su 9102 (1.324,12 contro 1.324,10) e 9104 (280,79
+  contro 280,80), `pass` su 9101 (60,00, pesi esatti); `skip` `no_reference_data` su 9103, 9105,
+  9107 ed `empty_portfolio` su 9106.
+
+### TASK-93
+
+- **Righe delle transazioni:** `get_recent_transactions` e `get_aggregate_recent_transactions`
+  espongono `taxes` accanto a `total` (lordo) e `fees`, nella valuta della transazione; la
+  descrizione del tool dichiara l'effetto di ogni riga sulla liquidità (come `cash_delta` di
+  `app/repository/_cash_model.py`). L'export Markdown non elenca le transazioni; l'interfaccia mostra
+  già le imposte (dettaglio della riga e netto di `getTransactionNetTotal`): nessuna modifica.
+- **D-TX-CASH-RECONCILE** (gruppo D, P2, scope portfolio): rispetto alla bozza del report del
+  2026-11-11, (1) la tolleranza è `T_sum_eur(n + 1)` (anche il saldo è arrotondato); (2) il saldo
+  di apertura si legge da `cash_breakdown.opening_balance`; (3) tipi diversi da quelli del modello
+  contano 0, come in `cash_delta`. Nuovo argomento canonico in §5.2 (`get_recent_transactions`
+  senza argomenti extra, solo scope `portfolio`: la regola non legge la variante aggregata).
+- **Seed:** 9107 compra 60 `AUDEQ.MI` invece di 50 (commissione 1,20 invece di 1,00, così il prezzo
+  medio resta esattamente 99,02), ne vende 10 a 100,00 (−20, commissione 1,00, imposte 2,60) e
+  riceve un dividendo EUR di 20,00 con 5,20 di imposte (−30). Posizioni, pesi, prezzo medio, costo
+  di carico (15.953,00) e TER invariati; liquidità di 9107 da 4.047,00 a 4.068,00, dell'aggregato da
+  33.190,47 a 33.211,47 (README, `rules.md`, `test_auditor_seed_postgres.py`). Con la commissione
+  1,00 il prezzo medio (99,01666…) ha più di 4 decimali: `Position.avg_cost` è arrotondato a 4
+  decimali e il costo di carico del riepilogo è Σ quantità × `avg_cost` arrotondato, quindi il costo
+  dell'aggregato (1.030 `AUDEQ.MI`) si scostava di 0,05 € dalla somma dei portafogli e
+  D-AGG-SUMS falliva: difetto latente segnalato, non corretto qui.
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`): `pass` su 9101, 9102, 9103, 9105 e
+  9107; `not_applicable` su 9104 (GBP e USD), `no_transactions` su 9106. Con le righe senza `taxes`
+  `fail` su 9107 (4.075,80 ricostruiti contro 4.068,00), `pass` altrove (nessuna imposta).
+
+### TASK-95
+
+- **Decisione del proprietario (2026-11-16):** la liquidità del portafoglio non si usa mai per
+  ribilanciare. Sostituisce la base di TASK-85 (strumenti con target + liquidità), applicata da
+  TASK-88 e TASK-90. `current_target_weights` / `target_drift_rows` / `compute_pac_split` di
+  `services/rebalance.py` usano il solo valore degli strumenti con target, e lo stesso numero arriva a
+  `get_target_drift`, `GET /portfolios/{id}/target-drift` (tabella e card mobile), snapshot del
+  Copilot, export Markdown, PAC, what-if e anteprima REST del ribilanciamento (allineata: stessa base,
+  posizioni senza target escluse, `cash_to_allocate` solo in `buy_only`).
+  `compute_rebalance_plan` non mette più la liquidità del portafoglio nella base né fra i fondi
+  (`include_cash_in_base` tolto); `extra_cash` vale solo in `buy_only`. `target_basis` del what-if
+  non riporta più `cash_before`/`cash_after`. Gli ordini sotto il centesimo non sono più elencati.
+- **B-REB-CASH-UNTOUCHED** (gruppo B, P1, scope portfolio, nuova): per R, BO, SO `cash_before` =
+  liquidità del riepilogo, `buys_eur ≤ sells_eur + extra_cash`, `cash_after ≥ cash_before`, nessuna
+  `extra_cash` in R e SO. Una regola nuova invece di estendere B-REB-CASH-NONNEG: il ribilanciamento
+  di TASK-85 rispettava conservazione e non negatività (la liquidità tornava ed era ≥ 0) ma la
+  spendeva tutta, quindi serve un invariante diverso con un proprio esito. Legge anche
+  `get_portfolio_summary` (già nella tabella §5.6); nessun nuovo argomento canonico.
+- **Regole adattate:** B-DRIFT-REBALANCE-WEIGHTS (base = Σ `market_value` delle righe di `drift`,
+  T ≥ 0 ammesso con nessuno strumento con target posseduto, what-if sulla base aumentata
+  dell'acquisto; non legge più `get_portfolio_summary`); B-REB-SELLS-REACH-TARGET (acquisti ridotti
+  ammessi solo con `cash_after − cash_before ≤ T_sum_eur(n)`). B-PAC-* e B-WHATIF-* invariate nel
+  codice: leggono la base da `get_target_drift.total_value`, che ora esclude la liquidità.
+  D-DOCTOR-CASH non cambia (Scenario Lab `new_cash_only`, la liquidità resta un dato).
+- **Prova sul seed** (stack di `scripts/auditor/agent_stack.sh`, `AGENT_DIR=/tmp/valore365-auditor-task95`):
+  9101 pesi 70 / 20 / 10, scostamenti +20 / −20 / 0 in `get_target_drift`, ribilanciamento e
+  what-if (+20,0 → +20,30 con 1.000 € di AUDEQ.MI); `rebalance`: vendita AUDEQ.MI 20.000, acquisto
+  AUDBD.MI 20.000, liquidità 9.256,50 prima e dopo (`available_cash` 5.000 in `rebalance` ignorato
+  con una nota); PAC 500 € → AUDBD.MI 498,77, AUDTECH.DE 1,23; PAC 100.000 € = `buy_only` 100.000 €
+  → 30.000 / 60.000 / 10.000, pesi dopo 50 / 40 / 10. Auditor completo (`--fail-on P2`, 61 regole):
+  295 `pass`, 0 `fail`, 193 `skip`, 0 `error`, uscita 0. Con il ribilanciamento di TASK-85
+  reintrodotto B-REB-CASH-UNTOUCHED dà `fail` (acquisti 24.628,25 contro vendite 15.371,75,
+  `cash_after` 0) mentre B-REB-CASH-CONSERVATION e B-REB-CASH-NONNEG danno `pass`
+  (`tests/integration/test_auditor_postgres.py::test_rebalance_never_spends_cash_on_seed_9101`).
+

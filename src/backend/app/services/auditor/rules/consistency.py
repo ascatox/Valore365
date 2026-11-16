@@ -585,6 +585,45 @@ def check_perf_tool_match(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# D-PERF-EMPTY-NULL
+# ---------------------------------------------------------------------------
+
+# Copia di app.copilot_tools.PERFORMANCE_PERIODS (import non ammesso, architettura §3.2).
+PERFORMANCE_PERIODS = ("1m", "3m", "ytd", "1y")
+
+
+def check_perf_empty_null(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    ids = _scope_ids(scope)
+    none_tx, _with, tx_ev = _no_transactions(ctx, ids)
+    perf, name, args = _read(ctx, "get_performance", scope)
+    reasons = perf.get("mwr_null_reason") or {}
+    if not none_tx and all(
+        perf.get(f"twr_{p}") is not None and perf.get(f"mwr_{p}") is not None for p in PERFORMANCE_PERIODS
+    ):
+        return _skip("not_applicable", "Ci sono transazioni e nessun rendimento è nullo: niente da verificare.",
+                     [_ev(name, args, "[*]", 0, None, None, "rendimenti twr_<f> e mwr_<f> null")])
+    failures: list[dict] = []
+    passed: list[dict] = list(tx_ev)
+    for p in PERFORMANCE_PERIODS:
+        twr, mwr, reason = perf.get(f"twr_{p}"), perf.get(f"mwr_{p}"), reasons.get(p)
+        checks: list[tuple[bool, dict]] = []
+        if none_tx:
+            # Né capitale né movimenti: entrambi i rendimenti sono assenti, non zero.
+            checks.append((twr is None, _ev(name, args, f"twr_{p}", twr, None, None, "nessuna transazione")))
+            checks.append((mwr is None, _ev(name, args, f"mwr_{p}", mwr, None, None, "nessuna transazione")))
+        elif twr is None:
+            # Stessa finestra: un TWR non calcolabile non sta accanto a un MWR calcolato.
+            checks.append((mwr is None, _ev(name, args, f"mwr_{p}", mwr, None, None, f"twr_{p} è null")))
+        if mwr is None:
+            checks.append((reason is not None, _ev(name, args, f"mwr_null_reason.{p}", reason, None, None,
+                                                   "un MWR nullo dichiara il motivo")))
+        for ok, ev in checks:
+            (passed if ok else failures).append(ev)
+    return _judge(failures, "Un rendimento senza capitale né movimenti è mostrato come calcolato, "
+                            "o un MWR nullo non dichiara il motivo.", passed)
+
+
+# ---------------------------------------------------------------------------
 # D-DOCTOR-TER
 # ---------------------------------------------------------------------------
 
@@ -1108,6 +1147,79 @@ def check_held_symbol_match(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# D-TX-CASH-RECONCILE (TASK-93)
+# ---------------------------------------------------------------------------
+
+MAX_RECENT_TRANSACTIONS = 20  # get_recent_transactions restituisce al più 20 righe
+RECENT_TRANSACTIONS_TOOL = "get_recent_transactions"
+
+
+def _row_cash_delta(side: Any, gross: float, fees: float, taxes: float) -> float:
+    """Effetto sulla liquidità di una riga (methodology.md §8, app.repository._cash_model.cash_delta)."""
+    if side == "buy":
+        return -(gross + fees + taxes)
+    if side == "sell":
+        return gross - fees - taxes
+    if side == "dividend":
+        return gross - taxes
+    if side in ("deposit", "interest"):
+        return gross
+    if side in ("withdrawal", "fee"):
+        return -gross
+    return 0.0
+
+
+def check_tx_cash_reconcile(ctx: Any, scope: dict[str, Any]) -> dict[str, Any]:
+    args = {"portfolio_id": scope["portfolio_id"]}
+    rows = list(ctx.scoped(RECENT_TRANSACTIONS_TOOL, scope).get("transactions") or [])
+    if not rows:
+        return _skip("no_transactions", "Nessuna transazione: la liquidità non si ricostruisce dalle righe.",
+                     [_ev(RECENT_TRANSACTIONS_TOOL, args, "transactions", 0, None, None, "numero di righe")])
+    if len(rows) >= MAX_RECENT_TRANSACTIONS:
+        return _skip("truncated_output", "Elenco delle transazioni troncato a 20 righe: la somma non è completa.",
+                     [_ev(RECENT_TRANSACTIONS_TOOL, args, "transactions", len(rows),
+                          f"< {MAX_RECENT_TRANSACTIONS}", None, "numero di righe")])
+    cash = ctx.scoped("get_cash_balance", scope)
+    base = cash.get("base_currency")
+    foreign = [r for r in rows if r.get("currency") != base]
+    if foreign:
+        return _skip("not_applicable", "Transazioni in una valuta diversa da quella del portafoglio: servono i cambi.",
+                     [_ev(RECENT_TRANSACTIONS_TOOL, args, f"[id={r.get('id')}].currency", r.get("currency"), base)
+                      for r in foreign[:10]])
+    implicit = _num(cash.get("implicit_contributions_total"))
+    if implicit is None or abs(implicit) > EPS:
+        return _skip("not_applicable", "Apporti impliciti nel saldo: non compaiono fra le transazioni.",
+                     [_ev("get_cash_balance", args, "implicit_contributions_total", implicit, 0.0)])
+
+    failures: list[dict] = []
+    missing_taxes: list[dict] = []
+    breakdown = cash.get("cash_breakdown") or {}
+    rebuilt = _num(breakdown.get("opening_balance")) or 0.0
+    for row in rows:
+        rid = row.get("id")
+        gross, fees = _num(row.get("total")), _num(row.get("fees") or 0.0)
+        taxes = _num(row.get("taxes") or 0.0)
+        if "taxes" not in row:
+            missing_taxes.append(_ev(RECENT_TRANSACTIONS_TOOL, args, f"[id={rid}].taxes", None, ">= 0", None,
+                                     "campo assente: imposte non mostrate"))
+        for field, value in (("total", gross), ("fees", fees), ("taxes", taxes)):
+            if value is None:
+                failures.append(_ev(RECENT_TRANSACTIONS_TOOL, args, f"[id={rid}].{field}", row.get(field), "numero"))
+        if gross is None or fees is None or taxes is None:
+            continue
+        rebuilt += _row_cash_delta(row.get("type"), gross, fees, taxes)
+
+    total_cash = _num(cash.get("total_cash"))
+    tol = t_sum_eur(len(rows) + 1)
+    ev = _ev("get_cash_balance", args, "total_cash", total_cash, _r(rebuilt), tol,
+             "saldo ricostruito dalle righe di get_recent_transactions (lordo, commissioni, imposte)")
+    if total_cash is None or abs(total_cash - rebuilt) > tol + EPS:
+        failures.append(ev)
+        failures.extend(missing_taxes)
+    return _judge(failures, "La liquidità non si ricostruisce dalle transazioni mostrate.", [ev])
+
+
+# ---------------------------------------------------------------------------
 # Dichiarazioni (rules.md §5, copiate esattamente)
 # ---------------------------------------------------------------------------
 
@@ -1176,6 +1288,13 @@ RULES: list[dict[str, Any]] = [
         "area": "performance", "severity": "P2", "findings": ["C1-TWR-MIXED"], "scopes": list(_PA),
         "tools": ["get_performance", "get_aggregate_performance", TRANSACTIONS_TOOL, PERFORMANCE_AUDIT_TOOL],
         "check": check_perf_tool_match,
+    },
+    {
+        "id": "D-PERF-EMPTY-NULL", "group": "D",
+        "title": "Senza capitale né movimenti il rendimento è assente, non zero",
+        "area": "performance", "severity": "P2", "findings": ["S-2026-11-11-15"], "scopes": list(_PA),
+        "tools": ["get_performance", "get_aggregate_performance", TRANSACTIONS_TOOL],
+        "check": check_perf_empty_null,
     },
     {
         "id": "D-DOCTOR-TER", "group": "D",
@@ -1252,5 +1371,11 @@ RULES: list[dict[str, Any]] = [
         "title": "La scheda di uno strumento in portafoglio si riferisce proprio a quel listing",
         "area": "data", "severity": "P2", "findings": ["V-LOOSE-SYMBOL"], "scopes": ["instrument"],
         "tools": ["search_asset_info"], "check": check_held_symbol_match,
+    },
+    {
+        "id": "D-TX-CASH-RECONCILE", "group": "D",
+        "title": "La liquidità si ricostruisce dalle transazioni mostrate",
+        "area": "performance", "severity": "P2", "findings": ["S-2026-11-11-16"], "scopes": ["portfolio"],
+        "tools": [RECENT_TRANSACTIONS_TOOL, "get_cash_balance"], "check": check_tx_cash_reconcile,
     },
 ]

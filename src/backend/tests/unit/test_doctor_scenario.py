@@ -221,6 +221,28 @@ def test_manual_use_cash_balance():
     assert r.total_after == pytest.approx(r.total_before)
 
 
+def test_rebalance_never_uses_the_cash_balance():
+    """TASK-95: in modalità ribilanciamento la liquidità non si usa, anche con use_cash_balance;
+    le altre modalità restano invariate (test_manual_use_cash_balance)."""
+    snap = prd_snapshot(cash=10_000)
+    req = {"mode": "rebalance", "target_weights": {"1": 35, "2": 30}}
+    plain = run(req, snapshot=snap)
+    with_flag = run({**req, "constraints": {"use_cash_balance": True}}, snapshot=snap)
+    for r in (plain, with_flag):
+        assert r.feasible
+        assert r.after.cash_value == pytest.approx(10_000)
+        assert r.total_after == pytest.approx(r.total_before)
+    assert with_flag.after.invested_value == pytest.approx(plain.after.invested_value)
+    assert any("liquidità già presente non si usa" in w for w in with_flag.warnings)
+    assert not any("liquidità già presente non si usa" in w for w in plain.warnings)
+    # no_sell: la nuova liquidità richiesta non tiene conto del saldo.
+    ns = {"mode": "rebalance", "target_weights": {"1": 35}, "constraints": {"no_sell": True}}
+    r0 = run(ns, snapshot=prd_snapshot(cash=0.0))
+    r1 = run({**ns, "constraints": {"no_sell": True, "use_cash_balance": True}}, snapshot=snap)
+    assert r0.infeasible_code == r1.infeasible_code == "no_sell"
+    assert r1.required_new_cash == pytest.approx(r0.required_new_cash)
+
+
 def test_manual_keep_equity_total_violation():
     r = run({
         "mode": "manual", "constraints": {"keep_equity_total": True},

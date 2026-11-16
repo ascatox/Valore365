@@ -206,8 +206,13 @@ export function ScenarioBuilder({ value, onChange, positions, isAggregate, index
           </SimpleGrid>
           <Checkbox
             label="Usa anche la liquidità già presente nel portafoglio"
-            description="Se disattivato, la simulazione usa solo la nuova liquidità e le eventuali vendite."
-            checked={value.constraints.use_cash_balance ?? false}
+            description={
+              value.mode === 'rebalance'
+                ? 'Non disponibile nel ribilanciamento: la liquidità già presente non si usa mai per ribilanciare, gli acquisti sono finanziati dalle vendite e dalla nuova liquidità.'
+                : 'Se disattivato, la simulazione usa solo la nuova liquidità e le eventuali vendite.'
+            }
+            disabled={value.mode === 'rebalance'}
+            checked={value.mode === 'rebalance' ? false : (value.constraints.use_cash_balance ?? false)}
             onChange={(event) => setConstraints({ use_cash_balance: event.currentTarget.checked })}
           />
         </Stack>

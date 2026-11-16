@@ -124,14 +124,30 @@ def test_twr_is_not_calculable_without_a_starting_value():
     assert twr.twr_annualized_pct is None
 
 
-def test_twr_and_mwr_zero_on_empty_portfolio():
+def test_twr_and_mwr_null_on_empty_portfolio():
+    # TASK-92: no starting value, no ending value and no flows: nothing to
+    # measure, so the MWR is null like the TWR, not a computed 0.0 %.
     day = date(2026, 1, 1)
     service = PerformanceService(_FakeRepo(created=day, values={day: 0.0}))
 
+    twr = service.calculate_twr(1, 'u', day, day)
     mwr = service.calculate_mwr(1, 'u', day, day)
 
-    assert mwr.mwr_pct == 0.0
+    assert twr.twr_pct is None
+    assert mwr.mwr_pct is None
+    assert mwr.mwr_annualized_pct is None
+    # No solver failed: the tool reports the null as 'non_calcolabile'.
     assert mwr.converged is True
+
+
+def test_summary_of_empty_portfolio_has_null_twr_and_mwr():
+    today = date.today()
+    service = PerformanceService(_FakeRepo(created=today, values={}))
+
+    for period in ('1m', '3m', 'ytd', '1y'):
+        summary = service.get_performance_summary(1, 'u', period)
+        assert summary.twr.twr_pct is None
+        assert summary.mwr.mwr_pct is None
 
 
 def test_mwr_simple_one_year_growth():

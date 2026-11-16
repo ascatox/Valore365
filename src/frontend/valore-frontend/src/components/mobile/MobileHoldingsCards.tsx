@@ -59,7 +59,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
   const selected = selectedId != null ? positions.find((p) => p.asset_id === selectedId) ?? null : null;
   const hasTargets = !!targetMap && targetMap.size > 0;
 
-  // Drift from the backend (TASK-88): on targeted holdings + cash, as the Copilot
+  // Drift from the backend (TASK-88): on targeted holdings only (cash excluded, TASK-95), as the Copilot
   // and the rebalancing, so the bar of a targeted row uses that weight too.
   const drift = (position: Position) => targetMap?.get(position.asset_id)?.drift_pct ?? null;
 
@@ -207,7 +207,7 @@ export function MobileHoldingsCards({ positions, currency, summary, targetMap, o
       </Box>
 
       {hasTargets && (
-        <Text size="xs" c="dimmed">Peso e scostamento delle righe con target: sul valore degli strumenti con target più la liquidità, come nel ribilanciamento e nel Copilot.</Text>
+        <Text size="xs" c="dimmed">Peso e scostamento delle righe con target: sul valore dei soli strumenti con target, liquidità esclusa, come nel ribilanciamento e nel Copilot.</Text>
       )}
 
       <BottomSheet

@@ -223,3 +223,58 @@ def test_aggregate_handler_mwr_matches_the_service(monkeypatch):
         assert out["calculation_windows"][p]["mwr_start_date"] == ps.mwr.start_date
     assert out["mwr_1y"] != out["twr_1y"]  # the flows make the two measures differ
     assert out["mwr_annualized_pct"]["1y"] == pytest.approx(out["mwr_1y"], abs=0.5)
+
+
+def test_empty_portfolios_report_null_mwr_with_a_reason_single_and_aggregate(monkeypatch):
+    # TASK-92: no capital and no flows in any window. The TWR is null, and the
+    # MWR must be null too with mwr_null_reason 'non_calcolabile', not 0.0
+    # "converged", both for one portfolio and for an aggregate of empty ones.
+    monkeypatch.setattr(performance_module, "date", _FixedDate)
+    repo = _FakeRepo(values={1: {}, 2: {}}, cashflows={})
+    service = PerformanceService(repo)
+    deps = SimpleNamespace(repo=repo, performance_service=service, finance_client=None)
+
+    single = copilot_tools._get_performance({}, repo, service, 1, "u")
+    aggregate = AGGREGATE_TOOLS["get_aggregate_performance"].handler(deps, [1, 2], "u")
+
+    for out in (single, aggregate):
+        for p in PERIODS:
+            assert out[f"twr_{p}"] is None
+            assert out[f"mwr_{p}"] is None
+            assert out["mwr_annualized_pct"][p] is None
+        assert out["mwr_null_reason"] == dict.fromkeys(PERIODS, "non_calcolabile")
+
+
+def test_rest_performance_endpoints_report_null_mwr_on_empty_portfolios(monkeypatch):
+    # TASK-92, criterion 2: the REST endpoints (single and aggregate, /performance/mwr and
+    # /performance/summary) return mwr_pct null, like twr_pct, with no capital and no flows.
+    from fastapi import APIRouter, FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.api.routes_aggregate import register_aggregate_routes
+    from app.api.routes_analytics import register_analytics_routes
+    from app.auth import AuthContext
+    from app.rate_limit import require_auth_rate_limited
+
+    monkeypatch.setattr(performance_module, "date", _FixedDate)
+    repo = _FakeRepo(values={1: {}, 2: {}}, cashflows={})
+    service = PerformanceService(repo)
+    router = APIRouter(prefix="/api")
+    register_aggregate_routes(router, repo, performance_service=service)
+    register_analytics_routes(router, repo, performance_service=service, finance_client=None)
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[require_auth_rate_limited] = lambda: AuthContext(user_id="u")
+    client = TestClient(app)
+
+    for base in ("/api/portfolios/1", "/api/portfolios/aggregate"):
+        query = "?portfolio_ids=1&portfolio_ids=2" if base.endswith("aggregate") else ""
+        mwr = client.get(f"{base}/performance/mwr{query}")
+        assert mwr.status_code == 200, mwr.text
+        assert mwr.json()["mwr_pct"] is None and mwr.json()["mwr_annualized_pct"] is None
+        for period in PERIODS:
+            sep = "&" if query else "?"
+            summary = client.get(f"{base}/performance/summary{query}{sep}period={period}")
+            assert summary.status_code == 200, summary.text
+            assert summary.json()["twr"]["twr_pct"] is None
+            assert summary.json()["mwr"]["mwr_pct"] is None

@@ -30,11 +30,12 @@ function drift(asset_id: number, symbol: string, target: number, current: number
 }
 
 const POSITIONS = [position(1, 'AUDEQ.MI', 70000), position(2, 'AUDBD.MI', 20000), position(3, 'AUDTECH.DE', 10000)];
-// What GET /portfolios/9101/target-drift returns (same values as the Copilot get_target_drift).
+// What GET /portfolios/9101/target-drift returns (same values as the Copilot get_target_drift):
+// TASK-95, base = targeted holdings only (cash excluded) → 70 / 20 / 10.
 const DRIFT: TargetDriftMap = new Map([
-  [1, drift(1, 'AUDEQ.MI', 50, 64.07, 70000)],
-  [2, drift(2, 'AUDBD.MI', 40, 18.31, 20000)],
-  [3, drift(3, 'AUDTECH.DE', 10, 9.15, 10000)],
+  [1, drift(1, 'AUDEQ.MI', 50, 70, 70000)],
+  [2, drift(2, 'AUDBD.MI', 40, 20, 20000)],
+  [3, drift(3, 'AUDTECH.DE', 10, 10, 10000)],
 ]);
 
 function renderTable(targetMap?: TargetDriftMap) {
@@ -48,10 +49,12 @@ function renderTable(targetMap?: TargetDriftMap) {
 describe('HoldingsTable drift from target (TASK-88)', () => {
   it('shows the drift of the backend, not one recomputed on the weight among positions', () => {
     renderTable(DRIFT);
-    // AUDTECH.DE is 10,0% of the positions with a 10% target: before it read «in line».
-    expect(screen.getByTestId('target-drift-3')).toHaveTextContent('-0,85 pt');
-    expect(screen.getByTestId('target-drift-1')).toHaveTextContent('+14,07 pt');
-    expect(screen.getByTestId('target-drift-2')).toHaveTextContent('-21,69 pt');
+    // TASK-95: +20 / −20 / 0 (with the TASK-85 base: +14,07 / −21,69 / −0,85).
+    expect(screen.getByTestId('target-drift-3')).toHaveTextContent('0,00 pt');
+    expect(screen.getByTestId('target-drift-1')).toHaveTextContent('+20,00 pt');
+    expect(screen.getByTestId('target-drift-2')).toHaveTextContent('-20,00 pt');
+    // «pt» never wraps alone: non-breaking space.
+    expect(screen.getByTestId('target-drift-1').textContent).toBe('+20,00\u00a0pt');
     expect(screen.getAllByLabelText('Scostamento oltre 5 punti')).toHaveLength(2);
     const header = screen.getAllByRole('columnheader').find((th) => th.textContent?.includes('Target'));
     expect(header).toBeDefined();

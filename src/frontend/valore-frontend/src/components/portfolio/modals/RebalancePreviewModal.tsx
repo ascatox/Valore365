@@ -16,6 +16,10 @@ import { useIsMobile } from '../../../hooks/useIsMobile';
 import type { RebalancePreviewResponse, RebalanceCommitResponse } from '../../../services/api';
 import { formatNum, formatMoneyOrNA as formatMoney } from '../../dashboard/formatters';
 
+/** TASK-95: the portfolio cash is never used to rebalance; same base as the holdings table. */
+export const REBALANCE_CASH_NOTE =
+  'La liquidità già presente nel portafoglio non si usa mai: nel ribilanciamento gli acquisti sono finanziati solo dalle vendite, in «Solo acquisti» si investe solo l\'importo nuovo indicato. Pesi e drift sul valore dei soli strumenti con target, come nella tabella posizioni e nel Copilot.';
+
 interface RebalancePreviewModalProps {
   opened: boolean;
   onClose: () => void;
@@ -93,11 +97,13 @@ export function RebalancePreviewModal({
           value={rebalanceMode}
           onChange={(value) => onRebalanceModeChange((value as 'buy_only' | 'rebalance' | 'sell_only') ?? 'buy_only')}
           data={[
-            { value: 'buy_only', label: 'Solo acquisti (nuova liquidita)' },
+            { value: 'buy_only', label: 'Solo acquisti (nuova liquidità)' },
             { value: 'rebalance', label: 'Ribilanciamento (buy + sell)' },
             { value: 'sell_only', label: 'Solo vendite' },
           ]}
         />
+
+        <Text size="xs" c="dimmed" data-testid="rebalance-cash-note">{REBALANCE_CASH_NOTE}</Text>
 
         <Group grow>
           <NumberInput
@@ -118,7 +124,8 @@ export function RebalancePreviewModal({
 
         {rebalanceMode === 'buy_only' && (
           <NumberInput
-            label={`Importo da allocare (${baseCurrency})`}
+            label={`Nuova liquidità da investire (${baseCurrency})`}
+            description="Importo nuovo che versi ora: il saldo di liquidità del portafoglio non viene usato."
             value={rebalanceCashToAllocate}
             onChange={onRebalanceCashToAllocateChange}
             min={0}
@@ -174,7 +181,7 @@ export function RebalancePreviewModal({
                   Sell: {formatMoney(rebalancePreviewData.summary.proposed_sell_total, rebalancePreviewData.base_currency)}
                 </Text>
                 <Text size="sm">
-                  Residuo stimato: {formatMoney(rebalancePreviewData.summary.estimated_cash_residual, rebalancePreviewData.base_currency)}
+                  Residuo stimato (vendite + nuova liquidità − acquisti): {formatMoney(rebalancePreviewData.summary.estimated_cash_residual, rebalancePreviewData.base_currency)}
                 </Text>
               </Alert>
             </Group>

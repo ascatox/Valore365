@@ -344,7 +344,7 @@ def render_snapshot_markdown(
         lines.append("## Scostamento dai target di allocazione")
         lines.append("")
         lines.append(
-            "Pesi sul valore degli strumenti con target più la liquidità, "
+            "Pesi sul valore dei soli strumenti con target (liquidità esclusa), "
             "come nel ribilanciamento e nel PAC."
         )
         lines.append("")

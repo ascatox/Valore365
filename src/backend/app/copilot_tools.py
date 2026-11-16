@@ -31,6 +31,7 @@ from .services.rebalance import (
     DEFAULT_TOLERANCE_PP,
     REBALANCE_MODES,
     TARGET_WEIGHT_BASIS_NOTE,
+    compute_pac_split,
     compute_rebalance_plan,
     current_target_weights,
     target_drift_rows,
@@ -80,9 +81,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Ottieni lo scostamento (drift) di ogni posizione rispetto al peso "
             "target configurato. Utile per capire se il portafoglio e' allineato "
-            "al piano o serve ribilanciare. Pesi sul valore degli strumenti con target "
-            "piu' la liquidita' (total_value), la stessa base di calculate_rebalance_orders "
-            "e calculate_pac_contribution."
+            "al piano o serve ribilanciare. Pesi sul valore dei soli strumenti con target, "
+            "liquidita' esclusa (total_value), la stessa base di calculate_rebalance_orders, "
+            "calculate_pac_contribution e calculate_what_if. cash_balance e' solo informativo: "
+            "la liquidita' non entra nei pesi e non si usa per ribilanciare."
         ),
         "parameters": {
             "type": "object",
@@ -126,7 +128,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Ottieni le ultime transazioni del portafoglio (massimo 20). "
             "Mostra id della transazione, data, tipo (buy/sell/deposit/withdrawal), simbolo, "
-            "quantita', prezzo e importo totale. Righe identiche con id diversi "
+            "quantita', prezzo, importo lordo (total = quantita' x prezzo), commissioni (fees) "
+            "e imposte (taxes), nella valuta della transazione. Effetto sulla liquidita': "
+            "acquisto -(total + fees + taxes), vendita +(total - fees - taxes), dividendo "
+            "+(total - taxes). Righe identiche con id diversi "
             "sono transazioni distinte (es. possibili duplicati da import)."
         ),
         "parameters": {
@@ -183,8 +188,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "name": "calculate_rebalance_orders",
         "description": (
             "Calcola gli ordini di acquisto/vendita necessari per riallineare "
-            "il portafoglio al target (le vendite finanziano gli acquisti). Usa "
-            "questo tool quando l'utente chiede come ribilanciare o tornare in target."
+            "il portafoglio al target. Usa questo tool quando l'utente chiede come "
+            "ribilanciare o tornare in target. La liquidita' gia' presente nel portafoglio "
+            "non viene mai usata: in modalita' rebalance gli acquisti sono finanziati solo "
+            "dalle vendite e la liquidita' resta invariata; pesi sul valore dei soli strumenti "
+            "con target (come get_target_drift)."
         ),
         "parameters": {
             "type": "object",
@@ -192,8 +200,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "available_cash": {
                     "type": "number",
                     "description": (
-                        "Liquidita' AGGIUNTIVA in EUR (opzionale, default 0), sommata "
-                        "alla liquidita' gia' presente nel portafoglio."
+                        "Solo per mode buy_only: NUOVA liquidita' in EUR che l'utente dichiara "
+                        "di voler investire (importo nuovo, indicato dall'utente). Non passare "
+                        "mai il saldo di cassa del portafoglio (cash_balance): la liquidita' "
+                        "esistente non si usa per ribilanciare. Ignorato nelle altre modalita'."
                     ),
                 },
                 "mode": {
@@ -201,8 +211,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "enum": ["rebalance", "buy_only", "sell_only"],
                     "default": "rebalance",
                     "description": (
-                        "rebalance (default): vendite + acquisti autofinanziati; "
-                        "buy_only: solo acquisti con la liquidita'; sell_only: solo vendite."
+                        "rebalance (default): vendite + acquisti finanziati solo dalle vendite; "
+                        "buy_only: solo acquisti con la nuova liquidita' available_cash; "
+                        "sell_only: solo vendite (i proventi restano in liquidita')."
                     ),
                 },
             },
@@ -217,7 +228,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "e la diversificazione del portafoglio. Utile per rispondere a "
             "'cosa succede se compro/vendo X?'. I pesi (old/new_weight) sono sulle sole "
             "posizioni; lo scostamento dal target (old/new_drift) sulla base di "
-            "get_target_drift e calculate_rebalance_orders (strumenti con target piu' liquidita')."
+            "get_target_drift e calculate_rebalance_orders (soli strumenti con target, liquidita' esclusa)."
         ),
         "parameters": {
             "type": "object",
@@ -245,11 +256,16 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Calcola come distribuire un versamento periodico (PAC) mensile "
             "tra gli asset del portafoglio per avvicinarsi al target. "
-            "Versa solo sulle posizioni sotto-pesate, in proporzione allo scostamento "
-            "dal target. Se nessuna posizione e' sotto il target restituisce "
-            "distribuzione vuota, total_allocated 0, unallocated_amount e una nota. "
+            "Ripartisce l'importo in proporzione a quanto manca a ogni strumento per "
+            "arrivare al proprio peso obiettivo sulla base dopo il versamento (strumenti "
+            "con target + importo, liquidita' esclusa), senza mai portarne uno oltre il target; "
+            "gli importi coincidono con gli acquisti di calculate_rebalance_orders buy_only "
+            "con available_cash = importo. Solo se i target sommano meno di 100 "
+            "l'importo puo' superare il fabbisogno totale (total_need_eur): l'eccedenza "
+            "va in proporzione ai target, con una nota. total_allocated + unallocated_amount "
+            "= importo (unallocated_amount > 0 solo con tutti i target a 0). "
             "Pesi attuali come get_target_drift e calculate_rebalance_orders "
-            "(strumenti con target piu' liquidita', total_value)."
+            "(soli strumenti con target, liquidita' esclusa, total_value)."
         ),
         "parameters": {
             "type": "object",
@@ -663,8 +679,8 @@ def _get_target_drift(
         return {"drift": [], "note": "Nessun target configurato per questo portafoglio."}
 
     positions = repo.get_positions(portfolio_id, user_id) or []
-    # TASK-85: same base as calculate_rebalance_orders and the PAC (targeted
-    # holdings + current cash of the performance cash model, summary.cash_balance).
+    # TASK-85/95: same base as calculate_rebalance_orders and the PAC (targeted
+    # holdings only, cash excluded); cash_balance is reported, not in the weights.
     # TASK-88: rows shared with the REST /target-drift read by the holdings table.
     summary = repo.get_summary(portfolio_id, user_id)
     weights, rows = target_drift_rows(positions, target_alloc, float(summary.cash_balance or 0.0))
@@ -820,6 +836,9 @@ def _get_recent_transactions(
                 "total": round(float(t.quantity) * float(t.price), 2),
                 "currency": t.trade_currency,
                 "fees": float(t.fees) if t.fees else 0,
+                # Same input as the cash model (TASK-49/TASK-93): without it the
+                # cash balance does not rebuild from the rows shown.
+                "taxes": float(t.taxes) if getattr(t, "taxes", None) else 0,
             }
             for t in txns
         ],
@@ -990,8 +1009,10 @@ def _calculate_rebalance_orders(
     """T10: buy/sell orders to realign the portfolio to target (TASK-39).
 
     Self-financing by default (mode ``rebalance``): sells first, proceeds fund
-    the buys. Portfolio cash + ``available_cash`` (extra) are part of the total
-    and of the weights. See app.services.rebalance for the algorithm.
+    the buys. Owner's decision TASK-95: the portfolio cash is never spent nor
+    part of the weights (it is reported in ``cash_before`` and stays in
+    ``cash_after``); ``available_cash`` is new money, used only in
+    ``buy_only``. See app.services.rebalance for the algorithm.
     """
     mode = args.get("mode") or "rebalance"
     if mode not in REBALANCE_MODES:
@@ -1016,7 +1037,8 @@ def _calculate_rebalance_orders(
         return {"mode": mode, "orders": [], "note": "Nessun target configurato."}
 
     pos_by_asset = {p.asset_id: p for p in positions}
-    # Same holdings and cash as get_target_drift and the PAC (TASK-85).
+    # Same holdings and base as get_target_drift and the PAC (TASK-85/95):
+    # the portfolio cash is only reported, never spent.
     portfolio_cash = float(summary.cash_balance or 0.0)
     plan = compute_rebalance_plan(
         target_holdings(positions, target_alloc),
@@ -1031,6 +1053,8 @@ def _calculate_rebalance_orders(
         pos = pos_by_asset.get(o.key)
         price = pos.market_price if pos and pos.market_price else None
         amount = round(o.amount, 2)
+        if amount <= 0:
+            continue  # below one cent: not an order
         orders.append({
             "side": o.side,
             "symbol": o.symbol,
@@ -1046,15 +1070,33 @@ def _calculate_rebalance_orders(
     cash_before = round(plan.portfolio_cash, 2)
     extra = round(plan.extra_cash, 2)
     cash_after = round(cash_before + extra + sells - buys, 2)
-    invariant_ok = cash_after >= 0 and abs(cash_after - plan.cash_after) <= 0.01 * (len(orders) + 1)
+    tol = 0.01 * (len(orders) + 1)
+    # TASK-95: the buys never spend the portfolio cash (cash_after >= cash_before).
+    invariant_ok = (
+        cash_after >= 0
+        and abs(cash_after - plan.cash_after) <= tol
+        and buys <= sells + extra + tol
+    )
 
     notes = [
         "Le commissioni e le imposte non sono modellate: importi lordi.",
         f"Banda di tolleranza {DEFAULT_TOLERANCE_PP} pp sul peso: se nessuno strumento la supera "
         "non ci sono ordini; altrimenti tutti gli strumenti tornano al target.",
-        "La liquidita' del portafoglio (stesso modello della performance: acquisti scalati, vendite "
-        "accreditate) e available_cash (liquidita' aggiuntiva) entrano nel totale e nei pesi.",
+        "La liquidita' gia' presente nel portafoglio (cash_before) non viene mai usata per "
+        "ribilanciare: non entra nel totale ne' nei pesi e resta invariata; gli acquisti sono "
+        "finanziati solo dalle vendite"
+        + (" e dalla nuova liquidita' available_cash." if mode == "buy_only" else "."),
     ]
+    if mode == "buy_only" and plan.extra_cash <= 0:
+        notes.append(
+            "Modalita' buy_only senza available_cash: nessuna nuova liquidita' da investire, "
+            "quindi nessun acquisto (la liquidita' del portafoglio non si usa)."
+        )
+    if plan.extra_cash_ignored > 0:
+        notes.append(
+            f"available_cash ignorato in modalita' {mode}: la nuova liquidita' si investe solo "
+            "con mode buy_only."
+        )
     if portfolio_cash < 0:
         notes.append("Saldo di liquidita' negativo considerato pari a 0.")
     if plan.untargeted_symbols:
@@ -1068,7 +1110,10 @@ def _calculate_rebalance_orders(
             f"{plan.unallocated_target_pct:.2f}% resta in liquidita'."
         )
     if plan.buys_scaled:
-        notes.append("Liquidita' insufficiente: acquisti ridotti in proporzione al fabbisogno.")
+        notes.append(
+            "Vendite (e nuova liquidita') insufficienti per gli acquisti: acquisti ridotti in "
+            "proporzione al fabbisogno; la liquidita' del portafoglio non si usa."
+        )
     if not orders:
         notes.append("Nessun ordine necessario: portafoglio entro la banda di tolleranza.")
 
@@ -1081,7 +1126,10 @@ def _calculate_rebalance_orders(
             "cash_before": cash_before,
             "extra_cash": extra,
             "cash_after": cash_after,
-            "invariant": "cash_after = cash_before + extra_cash + sells_eur - buys_eur",
+            "invariant": (
+                "cash_after = cash_before + extra_cash + sells_eur - buys_eur; "
+                "buys_eur <= sells_eur + extra_cash (liquidita' del portafoglio mai spesa)"
+            ),
             "invariant_ok": invariant_ok,
         },
         "total_value": round(plan.base_value, 2),
@@ -1097,10 +1145,10 @@ def _calculate_rebalance_orders(
 WHAT_IF_WEIGHT_BASIS_NOTE = (
     "old_weight, new_weight e max_position_weight_* sono sul valore delle sole posizioni, come "
     "get_positions (misurano la concentrazione). old_drift e new_drift sono invece sulla base di "
-    "get_target_drift, calculate_rebalance_orders e calculate_pac_contribution (strumenti con target "
-    "piu' liquidita', target_basis.total_value_*): l'acquisto e' pagato con la liquidita' del "
-    "portafoglio (oltre il saldo conta come nuovo versamento), la vendita lascia i proventi in "
-    "liquidita'. Strumento senza target: old_drift, new_drift e target_basis nulli."
+    "get_target_drift, calculate_rebalance_orders e calculate_pac_contribution (soli strumenti con "
+    "target, liquidita' esclusa, target_basis.total_value_*): l'acquisto aumenta la base del suo "
+    "importo, la vendita la riduce; la liquidita' non entra nei pesi. Strumento senza target: "
+    "old_drift, new_drift e target_basis nulli."
 )
 
 
@@ -1137,12 +1185,10 @@ def _calculate_what_if(
     new_weight = (new_value / new_total * 100) if new_total > 0 else 0
 
     # Drift from target (TASK-88): same base as get_target_drift, the PAC and
-    # calculate_rebalance_orders (current_target_weights: targeted holdings +
-    # current cash). The operation is applied to the app's cash model: a buy is
-    # paid from the portfolio cash (the part beyond it, cash floored at 0, adds
-    # to the base like a new deposit), a sale's proceeds stay in cash. So
-    # old_drift equals get_target_drift and new_drift is what it would show
-    # after recording the transaction.
+    # calculate_rebalance_orders (current_target_weights: targeted holdings
+    # only, cash excluded, TASK-95). A buy adds its amount to the instrument
+    # and to the base, a sale removes it. So old_drift equals get_target_drift
+    # and new_drift is what it would show after recording the transaction.
     old_drift = None
     new_drift = None
     target_basis = None
@@ -1150,8 +1196,7 @@ def _calculate_what_if(
         target_alloc = repo.list_portfolio_target_allocations(portfolio_id, user_id) or []
         ta = next((t for t in target_alloc if t.symbol.upper() == symbol.upper()), None)
         if ta is not None:
-            cash = float(summary.cash_balance or 0.0)
-            before = current_target_weights(positions, target_alloc, cash)
+            before = current_target_weights(positions, target_alloc)
             signed = amount_eur if action == "buy" else -amount_eur
             simulated = [
                 SimpleNamespace(
@@ -1162,7 +1207,7 @@ def _calculate_what_if(
             ]
             if not any(p.asset_id == ta.asset_id for p in positions):
                 simulated.append(SimpleNamespace(asset_id=ta.asset_id, symbol=ta.symbol, market_value=signed))
-            after = current_target_weights(simulated, target_alloc, cash - signed)
+            after = current_target_weights(simulated, target_alloc)
             w_before = before.current_weight_pct(ta.asset_id)
             w_after = after.current_weight_pct(ta.asset_id)
             old_drift = round(w_before - ta.weight_pct, 2)
@@ -1173,8 +1218,6 @@ def _calculate_what_if(
                 "current_weight_after": round(w_after, 2),
                 "total_value_before": round(before.base_value, 2),
                 "total_value_after": round(after.base_value, 2),
-                "cash_before": round(before.cash, 2),
-                "cash_after": round(after.cash, 2),
             }
     except Exception:
         logger.debug("calculate_what_if: drift from target not available", exc_info=True)
@@ -1217,7 +1260,15 @@ def _calculate_pac_contribution(
     args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
 ) -> dict:
-    """T12: Distribute a monthly PAC amount across assets to approach target."""
+    """T12: split a PAC contribution across the targeted instruments.
+
+    Owner's decision (TASK-90, methodology.md §7): proportionally to what each
+    instrument needs to reach its target weight on the base *after* the
+    contribution (targeted holdings + amount, cash excluded since TASK-95), never above the
+    target of any instrument; the part above the total need (only possible
+    when the targets add up to less than 100) proportionally to the targets.
+    See ``compute_pac_split`` in app.services.rebalance.
+    """
     monthly_amount = args.get("monthly_amount", 0)
     if monthly_amount <= 0:
         return {"error": "Importo mensile deve essere > 0"}
@@ -1233,106 +1284,64 @@ def _calculate_pac_contribution(
     if not target_alloc:
         return {"distribution": [], "note": "Nessun target configurato."}
 
-    pos_map = {p.asset_id: p for p in positions}
-    # TASK-85: same weights as get_target_drift and calculate_rebalance_orders
-    # (targeted holdings + current cash); the new money enlarges that base.
-    weights = current_target_weights(positions, target_alloc, float(summary.cash_balance or 0.0))
-    total_value = weights.base_value
-    basis = {"total_value": round(total_value, 2), "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE}
-
-    # Calculate drift for each target asset (negative drift = under-weight),
-    # on the weight rounded to 2 decimals as shown by get_target_drift.
-    assets_with_drift = []
-    for ta in target_alloc:
-        current_w = round(weights.current_weight_pct(ta.asset_id), 2)
-        drift = current_w - ta.weight_pct  # negative means under-weight
-        pos = pos_map.get(ta.asset_id)
-        assets_with_drift.append({
-            "asset_id": ta.asset_id,
-            "symbol": ta.symbol,
-            "target_weight": ta.weight_pct,
-            "current_weight": current_w,
-            "drift": drift,
-            "price": pos.market_price if pos and pos.market_price else None,
-        })
-
-    # Sort: most under-weight first
-    assets_with_drift.sort(key=lambda a: a["drift"])
-
     # TASK-83: the amount is split in whole cents, so the rows always add up
     # exactly to ``total_allocated`` and nothing is declared allocated without
     # a destination.
     total_cents = int(round(float(monthly_amount) * 100))
     if total_cents <= 0:
         return {"error": "Importo mensile deve essere almeno 0,01 EUR"}
-    underweight = [a for a in assets_with_drift if a["drift"] < 0]
-    if not underweight:
-        # No instrument is below its target (all at target or above, e.g. when
-        # the targets add up to less than 100): there is no declared rule to
-        # pick a destination, so nothing is allocated and the note says why.
-        target_sum = sum(ta.weight_pct for ta in target_alloc)
-        note = (
-            "Nessuno strumento è sotto il proprio peso obiettivo: l'importo non è "
-            "stato distribuito (totale allocato 0)."
-        )
-        if target_sum < 100 - 0.01:
-            note += (
-                f" I pesi obiettivo sommano a {round(target_sum, 2)}% invece di 100%: "
-                "completa i target per ricevere una ripartizione del PAC."
-            )
-        else:
-            note += (
-                " Per mantenere il portafoglio sui target puoi ripartire il versamento "
-                "in proporzione ai pesi obiettivo."
-            )
-        return {
-            "monthly_amount": monthly_amount,
-            "distribution": [],
-            "total_allocated": 0.0,
-            "unallocated_amount": round(total_cents / 100, 2),
-            "note": note,
-            **basis,
-        }
 
-    # Distribute proportionally to the negative drift (largest remainder on cents).
-    total_negative_drift = sum(-a["drift"] for a in underweight)
-    raw_cents = [(-a["drift"]) / total_negative_drift * total_cents for a in underweight]
-    cents = [int(c) for c in raw_cents]
-    leftover = total_cents - sum(cents)
-    by_remainder = sorted(range(len(underweight)), key=lambda i: (cents[i] - raw_cents[i], i))
-    for i in by_remainder[:leftover]:
-        cents[i] += 1
+    pos_map = {p.asset_id: p for p in positions}
+    cash = float(summary.cash_balance or 0.0)
+    # TASK-85/95: same weights as get_target_drift and calculate_rebalance_orders
+    # (targeted holdings only, cash excluded); the new money enlarges that base.
+    weights = current_target_weights(positions, target_alloc, cash)
+    split = compute_pac_split(target_holdings(positions, target_alloc), amount_cents=total_cents)
+    basis = {"total_value": round(weights.base_value, 2), "weight_basis_note": TARGET_WEIGHT_BASIS_NOTE}
 
-    new_total = total_value + total_cents / 100
     distribution = []
-    for asset, c in zip(underweight, cents):
-        if c <= 0:
+    for a in split.allocations:
+        if a.cents <= 0:
             continue
-        amount = c / 100
-        pos = pos_map.get(asset["asset_id"])
-        old_value = pos.market_value if pos else 0
-        new_value = old_value + amount
-        new_weight = (new_value / new_total * 100) if new_total > 0 else 0
-
+        pos = pos_map.get(a.key)
+        price = pos.market_price if pos and pos.market_price else None
+        new_weight = (a.current_value + a.amount) / split.base_after * 100 if split.base_after > 0 else 0.0
         distribution.append({
-            "symbol": asset["symbol"],
-            "amount_eur": round(amount, 2),
-            "shares_approx": (
-                round(amount / asset["price"], 4)
-                if asset["price"] and asset["price"] > 0 else None
-            ),
-            "current_weight": round(asset["current_weight"], 2),
-            "target_weight": round(asset["target_weight"], 2),
+            "symbol": a.symbol,
+            "amount_eur": round(a.amount, 2),
+            "shares_approx": round(a.amount / price, 4) if price and price > 0 else None,
+            "current_weight": round(weights.current_weight_pct(a.key), 2),
+            "target_weight": round(a.target_weight_pct, 2),
             "new_weight_after": round(new_weight, 2),
         })
+    distribution.sort(key=lambda d: (-d["amount_eur"], str(d["symbol"])))
 
-    return {
+    allocated = split.allocated_cents
+    result = {
         "monthly_amount": monthly_amount,
         "distribution": distribution,
-        "total_allocated": round(sum(cents) / 100, 2),
-        "unallocated_amount": 0.0,
+        "total_allocated": round(allocated / 100, 2),
+        "unallocated_amount": round((total_cents - allocated) / 100, 2),
+        "total_need_eur": round(split.need_total, 2),
         **basis,
     }
+    target_sum = round(split.target_sum_pct, 2)
+    if allocated == 0:
+        # Only with every target at 0%: no instrument needs money and there is
+        # no proportion to split the amount by.
+        result["note"] = (
+            f"I pesi obiettivo sommano a {target_sum}%: l'importo non è stato distribuito "
+            "(totale allocato 0). Imposta pesi obiettivo maggiori di 0 per ricevere una ripartizione del PAC."
+        )
+    elif split.excess > 0.005:
+        result["note"] = (
+            f"I pesi obiettivo sommano a {target_sum}% invece di 100%: il versamento supera di "
+            f"{round(split.excess, 2)} EUR quanto serve per portare ogni strumento al proprio peso "
+            "obiettivo (total_need_eur). L'eccedenza è ripartita in proporzione ai pesi obiettivo, "
+            "quindi dopo il versamento questi strumenti superano il proprio peso obiettivo: completa "
+            "i target oppure lascia l'eccedenza in liquidità."
+        )
+    return result
 
 
 def _held_asset_id(repo: PortfolioRepository, portfolio_id: int, user_id: str, symbol: str) -> int | None:
@@ -1474,6 +1483,16 @@ def _asset_info_classification(repo: PortfolioRepository, asset_id: int, info: d
 # T14-T18: Advanced analytical tool handlers
 # ---------------------------------------------------------------------------
 
+def _annual_dividend_income(market_value: Any, dividend_yield: Any) -> float:
+    """Gross annual income of one position: market value × yield (%) / 100.
+
+    Single definition shared by ``get_dividend_summary`` and
+    ``get_income_projection`` (TASK-91); totals are ``math.fsum`` of these
+    unrounded values, so both tools agree to the cent.
+    """
+    return float(market_value) * float(dividend_yield) / 100.0
+
+
 def _get_dividend_summary(
     _args: dict, repo: PortfolioRepository, _perf: PerformanceService,
     portfolio_id: int, user_id: str, **_kw: Any,
@@ -1516,15 +1535,20 @@ def _get_dividend_summary(
     summary = repo.get_summary(portfolio_id, user_id)
     total_mv = summary.market_value
 
-    weighted_yield = 0.0
+    # Projected annual income = Σ market_value × dividend_yield / 100 over the
+    # positions with a yield: the same quantity (and the same helper) as
+    # current_annual_dividends_gross_eur of get_income_projection (TASK-91).
+    # The weighted yield is derived from it, not from Position.weight, which is
+    # rounded to 2 decimals (the old total drifted by cents: 1,324.12 vs 1,324.10).
+    position_incomes: list[float] = []
     position_yields: list[dict] = []
     for p in positions:
         try:
             meta = repo.get_asset_metadata(p.asset_id)
             if meta and meta.dividend_yield:
                 dy = float(meta.dividend_yield)
-                weighted_yield += dy * (p.weight / 100.0)
-                annual_income = p.market_value * dy / 100.0
+                annual_income = _annual_dividend_income(p.market_value, dy)
+                position_incomes.append(annual_income)
                 position_yields.append({
                     "symbol": p.symbol,
                     "dividend_yield_pct": round(dy, 2),
@@ -1536,7 +1560,8 @@ def _get_dividend_summary(
     # Sort by income descending, top 10
     position_yields.sort(key=lambda x: x["annual_income_eur"], reverse=True)
 
-    projected_annual_income = total_mv * weighted_yield / 100.0
+    projected_annual_income = math.fsum(position_incomes)
+    weighted_yield = projected_annual_income / total_mv * 100.0 if total_mv else 0.0
 
     result = {
         "total_dividends_received": round(total_dividends, 2) if total_dividends is not None else None,
@@ -1873,6 +1898,7 @@ def _get_income_projection(
         inputs_by_asset = {}
 
     bucket_dividends = {"equity": 0.0, "fixed_income": 0.0, "other_or_unknown": 0.0}
+    position_incomes: list[float] = []
     unknown_symbols: list[str] = []
     missing_yield_symbols: list[str] = []
     for p in positions:
@@ -1897,14 +1923,17 @@ def _get_income_projection(
             if asset_class != "cash":
                 missing_yield_symbols.append(p.symbol)
             continue
-        annual_div = float(p.market_value) * float(dividend_yield) / 100.0
+        annual_div = _annual_dividend_income(p.market_value, dividend_yield)
+        position_incomes.append(annual_div)
         bucket_dividends[bucket_of_class.get(asset_class, "other_or_unknown")] += annual_div
 
     equity_annual_dividends = bucket_dividends["equity"]
     fixed_income_annual_dividends = bucket_dividends["fixed_income"]
     other_annual_dividends = bucket_dividends["other_or_unknown"]
-    # Invariant: the buckets add up to the projected gross income.
-    total_annual_dividends = equity_annual_dividends + fixed_income_annual_dividends + other_annual_dividends
+    # Invariant: the buckets add up to the projected gross income. The total is
+    # the fsum of the per-position incomes, exactly as projected_annual_income_eur
+    # of get_dividend_summary (TASK-91).
+    total_annual_dividends = math.fsum(position_incomes)
 
     projections = []
     for years in (1, 3, 5):

@@ -251,7 +251,7 @@ export function HoldingsTable({ positions, currency, summary, targetMap, onRefre
                                   <IconAlertTriangle size={14} color="var(--mantine-color-orange-6)" style={{ flexShrink: 0 }} aria-label="Scostamento oltre 5 punti" />
                                 )}
                               </Group>
-                              <Text size="xs" fw={warn ? 700 : 500} c={warn ? 'orange' : 'dimmed'} data-testid={`target-drift-${p.asset_id}`}>
+                              <Text size="xs" fw={warn ? 700 : 500} c={warn ? 'orange' : 'dimmed'} style={{ whiteSpace: 'nowrap' }} data-testid={`target-drift-${p.asset_id}`}>
                                 {formatDriftPoints(item.drift_pct)}
                               </Text>
                             </div>

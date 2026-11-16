@@ -1,7 +1,7 @@
 ---
 id: TASK-90
 title: 'Auditor: il PAC con un importo grande supera il target e trascura lo strumento che diventa sottopesato'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T18:30:00Z'
 labels:
@@ -44,8 +44,8 @@ Deduplica: B-PAC-SUM verifica solo la somma, B-PAC-UNDERWEIGHT-ONLY solo il peso
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Decisione del proprietario sulla regola di ripartizione del PAC (per esempio in proporzione al fabbisogno sulla base dopo il versamento, con tetto al fabbisogno di ogni strumento), scritta in `docs/audit-mcp-2026-11/methodology.md` §7
-- [ ] #2 `calculate_pac_contribution` non porta alcuno strumento oltre il proprio peso obiettivo quando un altro resta sotto, e considera gli strumenti che il versamento rende sottopesati; con 100.000 € su 9101 nessun `new_weight_after` supera il `target_weight`
-- [ ] #3 Test unitario con un versamento piccolo, uno pari alla base e uno superiore al fabbisogno totale; verifica sul portafoglio 9101 del seed
-- [ ] #4 Attivata la regola proposta `B-PAC-NO-OVERSHOOT` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9101
+- [x] #1 Decisione del proprietario (2026-11-12: in proporzione al fabbisogno sulla base dopo il versamento, eccedenza in proporzione ai target) sulla regola di ripartizione del PAC (per esempio in proporzione al fabbisogno sulla base dopo il versamento, con tetto al fabbisogno di ogni strumento), scritta in `docs/audit-mcp-2026-11/methodology.md` §7
+- [x] #2 `calculate_pac_contribution` non porta alcuno strumento oltre il proprio peso obiettivo quando un altro resta sotto, e considera gli strumenti che il versamento rende sottopesati; con 100.000 € su 9101 nessun `new_weight_after` supera il `target_weight`
+- [x] #3 Test unitario con un versamento piccolo, uno pari alla base e uno superiore al fabbisogno totale; verifica sul portafoglio 9101 del seed
+- [x] #4 Attivata la regola proposta `B-PAC-NO-OVERSHOOT` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9101
 <!-- AC:END -->

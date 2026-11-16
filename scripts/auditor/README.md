@@ -85,8 +85,8 @@ Valori in EUR come li restituiscono `get_portfolio_summary` / `get_positions` (v
 | 9104 | AUD Londra e valute | 27.480,00 | 3.705,97 | 31.185,97 | `AUDUS.L` 100 × 101,20 = 10.120 (36,83); `AUDUK.L` 800 × 11,70 = 9.360 (34,06); `AUDEQ.MI` 80 × 100 = 8.000 (29,11) |
 | 9105 | AUD Import | 15.000,00 | 5.545,00 | 20.545,00 | `AUDEQ.MI` 100 × 100 = 10.000 (66,67); `AUDBD.MI` 100 × 50 = 5.000 (33,33) |
 | 9106 | AUD Vuoto | 0 | 0 | 0 | nessuna posizione, nessuna transazione, `cash_balance` 0 |
-| 9107 | AUD Quotazioni ferme | 16.000,00 | 4.047,00 | 20.047,00 | `AUDSTL.MI` 100 × 60 = 6.000 (37,50, quotazione ferma); `AUDEQ.MI` 50 × 100 = 5.000 (31,25); `AUDNPC.MI` 200 × 25 = 5.000 (31,25, senza chiusura precedente) |
-| aggregato | 9101…9107 | 240.830,00 | 33.190,47 | 274.020,47 | 13 strumenti; `AUDEQ.MI` in cinque portafogli (1.030 quote) |
+| 9107 | AUD Quotazioni ferme | 16.000,00 | 4.068,00 | 20.068,00 | `AUDSTL.MI` 100 × 60 = 6.000 (37,50, quotazione ferma); `AUDEQ.MI` 50 × 100 = 5.000 (31,25); `AUDNPC.MI` 200 × 25 = 5.000 (31,25, senza chiusura precedente) |
+| aggregato | 9101…9107 | 240.830,00 | 33.211,47 | 274.041,47 | 13 strumenti; `AUDEQ.MI` in cinque portafogli (1.030 quote) |
 
 Il totale coincide con `service_results.current_value` dell'export di performance (finestra 1y).
 
@@ -106,8 +106,11 @@ Transazioni (giorni prima di oggi):
 - **9105**: lotto d'import confermato in `csv_import_batches`; deposito 20.000 (−150); due acquisti
   identici `AUDEQ.MI` 50 × 96 (−140, esecuzione frazionata legittima), `AUDBD.MI` 100 × 49 (−140);
   dividendi EUR 12,00 su `AUDEQ.MI` a −120, −90, −60, −30 (stesso importo, date diverse).
-- **9107**: deposito 20.000 (−60); `AUDSTL.MI` 100 × 61 (−55), `AUDEQ.MI` 50 × 99 (−50),
-  `AUDNPC.MI` 200 × 24,50 (−5).
+- **9107**: deposito 20.000 (−60); `AUDSTL.MI` 100 × 61 (−55), `AUDEQ.MI` 60 × 99 con commissione 1,20
+  (−50, prezzo medio 99,02), `AUDNPC.MI` 200 × 24,50 (−5); dividendo EUR su `AUDEQ.MI` 20,00 lordi con 5,20 di imposte (−30) e
+  vendita `AUDEQ.MI` 10 × 100 con commissione 1,00 e imposte 2,60 (−20) (TASK-93: le uniche
+  transazioni del seed con `taxes` ≠ 0). Liquidità 20.000 − 6.101 − 5.941,20 − 4.901 + (20 − 5,20)
+  + (1.000 − 1 − 2,60) = 4.068,00.
 
 ## Esiti attesi dai tool (sul codice corretto)
 
@@ -136,7 +139,7 @@ ogni regola (52) verifica sul seed la precondizione per non andare in `skip`:
 | 9104 | listing di Londra in USD e GBP, prezzi delle operazioni in valuta, dividendi in due valute |
 | 9105 | lotto d'import confermato, coppia legittima di acquisti identici, dividendi mensili in una valuta |
 | 9106 | portafoglio vuoto (`skip`/`empty_portfolio`, liquidità 0) |
-| 9107 | quotazione ferma, posizione senza chiusura precedente, flag di qualità dei dati |
+| 9107 | quotazione ferma, posizione senza chiusura precedente, flag di qualità dei dati, imposte su vendita e dividendo (D-TX-CASH-RECONCILE) |
 | aggregato 9101…9107 | somme e posizioni della vista aggregata, stress, Monte Carlo, X-Ray, salute, performance |
 
 ## Casi non riproducibili con un seed SQL

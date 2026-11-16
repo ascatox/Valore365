@@ -49,9 +49,10 @@ def register_rebalancing_routes(
 
         Same function and same values as the Copilot/MCP ``get_target_drift``
         (``services.rebalance.target_drift_rows``): weights on the targeted
-        holdings + current cash of the performance cash model, the base of
-        ``calculate_rebalance_orders`` and of the PAC (TASK-85). Read by the
-        holdings table. Ownership is checked by the repository (404).
+        holdings only, cash excluded (TASK-95), the base of
+        ``calculate_rebalance_orders``, of the PAC and of the rebalance
+        preview. ``cash_balance`` is informational. Read by the holdings
+        table. Ownership is checked by the repository (404).
         """
         ensure_target_allocation_enabled()
         try:
@@ -155,16 +156,17 @@ def register_rebalancing_routes(
             except Exception as exc:  # noqa: BLE001 - preview should degrade gracefully
                 skipped.append(f"{target.symbol}: prezzo non disponibile ({exc})")
 
-        cash_input = float(payload.cash_to_allocate or 0.0)
+        cash_input = float(payload.cash_to_allocate or 0.0) if payload.mode == "buy_only" else 0.0
         min_order = float(payload.min_order_value or 0.0)
         base_ccy = summary.base_currency.upper()
 
-        # Shared, order-independent algorithm (app.services.rebalance). The
-        # preview keeps its historical semantics (decision TASK-88, documented
-        # in docs/audit-mcp-2026-11/methodology.md §7): weights on the invested
-        # value of all holdings (cash excluded), no tolerance band, buy_only
-        # deploys all of cash_to_allocate. Buys are now funded by
-        # cash_to_allocate + sell proceeds (scaled down if short).
+        # Shared, order-independent algorithm (app.services.rebalance), same
+        # base as get_target_drift and the holdings table (TASK-95): weights on
+        # the targeted holdings only (cash and untargeted holdings excluded).
+        # The portfolio cash is never spent: in rebalance mode the buys are
+        # funded only by the sells; cash_to_allocate is new money stated by
+        # the user, used only in buy_only (where it is deployed in full). No
+        # tolerance band (documented in methodology.md §7).
         target_by_asset = {t.asset_id: t for t in target_alloc}
         holdings: list[RebalanceHolding] = []
         for item in allocation:
@@ -174,13 +176,19 @@ def register_rebalancing_routes(
         for target in target_alloc:
             aid = target.asset_id
             current_alloc = allocation_by_asset.get(aid)
+            current_pos = position_by_asset.get(aid)
+            # Same value as get_target_drift (positions' market_value).
+            if current_pos is not None:
+                current_value = float(current_pos.market_value or 0.0)
+            else:
+                current_value = float(current_alloc.market_value) if current_alloc else 0.0
             quote_ccy = (quote_ccy_by_asset.get(aid) or summary.base_currency).upper()
             price = quote_by_asset.get(aid)
             holdings.append(
                 RebalanceHolding(
                     key=aid,
                     symbol=target.symbol,
-                    current_value=float(current_alloc.market_value) if current_alloc else 0.0,
+                    current_value=current_value,
                     target_weight_pct=float(target.weight_pct),
                     tradable=price is not None and price > 0 and quote_ccy == base_ccy,
                 )
@@ -192,13 +200,11 @@ def register_rebalancing_routes(
             extra_cash=cash_input,
             mode=payload.mode,
             tolerance_pp=0.0,
-            include_cash_in_base=False,
-            include_untargeted_in_base=True,
             max_orders=payload.max_transactions,
             buy_only_deploy_all_cash=True,
         )
         if plan.buys_scaled:
-            warnings.append("Liquidità insufficiente: acquisti ridotti in proporzione")
+            warnings.append("Vendite insufficienti per gli acquisti: acquisti ridotti in proporzione (la liquidità del portafoglio non si usa)")
 
         generated: list[RebalancePreviewItem] = []
 

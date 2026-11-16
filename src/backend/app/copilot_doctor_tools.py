@@ -180,7 +180,11 @@ def scenario_properties() -> dict[str, dict[str, Any]]:
                 "max_turnover_pct": {"type": "number", "minimum": 0, "maximum": 100},
                 "keep_equity_total": {"type": "boolean"},
                 "use_cash_balance": {
-                    "type": "boolean", "description": "Usa anche la liquidita' gia' presente (default false).",
+                    "type": "boolean",
+                    "description": (
+                        "Usa anche la liquidita' gia' presente (default false). Ignorato in mode "
+                        "rebalance: la liquidita' non si usa mai per ribilanciare."
+                    ),
                 },
             },
             "additionalProperties": False,

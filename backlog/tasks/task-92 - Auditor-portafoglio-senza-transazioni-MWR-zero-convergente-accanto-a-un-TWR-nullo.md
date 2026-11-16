@@ -1,7 +1,7 @@
 ---
 id: TASK-92
 title: 'Auditor: portafoglio senza transazioni, MWR zero convergente accanto a un TWR nullo'
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-11-11T18:30:00Z'
 labels:
@@ -38,8 +38,8 @@ Deduplica: D-PERF-RECOMPUTE, D-PERF-TOOL-MATCH e D-SUMMARY-PERFORMANCE-VALUE van
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Senza valore iniziale, valore finale e flussi nella finestra `mwr_*` è `null` con `mwr_null_reason` valorizzato (per esempio `non_calcolabile`), come il TWR; oppure il proprietario decide che 0,0 è voluto e lo dichiara in `performance_note` e nella metodologia §8
-- [ ] #2 Stesso comportamento per la vista aggregata composta solo da portafogli senza transazioni e per l'endpoint REST della performance
-- [ ] #3 Test unitario e verifica sul portafoglio 9106 del seed
-- [ ] #4 Attivata la regola proposta `D-PERF-EMPTY-NULL` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9106
+- [x] #1 Senza valore iniziale, valore finale e flussi nella finestra `mwr_*` è `null` con `mwr_null_reason` valorizzato (per esempio `non_calcolabile`), come il TWR; oppure il proprietario decide che 0,0 è voluto e lo dichiara in `performance_note` e nella metodologia §8
+- [x] #2 Stesso comportamento per la vista aggregata composta solo da portafogli senza transazioni e per l'endpoint REST della performance
+- [x] #3 Test unitario e verifica sul portafoglio 9106 del seed
+- [x] #4 Attivata la regola proposta `D-PERF-EMPTY-NULL` (bozza nel report del 2026-11-11), con scheda in `docs/auditor/rules.md` e prova su 9106
 <!-- AC:END -->

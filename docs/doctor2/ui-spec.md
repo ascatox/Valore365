@@ -364,7 +364,8 @@ domanda sull'oro e `preview_policy`.
 Vincoli: «Nessuna vendita», «Mantieni invariata la quota azionaria complessiva»,
 «Turnover massimo (%)», «Commissioni ipotetiche (%)» (0–10), «Commissione fissa per
 operazione» (`fee_model.fixed`, 0–10.000), «Usa anche la liquidità già presente nel
-portafoglio» (`constraints.use_cash_balance`, default `false`). Fiscalità: sempre
+portafoglio» (`constraints.use_cash_balance`, default `false`; disattivata nel ribilanciamento,
+TASK-95: la liquidità non si usa mai per ribilanciare). Fiscalità: sempre
 `tax_model: "none"` (D07).
 
 **Esecuzione**: «Simula scenario» (1 scenario → `POST /doctor/scenarios/preview`) o

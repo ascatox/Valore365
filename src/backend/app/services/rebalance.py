@@ -3,11 +3,15 @@
 Shared by the REST preview (``routes_rebalancing.rebalance_preview``) and the
 copilot/MCP tool ``calculate_rebalance_orders``.
 
+Owner's decision (TASK-95, 2026-11-16): the portfolio cash is never used to
+rebalance. It is not part of the base of the weights and never funds a buy;
+it is only reported (``portfolio_cash``) and stays untouched.
+
 Algorithm
 ---------
 1. ``base`` = value of the holdings with a target (+ holdings without a target
-   when ``include_untargeted_in_base``) + cash (portfolio cash + extra cash,
-   when ``include_cash_in_base``).
+   when ``include_untargeted_in_base``) + the new cash explicitly given
+   (``extra_cash``, used only in ``buy_only``: new money the user states).
 2. For every targeted holding: ``target_value = target_weight × base`` and
    ``delta = target_value - current_value``. All deltas are computed against
    the same base before any order is sized, so the result does not depend on
@@ -16,17 +20,19 @@ Algorithm
    weight) as a trigger: if no tradable holding drifts more than the band
    there are no orders; otherwise every holding is brought to target (so
    sell proceeds are not left idle because a buy is just inside the band).
-4. Sells first (never more than the position value); their proceeds are added
-   to the cash.
-5. Buys are funded by cash + sell proceeds; when the needs exceed the
-   available cash they are scaled down proportionally. Cash never goes
-   negative. Fees and taxes are not modelled.
+4. Sells first (never more than the position value).
+5. Buys are funded only by the sell proceeds + the new cash (never by the
+   portfolio cash); when the needs exceed those funds they are scaled down
+   proportionally. In ``rebalance`` mode with targets adding up to 100 the
+   buys equal the sells and the portfolio cash is unchanged. Fees and taxes
+   are not modelled.
 
 Holdings without a target are never traded.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Hashable, Iterable, Literal
 
@@ -86,6 +92,8 @@ class RebalancePlan:
     untargeted_symbols: list[str] = field(default_factory=list)
     untargeted_value: float = 0.0
     buys_scaled: bool = False
+    # New cash passed outside buy_only: not used (TASK-95).
+    extra_cash_ignored: float = 0.0
 
     @property
     def cash_before(self) -> float:
@@ -107,13 +115,16 @@ def compute_rebalance_plan(
     extra_cash: float = 0.0,
     mode: str = "rebalance",
     tolerance_pp: float = DEFAULT_TOLERANCE_PP,
-    include_cash_in_base: bool = True,
     include_untargeted_in_base: bool = False,
     max_orders: int | None = None,
     buy_only_deploy_all_cash: bool = False,
 ) -> RebalancePlan:
     """Compute a rebalancing plan. Pure function, no I/O.
 
+    ``portfolio_cash``: the cash already in the portfolio, reported only:
+    never in the base, never spent (TASK-95). ``extra_cash``: new money
+    explicitly given by the user, used only in ``buy_only`` (ignored in the
+    other modes, ``extra_cash_ignored``); it enters the base and funds the buys.
     ``buy_only_deploy_all_cash``: in ``buy_only`` mode spread all the
     available cash across the under-weight holdings proportionally to their
     need, even beyond the target (legacy behaviour of the REST preview).
@@ -123,8 +134,9 @@ def compute_rebalance_plan(
     if mode not in REBALANCE_MODES:
         raise ValueError(f"mode non valida: {mode}")
     portfolio_cash = max(float(portfolio_cash or 0.0), 0.0)
-    extra_cash = max(float(extra_cash or 0.0), 0.0)
-    cash = portfolio_cash + extra_cash
+    requested_extra = max(float(extra_cash or 0.0), 0.0)
+    extra_cash = requested_extra if mode == "buy_only" else 0.0
+    extra_cash_ignored = requested_extra - extra_cash
     tolerance_pp = max(float(tolerance_pp or 0.0), 0.0)
 
     ordered = sorted(holdings, key=_sort_key)
@@ -136,15 +148,15 @@ def compute_rebalance_plan(
     base = sum(max(float(h.current_value), 0.0) for h in targeted)
     if include_untargeted_in_base:
         base += untargeted_value
-    if include_cash_in_base:
-        base += cash
+    base += extra_cash
 
     def _empty(weights: list[RebalanceWeight]) -> RebalancePlan:
         return RebalancePlan(
             mode=mode, orders=[], weights=weights, base_value=base,
             portfolio_cash=portfolio_cash, extra_cash=extra_cash,
-            sells_total=0.0, buys_total=0.0, cash_after=cash, target_sum_pct=target_sum,
+            sells_total=0.0, buys_total=0.0, cash_after=portfolio_cash + extra_cash, target_sum_pct=target_sum,
             untargeted_symbols=[h.symbol for h in untargeted], untargeted_value=untargeted_value,
+            extra_cash_ignored=extra_cash_ignored,
         )
 
     if base <= _EPS or not targeted:
@@ -195,8 +207,9 @@ def compute_rebalance_plan(
             amounts[id(r)] = amount
             sells_total += amount
 
-    # 4. Buys, scaled down proportionally when cash is not enough.
-    available = cash + sells_total
+    # 4. Buys, funded only by the sells and the new cash (never by the
+    #    portfolio cash, TASK-95); scaled down proportionally when short.
+    available = extra_cash + sells_total
     buy_rows = [r for r in candidates if r["side"] == "buy"]
     need_total = sum(r["delta"] for r in buy_rows)
     buys_scaled = False
@@ -209,18 +222,19 @@ def compute_rebalance_plan(
         for r in buy_rows:
             amounts[id(r)] = r["delta"] * scale
     buys_total = sum(amounts[id(r)] for r in buy_rows)
-    cash_after = max(available - buys_total, 0.0)
+    unspent = max(available - buys_total, 0.0)
+    cash_after = portfolio_cash + unspent
 
     # 5. Weights after the plan, on the same basis.
     new_values = {id(r): r["value"] for r in rows}
     for r in candidates:
         amount = amounts.get(id(r), 0.0)
         new_values[id(r)] += amount if r["side"] == "buy" else -amount
-    base_after = sum(new_values.values())
+    # Same base as before the plan: what the plan does not spend (new cash,
+    # proceeds of sells beyond the buys) stays in it; the portfolio cash never.
+    base_after = sum(new_values.values()) + unspent
     if include_untargeted_in_base:
         base_after += untargeted_value
-    if include_cash_in_base:
-        base_after += cash_after
 
     def _after(r: dict) -> float:
         return new_values[id(r)] / base_after * 100.0 if base_after > _EPS else 0.0
@@ -241,20 +255,21 @@ def compute_rebalance_plan(
         portfolio_cash=portfolio_cash, extra_cash=extra_cash,
         sells_total=sells_total, buys_total=buys_total, cash_after=cash_after,
         target_sum_pct=target_sum, untargeted_symbols=[h.symbol for h in untargeted],
-        untargeted_value=untargeted_value, buys_scaled=buys_scaled,
+        untargeted_value=untargeted_value, buys_scaled=buys_scaled, extra_cash_ignored=extra_cash_ignored,
     )
 
 
 # ---------------------------------------------------------------------------
-# Current weights against the targets (TASK-85)
+# Current weights against the targets (TASK-85, base changed by TASK-95)
 # ---------------------------------------------------------------------------
 
 TARGET_WEIGHT_BASIS_NOTE = (
-    "Pesi attuali sul valore degli strumenti con un peso obiettivo piu' la liquidita' del "
-    "portafoglio (stesso modello della performance), la stessa base di calculate_rebalance_orders "
-    "e calculate_pac_contribution: total_value = valore degli strumenti con target + cash_balance. "
-    "Le posizioni senza target restano fuori dal totale. Il peso di get_positions e' invece sul "
-    "valore delle sole posizioni."
+    "Pesi attuali sul valore dei soli strumenti con un peso obiettivo, liquidita' esclusa: "
+    "total_value = valore degli strumenti con target. E' la stessa base di get_target_drift, "
+    "calculate_rebalance_orders, calculate_pac_contribution e calculate_what_if (old/new_drift). "
+    "La liquidita' del portafoglio non entra nei pesi e non viene mai usata per ribilanciare "
+    "(cash_balance e' solo informativo). Le posizioni senza target restano fuori dal totale. "
+    "Il peso di get_positions e' invece sul valore di tutte le posizioni."
 )
 
 
@@ -263,7 +278,7 @@ class TargetWeights:
     """Current weight of every targeted instrument on the rebalancing base."""
 
     base_value: float
-    cash: float
+    cash: float  # portfolio cash, informational only: not in base_value (TASK-95)
     by_key: dict[Hashable, RebalanceWeight]
     untargeted_symbols: list[str] = field(default_factory=list)
     untargeted_value: float = 0.0
@@ -295,11 +310,14 @@ def target_holdings(positions: Iterable, target_alloc: Iterable) -> list[Rebalan
     return holdings
 
 
-def current_target_weights(positions: Iterable, target_alloc: Iterable, cash: float) -> TargetWeights:
-    """Single source of the current weights shown by get_target_drift, the PAC
-    and calculate_rebalance_orders (TASK-85): the base of
-    ``compute_rebalance_plan`` with the portfolio cash and no extra cash
-    (targeted holdings + cash; holdings without a target excluded)."""
+def current_target_weights(positions: Iterable, target_alloc: Iterable, cash: float = 0.0) -> TargetWeights:
+    """Single source of the current weights against the targets (TASK-85),
+    shown by get_target_drift, the REST target-drift and rebalance preview,
+    the PAC, calculate_rebalance_orders, calculate_what_if, the Copilot
+    snapshot and the Markdown export: the base of ``compute_rebalance_plan``
+    without new cash = value of the targeted holdings only. Owner's decision
+    TASK-95: the portfolio cash is not part of it (``cash`` is only reported
+    back); holdings without a target are excluded."""
     plan = compute_rebalance_plan(target_holdings(positions, target_alloc), portfolio_cash=cash)
     return TargetWeights(
         base_value=plan.base_value,
@@ -329,7 +347,8 @@ def target_drift_rows(
     """Drift from target of every targeted instrument, in the order of
     ``target_alloc``: single source of get_target_drift (Copilot/MCP) and of
     the REST ``GET /portfolios/{id}/target-drift`` read by the holdings table
-    (TASK-88). Weights from ``current_target_weights``; ``drift_pct`` is
+    (TASK-88). Weights from ``current_target_weights`` (targeted
+    holdings only, cash excluded, TASK-95); ``drift_pct`` is
     rounded from the unrounded weight, so it can differ by 0.01 from
     ``current_weight_pct - target_weight_pct``."""
     positions = list(positions)
@@ -350,3 +369,104 @@ def target_drift_rows(
             market_value=round(float(pos.market_value or 0.0), 2) if pos else 0.0,
         ))
     return weights, rows
+
+
+# ---------------------------------------------------------------------------
+# PAC: split of a new contribution (TASK-90)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PacAllocation:
+    key: Hashable
+    symbol: str
+    cents: int
+    need: float
+    current_value: float
+    target_weight_pct: float
+
+    @property
+    def amount(self) -> float:
+        return self.cents / 100
+
+
+@dataclass(frozen=True)
+class PacSplit:
+    """Split of a PAC contribution in whole cents (``allocations`` in symbol order,
+    one per targeted instrument, zero amounts included)."""
+
+    allocations: list[PacAllocation]
+    base_value: float
+    base_after: float
+    amount_cents: int
+    need_total: float
+    excess: float
+    target_sum_pct: float
+
+    @property
+    def allocated_cents(self) -> int:
+        return sum(a.cents for a in self.allocations)
+
+
+def _largest_remainder(raw_cents: list[float], total_cents: int) -> list[int]:
+    """Whole cents adding up exactly to ``total_cents`` (largest remainder, ties by index)."""
+    cents = [math.floor(c + 1e-9) for c in raw_cents]
+    leftover = total_cents - sum(cents)
+    order = sorted(range(len(raw_cents)), key=lambda i: (cents[i] - raw_cents[i], i))
+    if leftover > 0:
+        for i in order[:leftover]:
+            cents[i] += 1
+    elif leftover < 0:  # only from float noise: take back from the smallest remainders
+        for i in reversed(order[: -leftover]):
+            cents[i] -= 1
+    return cents
+
+
+def compute_pac_split(
+    holdings: Iterable[RebalanceHolding], *, amount_cents: int,
+) -> PacSplit:
+    """Decisione del proprietario (TASK-90, ``methodology.md`` §7). Pure function.
+
+    ``base_after`` = value of the targeted holdings + the contribution, the
+    base of ``current_target_weights`` enlarged by the new money (TASK-95: the
+    portfolio cash is not part of it, so the split equals
+    ``compute_rebalance_plan`` in ``buy_only`` with ``extra_cash`` = amount). ``need_i = max(0, target_i × base_after − value_i)``.
+    The contribution is split proportionally to the needs, so no instrument
+    receives more than its need (it never ends above its target weight); the
+    part above the total need, which exists only when the targets add up to
+    less than 100 (with 100 the total need is at least the contribution),
+    is split proportionally to the target weights. With targets all at 0 the
+    contribution is not allocated (``allocated_cents`` 0).
+    """
+    amount_cents = max(int(amount_cents), 0)
+    amount = amount_cents / 100
+    targeted = [h for h in sorted(holdings, key=_sort_key) if h.target_weight_pct is not None]
+    values = [max(float(h.current_value), 0.0) for h in targeted]
+    targets = [float(h.target_weight_pct) for h in targeted]  # type: ignore[arg-type]
+    base = sum(values)
+    base_after = base + amount
+    needs = [max(t / 100.0 * base_after - v, 0.0) for t, v in zip(targets, values)]
+    need_total = sum(needs)
+    target_sum = sum(targets)
+
+    excess = 0.0
+    if need_total >= amount - _EPS and need_total > _EPS:
+        raw = [amount_cents * n / need_total for n in needs]
+    elif target_sum > _EPS:
+        excess = amount - need_total
+        raw = [(n + excess * t / target_sum) * 100 for n, t in zip(needs, targets)]
+        # The needs are paid in full: fix the float sum to the exact cents.
+        scale = amount_cents / sum(raw) if sum(raw) > _EPS else 0.0
+        raw = [r * scale for r in raw]
+    else:
+        raw = [0.0 for _ in targeted]
+    cents = _largest_remainder(raw, amount_cents) if any(r > 0 for r in raw) else [0 for _ in targeted]
+
+    return PacSplit(
+        allocations=[
+            PacAllocation(h.key, h.symbol, c, n, v, t)
+            for h, c, n, v, t in zip(targeted, cents, needs, values, targets)
+        ],
+        base_value=base, base_after=base_after, amount_cents=amount_cents,
+        need_total=need_total, excess=excess, target_sum_pct=target_sum,
+    )

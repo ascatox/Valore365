@@ -95,7 +95,7 @@ DOCUMENTED = {
         "AUDBD.MI": (100, 50.0, 5000.00, 33.33),
     }),
     9106: (0.0, 0.0, {}),
-    9107: (16000.00, 4047.00, {
+    9107: (16000.00, 4068.00, {  # TASK-93: dividendo e vendita con imposte
         "AUDSTL.MI": (100, 60.0, 6000.00, 37.5),
         "AUDEQ.MI": (50, 100.0, 5000.00, 31.25),
         "AUDNPC.MI": (200, 25.0, 5000.00, 31.25),
@@ -467,18 +467,53 @@ def test_rebalance_needs_sells_to_fund_buys(tools):
         assert totals["invariant_ok"] is True
         assert abs(totals["cash_after"] - (totals["cash_before"] + totals["extra_cash"] + totals["sells_eur"] - totals["buys_eur"])) <= 0.01
         assert totals["cash_after"] >= -0.01
-    sides = {o["symbol"]: o["side"] for o in rebalance["orders"]}
-    assert sides["AUDEQ.MI"] == "sell" and sides["AUDBD.MI"] == "buy"
-    assert rebalance["totals"]["buys_eur"] > rebalance["totals"]["cash_before"]  # la liquidità da sola non basta
+    # TASK-95: la liquidità non si usa mai; vendita e acquisto dello stesso importo, liquidità invariata.
+    assert [(o["side"], o["symbol"], o["amount_eur"]) for o in rebalance["orders"]] == [
+        ("sell", "AUDEQ.MI", 20000.0), ("buy", "AUDBD.MI", 20000.0)]
+    assert rebalance["total_value"] == 100000.0
+    assert rebalance["totals"]["cash_before"] == rebalance["totals"]["cash_after"] == 9256.5
+    for r in results:
+        assert r["totals"]["buys_eur"] <= r["totals"]["sells_eur"] + r["totals"]["extra_cash"] + 0.01
     assert buy_only["totals"]["extra_cash"] == 1000.0 and buy_only["totals"]["sells_eur"] == 0
+    assert buy_only["totals"]["buys_eur"] == 1000.0
     assert all(o["side"] == "buy" for o in buy_only["orders"])
     assert all(o["side"] == "sell" for o in sell_only["orders"]) and sell_only["totals"]["buys_eur"] == 0
     assert tools.call("calculate_rebalance_orders", {"portfolio_id": 9102, "mode": "rebalance"}).get("totals") is None
 
 
+def test_target_weights_without_cash_on_9101(tools):
+    """TASK-95: pesi 70 / 20 / 10 e scostamenti +20 / −20 / 0 in get_target_drift e nel what-if."""
+    drift = tools.call("get_target_drift", {"portfolio_id": 9101})
+    assert drift["total_value"] == 100000.0 and drift["cash_balance"] == 9256.5
+    assert {d["symbol"]: (d["current_weight"], d["drift"]) for d in drift["drift"]} == {
+        "AUDEQ.MI": (70.0, 20.0), "AUDBD.MI": (20.0, -20.0), "AUDTECH.DE": (10.0, 0.0)}
+    wi = tools.call("calculate_what_if", {"portfolio_id": 9101, "action": "buy", "symbol": "AUDEQ.MI", "amount_eur": 1000.0})
+    assert wi["old_drift"] == 20.0 and wi["new_drift"] == 20.3
+
+
+def test_pac_large_amount_stays_below_targets_on_9101(tools):
+    """TASK-90 (S-2026-11-11-13): con 100.000 € nessun `new_weight_after` oltre il `target_weight`;
+    TASK-95: la liquidità non entra né nel PAC né nel ribilanciamento, quindi gli importi coincidono
+    con `buy_only` con 100.000 € (methodology.md §7)."""
+    pac = tools.call("calculate_pac_contribution", {"portfolio_id": 9101, "monthly_amount": 100000.0})
+    bo = tools.call("calculate_rebalance_orders", {"portfolio_id": 9101, "mode": "buy_only", "available_cash": 100000.0})
+    rows = {d["symbol"]: d for d in pac["distribution"]}
+    orders = {o["symbol"]: o["amount_eur"] for o in bo["orders"]}
+    assert set(rows) == set(orders) == {"AUDEQ.MI", "AUDBD.MI", "AUDTECH.DE"}
+    assert all(d["new_weight_after"] <= d["target_weight"] + 0.01 for d in rows.values())
+    assert orders == {"AUDEQ.MI": 30000.0, "AUDBD.MI": 60000.0, "AUDTECH.DE": 10000.0}
+    assert {s: d["amount_eur"] for s, d in rows.items()} == orders
+    assert bo["totals"]["cash_before"] == bo["totals"]["cash_after"] == 9256.5
+    assert pac["total_value"] == 100000.0
+    assert pac["total_allocated"] == 100000.0 and pac["unallocated_amount"] == 0.0
+
+
 def test_pac_and_what_if(tools):
     pac = tools.call("calculate_pac_contribution", {"portfolio_id": 9101, "monthly_amount": 500.0})
     assert pac["total_allocated"] == 500.0 and pac["distribution"]
+    # TASK-90/95: AUDBD.MI 498,77 e AUDTECH.DE 1,23 (fabbisogni sulla base dopo il versamento,
+    # liquidità esclusa: 20.200 e 50 su 100.500 €).
+    assert {d["symbol"]: d["amount_eur"] for d in pac["distribution"]} == {"AUDBD.MI": 498.77, "AUDTECH.DE": 1.23}
     assert abs(sum(d["amount_eur"] for d in pac["distribution"]) - 500.0) <= 0.01
     first = _positions(tools, 9101)[0]
     assert first["symbol"] == "AUDEQ.MI"
@@ -532,6 +567,22 @@ def test_dividend_summary_by_currency(tools):
     assert (d9105["dividends_currency"], d9105["total_dividends_received"], d9105["dividend_transactions_count"]) == ("EUR", 48.0, 4)
     d9101 = tools.call("get_dividend_summary", {"portfolio_id": 9101})
     assert (d9101["dividends_currency"], d9101["total_dividends_received"], d9101["dividend_transactions_count"]) == ("EUR", 62.5, 2)
+
+
+@pytest.mark.parametrize(("pid", "annual", "monthly", "rows"), [
+    (9101, 60.0, 5.0, {"AUDTECH.DE": 60.0}),
+    (9102, 1324.1, 110.34, {"AUDHY.DE": 712.5, "AUDGOV.MI": 450.0, "AUDBTP": 161.6}),
+    (9104, 280.8, 23.4, {"AUDUK.L": 280.8}),
+])
+def test_dividend_summary_projection_matches_income_projection(tools, pid, annual, monthly, rows):
+    # TASK-91: il reddito annuo previsto è Σ valore × rendimento, come il lordo di get_income_projection
+    # (prima 1.324,12 su 9102 e 280,79 su 9104, ricavati dai pesi arrotondati).
+    ds = tools.call("get_dividend_summary", {"portfolio_id": pid})
+    inc = tools.call("get_income_projection", {"portfolio_id": pid})
+    assert ds["projected_annual_income_eur"] == inc["current_annual_dividends_gross_eur"] == annual
+    assert ds["projected_monthly_income_eur"] == monthly
+    assert {r["symbol"]: r["annual_income_eur"] for r in ds["top_yielding_positions"]} == rows
+    assert round(sum(rows.values()), 2) == annual
 
 
 def test_monte_carlo_has_history(tools):
@@ -656,6 +707,15 @@ def test_empty_portfolio_9106(tools):
     assert xray["coverage_note"] == "Portafoglio senza posizioni: niente da scomporre."
 
 
+def test_empty_portfolio_9106_has_null_returns_task92(tools):
+    """TASK-92 (S-2026-11-11-15): senza capitale né movimenti TWR e MWR sono null, con il motivo."""
+    perf = tools.call("get_performance", {"portfolio_id": 9106})
+    for period in ("1m", "3m", "ytd", "1y"):
+        assert perf[f"twr_{period}"] is None and perf[f"mwr_{period}"] is None
+        assert perf["mwr_null_reason"][period] == "non_calcolabile"
+        assert perf["mwr_annualized_pct"][period] is None
+
+
 def test_doctor_cash_is_current_cash_task84(tools):
     """TASK-84 (S-2026-11-11-01): il Doctor e lo Scenario Lab vedono la liquidità del riepilogo."""
     scenario = tools.call("build_doctor_scenario", {
@@ -674,7 +734,7 @@ def test_doctor_cash_is_current_cash_task84(tools):
         assert before["total_value"] == round(summary["market_value"] + summary["cash_balance"], 2)
     before = tools.call("build_doctor_scenario", {"portfolio_id": 9101, "portfolio_ids": PORTFOLIO_IDS,
                                                   "mode": "new_cash_only", "new_cash": 100.0})["before"]
-    assert before["cash_value"] == 33190.47
+    assert before["cash_value"] == 33211.47
     assert before["cash_value"] == tools.call("get_aggregate_summary", {"portfolio_ids": PORTFOLIO_IDS})["cash_balance"]
 
 
@@ -736,6 +796,8 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return len(_positions(tools, pid)) < 30
     if rule_id == "D-XRAY-EMPTY":  # TASK-87: valutata solo sul portafoglio vuoto
         return not _has_positions(tools, pid)
+    if rule_id == "D-PERF-EMPTY-NULL":  # TASK-92: valutata senza transazioni (o con un rendimento null)
+        return not _has_transactions(tools, pid)
     if not _has_positions(tools, pid):
         return False
     if rule_id.startswith("A-STRESS") or rule_id == "A-CLASS-STRESS-CONSISTENT":
@@ -763,6 +825,8 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
         return bool(tools.call("get_monte_carlo", {"portfolio_id": pid})["projections"])
     if rule_id == "C-DIV-CURRENCY":
         return _has_dividend_tx(tools, pid)
+    if rule_id == "C-DIV-PROJECTION-MATCH":  # TASK-91: almeno una posizione con rendimento
+        return bool(tools.call("get_dividend_summary", {"portfolio_id": pid})["top_yielding_positions"])
     if rule_id == "C-DAYMOVERS-NONZERO-INCLUDED":
         return any(not r["price_stale"] and r["price_date"] and r["day_change_pct"] != 0 for r in _positions(tools, pid))
     if rule_id == "C-DAYCHANGE-DENOMINATOR":  # TASK-86: tutte le posizioni nella valuta base, una variazione
@@ -772,6 +836,11 @@ def _precondition(tools, rule_id: str, scope) -> bool:  # noqa: C901 - tabella d
                 and any(r["day_change_pct"] != 0 for r in rows))
     if rule_id in ("D-SUMMARY-PERFORMANCE-VALUE", "D-PERF-RECOMPUTE", "D-PERF-TOOL-MATCH", "D-DUP-TRANSACTIONS"):
         return _has_transactions(tools, pid)
+    if rule_id == "D-TX-CASH-RECONCILE":  # TASK-93: elenco completo, tutto in EUR, nessun apporto implicito
+        rows = tools.call("get_recent_transactions", {"portfolio_id": pid})["transactions"]
+        cash = tools.call("get_cash_balance", {"portfolio_id": pid})
+        return (0 < len(rows) < 20 and all(r["currency"] == cash["base_currency"] for r in rows)
+                and cash["implicit_contributions_total"] == 0)
     if rule_id == "D-TRADE-PRICE-SCALE":
         held = {r["symbol"] for r in _positions(tools, pid) if r["price_fallback"] is None and r["market_price"] > 0}
         return _has_transactions(tools, pid) and bool(held)
@@ -816,8 +885,10 @@ PROOF = {
     "B-REB-DRIFT-NONINCREASING": [9101],
     "B-REB-MODE-SIDES": [9101],
     "B-REB-SELL-CAP": [9101],
+    "B-REB-CASH-UNTOUCHED": [9101],  # TASK-95
     "B-PAC-SUM": [9101],
     "B-PAC-UNDERWEIGHT-ONLY": [9101],
+    "B-PAC-NO-OVERSHOOT": [9101],  # TASK-90: precondizione come le altre B-PAC (distribuzione non vuota)
     "B-DRIFT-REBALANCE-WEIGHTS": [9101],  # TASK-85: skip solo senza target (drift vuoto)
     "B-WHATIF-BUY-WEIGHT": [9101],
     "B-WHATIF-SELL-BOUND": [9101],
@@ -830,6 +901,7 @@ PROOF = {
     "C-MC-PERCENTILES": [9101, 9103, AGG],
     "C-MC-MEDIAN-DRIFT": [9101, AGG],
     "C-DIV-CURRENCY": [9104, 9105, 9101],
+    "C-DIV-PROJECTION-MATCH": [9102, 9104, 9101],
     "C-DAYMOVERS-NONZERO-INCLUDED": [9101, 9107],
     "C-DAYMOVERS-CONSISTENCY": [9107, 9101],
     "C-DAYCHANGE-DENOMINATOR": [9107, 9101],
@@ -843,6 +915,7 @@ PROOF = {
     "D-AGG-PERFORMANCE-VALUE": [AGG],
     "D-PERF-RECOMPUTE": [9101, 9104, AGG],
     "D-PERF-TOOL-MATCH": [9101, AGG],
+    "D-PERF-EMPTY-NULL": [9106],
     "D-DOCTOR-TER": [9101, 9103],
     "D-DOCTOR-CLASS-WEIGHTS": [9101, 9102, 9103],
     "D-DOCTOR-CONCENTRATION": [9101, 9103],
@@ -855,6 +928,7 @@ PROOF = {
     "D-LSE-QUOTE-CURRENCY": [(9104, "AUDUS.L"), (9104, "AUDUK.L")],
     "D-FX-FLAGS-DECLARED": [9107, 9101, 9102, 9103, 9104, 9105],
     "D-HELD-SYMBOL-MATCH": _instrument_scopes(),
+    "D-TX-CASH-RECONCILE": [9107, 9101, 9102, 9103, 9105],
 }
 
 
@@ -880,3 +954,28 @@ def test_scopes_derived_from_the_seed(tools):
     assert len(portfolios) == 7 and len({p["base_currency"] for p in portfolios}) == 1
     assert sum(len(_positions(tools, p)) for p in PORTFOLIO_IDS) == 18
     assert math.isclose(sum(len(DOCUMENTED[p][2]) for p in PORTFOLIO_IDS), 18)
+
+
+def test_taxed_sell_and_dividend_rebuild_cash_task93(seed_db, tools):
+    """TASK-93: 9107 ha una vendita e un dividendo con imposte; le righe le mostrano e il saldo torna."""
+    rows = _rows(seed_db["engine"], """
+        select portfolio_id, side, taxes::float8 as taxes from transactions
+        where owner_user_id = :u and taxes <> 0 order by side""", u=USER)
+    assert rows == [{"portfolio_id": 9107, "side": "dividend", "taxes": 5.2},
+                    {"portfolio_id": 9107, "side": "sell", "taxes": 2.6}]
+    shown = tools.call("get_recent_transactions", {"portfolio_id": 9107})["transactions"]
+    assert sorted(r["taxes"] for r in shown if r["taxes"]) == [2.6, 5.2]
+    cash = tools.call("get_cash_balance", {"portfolio_id": 9107})
+    assert (cash["cash_breakdown"]["dividends"], cash["cash_breakdown"]["sells"], cash["total_cash"]) == (14.8, 996.4, 4068.0)
+    sign = {"deposit": 1, "withdrawal": -1, "fee": -1, "interest": 1}
+    rebuilt = 0.0
+    for r in shown:
+        if r["type"] == "buy":
+            rebuilt -= r["total"] + r["fees"] + r["taxes"]
+        elif r["type"] == "sell":
+            rebuilt += r["total"] - r["fees"] - r["taxes"]
+        elif r["type"] == "dividend":
+            rebuilt += r["total"] - r["taxes"]
+        else:
+            rebuilt += sign[r["type"]] * r["total"]
+    assert abs(rebuilt - cash["total_cash"]) <= 0.005 * (len(shown) + 1) + 0.01
