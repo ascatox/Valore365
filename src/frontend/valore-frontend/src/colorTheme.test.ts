@@ -107,23 +107,25 @@ describe('colour theme preference', () => {
     expect(activeAttribute()).toBe('petrol');
   });
 
-  it('keeps the default theme on wider viewports, whatever the choice', () => {
+  it('applies the chosen theme on desktop and tablet viewports too', () => {
     setViewport(false);
     setColorThemePreference('amethyst');
     expect(getColorThemePreference()).toBe('amethyst');
-    expect(getActiveColorTheme().id).toBe('petrol');
-    expect(activeAttribute()).toBe('petrol');
+    expect(getActiveColorTheme().id).toBe('amethyst');
+    expect(activeAttribute()).toBe('amethyst');
   });
 
-  it('follows the viewport across the phone breakpoint', () => {
+  it('keeps the chosen theme across the phone breakpoint', () => {
     setViewport(false);
     setColorThemePreference('graphite');
+    expect(getActiveColorTheme().id).toBe('graphite');
     setViewport(true);
     applyColorTheme();
     expect(getActiveColorTheme().id).toBe('graphite');
     setViewport(false);
     applyColorTheme();
-    expect(getActiveColorTheme().id).toBe('petrol');
+    expect(getActiveColorTheme().id).toBe('graphite');
+    expect(activeAttribute()).toBe('graphite');
   });
 
   it('still applies the choice for the visit when storage is blocked', () => {
@@ -144,10 +146,11 @@ describe('colour theme preference', () => {
 // index.html sets the attribute before first paint and maps it to the light
 // page background: it repeats values owned by colorTheme.ts.
 describe('colour theme in index.html', () => {
-  it('sets the attribute from the same key, on the same viewports', () => {
+  it('sets the attribute from the same key, at every screen size', () => {
     expect(indexHtml).toContain(`localStorage.getItem('${COLOR_THEME_STORAGE_KEY}')`);
-    expect(indexHtml).toContain(`matchMedia('${MOBILE_QUERY}')`);
     expect(indexHtml).toContain(`setAttribute('${COLOR_THEME_ATTRIBUTE}',t)`);
+    // No viewport gating: the stored theme applies on desktop too.
+    expect(indexHtml).not.toContain('max-width: 48em');
   });
 
   it('has the light page background of every theme but the default', () => {

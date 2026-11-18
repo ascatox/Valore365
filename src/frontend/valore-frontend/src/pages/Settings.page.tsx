@@ -143,7 +143,7 @@ function ColorThemePicker({ columns, dark }: { columns: number; dark: boolean })
         })}
       </SimpleGrid>
       <Text size="xs" c="dimmed" id="color-theme-description">
-        Vale per questo dispositivo, solo su smartphone.
+        Vale per questo dispositivo.
       </Text>
     </Stack>
   );
@@ -377,8 +377,11 @@ export function SettingsPage() {
                   }))}
                 />
               </Stack>
-              {/* Colour themes apply on phones only (see colorTheme.ts). */}
-              {isMobile && <ColorThemePicker columns={largeText ? 2 : 3} dark={colorScheme === 'dark'} />}
+              {/* Phones: 3 per row (2 with large text); wider panels: one row of 6 (3 with large text). */}
+              <ColorThemePicker
+                columns={isMobile ? (largeText ? 2 : 3) : (largeText ? 3 : 6)}
+                dark={colorScheme === 'dark'}
+              />
               <Stack gap="xs">
                 <Select
                   label="Dimensione del testo"
