@@ -63,8 +63,8 @@ export function InstantAnalyzerForm({
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
-  const emerald = '#10b981';
-  const emeraldDark = '#059669';
+  // Filled brand surface with white text: shade 6 to 8 in both schemes.
+  const brandGradient = `linear-gradient(135deg, ${theme.colors.teal[6]} 0%, ${theme.colors.teal[8]} 100%)`;
 
   return (
     <Box
@@ -235,9 +235,9 @@ export function InstantAnalyzerForm({
             leftSection={<IconPlayerPlay size={18} />}
             onClick={onSubmit}
             style={{
-              background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+              background: brandGradient,
               border: 'none',
-              boxShadow: `0 4px 14px rgba(16, 185, 129, 0.3)`,
+              boxShadow: '0 4px 14px color-mix(in srgb, var(--mantine-color-teal-6) 30%, transparent)',
               fontWeight: 700,
               transition: 'all 300ms ease',
             }}

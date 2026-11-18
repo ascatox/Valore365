@@ -155,10 +155,12 @@ export function InstantPortfolioAnalyzerPage() {
   const isMobile = useIsMobile();
   const sectionPx = isMobile ? 'xs' : 'xl';
 
-  const emerald = '#10b981';
-  const emeraldDark = '#059669';
-  const emeraldLight = '#ecfdf5';
-  const emeraldBorder = '#a7f3d0';
+  // Brand colour of the active colour theme: shade 6 in light, 4 in dark (as petrol).
+  const brand = isDark ? theme.colors.teal[4] : theme.colors.teal[6];
+  // Filled brand surface with white text: shade 6 to 8 in both schemes.
+  const brandGradient = `linear-gradient(135deg, ${theme.colors.teal[6]} 0%, ${theme.colors.teal[8]} 100%)`;
+  const brandSoft = theme.colors.teal[0];
+  const brandBorder = theme.colors.teal[2];
 
   useEffect(() => {
     if (!loading) {
@@ -254,8 +256,8 @@ export function InstantPortfolioAnalyzerPage() {
                   width: 36,
                   height: 36,
                   borderRadius: 10,
-                  background: isDark ? theme.colors.dark[5] : emeraldLight,
-                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                  background: isDark ? theme.colors.dark[5] : brandSoft,
+                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${brandBorder}`,
                   padding: 4,
                   display: 'flex',
                   alignItems: 'center',
@@ -271,14 +273,14 @@ export function InstantPortfolioAnalyzerPage() {
             <Group
               gap={8}
               style={{
-                background: isDark ? theme.colors.dark[5] : emeraldLight,
-                border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                background: isDark ? theme.colors.dark[5] : brandSoft,
+                border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${brandBorder}`,
                 borderRadius: 999,
                 padding: '6px 14px',
               }}
             >
-              <Box style={{ width: 8, height: 8, borderRadius: '50%', background: emerald }} />
-              <Text size="sm" fw={600} c={isDark ? theme.colors.teal[3] : emeraldDark}>
+              <Box style={{ width: 8, height: 8, borderRadius: '50%', background: brand }} />
+              <Text size="sm" fw={600} c={brand}>
                 Instant Analyzer
               </Text>
             </Group>
@@ -291,7 +293,7 @@ export function InstantPortfolioAnalyzerPage() {
         style={{
           background: isDark
             ? theme.colors.dark[8]
-            : 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)',
+            : `linear-gradient(180deg, ${brandSoft} 0%, #ffffff 100%)`,
           paddingTop: isMobile ? 48 : 80,
           paddingBottom: isMobile ? 40 : 64,
         }}
@@ -301,14 +303,14 @@ export function InstantPortfolioAnalyzerPage() {
             <Group
               gap={6}
               style={{
-                background: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.08)',
-                border: isDark ? `1px solid rgba(16, 185, 129, 0.2)` : `1px solid ${emeraldBorder}`,
+                background: isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 10%, transparent)' : 'color-mix(in srgb, var(--mantine-color-teal-4) 8%, transparent)',
+                border: isDark ? `1px solid color-mix(in srgb, var(--mantine-color-teal-4) 20%, transparent)` : `1px solid ${brandBorder}`,
                 borderRadius: 999,
                 padding: '6px 16px',
               }}
             >
-              <IconSparkles size={16} color={emerald} />
-              <Text fw={700} size="sm" c={isDark ? theme.colors.teal[3] : emeraldDark}>
+              <IconSparkles size={16} color={brand} />
+              <Text fw={700} size="sm" c={brand}>
                 Analisi gratuita e istantanea
               </Text>
             </Group>
@@ -324,7 +326,7 @@ export function InstantPortfolioAnalyzerPage() {
               }}
             >
               Controlla la salute del tuo{' '}
-              <Text span c={emerald} inherit>
+              <Text span c={brand} inherit>
                 portafoglio
               </Text>{' '}
               in 30 secondi
@@ -365,7 +367,7 @@ export function InstantPortfolioAnalyzerPage() {
                       size="md"
                       rightSection={<IconArrowRight size={16} />}
                       style={{
-                        background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                        background: brandGradient,
                         border: 'none',
                         fontWeight: 700,
                       }}
@@ -382,7 +384,7 @@ export function InstantPortfolioAnalyzerPage() {
                   size="md"
                   rightSection={<IconArrowRight size={16} />}
                   style={{
-                    background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                    background: brandGradient,
                     border: 'none',
                     fontWeight: 700,
                   }}
@@ -399,7 +401,7 @@ export function InstantPortfolioAnalyzerPage() {
                     size="md"
                     rightSection={<IconArrowRight size={16} />}
                     style={{
-                      background: `linear-gradient(135deg, ${emerald} 0%, ${emeraldDark} 100%)`,
+                      background: brandGradient,
                       border: 'none',
                       fontWeight: 700,
                     }}
@@ -437,7 +439,7 @@ export function InstantPortfolioAnalyzerPage() {
         <Container size="1200" px={sectionPx}>
           <Stack gap="xl">
             <Stack gap={4} align="center" style={{ textAlign: 'center' }}>
-              <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+              <Text tt="uppercase" fw={800} size="xs" c={brand} style={{ letterSpacing: '0.05em' }}>
                 Come funziona
               </Text>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.5rem' : '2rem' }}>
@@ -465,16 +467,16 @@ export function InstantPortfolioAnalyzerPage() {
                       width: 52,
                       height: 52,
                       borderRadius: '50%',
-                      background: isDark ? 'rgba(16, 185, 129, 0.12)' : emeraldLight,
+                      background: isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 12%, transparent)' : brandSoft,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
-                    <step.icon size={24} color={emerald} />
+                    <step.icon size={24} color={brand} />
                   </Box>
                   <Stack gap={4}>
-                    <Text fw={700} size="sm" c={emerald}>
+                    <Text fw={700} size="sm" c={brand}>
                       Step {step.number}
                     </Text>
                     <Text fw={700} c={isDark ? 'white' : '#111827'}>
@@ -494,7 +496,7 @@ export function InstantPortfolioAnalyzerPage() {
       {/* ─── Main content: Form + Results ─── */}
       <Box
         style={{
-          background: isDark ? theme.colors.dark[8] : '#f9fafb',
+          background: isDark ? theme.colors.dark[8] : 'var(--v365-page-bg)',
           padding: isMobile ? '40px 0 48px' : '64px 0 80px',
         }}
       >
@@ -503,10 +505,10 @@ export function InstantPortfolioAnalyzerPage() {
             <Box
               style={{
                 borderRadius: 20,
-                border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${brandBorder}`,
                 background: isDark
-                  ? `linear-gradient(135deg, ${theme.colors.dark[6]} 0%, rgba(16, 185, 129, 0.12) 100%)`
-                  : 'linear-gradient(135deg, #ffffff 0%, #ecfdf5 100%)',
+                  ? `linear-gradient(135deg, ${theme.colors.dark[6]} 0%, color-mix(in srgb, var(--mantine-color-teal-4) 12%, transparent) 100%)`
+                  : `linear-gradient(135deg, #ffffff 0%, ${brandSoft} 100%)`,
                 padding: isMobile ? 20 : 28,
               }}
             >
@@ -515,7 +517,7 @@ export function InstantPortfolioAnalyzerPage() {
                   <ThemeIcon color="teal" variant="light" radius="xl">
                     <IconLock size={16} />
                   </ThemeIcon>
-                  <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+                  <Text tt="uppercase" fw={800} size="xs" c={brand} style={{ letterSpacing: '0.05em' }}>
                     Step 1 attivo
                   </Text>
                 </Group>
@@ -581,7 +583,7 @@ export function InstantPortfolioAnalyzerPage() {
             </Box>
 
             <Stack gap={4} align="center" style={{ textAlign: 'center' }}>
-              <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+              <Text tt="uppercase" fw={800} size="xs" c={brand} style={{ letterSpacing: '0.05em' }}>
                 Prova subito
               </Text>
               <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.5rem' : '2rem' }}>
@@ -642,14 +644,14 @@ export function InstantPortfolioAnalyzerPage() {
                     style={{
                       padding: isMobile ? 20 : 28,
                       borderRadius: 16,
-                      border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                      border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${brandBorder}`,
                       background: isDark ? theme.colors.dark[6] : '#ffffff',
                       boxShadow: isDark ? 'none' : '0 1px 3px rgba(0,0,0,0.04)',
                     }}
                   >
                     <Stack gap="lg">
                       <div>
-                        <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+                        <Text tt="uppercase" fw={800} size="xs" c={brand} style={{ letterSpacing: '0.05em' }}>
                           Step 3 · Analisi in corso
                         </Text>
                         <Title order={3} c={isDark ? 'white' : '#111827'} mt={4}>
@@ -671,7 +673,7 @@ export function InstantPortfolioAnalyzerPage() {
                                 width: 10,
                                 height: 10,
                                 borderRadius: '50%',
-                                background: index <= loadingStepIndex ? emerald : (isDark ? theme.colors.dark[4] : '#d1d5db'),
+                                background: index <= loadingStepIndex ? brand : (isDark ? theme.colors.dark[4] : '#d1d5db'),
                                 flexShrink: 0,
                               }}
                             />
@@ -694,8 +696,8 @@ export function InstantPortfolioAnalyzerPage() {
                       style={{
                         padding: isMobile ? 20 : 28,
                         borderRadius: 16,
-                        border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
-                        background: isDark ? theme.colors.dark[6] : emeraldLight,
+                        border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${brandBorder}`,
+                        background: isDark ? theme.colors.dark[6] : brandSoft,
                       }}
                     >
                       <Group gap="sm" mb="sm">
@@ -720,7 +722,7 @@ export function InstantPortfolioAnalyzerPage() {
                                 width: 6,
                                 height: 6,
                                 borderRadius: '50%',
-                                background: emerald,
+                                background: brand,
                                 flexShrink: 0,
                               }}
                             />
@@ -770,13 +772,13 @@ export function InstantPortfolioAnalyzerPage() {
                     width: 48,
                     height: 48,
                     borderRadius: '50%',
-                    background: isDark ? 'rgba(16, 185, 129, 0.12)' : emeraldLight,
+                    background: isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 12%, transparent)' : brandSoft,
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <feature.icon size={22} color={emerald} />
+                  <feature.icon size={22} color={brand} />
                 </Box>
                 <Text fw={700} c={isDark ? 'white' : '#111827'}>
                   {feature.title}

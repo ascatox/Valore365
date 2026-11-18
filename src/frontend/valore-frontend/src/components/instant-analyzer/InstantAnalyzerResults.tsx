@@ -197,8 +197,8 @@ export function InstantAnalyzerResults({ result }: InstantAnalyzerResultsProps) 
             borderRadius: 16,
             padding: 28,
             background: isDark
-              ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, rgba(16, 185, 129, 0.15) 100%)`
-              : 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+              ? `linear-gradient(135deg, ${theme.colors.dark[8]} 0%, color-mix(in srgb, var(--mantine-color-teal-4) 15%, transparent) 100%)`
+              : `linear-gradient(135deg, ${theme.colors.teal[6]} 0%, ${theme.colors.teal[8]} 100%)`,
             color: 'white',
           }}
         >

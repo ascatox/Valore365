@@ -93,11 +93,12 @@ export function LandingPage() {
   const isMobile = useIsMobile();
   const sectionPx = isMobile ? 'xs' : 'xl';
 
-  const emerald = '#10b981';
-  const emeraldDark = '#059669';
-  const emeraldLight = '#ecfdf5';
-  const emeraldBorder = '#a7f3d0';
-  const softBackground = isDark ? theme.colors.dark[7] : '#f8fafc';
+  // Brand colour of the active colour theme: shade 6 in light, 4 in dark (as petrol).
+  const brand = isDark ? theme.colors.teal[4] : theme.colors.teal[6];
+  const brandSoft = theme.colors.teal[0];
+  const brandBorder = theme.colors.teal[2];
+  // Alternate sections use the theme page background (lightPageBg / dark[7]).
+  const softBackground = 'var(--v365-page-bg)';
 
   return (
     <Box style={{ minHeight: '100vh', background: isDark ? theme.colors.dark[8] : '#ffffff' }}>
@@ -120,8 +121,8 @@ export function LandingPage() {
                   width: 36,
                   height: 36,
                   borderRadius: 10,
-                  background: isDark ? theme.colors.dark[5] : emeraldLight,
-                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${emeraldBorder}`,
+                  background: isDark ? theme.colors.dark[5] : brandSoft,
+                  border: isDark ? `1px solid ${theme.colors.dark[4]}` : `1px solid ${brandBorder}`,
                   padding: 4,
                   display: 'flex',
                   alignItems: 'center',
@@ -153,7 +154,7 @@ export function LandingPage() {
         style={{
           background: isDark
             ? theme.colors.dark[8]
-            : 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)',
+            : `linear-gradient(180deg, ${brandSoft} 0%, #ffffff 100%)`,
           paddingTop: isMobile ? 56 : 88,
           paddingBottom: isMobile ? 56 : 88,
         }}
@@ -164,14 +165,14 @@ export function LandingPage() {
               <Group
                 gap={6}
                 style={{
-                  background: isDark ? 'rgba(16, 185, 129, 0.1)' : 'rgba(16, 185, 129, 0.08)',
-                  border: isDark ? '1px solid rgba(16, 185, 129, 0.2)' : `1px solid ${emeraldBorder}`,
+                  background: isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 10%, transparent)' : 'color-mix(in srgb, var(--mantine-color-teal-4) 8%, transparent)',
+                  border: isDark ? '1px solid color-mix(in srgb, var(--mantine-color-teal-4) 20%, transparent)' : `1px solid ${brandBorder}`,
                   borderRadius: 999,
                   padding: '6px 16px',
                 }}
               >
-                <IconSparkles size={16} color={emerald} />
-                <Text fw={700} size="sm" c={isDark ? theme.colors.teal[3] : emeraldDark}>
+                <IconSparkles size={16} color={brand} />
+                <Text fw={700} size="sm" c={brand}>
                   AI + supporto umano
                 </Text>
               </Group>
@@ -275,7 +276,7 @@ export function LandingPage() {
                         <ThemeIcon color="teal" variant="light" radius="xl" size="xl">
                           <Icon size={18} />
                         </ThemeIcon>
-                        <Text fw={800} size="sm" c={isDark ? theme.colors.teal[3] : emeraldDark}>
+                        <Text fw={800} size="sm" c={brand}>
                           STEP {step}
                         </Text>
                       </Group>
@@ -359,7 +360,7 @@ export function LandingPage() {
               bg={isDark ? theme.colors.dark[7] : '#ffffff'}
             >
               <Stack gap="md" align="center">
-                <Text fw={800} size="sm" c={isDark ? theme.colors.teal[3] : emeraldDark}>
+                <Text fw={800} size="sm" c={brand}>
                   LE PERSONE COME TE
                 </Text>
                 <Title order={2} c={isDark ? 'white' : '#111827'} style={{ fontSize: isMobile ? '1.8rem' : '2.4rem' }}>
@@ -427,7 +428,7 @@ export function LandingPage() {
       <Box
         py={isMobile ? 64 : 88}
         style={{
-          background: isDark ? theme.colors.dark[7] : 'linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%)',
+          background: isDark ? theme.colors.dark[7] : `linear-gradient(180deg, ${brandSoft} 0%, #ffffff 100%)`,
           borderTop: isDark ? `1px solid ${theme.colors.dark[5]}` : '1px solid #e5e7eb',
         }}
       >
