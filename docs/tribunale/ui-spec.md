@@ -379,7 +379,7 @@ strumenti, importi o soglie.
   restano uguali in tutti i temi, come i colori semantici (TASK-59), e leggibili in chiaro e in
   scuro.
 - Gli elementi di marca (pulsante principale, step attivo, tab attiva) usano il colore primario
-  del tema (`teal`, che `colorTheme.ts` sostituisce con il tema scelto su mobile): con un tema
+  del tema (`teal`, che `colorTheme.ts` sostituisce con il tema scelto, a ogni risoluzione): con un tema
   diverso da Petrolio nulla resta color petrolio.
 - Nessuna voce usa `teal` per non confondersi con la marca.
 

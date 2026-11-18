@@ -2,9 +2,9 @@ import { useSyncExternalStore } from 'react';
 import type { MantineColorsTuple } from '@mantine/core';
 
 /*
- * Colour theme of the app, chosen in Impostazioni > Generale and applied only
- * on phone-sized viewports: wider layouts always use the default (petrol).
- * The choice is stored on the device and is independent of light/dark.
+ * Colour theme of the app, chosen in Impostazioni > Generale and applied at
+ * every screen size (phone, tablet, desktop). The choice is stored on the
+ * device and is independent of light/dark.
  *
  * A theme swaps two Mantine tuples (see main.tsx): `teal`, the brand colour
  * used all over the app, and `dark`, the dark-mode neutrals. It also marks
@@ -15,7 +15,6 @@ import type { MantineColorsTuple } from '@mantine/core';
 
 export const COLOR_THEME_STORAGE_KEY = 'valore365.settings.colorTheme';
 export const COLOR_THEME_ATTRIBUTE = 'data-v365-theme';
-const MOBILE_QUERY = '(max-width: 48em)';
 
 export type ColorThemeId = 'petrol' | 'ocean' | 'amethyst' | 'orchid' | 'bronze' | 'graphite';
 
@@ -144,7 +143,6 @@ export function getColorThemePreference(): ColorThemeId {
 }
 
 let currentPreference: ColorThemeId = DEFAULT_COLOR_THEME;
-let currentActive: ColorThemeId = DEFAULT_COLOR_THEME;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -152,16 +150,13 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-/** Read the choice and the viewport again and apply them. Safe to call repeatedly. */
+/** Read the choice again and apply it. Safe to call repeatedly. */
 export function applyColorTheme() {
   if (typeof window === 'undefined') return;
   const preference = getColorThemePreference();
-  const isPhone = window.matchMedia?.(MOBILE_QUERY).matches ?? false;
-  const active = isPhone ? preference : DEFAULT_COLOR_THEME;
-  document.documentElement.setAttribute(COLOR_THEME_ATTRIBUTE, active);
-  if (preference !== currentPreference || active !== currentActive) {
+  document.documentElement.setAttribute(COLOR_THEME_ATTRIBUTE, preference);
+  if (preference !== currentPreference) {
     currentPreference = preference;
-    currentActive = active;
     listeners.forEach((listener) => listener());
   }
 }
@@ -180,28 +175,23 @@ export function setColorThemePreference(preference: ColorThemeId) {
   applyColorTheme();
 }
 
-/**
- * Apply now and again whenever the active theme may change: the viewport
- * crossing the phone breakpoint (rotation, resize) or another tab saving a
- * different choice.
- */
+/** Apply now and again whenever another tab saves a different choice. */
 export function initColorTheme() {
   if (typeof window === 'undefined') return;
   applyColorTheme();
-  window.matchMedia?.(MOBILE_QUERY).addEventListener?.('change', applyColorTheme);
   window.addEventListener('storage', (event) => {
     if (event.key === null || event.key === COLOR_THEME_STORAGE_KEY) applyColorTheme();
   });
 }
 
-/** The theme chosen on this device, even where it isn't applied (wide viewports). */
+/** The id of the theme chosen on this device (the one in use, at every screen size). */
 export function useColorThemePreference(): ColorThemeId {
   return useSyncExternalStore(subscribe, () => currentPreference, () => DEFAULT_COLOR_THEME);
 }
 
-/** The theme in use right now: the chosen one on phones, the default elsewhere. */
+/** The theme in use right now: the one chosen on this device, at every screen size. */
 export function getActiveColorTheme(): ColorTheme {
-  return THEMES_BY_ID[currentActive];
+  return THEMES_BY_ID[currentPreference];
 }
 
 export function useActiveColorTheme(): ColorTheme {

@@ -7,11 +7,11 @@ interface InstantAnalyzerScoreCardProps {
   result: InstantAnalyzeResponse;
 }
 
-function summaryTone(score: number): { label: string; color: string; emeraldShade: string } {
-  if (score >= 80) return { label: 'Eccellente', color: 'teal', emeraldShade: '#10b981' };
-  if (score >= 70) return { label: 'Buono', color: 'teal', emeraldShade: '#10b981' };
-  if (score >= 60) return { label: 'Medio', color: 'yellow', emeraldShade: '#eab308' };
-  return { label: 'Debole', color: 'red', emeraldShade: '#ef4444' };
+function summaryTone(score: number): { label: string; color: string; ringColor: string } {
+  if (score >= 80) return { label: 'Eccellente', color: 'teal', ringColor: 'teal' };
+  if (score >= 70) return { label: 'Buono', color: 'teal', ringColor: 'teal' };
+  if (score >= 60) return { label: 'Medio', color: 'yellow', ringColor: '#eab308' };
+  return { label: 'Debole', color: 'red', ringColor: '#ef4444' };
 }
 
 const SUMMARY_LABELS: Record<string, string> = {
@@ -34,7 +34,8 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
   const isDark = colorScheme === 'dark';
   const tone = summaryTone(result.summary.score);
 
-  const emerald = '#10b981';
+  // Brand colour of the active colour theme: shade 6 in light, 4 in dark (as petrol).
+  const brand = isDark ? theme.colors.teal[4] : theme.colors.teal[6];
 
   return (
     <Box
@@ -56,7 +57,7 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
               size={90}
               thickness={8}
               roundCaps
-              sections={[{ value: result.summary.score, color: tone.emeraldShade }]}
+              sections={[{ value: result.summary.score, color: tone.ringColor }]}
               label={
                 <Text ta="center" fw={800} size="xl" c={isDark ? 'white' : '#111827'}>
                   {result.summary.score}
@@ -64,7 +65,7 @@ export function InstantAnalyzerScoreCard({ result }: InstantAnalyzerScoreCardPro
               }
             />
             <Stack gap={2}>
-              <Text tt="uppercase" fw={800} size="xs" c={emerald} style={{ letterSpacing: '0.05em' }}>
+              <Text tt="uppercase" fw={800} size="xs" c={brand} style={{ letterSpacing: '0.05em' }}>
                 Salute del Portafoglio
               </Text>
               <Title order={3} c={isDark ? 'white' : '#111827'}>

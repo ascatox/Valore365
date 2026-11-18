@@ -59,6 +59,23 @@ describe('colour themes', () => {
     expect(contrast(theme.primary[4], theme.dark[7])).toBeGreaterThanOrEqual(4.5);
   });
 
+  it.each(COLOR_THEMES)('$id maps onto the same shade roles as petrol', (theme) => {
+    // Both tuples go from light to dark like petrol's, so every role
+    // (shade 6 fill, shade 4 dark-mode text, dark[7] page, dark[6] cards,
+    // dark[4] borders) lands on a comparable tone.
+    [theme.primary, theme.dark].forEach((tuple) => {
+      for (let i = 1; i < tuple.length; i += 1) {
+        expect(luminance(tuple[i])).toBeLessThan(luminance(tuple[i - 1]));
+      }
+    });
+    // Filled gradients (shade 6 to 8) keep white text readable.
+    expect(contrast('#ffffff', theme.primary[8])).toBeGreaterThanOrEqual(4.5);
+    // Light page near white; dark surfaces stacked page < cards < borders.
+    expect(luminance(theme.lightPageBg)).toBeGreaterThan(0.85);
+    expect(luminance(theme.dark[7])).toBeLessThan(luminance(theme.dark[6]));
+    expect(luminance(theme.dark[6])).toBeLessThan(luminance(theme.dark[4]));
+  });
+
   it('keeps the default theme on the petrol colours', () => {
     const petrol = getColorTheme('petrol');
     expect(petrol.primary[6]).toBe('#0f766e');
@@ -107,23 +124,25 @@ describe('colour theme preference', () => {
     expect(activeAttribute()).toBe('petrol');
   });
 
-  it('keeps the default theme on wider viewports, whatever the choice', () => {
+  it('applies the chosen theme on desktop and tablet viewports too', () => {
     setViewport(false);
     setColorThemePreference('amethyst');
     expect(getColorThemePreference()).toBe('amethyst');
-    expect(getActiveColorTheme().id).toBe('petrol');
-    expect(activeAttribute()).toBe('petrol');
+    expect(getActiveColorTheme().id).toBe('amethyst');
+    expect(activeAttribute()).toBe('amethyst');
   });
 
-  it('follows the viewport across the phone breakpoint', () => {
+  it('keeps the chosen theme across the phone breakpoint', () => {
     setViewport(false);
     setColorThemePreference('graphite');
+    expect(getActiveColorTheme().id).toBe('graphite');
     setViewport(true);
     applyColorTheme();
     expect(getActiveColorTheme().id).toBe('graphite');
     setViewport(false);
     applyColorTheme();
-    expect(getActiveColorTheme().id).toBe('petrol');
+    expect(getActiveColorTheme().id).toBe('graphite');
+    expect(activeAttribute()).toBe('graphite');
   });
 
   it('still applies the choice for the visit when storage is blocked', () => {
@@ -144,10 +163,11 @@ describe('colour theme preference', () => {
 // index.html sets the attribute before first paint and maps it to the light
 // page background: it repeats values owned by colorTheme.ts.
 describe('colour theme in index.html', () => {
-  it('sets the attribute from the same key, on the same viewports', () => {
+  it('sets the attribute from the same key, at every screen size', () => {
     expect(indexHtml).toContain(`localStorage.getItem('${COLOR_THEME_STORAGE_KEY}')`);
-    expect(indexHtml).toContain(`matchMedia('${MOBILE_QUERY}')`);
     expect(indexHtml).toContain(`setAttribute('${COLOR_THEME_ATTRIBUTE}',t)`);
+    // No viewport gating: the stored theme applies on desktop too.
+    expect(indexHtml).not.toContain('max-width: 48em');
   });
 
   it('has the light page background of every theme but the default', () => {
@@ -159,5 +179,30 @@ describe('colour theme in index.html', () => {
       COLOR_THEMES.filter((theme) => theme.id !== DEFAULT_COLOR_THEME).map((theme) => [theme.id, theme.lightPageBg]),
     );
     expect(inHtml).toEqual(expected);
+  });
+});
+
+// Brand colours must come from the theme tuples (teal / dark), so every theme
+// replaces them at every screen size; only colorTheme.ts and index.html own the hex values.
+describe('no hard-coded brand colours', () => {
+  const sources = import.meta.glob(['./**/*.{ts,tsx,css}', '!./**/*.test.{ts,tsx}', '!./colorTheme.ts'], {
+    query: '?raw',
+    import: 'default',
+    eager: true,
+  }) as Record<string, string>;
+  const petrol = getColorTheme('petrol');
+  const brandHex = [...petrol.primary, petrol.dark[4], petrol.dark[5], petrol.dark[6], petrol.dark[7]];
+
+  it('scans the sources', () => {
+    expect(Object.keys(sources).length).toBeGreaterThan(20);
+  });
+
+  it.each(brandHex)('%s is not hard-coded outside the theme', (hex) => {
+    const offenders = Object.entries(sources)
+      // The PWA manifest is static (read at install time): it keeps petrol's
+      // dark page colour; App.tsx updates the theme-color meta at runtime.
+      .filter(([path, code]) => code.toLowerCase().includes(hex) && path !== './pwa/pwa-config.ts')
+      .map(([path]) => path);
+    expect(offenders).toEqual([]);
   });
 });

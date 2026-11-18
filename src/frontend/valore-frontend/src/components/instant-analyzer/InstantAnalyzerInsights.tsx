@@ -129,14 +129,14 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
                       style={{
                         padding: 16,
                         borderRadius: 12,
-                        background: isDark ? 'rgba(16, 185, 129, 0.08)' : '#ecfdf5',
-                        border: isDark ? '1px solid rgba(16, 185, 129, 0.18)' : '1px solid #a7f3d0',
+                        background: isDark ? 'color-mix(in srgb, var(--mantine-color-teal-4) 8%, transparent)' : theme.colors.teal[0],
+                        border: isDark ? '1px solid color-mix(in srgb, var(--mantine-color-teal-4) 18%, transparent)' : `1px solid ${theme.colors.teal[2]}`,
                       }}
                     >
                       {isLoading ? (
                         <Group gap="sm">
                           <Loader size="sm" color="teal" />
-                          <Text size="sm" c={isDark ? theme.colors.gray[3] : '#065f46'}>
+                          <Text size="sm" c={isDark ? theme.colors.gray[3] : theme.colors.teal[8]}>
                             Sto preparando una spiegazione semplice di questo insight...
                           </Text>
                         </Group>
@@ -146,11 +146,11 @@ export function InstantAnalyzerInsights({ result }: InstantAnalyzerInsightsProps
                             <ThemeIcon color="teal" variant="light" radius="xl" size="sm">
                               <IconSparkles size={12} />
                             </ThemeIcon>
-                            <Text fw={700} size="sm" c={isDark ? 'white' : '#065f46'}>
+                            <Text fw={700} size="sm" c={isDark ? 'white' : theme.colors.teal[8]}>
                               Spiegazione
                             </Text>
                           </Group>
-                          <Text size="sm" c={isDark ? theme.colors.gray[2] : '#064e3b'}>
+                          <Text size="sm" c={isDark ? theme.colors.gray[2] : theme.colors.teal[9]}>
                             {explanation}
                           </Text>
                         </Stack>

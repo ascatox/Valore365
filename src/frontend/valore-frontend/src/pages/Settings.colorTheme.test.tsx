@@ -27,11 +27,15 @@ describe('Settings: colour theme picker', () => {
     vi.unstubAllGlobals();
   });
 
-  it('is not shown on wider viewports', async () => {
+  it('is shown on desktop viewports too, and picking applies the theme there', async () => {
     setViewport(false);
     renderWithApp(<SettingsPage />);
-    expect(await screen.findByText("Aspetto dell'Applicazione")).toBeInTheDocument();
-    expect(screen.queryByRole('radiogroup', { name: 'Tema colore' })).not.toBeInTheDocument();
+    const group = await screen.findByRole('radiogroup', { name: 'Tema colore' });
+    expect(within(group).getAllByRole('radio')).toHaveLength(COLOR_THEMES.length);
+    expect(screen.getByText('Vale per questo dispositivo.', { selector: '#color-theme-description' })).toBeInTheDocument();
+    fireEvent.click(within(group).getByRole('radio', { name: 'Bronzo' }));
+    expect(within(group).getByRole('radio', { name: 'Bronzo' })).toHaveAttribute('aria-checked', 'true');
+    expect(document.documentElement.getAttribute('data-v365-theme')).toBe('bronze');
   });
 
   it('lists every theme on a phone, with the current one checked', async () => {

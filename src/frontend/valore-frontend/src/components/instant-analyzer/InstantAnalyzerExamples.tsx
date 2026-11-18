@@ -25,8 +25,9 @@ export function InstantAnalyzerExamples({ onSelectExample }: InstantAnalyzerExam
   const colorScheme = useComputedColorScheme('light');
   const isDark = colorScheme === 'dark';
 
-  const emerald = '#10b981';
-  const emeraldBorder = '#a7f3d0';
+  // Brand colour of the active colour theme: shade 6 in light, 4 in dark (as petrol).
+  const brand = isDark ? theme.colors.teal[4] : theme.colors.teal[6];
+  const brandBorder = theme.colors.teal[2];
 
   return (
     <Stack gap="xs">
@@ -42,8 +43,8 @@ export function InstantAnalyzerExamples({ onSelectExample }: InstantAnalyzerExam
             radius="md"
             onClick={() => onSelectExample(example.value)}
             style={{
-              borderColor: isDark ? theme.colors.dark[4] : emeraldBorder,
-              color: isDark ? theme.colors.teal[3] : emerald,
+              borderColor: isDark ? theme.colors.dark[4] : brandBorder,
+              color: brand,
               fontWeight: 600,
               transition: 'all 300ms ease',
             }}
