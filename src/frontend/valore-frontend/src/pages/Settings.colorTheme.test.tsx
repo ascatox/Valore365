@@ -59,6 +59,22 @@ describe('Settings: colour theme picker', () => {
     expect(document.documentElement.getAttribute('data-v365-theme')).toBe('amethyst');
   });
 
+  it('offers the Christmas theme last, with a pine and red swatch', async () => {
+    setViewport(false);
+    renderWithApp(<SettingsPage />);
+    const group = await screen.findByRole('radiogroup', { name: 'Tema colore' });
+    const options = within(group).getAllByRole('radio');
+    const natale = within(group).getByRole('radio', { name: 'Natale' });
+    expect(options[options.length - 1]).toBe(natale);
+    // Pine #2c7757 with a Christmas red #c3283a wedge (jsdom serialises them as rgb).
+    const swatch = natale.querySelector<HTMLElement>('[aria-hidden]');
+    expect(swatch?.getAttribute('style')).toContain('rgb(44, 119, 87) 0 76%, rgb(195, 40, 58) 76% 100%');
+    fireEvent.click(natale);
+    expect(natale).toHaveAttribute('aria-checked', 'true');
+    expect(window.localStorage.getItem(COLOR_THEME_STORAGE_KEY)).toBe('christmas');
+    expect(document.documentElement.getAttribute('data-v365-theme')).toBe('christmas');
+  });
+
   it('moves the selection with the arrow keys', async () => {
     setViewport(true);
     renderWithApp(<SettingsPage />);

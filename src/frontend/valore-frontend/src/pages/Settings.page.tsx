@@ -94,8 +94,7 @@ function ColorThemePicker({ columns, dark }: { columns: number; dark: boolean })
       >
         {COLOR_THEMES.map((option, index) => {
           const checked = option.id === selected;
-          // On dark cards the lighter tone leads, as it does in the themed UI.
-          const [main, accent] = dark ? [option.swatch[1], option.swatch[0]] : option.swatch;
+          const [main, accent] = dark ? option.swatchDark : option.swatch;
           return (
             <UnstyledButton
               key={option.id}
@@ -377,9 +376,9 @@ export function SettingsPage() {
                   }))}
                 />
               </Stack>
-              {/* Phones: 3 per row (2 with large text); wider panels: one row of 6 (3 with large text). */}
+              {/* Phones: 3 per row (2 with large text); wider panels: one row of all themes (4 per row with large text). */}
               <ColorThemePicker
-                columns={isMobile ? (largeText ? 2 : 3) : (largeText ? 3 : 6)}
+                columns={isMobile ? (largeText ? 2 : 3) : (largeText ? 4 : COLOR_THEMES.length)}
                 dark={colorScheme === 'dark'}
               />
               <Stack gap="xs">
