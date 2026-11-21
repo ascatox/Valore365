@@ -49,7 +49,7 @@ describe('colour themes', () => {
       expect(tuple).toHaveLength(10);
       tuple.forEach((shade) => expect(shade).toMatch(/^#[0-9a-f]{6}$/));
     });
-    [theme.lightPageBg, ...theme.swatch].forEach((color) => expect(color).toMatch(/^#[0-9a-f]{6}$/));
+    [theme.lightPageBg, ...theme.swatch, ...theme.swatchDark].forEach((color) => expect(color).toMatch(/^#[0-9a-f]{6}$/));
   });
 
   it.each(COLOR_THEMES)('$id keeps text readable in light and dark', (theme) => {
@@ -81,6 +81,50 @@ describe('colour themes', () => {
     expect(petrol.primary[6]).toBe('#0f766e');
     expect(petrol.dark[7]).toBe('#0e1514');
     expect(petrol.lightPageBg).toBe('#f5f7f7');
+  });
+
+  it('computes the swatch from the brand tuple, lighter tone first on dark', () => {
+    COLOR_THEMES.filter((theme) => theme.id !== 'christmas').forEach((theme) => {
+      expect(theme.swatch).toEqual([theme.primary[6], theme.primary[3]]);
+      expect(theme.swatchDark).toEqual([theme.primary[3], theme.primary[6]]);
+    });
+  });
+
+  describe('Natale', () => {
+    const christmas = getColorTheme('christmas');
+    // Gain tuple from main.tsx (shade 6 light text/fill, shade 4 dark text).
+    const gain = { light: '#15803d', dark: '#4ade80' };
+    const hue = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16) / 255);
+      const max = Math.max(r, g, b);
+      const delta = max - Math.min(r, g, b);
+      const h = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+      return (h * 60 + 360) % 360;
+    };
+
+    it('is the last theme, labelled Natale', () => {
+      expect(COLOR_THEMES[COLOR_THEMES.length - 1]).toBe(christmas);
+      expect(christmas.label).toBe('Natale');
+    });
+
+    it('uses a bluish pine green that is not the gain green', () => {
+      // Pine leans towards blue (hue past 150°) where the gain green sits at ~142°.
+      [christmas.primary[6], christmas.primary[4]].forEach((shade) => {
+        expect(hue(shade)).toBeGreaterThan(150);
+        expect(hue(shade)).toBeLessThan(165);
+      });
+      expect(hue(gain.light)).toBeLessThan(145);
+      expect(christmas.primary[6]).not.toBe(gain.light);
+      expect(christmas.primary[4]).not.toBe(gain.dark);
+    });
+
+    it('shows pine green and Christmas red in the picker, in light and dark', () => {
+      expect(christmas.swatch).toEqual([christmas.primary[6], '#c3283a']);
+      expect(christmas.swatchDark).toEqual([christmas.primary[4], '#e8555c']);
+      // The check mark (white on light cards, dark[7] on dark ones) sits on the main tone.
+      expect(contrast('#ffffff', christmas.swatch[0])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(christmas.dark[7], christmas.swatchDark[0])).toBeGreaterThanOrEqual(4.5);
+    });
   });
 });
 
@@ -157,6 +201,14 @@ describe('colour theme preference', () => {
     expect(getActiveColorTheme().id).toBe('orchid');
     blocked.mockRestore();
     unreadable.mockRestore();
+  });
+
+  it('applies and remembers the Christmas theme', () => {
+    setViewport(false);
+    setColorThemePreference('christmas');
+    expect(window.localStorage.getItem(COLOR_THEME_STORAGE_KEY)).toBe('christmas');
+    expect(getActiveColorTheme().id).toBe('christmas');
+    expect(activeAttribute()).toBe('christmas');
   });
 });
 

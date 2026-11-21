@@ -16,7 +16,7 @@ import type { MantineColorsTuple } from '@mantine/core';
 export const COLOR_THEME_STORAGE_KEY = 'valore365.settings.colorTheme';
 export const COLOR_THEME_ATTRIBUTE = 'data-v365-theme';
 
-export type ColorThemeId = 'petrol' | 'ocean' | 'amethyst' | 'orchid' | 'bronze' | 'graphite';
+export type ColorThemeId = 'petrol' | 'ocean' | 'amethyst' | 'orchid' | 'bronze' | 'graphite' | 'christmas';
 
 export interface ColorTheme {
   id: ColorThemeId;
@@ -27,15 +27,22 @@ export interface ColorTheme {
   dark: MantineColorsTuple;
   /** Light-mode page background; index.html repeats it (checked by a test). */
   lightPageBg: string;
-  /** Main and second tone of the swatch in the picker. */
+  /** Main and second tone of the swatch in the picker, on light cards. */
   swatch: [string, string];
+  /** The same on dark cards, where the lighter tone leads as in the themed UI. */
+  swatchDark: [string, string];
 }
+
+type ThemeColors = Omit<ColorTheme, 'id' | 'swatch' | 'swatchDark'> & {
+  /** Swatch tones instead of the computed ones (light: [6, 3], dark: [3, 6]). */
+  swatchOverride?: Pick<ColorTheme, 'swatch' | 'swatchDark'>;
+};
 
 export const DEFAULT_COLOR_THEME: ColorThemeId = 'petrol';
 
 // Every tuple follows petrol's lightness steps: white on shade 6 and shade 4
 // on dark[6]/dark[7] keep at least 4.5:1 contrast.
-const THEME_COLORS: Record<ColorThemeId, Omit<ColorTheme, 'id' | 'swatch'>> = {
+const THEME_COLORS: Record<ColorThemeId, ThemeColors> = {
   petrol: {
     label: 'Petrolio',
     primary: [
@@ -110,13 +117,36 @@ const THEME_COLORS: Record<ColorThemeId, Omit<ColorTheme, 'id' | 'swatch'>> = {
     ],
     lightPageBg: '#f5f7fa',
   },
+  // Evergreen pine: bluish and muted (hue ~155°, low saturation), so it
+  // doesn't read as the vivid gain green (hue 142°). Christmas red appears only
+  // as the swatch's second tone, never in the UI, so it can't read as a loss.
+  christmas: {
+    label: 'Natale',
+    primary: [
+      '#e8f4ef', '#cde9dd', '#a2d1be', '#79b79d', '#529e7e',
+      '#378665', '#2c7757', '#286c50', '#246249', '#1c4a37',
+    ],
+    dark: [
+      '#d3ddd7', '#a9b7ae', '#7a8a81', '#55625a', '#2c3831',
+      '#1c2821', '#16201a', '#0f1511', '#0b110e', '#070c09',
+    ],
+    lightPageBg: '#faf8f2',
+    swatchOverride: {
+      swatch: ['#2c7757', '#c3283a'],
+      swatchDark: ['#529e7e', '#e8555c'],
+    },
+  },
 };
 
-export const COLOR_THEMES: ColorTheme[] = (Object.keys(THEME_COLORS) as ColorThemeId[]).map((id) => ({
-  id,
-  ...THEME_COLORS[id],
-  swatch: [THEME_COLORS[id].primary[6], THEME_COLORS[id].primary[3]],
-}));
+export const COLOR_THEMES: ColorTheme[] = (Object.keys(THEME_COLORS) as ColorThemeId[]).map((id) => {
+  const { swatchOverride, ...colors } = THEME_COLORS[id];
+  return {
+    id,
+    ...colors,
+    swatch: swatchOverride?.swatch ?? [colors.primary[6], colors.primary[3]],
+    swatchDark: swatchOverride?.swatchDark ?? [colors.primary[3], colors.primary[6]],
+  };
+});
 
 const THEMES_BY_ID = Object.fromEntries(
   COLOR_THEMES.map((theme) => [theme.id, theme]),
