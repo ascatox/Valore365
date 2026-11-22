@@ -6,8 +6,10 @@ import type { MantineColorsTuple } from '@mantine/core';
  * every screen size (phone, tablet, desktop). The choice is stored on the
  * device and is independent of light/dark.
  *
- * A theme swaps two Mantine tuples (see main.tsx): `teal`, the brand colour
- * used all over the app, and `dark`, the dark-mode neutrals. It also marks
+ * A theme swaps two Mantine tuples (see mantineTheme.tsx): `teal`, the brand colour
+ * used all over the app, and `dark`, the dark-mode neutrals. A third one,
+ * `accent`, colours the navigation chrome (active tab, active bottom-nav item);
+ * it equals the brand tuple unless the theme defines its own. It also marks
  * <html> with data-v365-theme: index.html sets the same attribute before
  * first paint and has the rules that turn it into the light page background
  * (the dark one is dark[7]).
@@ -23,6 +25,13 @@ export interface ColorTheme {
   label: string;
   /** Brand tuple: shade 6 is the light-mode fill/text, shade 4 the dark-mode text. */
   primary: MantineColorsTuple;
+  /**
+   * Navigation accent (active tab label and indicator, active bottom-nav item),
+   * same shade roles as primary. The brand tuple itself unless the theme sets one.
+   */
+  accent: MantineColorsTuple;
+  /** True when the theme has its own accent, distinct from the brand tuple. */
+  hasOwnAccent: boolean;
   /** Dark-mode neutrals: [7] page background, [6] cards and inputs, [4] borders. */
   dark: MantineColorsTuple;
   /** Light-mode page background; index.html repeats it (checked by a test). */
@@ -33,7 +42,9 @@ export interface ColorTheme {
   swatchDark: [string, string];
 }
 
-type ThemeColors = Omit<ColorTheme, 'id' | 'swatch' | 'swatchDark'> & {
+type ThemeColors = Omit<ColorTheme, 'id' | 'swatch' | 'swatchDark' | 'accent' | 'hasOwnAccent'> & {
+  /** Own navigation accent; omitted, the brand tuple is used. */
+  accent?: MantineColorsTuple;
   /** Swatch tones instead of the computed ones (light: [6, 3], dark: [3, 6]). */
   swatchOverride?: Pick<ColorTheme, 'swatch' | 'swatchDark'>;
 };
@@ -118,13 +129,19 @@ const THEME_COLORS: Record<ColorThemeId, ThemeColors> = {
     lightPageBg: '#f5f7fa',
   },
   // Evergreen pine: bluish and muted (hue ~155°, low saturation), so it
-  // doesn't read as the vivid gain green (hue 142°). Christmas red appears only
-  // as the swatch's second tone, never in the UI, so it can't read as a loss.
+  // doesn't read as the vivid gain green (hue 142°). Christmas red is the
+  // accent: a cranberry on the blue side of red (hue ~353°, where the loss red
+  // sits at ~5°), used only on navigation chrome (tabs, bottom nav), never on
+  // values, buttons or charts, so it can't read as a loss.
   christmas: {
     label: 'Natale',
     primary: [
       '#e8f4ef', '#cde9dd', '#a2d1be', '#79b79d', '#529e7e',
       '#378665', '#2c7757', '#286c50', '#246249', '#1c4a37',
+    ],
+    accent: [
+      '#fdecee', '#fad3d7', '#f3a7ae', '#ee7f88', '#e8555c',
+      '#d63a48', '#c3283a', '#ad2233', '#9a1e2e', '#761725',
     ],
     dark: [
       '#d3ddd7', '#a9b7ae', '#7a8a81', '#55625a', '#2c3831',
@@ -132,6 +149,7 @@ const THEME_COLORS: Record<ColorThemeId, ThemeColors> = {
     ],
     lightPageBg: '#faf8f2',
     swatchOverride: {
+      // Brand and accent tones: light [primary 6, accent 6], dark [primary 4, accent 4].
       swatch: ['#2c7757', '#c3283a'],
       swatchDark: ['#529e7e', '#e8555c'],
     },
@@ -139,10 +157,12 @@ const THEME_COLORS: Record<ColorThemeId, ThemeColors> = {
 };
 
 export const COLOR_THEMES: ColorTheme[] = (Object.keys(THEME_COLORS) as ColorThemeId[]).map((id) => {
-  const { swatchOverride, ...colors } = THEME_COLORS[id];
+  const { swatchOverride, accent, ...colors } = THEME_COLORS[id];
   return {
     id,
     ...colors,
+    accent: accent ?? colors.primary,
+    hasOwnAccent: accent !== undefined,
     swatch: swatchOverride?.swatch ?? [colors.primary[6], colors.primary[3]],
     swatchDark: swatchOverride?.swatchDark ?? [colors.primary[3], colors.primary[6]],
   };

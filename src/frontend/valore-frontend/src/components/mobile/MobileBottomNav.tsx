@@ -136,7 +136,9 @@ export function MobileBottomNav({ items, value, onChange, bottomOffset = 12, cen
               minHeight: 44,
               borderRadius: 16,
               padding: '10px 4px',
-              background: isActive ? 'linear-gradient(135deg, var(--mantine-color-teal-6) 0%, var(--mantine-color-teal-9) 100%)' : 'transparent',
+              // Active item in the navigation accent (the brand unless the theme has
+              // its own, e.g. Natale's red); the "+" action stays in the brand.
+              background: isActive ? 'linear-gradient(135deg, var(--mantine-color-accent-6, var(--mantine-color-teal-6)) 0%, var(--mantine-color-accent-9, var(--mantine-color-teal-9)) 100%)' : 'transparent',
               color: isActive ? '#ffffff' : (isDark ? theme.colors.gray[3] : '#475569'),
               textAlign: 'center',
               opacity: item.disabled ? 0.4 : 1,
