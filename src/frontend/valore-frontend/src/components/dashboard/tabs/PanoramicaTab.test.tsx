@@ -55,7 +55,7 @@ describe('PanoramicaTab KPI row', () => {
 
     const labels = Array.from(document.querySelectorAll('.mantine-SimpleGrid-root > .mantine-Paper-root'))
       .map((el) => el.querySelector('p')?.textContent);
-    expect(labels).toEqual(['Var. Giornaliera', 'Valore Totale', 'P/L Totale', 'P/L %', 'Var. Giornaliera %']);
+    expect(labels).toEqual(['Var. Giornaliera\u00A0%', 'Var. Giornaliera', 'Valore Totale', 'P/L Totale', 'P/L %']);
 
     // The amount card shows only money; the percentage lives in its own card.
     expect(card('Var. Giornaliera')).not.toHaveTextContent('%');
@@ -95,13 +95,14 @@ describe('PanoramicaTab KPI row', () => {
     expect(within(card('Var. Giornaliera %')).getByText('N/D')).toBeInTheDocument();
   });
 
-  it('on mobile shows today\'s amount in the hero and the percentage in place of cash in the carousel', async () => {
+  it('on mobile shows today\'s amount in the hero and the percentage first in the carousel, in place of cash', async () => {
     setMobile(true);
     renderTab();
     expect(await screen.findByText('-13.333,27 €')).toBeInTheDocument();
     // The hero badge no longer appends the percentage to the amount.
     expect(screen.queryByText(/-13\.333,27 € \(/)).not.toBeInTheDocument();
     const pctLabel = screen.getByText('Var. giorn. %');
+    expect(pctLabel.parentElement?.parentElement?.firstElementChild).toBe(pctLabel.parentElement);
     expect(pctLabel.parentElement).toHaveTextContent('-2,01%');
     expect(screen.queryByText('Liquidità')).not.toBeInTheDocument();
     expect(screen.queryByText('4.321,00 €')).not.toBeInTheDocument();

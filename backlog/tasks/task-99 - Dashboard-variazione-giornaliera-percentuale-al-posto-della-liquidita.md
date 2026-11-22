@@ -21,9 +21,9 @@ Richiesta: togliere la voce CASH dalla riga KPI della Dashboard (Panoramica) e m
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [x] #1 Desktop/tablet: la card "Var. Giornaliera" mostra solo l'importo con segno e colore guadagno/perdita; niente più percentuale tra parentesi né mini-gauge
-- [x] #2 La card "Cash" è sostituita, nella quinta posizione, da "Var. Giornaliera %" (segno, %, colore per segno, freccia su/giù a destra), costruita come "P/L %": stesso stile icona, N/D senza dati, percentuale non mascherata in modalità privacy (l'importo sì)
-- [x] #3 Mobile: "Liquidità" esce dal carosello e al suo posto c'è "Var. giorn. %"; il badge "oggi" dell'hero mostra solo l'importo
-- [x] #4 I valori stanno su una riga anche a ~1024px con la barra laterale aperta (dimensione del valore con unità container query), etichette lunghe con l'icona sempre a fianco e valori allineati in basso
+- [x] #2 La card "Cash" è rimossa e "Var. Giornaliera %" apre la riga (ordine: Var. Giornaliera %, Var. Giornaliera, Valore Totale, P/L Totale, P/L %) (segno, %, colore per segno, freccia su/giù a destra), costruita come "P/L %": stesso stile icona, N/D senza dati, percentuale non mascherata in modalità privacy (l'importo sì)
+- [x] #3 Mobile: "Liquidità" esce dal carosello e "Var. giorn. %" è la prima card; il badge "oggi" dell'hero mostra solo l'importo
+- [x] #4 I valori stanno su una riga anche a ~1024px con la barra laterale aperta (dimensione del valore con unità container query), icona flottante in alto a destra (la seconda riga dell'etichetta scorre sotto), spazio indivisibile prima di "%" così l'etichetta va al massimo su due righe, valori allineati in basso
 - [x] #5 Pulizia: rimossi `MiniGauge` e le prop inutilizzate di `KpiStatCardProps` (`gaugeValue`, `subtitle`, `subtitleColor`, `diff`, `diffLabel`) e i rami `isMobile` morti nelle card desktop
 - [x] #6 Test: nuovo `PanoramicaTab.test.tsx` (ordine card, niente cash, importo/percentuale separati, colori e frecce, privacy, N/D, variante mobile); suite frontend, typecheck ed eslint verdi
 <!-- AC:END -->

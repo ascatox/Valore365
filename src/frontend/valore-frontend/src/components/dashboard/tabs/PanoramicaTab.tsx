@@ -124,9 +124,18 @@ export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText =
   }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
 
   // Daily variation and total P/L each get an amount card and a percentage
-  // card; the percentage cards carry the direction arrow. Cash is not a
-  // Dashboard KPI (it lives in the Portfolio page).
+  // card; the percentage cards carry the direction arrow. Today's percentage
+  // leads the row. Cash is not a Dashboard KPI (it lives in the Portfolio page).
   const kpiItems = useMemo(() => [
+    {
+      // Non-breaking space: in narrow columns the label wraps before
+      // "Giornaliera", never leaving the "%" alone on a third line.
+      label: 'Var. Giornaliera\u00A0%',
+      value: portfolioSummary ? formatPct(portfolioSummary.day_change_pct) : 'N/D',
+      color: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
+      icon: directionIcon(portfolioSummary?.day_change_pct ?? 0),
+      iconColor: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
+    },
     {
       label: 'Var. Giornaliera',
       value: portfolioSummary ? formatMoney(portfolioSummary.day_change, mvpCurrency, true) : 'N/D',
@@ -153,13 +162,6 @@ export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText =
       color: getVariationColor(portfolioSummary?.unrealized_pl_pct ?? 0),
       icon: directionIcon(portfolioSummary?.unrealized_pl_pct ?? 0),
       iconColor: getVariationColor(portfolioSummary?.unrealized_pl_pct ?? 0),
-    },
-    {
-      label: 'Var. Giornaliera %',
-      value: portfolioSummary ? formatPct(portfolioSummary.day_change_pct) : 'N/D',
-      color: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
-      icon: directionIcon(portfolioSummary?.day_change_pct ?? 0),
-      iconColor: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
     },
   ], [portfolioSummary, mvpCurrency]);
 
