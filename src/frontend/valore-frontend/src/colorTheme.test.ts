@@ -45,7 +45,7 @@ describe('colour themes', () => {
   });
 
   it.each(COLOR_THEMES)('$id has ten valid hex shades per tuple', (theme) => {
-    [theme.primary, theme.dark].forEach((tuple) => {
+    [theme.primary, theme.accent, theme.dark].forEach((tuple) => {
       expect(tuple).toHaveLength(10);
       tuple.forEach((shade) => expect(shade).toMatch(/^#[0-9a-f]{6}$/));
     });
@@ -76,6 +76,13 @@ describe('colour themes', () => {
     expect(luminance(theme.dark[6])).toBeLessThan(luminance(theme.dark[4]));
   });
 
+  it('uses the brand tuple as accent in every theme but Natale, so their UI is unchanged', () => {
+    COLOR_THEMES.filter((theme) => theme.id !== 'christmas').forEach((theme) => {
+      expect(theme.hasOwnAccent).toBe(false);
+      expect(theme.accent).toEqual(theme.primary);
+    });
+  });
+
   it('keeps the default theme on the petrol colours', () => {
     const petrol = getColorTheme('petrol');
     expect(petrol.primary[6]).toBe('#0f766e');
@@ -92,7 +99,7 @@ describe('colour themes', () => {
 
   describe('Natale', () => {
     const christmas = getColorTheme('christmas');
-    // Gain tuple from main.tsx (shade 6 light text/fill, shade 4 dark text).
+    // Gain tuple from mantineTheme.tsx (shade 6 light text/fill, shade 4 dark text).
     const gain = { light: '#15803d', dark: '#4ade80' };
     const hue = (hex: string) => {
       const [r, g, b] = [1, 3, 5].map((start) => parseInt(hex.slice(start, start + 2), 16) / 255);
@@ -118,9 +125,40 @@ describe('colour themes', () => {
       expect(christmas.primary[4]).not.toBe(gain.dark);
     });
 
+    it('has a Christmas red accent with the same contrast roles as the brand', () => {
+      const { accent } = christmas;
+      expect(christmas.hasOwnAccent).toBe(true);
+      expect(accent).not.toEqual(christmas.primary);
+      // Light to dark like the brand tuple.
+      for (let i = 1; i < accent.length; i += 1) {
+        expect(luminance(accent[i])).toBeLessThan(luminance(accent[i - 1]));
+      }
+      // Shade 6: label on white cards and on the light page; white on it (pills, nav fill).
+      expect(contrast(accent[6], '#ffffff')).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(accent[6], christmas.lightPageBg)).toBeGreaterThanOrEqual(4.5);
+      // Shade 4: label on dark cards and on the dark page.
+      expect(contrast(accent[4], christmas.dark[6])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(accent[4], christmas.dark[7])).toBeGreaterThanOrEqual(4.5);
+      // Gradient end of the active bottom-nav item keeps white readable.
+      expect(contrast('#ffffff', accent[8])).toBeGreaterThanOrEqual(4.5);
+      expect(contrast('#ffffff', accent[9])).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('uses a cranberry red that is not the loss red', () => {
+      // Loss tuple from mantineTheme.tsx sits at hue ~5°; the accent leans to blue (past 340°).
+      const loss = { light: '#b42318', dark: '#f87171' };
+      [christmas.accent[6], christmas.accent[4]].forEach((shade) => {
+        expect(hue(shade)).toBeGreaterThan(340);
+        expect(hue(shade)).toBeLessThan(358);
+      });
+      expect(hue(loss.light)).toBeLessThan(10);
+      expect(christmas.accent[6]).not.toBe(loss.light);
+      expect(christmas.accent[4]).not.toBe(loss.dark);
+    });
+
     it('shows pine green and Christmas red in the picker, in light and dark', () => {
-      expect(christmas.swatch).toEqual([christmas.primary[6], '#c3283a']);
-      expect(christmas.swatchDark).toEqual([christmas.primary[4], '#e8555c']);
+      expect(christmas.swatch).toEqual([christmas.primary[6], christmas.accent[6]]);
+      expect(christmas.swatchDark).toEqual([christmas.primary[4], christmas.accent[4]]);
       // The check mark (white on light cards, dark[7] on dark ones) sits on the main tone.
       expect(contrast('#ffffff', christmas.swatch[0])).toBeGreaterThanOrEqual(4.5);
       expect(contrast(christmas.dark[7], christmas.swatchDark[0])).toBeGreaterThanOrEqual(4.5);

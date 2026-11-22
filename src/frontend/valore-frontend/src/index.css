@@ -67,6 +67,13 @@ nav,
   --v365-page-bg: var(--mantine-color-dark-7);
 }
 
+/* Themes with their own navigation accent (Natale): the active tab label and
+   icon take it as well as the indicator (pills keep white text on the accent
+   fill). --mantine-color-accent-text is shade 6 in light mode, 4 in dark. */
+.v365-accent-tab[data-active]:not([data-variant='pills']) {
+  color: var(--mantine-color-accent-text);
+}
+
 /* Mobile page header: one sticky row under the app header, painted with the
    page background edge to edge (it cancels AppShell + PageLayout padding). */
 .mobile-page-header {
