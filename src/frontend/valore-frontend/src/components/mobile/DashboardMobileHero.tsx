@@ -8,7 +8,8 @@ interface DashboardMobileHeroProps {
   statusText?: string | null;
 }
 
-// First thing on the mobile home: total wealth, today's move and total P/L.
+// First thing on the mobile home: total wealth, today's move in money (the
+// percentage is the first card of the KPI carousel) and total P/L.
 export function DashboardMobileHero({ summary, statusText }: DashboardMobileHeroProps) {
   const currency = summary?.base_currency ?? 'EUR';
   const total = summary ? summary.market_value + summary.cash_balance : null;
@@ -33,7 +34,7 @@ export function DashboardMobileHero({ summary, statusText }: DashboardMobileHero
             leftSection={<DayIcon size={14} />}
             styles={{ root: { textTransform: 'none', fontSize: '0.8125rem' } }}
           >
-            {`${formatMoney(summary.day_change, currency, true)} (${formatPct(summary.day_change_pct)})`}
+            {formatMoney(summary.day_change, currency, true)}
           </Badge>
           <Text size="sm" c="dimmed">oggi</Text>
         </Group>

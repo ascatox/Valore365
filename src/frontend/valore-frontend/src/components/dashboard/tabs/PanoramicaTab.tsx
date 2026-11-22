@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Alert, Group, Paper, SegmentedControl, Select, Stack, Text, useComputedColorScheme, useMantineTheme } from '@mantine/core';
 import { useIsMobile } from '../../../hooks/useIsMobile';
-import { IconAlertTriangle, IconCoin, IconActivity, IconArrowUpRight } from '@tabler/icons-react';
+import { IconAlertTriangle, IconCoin, IconActivity, IconArrowDownRight, IconArrowUpRight, IconClock } from '@tabler/icons-react';
 import { KpiStatsGrid } from '../summary/KpiStatsGrid';
 import { PerformanceChart } from '../summary/PerformanceChart';
 import { BenchmarkComparisonChart } from '../summary/BenchmarkComparisonChart';
@@ -23,6 +23,8 @@ import {
 } from '../hooks/queries';
 import type { PerformerItem } from '../types';
 import { type PortfolioScopeInput } from '../../../scope/portfolioScope';
+
+const directionIcon = (value: number) => (value < 0 ? IconArrowDownRight : IconArrowUpRight);
 
 interface PanoramicaTabProps {
   /** Portfolio or aggregate scope. */
@@ -121,23 +123,28 @@ export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText =
     ];
   }, [portfolioChartData, mvpCurrency, isIntradayWindow, portfolioSummary]);
 
+  // Daily variation and total P/L each get an amount card and a percentage
+  // card; the percentage cards carry the direction arrow. Today's percentage
+  // leads the row. Cash is not a Dashboard KPI (it lives in the Portfolio page).
   const kpiItems = useMemo(() => [
     {
-      label: isMobile ? 'Oggi' : 'Var. Giornaliera',
-      value: portfolioSummary
-        ? isMobile
-          ? formatPct(portfolioSummary.day_change_pct)
-          : `${formatMoney(portfolioSummary.day_change, mvpCurrency, true)} (${formatPct(portfolioSummary.day_change_pct)})`
-        : 'N/D',
-      color: getVariationColor(portfolioSummary?.day_change ?? 0),
-      icon: IconArrowUpRight,
-      iconColor: 'orange' as const,
-      subtitle: portfolioSummary ? formatMoney(portfolioSummary.day_change, mvpCurrency, true) : undefined,
-      subtitleColor: getVariationColor(portfolioSummary?.day_change ?? 0),
-      gaugeValue: portfolioSummary?.day_change_pct ?? 0,
+      // Non-breaking space: in narrow columns the label wraps before
+      // "Giornaliera", never leaving the "%" alone on a third line.
+      label: 'Var. Giornaliera\u00A0%',
+      value: portfolioSummary ? formatPct(portfolioSummary.day_change_pct) : 'N/D',
+      color: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
+      icon: directionIcon(portfolioSummary?.day_change_pct ?? 0),
+      iconColor: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
     },
     {
-      label: isMobile ? 'Valore Tot' : 'Valore Totale',
+      label: 'Var. Giornaliera',
+      value: portfolioSummary ? formatMoney(portfolioSummary.day_change, mvpCurrency, true) : 'N/D',
+      color: getVariationColor(portfolioSummary?.day_change ?? 0),
+      icon: IconClock,
+      iconColor: 'orange' as const,
+    },
+    {
+      label: 'Valore Totale',
       value: portfolioSummary ? formatMoney(portfolioSummary.market_value, mvpCurrency) : 'N/D',
       icon: IconCoin,
       iconColor: 'teal' as const,
@@ -153,22 +160,18 @@ export function PanoramicaTab({ scope, chartWindow, setChartWindow, statusText =
       label: 'P/L %',
       value: portfolioSummary ? formatPct(portfolioSummary.unrealized_pl_pct) : 'N/D',
       color: getVariationColor(portfolioSummary?.unrealized_pl_pct ?? 0),
-      icon: IconArrowUpRight,
-      iconColor: 'green' as const,
+      icon: directionIcon(portfolioSummary?.unrealized_pl_pct ?? 0),
+      iconColor: getVariationColor(portfolioSummary?.unrealized_pl_pct ?? 0),
     },
-    {
-      label: 'Cash',
-      value: portfolioSummary ? formatMoney(portfolioSummary.cash_balance, mvpCurrency) : 'N/D',
-      icon: IconCoin,
-      iconColor: 'grape' as const,
-    },
-  ], [portfolioSummary, mvpCurrency, isMobile]);
+  ], [portfolioSummary, mvpCurrency]);
 
-  // The hero already shows total value and today's change on mobile.
+  // The hero shows total value, today's change in money and total P/L; the
+  // percentage of today's change takes the slot cash used to have.
   const mobileKpiItems = useMemo(() => [
     {
-      label: 'Liquidità',
-      value: portfolioSummary ? formatMoney(portfolioSummary.cash_balance, mvpCurrency) : 'N/D',
+      label: 'Var. giorn. %',
+      value: portfolioSummary ? formatPct(portfolioSummary.day_change_pct) : 'N/D',
+      color: getVariationColor(portfolioSummary?.day_change_pct ?? 0),
     },
     {
       label: 'Valore titoli',

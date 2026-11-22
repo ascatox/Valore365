@@ -4,14 +4,8 @@ export interface KpiStatCardProps {
   label: string;
   value: string;
   color?: string;
-  diff?: number;
-  diffLabel?: string;
   icon?: React.ComponentType<IconProps>;
   iconColor?: string;
-  subtitle?: string;
-  subtitleColor?: string;
-  /** When set, renders a small semicircular gauge coloured by sign */
-  gaugeValue?: number;
 }
 
 export interface ChartPoint {
