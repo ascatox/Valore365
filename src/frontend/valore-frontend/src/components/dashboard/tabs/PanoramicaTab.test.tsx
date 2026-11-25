@@ -95,12 +95,11 @@ describe('PanoramicaTab KPI row', () => {
     expect(within(card('Var. Giornaliera %')).getByText('N/D')).toBeInTheDocument();
   });
 
-  it('on mobile shows today\'s amount in the hero and the percentage first in the carousel, in place of cash', async () => {
+  it('on mobile shows today\'s percentage then amount in the hero and the percentage first in the carousel, in place of cash', async () => {
     setMobile(true);
     renderTab();
-    expect(await screen.findByText('-13.333,27 €')).toBeInTheDocument();
-    // The hero badge no longer appends the percentage to the amount.
-    expect(screen.queryByText(/-13\.333,27 € \(/)).not.toBeInTheDocument();
+    // The hero badge shows the day percentage first, then the amount.
+    expect(await screen.findByText('-2,01% · -13.333,27 €')).toBeInTheDocument();
     const pctLabel = screen.getByText('Var. giorn. %');
     expect(pctLabel.parentElement?.parentElement?.firstElementChild).toBe(pctLabel.parentElement);
     expect(pctLabel.parentElement).toHaveTextContent('-2,01%');
